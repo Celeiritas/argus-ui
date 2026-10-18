@@ -1,5 +1,8 @@
 # Changelog
 
+## 4.2.1 – 2026-10-18
+- Mentor medallion: hooded dark grey robe, broad-shouldered torso, scraggly beard, Athena's owl with wing lines, a tan scroll rolled top and bottom
+
 ## 4.2.0 – 2026-10-18
 - **Mentor / Practice tab**: typed-answer flashcards with key-idea (rubric) grading, model answers, coaching notes, confidence and calibration tracking, FSRS-4.5 spaced repetition, keys 1–4 to rate, "Practice ahead" when caught up
 - Every attempt is saved with grading features and your final rating, as training data for a future learning grader (docs/mentor.md)
