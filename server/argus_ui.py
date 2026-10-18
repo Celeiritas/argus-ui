@@ -3,11 +3,13 @@
 #   Open it at http://<host>:8095, or anywhere on your tailnet with:  tailscale serve --bg --set-path /argus http://127.0.0.1:8095
 # Powers on the page: Medusa freezes/thaws a task (stop + pause its timer; thaw restores it), Zeus's bolt runs/restarts it.
 # Which agents exist, their names and the page title come from the theme (static/theme.json).
-import json, os, re, subprocess, time, mimetypes
+import json, os, re, socket, subprocess, threading, mimetypes, ipaddress
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from datetime import datetime
 
 PORT = int(os.environ.get('ARGUS_PORT', 8095))
+BIND = os.environ.get('ARGUS_BIND', '0.0.0.0')          # e.g. 127.0.0.1 to allow only tailscale serve / this machine
+MAX_BODY = 4096
 HOME = os.path.expanduser('~')
 STATIC = os.environ.get('ARGUS_STATIC', f'{HOME}/.local/share/argus-ui/static')
 SYSTEMCTL = os.environ.get('ARGUS_SYSTEMCTL', 'systemctl')
@@ -25,10 +27,17 @@ PKEYS = [p[0] for p in PERSONAS]
 GODS = re.compile(r'^(%s)-' % '|'.join(PKEYS))
 
 def run(*a):
-    return subprocess.run(a, capture_output=True, text=True).stdout
+    return subprocess.run(a, capture_output=True, text=True, timeout=20).stdout
+
+def run_ok(*a):
+    r = subprocess.run(a, capture_output=True, text=True, timeout=20)
+    return r.returncode == 0, (r.stderr or r.stdout).strip()
 
 def sc(*a):
     return run(SYSTEMCTL, '--user', *a)
+
+def sc_ok(*a):
+    return run_ok(SYSTEMCTL, '--user', *a)
 
 def units():
     out = sc('list-unit-files', '--type=service', '--no-legend')
@@ -62,13 +71,18 @@ def when(ts):
     if abs((d - now).days) < 6: return d.strftime('%a ') + t
     return d.strftime('%b %d').replace(' 0', ' ')
 
+LOCK = threading.Lock()          # one freeze/thaw/bolt at a time, so two clicks can't overwrite each other's record
+
 def frozen():
-    try: return json.load(open(FROZEN))
+    try:
+        with open(FROZEN) as f: return json.load(f)
     except Exception: return {}
 
 def save_frozen(d):
     os.makedirs(REG, exist_ok=True)
-    json.dump(d, open(FROZEN, 'w'), indent=2)
+    tmp = FROZEN + '.tmp'
+    with open(tmp, 'w') as f: json.dump(d, f, indent=2)
+    os.replace(tmp, FROZEN)        # atomic: a crash mid-write can't leave a half-written file
 
 def has_timer(u):
     return props(u + '.timer', 'LoadState').get('LoadState') == 'loaded'
@@ -115,31 +129,32 @@ def freeze(u):
                timer_enabled=timer and sc('is-enabled', u + '.timer').strip() == 'enabled',
                service_enabled=sc('is-enabled', u + '.service').strip() == 'enabled',
                service_active=sc('is-active', u + '.service').strip() == 'active')
-    if timer:
-        sc('stop', u + '.timer')
-        if rec['timer_enabled']: sc('disable', u + '.timer')
-    sc('stop', u + '.service')
-    if rec['service_enabled']: sc('disable', u + '.service')
-    fz[u] = rec; save_frozen(fz)
+    fz[u] = rec; save_frozen(fz)          # record first, so a thaw can always restore what we change below
+    steps = ([('stop', u + '.timer')] + ([('disable', u + '.timer')] if rec['timer_enabled'] else []) if timer else []) \
+        + [('stop', u + '.service')] + ([('disable', u + '.service')] if rec['service_enabled'] else [])
+    for verb, unit in steps:
+        ok, err = sc_ok(verb, unit)
+        if not ok: return False, f'{verb} {unit} failed: {err[:120]}'
     return True, 'frozen'
 
 def bolt(u):
     # Zeus: a timer/oneshot agent gets Run; an always-on service gets Restart. Frozen agents must be thawed first.
     if u in frozen(): return False, 'frozen - thaw it first'
-    if has_timer(u) or props(u + '.service', 'Type').get('Type') == 'oneshot':
-        subprocess.Popen([SYSTEMCTL, '--user', 'start', '--no-block', u + '.service']); return True, 'struck - running now'
-    subprocess.Popen([SYSTEMCTL, '--user', 'restart', '--no-block', u + '.service']); return True, 'struck - restarted'
+    verb = 'start' if has_timer(u) or props(u + '.service', 'Type').get('Type') == 'oneshot' else 'restart'
+    ok, err = sc_ok(verb, '--no-block', u + '.service')
+    if not ok: return False, f'{verb} failed: {err[:120]}'
+    return True, 'struck - running now' if verb == 'start' else 'struck - restarted'
 
 def thaw(u):
     fz = frozen()
     rec = fz.get(u)
     if not rec: return True, 'not frozen'
-    if rec.get('service_enabled'): sc('enable', u + '.service')
-    if rec.get('timer'):
-        if rec.get('timer_enabled'): sc('enable', '--now', u + '.timer')
-        else: sc('start', u + '.timer')
-    elif rec.get('service_active') or rec.get('service_enabled'):
-        sc('start', '--no-block', u + '.service')
+    steps = ([('enable', u + '.service')] if rec.get('service_enabled') else [])
+    if rec.get('timer'): steps.append(('enable', '--now', u + '.timer') if rec.get('timer_enabled') else ('start', u + '.timer'))
+    elif rec.get('service_active') or rec.get('service_enabled'): steps.append(('start', '--no-block', u + '.service'))
+    for st in steps:
+        ok, err = sc_ok(*st)
+        if not ok: return False, f'{st[0]} {st[-1]} failed: {err[:120]}'   # stays frozen, so it can be retried
     del fz[u]; save_frozen(fz)
     return True, 'thawed'
 
@@ -148,7 +163,20 @@ def page():
     global PAGE
     if PAGE is None or os.environ.get('ARGUS_DEV'):
         PAGE = open(os.path.join(STATIC, 'index.html'), encoding='utf-8').read()
-    return PAGE.replace('/*STATE*/null', json.dumps(state()))
+    # "</" is escaped so text from a unit's Description can never close the <script> tag
+    return PAGE.replace('/*STATE*/null', json.dumps(state()).replace('</', '<\\/'))
+
+# Only answer to this machine's own names, IP addresses and Tailscale names (blocks DNS-rebinding attacks),
+# plus anything listed in ARGUS_ALLOWED_HOSTS (comma separated).
+_hn = socket.gethostname().lower()
+ALLOWED = {'localhost', _hn, _hn.split('.')[0]} | {h.strip().lower() for h in os.environ.get('ARGUS_ALLOWED_HOSTS', '').split(',') if h.strip()}
+def host_ok(host):
+    h = (host or '').strip().lower()
+    if h.startswith('['): h = h[1:h.find(']')]
+    elif h.count(':') == 1: h = h.rsplit(':', 1)[0]
+    if h in ALLOWED or h.endswith('.ts.net') or h.endswith('.local'): return True
+    try: ipaddress.ip_address(h); return True
+    except ValueError: return False
 
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
@@ -165,16 +193,22 @@ class H(BaseHTTPRequestHandler):
         self.send_header('Cache-Control', cache); self.end_headers(); self.wfile.write(b)
 
     def do_GET(self):
+        if not host_ok(self.headers.get('Host')): return self.out('unknown host', 'text/plain', 421)
+        try: self.get()
+        except Exception as e: self.out(json.dumps({'ok': False, 'msg': 'server error'}), 'application/json', 500)
+
+    def get(self):
         p = self.path_parts()
         if p.startswith('static/'):
-            f = os.path.normpath(os.path.join(STATIC, p[7:]))
-            if not f.startswith(os.path.normpath(STATIC)) or not os.path.isfile(f): return self.out('not found', 'text/plain', 404)
+            root = os.path.realpath(STATIC); f = os.path.realpath(os.path.join(root, p[7:]))
+            if os.path.commonpath([root, f]) != root or not os.path.isfile(f): return self.out('not found', 'text/plain', 404)
             ct = mimetypes.guess_type(f)[0] or 'application/octet-stream'
             if f.endswith('.webmanifest'): ct = 'application/manifest+json'
-            return self.out(open(f, 'rb').read(), ct, cache='max-age=300')
+            with open(f, 'rb') as fh: return self.out(fh.read(), ct, cache='max-age=300')
         if p in ('manifest.webmanifest', 'sw.js'):
             f = os.path.join(STATIC, p)
-            return self.out(open(f, 'rb').read(), 'application/manifest+json' if p.endswith('manifest') else 'text/javascript')
+            if not os.path.isfile(f): return self.out('not found', 'text/plain', 404)
+            with open(f, 'rb') as fh: return self.out(fh.read(), 'application/manifest+json' if p.endswith('manifest') else 'text/javascript')
         if p == 'api/state': return self.out(json.dumps(state()), 'application/json')
         if p.startswith('api/log/'):
             u = p[8:]
@@ -182,22 +216,31 @@ class H(BaseHTTPRequestHandler):
         if p == '' or p.split('/')[0] in PKEYS: return self.out(page())
         return self.out('not found', 'text/plain', 404)
 
+    def deny(self, code, msg): return self.out(json.dumps({'ok': False, 'msg': msg}), 'application/json', code)
+
     def do_POST(self):
-        p = self.path_parts()
-        n = int(self.headers.get('Content-Length', 0) or 0)
+        # Cross-site protection (there is no login): right host, JSON only (a plain HTML form can't send it),
+        # and the browser must say the request came from this page itself.
+        if not host_ok(self.headers.get('Host')): return self.deny(421, 'unknown host')
+        if (self.headers.get('Content-Type') or '').split(';')[0].strip() != 'application/json': return self.deny(415, 'json only')
+        site = self.headers.get('Sec-Fetch-Site'); origin = self.headers.get('Origin')
+        if site and site not in ('same-origin', 'none'): return self.deny(403, 'cross-site request blocked')
+        if origin and origin.split('://', 1)[-1] != self.headers.get('Host'): return self.deny(403, 'cross-site request blocked')
+        try: n = int(self.headers.get('Content-Length', 0) or 0)
+        except ValueError: n = -1
+        if n < 0 or n > MAX_BODY: return self.deny(413, 'request too large')
         try: body = json.loads(self.rfile.read(n) or b'{}')
-        except Exception: body = {}
-        u = str(body.get('job', ''))
-        if u not in units(): return self.out(json.dumps({'ok': False, 'msg': 'unknown agent'}), 'application/json', 400)
-        if p == 'api/run':
-            if u in frozen(): return self.out(json.dumps({'ok': False, 'msg': 'frozen - thaw it first'}), 'application/json')
-            subprocess.Popen([SYSTEMCTL, '--user', 'start', '--no-block', u + '.service'])
-            ok, msg = True, 'started'
-        elif p == 'api/freeze': ok, msg = freeze(u)
-        elif p == 'api/thaw': ok, msg = thaw(u)
-        elif p == 'api/bolt': ok, msg = bolt(u)
-        else: return self.out('not found', 'text/plain', 404)
+        except Exception: return self.deny(400, 'bad json')
+        u = str(body.get('job', '')) if isinstance(body, dict) else ''
+        p = self.path_parts()
+        actions = {'api/freeze': freeze, 'api/thaw': thaw, 'api/bolt': bolt, 'api/run': bolt}
+        if p not in actions: return self.deny(404, 'not found')
+        if u not in units(): return self.deny(400, 'unknown task')
+        try:
+            with LOCK: ok, msg = actions[p](u)
+        except subprocess.TimeoutExpired: ok, msg = False, 'systemctl timed out'
+        except Exception: ok, msg = False, 'server error'
         self.out(json.dumps({'ok': ok, 'msg': msg}), 'application/json')
 
 if __name__ == '__main__':
-    ThreadingHTTPServer(('0.0.0.0', PORT), H).serve_forever()
+    ThreadingHTTPServer((BIND, PORT), H).serve_forever()

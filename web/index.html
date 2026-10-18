@@ -6,93 +6,113 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="static/argus-192.png">
 <link rel="apple-touch-icon" href="static/argus-192.png">
-<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600&display=swap" rel="stylesheet">
 <style>
-:root{--night:#1C2127;--slate:#3A434C;--card:#232A31;--line:#36404A;--snow:#E6ECF1;--powder:#A7B6C4;--frost:#7E8C99;
- --teal:#2A9D8F;--ok:#7BD88F;--bad:#F0859A;--run:#F1CD7D;--stone:#7FAE92;--bolt:#FFE27A}
-*{box-sizing:border-box}html,body{margin:0;background:var(--night);color:var(--snow);font:13.5px/1.4 Nunito,system-ui,sans-serif;overflow-x:hidden}
+/* Design tokens. Spacing: 4pt micro / 8pt major grid. Type: 16 body, 14 secondary, 12 meta; weights 400/600 only.
+   Motion: 100/150/200/300ms for UI chrome. The god "powers" (petrify, crumble, lightning) are a documented exception:
+   they are one-shot feedback moments that last as long as the action, and are skipped under reduced motion. */
+:root{--night:#1C2127;--slate:#3A434C;--card:#232A31;--line:#36404A;--snow:#E6ECF1;--powder:#A7B6C4;--frost:#8C99A6;
+ --teal:#2A9D8F;--ok:#7BD88F;--bad:#F0859A;--run:#F1CD7D;--stone:#8FC4A4;--bolt:#FFE27A;--danger:#F87171;
+ --s1:4px;--s2:8px;--s3:12px;--s4:16px;--s6:24px;--s8:32px;
+ --fs-body:16px;--fs-sec:14px;--fs-meta:12px;--fs-h2:18px;--fs-h1:24px;
+ --t1:100ms;--t2:150ms;--t3:200ms;--t4:300ms;--hit:44px}
+*{box-sizing:border-box}html,body{margin:0;background:var(--night);color:var(--snow);font:400 var(--fs-sec)/1.5 Nunito,system-ui,sans-serif;overflow-x:hidden}
 a{color:inherit}
-/* header: Argus looms in the middle */
-header{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;padding:10px 16px 0;max-width:1240px;margin:0 auto}
-.title h1{margin:0;font-size:22px;font-weight:800;letter-spacing:.5px}
-.title .sub{color:var(--powder);font-size:12px}.title .sub b{color:var(--snow);font-weight:600}
-.argus{position:relative;width:min(210px,34vw);aspect-ratio:1;justify-self:center}
+b,strong{font-weight:600}
+/* header is chrome: full width, no max-width (only main is capped) */
+header{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:var(--s3);padding:var(--s2) var(--s4) 0}
+.title h1{margin:0;font-size:var(--fs-h1);font-weight:600;line-height:1.2}
+.title .sub{color:var(--powder);font-size:var(--fs-meta);line-height:1.4}.title .sub b{color:var(--snow);font-weight:600}
+.argus{position:relative;width:min(208px,34vw);aspect-ratio:1;justify-self:center}
 .argus img,.argus svg{position:absolute;inset:0;width:100%;height:100%}
-.argus::before{content:"";position:absolute;inset:-14%;border-radius:50%;background:radial-gradient(circle,#2A9D8F30 0%,transparent 65%);pointer-events:none}
-.argus.glare::before{background:radial-gradient(circle,#D6454533 0%,transparent 65%)}
-.tools{justify-self:end;display:flex;gap:14px;align-items:flex-start}
-.tool{position:relative;width:84px;height:84px;touch-action:none;cursor:grab;flex:none}
-.tool .hint{position:absolute;top:100%;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:10.5px;color:var(--frost);margin-top:1px}
-#medusa{width:84px;height:84px;display:block;filter:drop-shadow(0 4px 10px #0008)}
-#bolt{width:84px;height:84px;display:block}
+.argus::before{content:"";position:absolute;inset:-12%;border-radius:50%;background:radial-gradient(circle,#2A9D8F26 0%,transparent 65%);pointer-events:none;transition:opacity var(--t4)}
+.argus.glare::before{background:radial-gradient(circle,#D645452B 0%,transparent 65%)}
+.tools{justify-self:end;display:flex;gap:var(--s4);align-items:flex-start}
+.tool{all:unset;display:block;box-sizing:border-box;position:relative;width:80px;height:80px;touch-action:none;cursor:grab;flex:none;border-radius:50%}
+.tool:focus-visible{outline:2px solid var(--powder);outline-offset:4px}
+.tool[aria-pressed="true"]{outline:2px solid var(--bolt);outline-offset:4px}
+.tool .hint{position:absolute;top:100%;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:var(--fs-meta);color:var(--frost);margin-top:var(--s1)}
+#medusa,#bolt{width:80px;height:80px;display:block}
+/* real tooltip (hover + keyboard focus), not title= */
+.tip{position:absolute;right:0;top:calc(100% + 24px);width:240px;padding:var(--s2) var(--s3);background:var(--slate);border:1px solid var(--line);border-radius:8px;font-size:var(--fs-meta);line-height:1.4;color:var(--snow);opacity:0;pointer-events:none;transition:opacity var(--t2) ease-out;z-index:45;text-align:left}
+.tool:focus-visible .tip{opacity:1}
+@media (hover:hover){.tool:hover .tip{opacity:1}}
+.tip kbd{font:inherit;font-size:var(--fs-meta);padding:0 var(--s1);border:1px solid var(--frost);border-radius:4px}
 .floating{position:fixed!important;z-index:50;pointer-events:none;margin:0}
-.homing{transition:left .4s ease-in,top .4s ease-in,width .4s,height .4s}
-.casting{transition:left .25s,top .25s,width .25s,height .25s}
-nav{max-width:1240px;margin:2px auto 0;padding:0 16px;display:flex;gap:4px;flex-wrap:wrap}
-nav a{text-decoration:none;font-size:12.5px;font-weight:600;color:var(--powder);padding:3px 9px;border-radius:99px;border:1px solid transparent}
+nav{max-width:1240px;margin:var(--s2) auto 0;padding:0 var(--s4);display:flex;gap:var(--s1);flex-wrap:wrap}
+nav a{display:inline-flex;align-items:center;min-height:var(--hit);text-decoration:none;font-size:var(--fs-sec);font-weight:600;color:var(--powder);padding:0 var(--s3);border-radius:99px;border:1px solid transparent;transition:border-color var(--t2),background-color var(--t2)}
 nav a:hover,nav a.on{color:var(--snow);border-color:var(--line);background:var(--card)}
-main{max-width:1240px;margin:0 auto;padding:4px 16px 32px}
-section.persona{margin-top:12px}
-.ph{display:flex;align-items:center;gap:10px;margin-bottom:6px;text-decoration:none}
-.ph img{width:38px;height:38px;flex:none}
-.ph h2{margin:0;font-size:15.5px;font-weight:800;line-height:1.1}
-.ph .dom{color:var(--powder);font-size:11.5px}
-.ph .counts{margin-left:auto;display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}
-.chip{font-size:11px;font-weight:700;padding:0 7px;border-radius:99px;border:1px solid var(--line);color:var(--powder)}
-.chip.failed{color:var(--bad);border-color:#6b3540}.chip.running{color:var(--run);border-color:#6b5a30}.chip.frozen{color:var(--stone);border-color:#3d5a49}
-.grid{display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(236px,1fr))}
-.card{position:relative;overflow:hidden;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:9px 11px;transition:border-color .2s,box-shadow .2s}
-.card.target{border-color:var(--powder);box-shadow:0 0 0 2px #A7B6C455}
-.card .top{display:flex;justify-content:space-between;align-items:center;gap:6px}
-.card .job{font-weight:800;font-size:14px;word-break:break-word;line-height:1.15}
-.card .unit{color:var(--frost);font-size:10.5px}
-.pill{font-size:11px;font-weight:800;padding:0 8px;border-radius:99px;border:1px solid currentColor;white-space:nowrap}
+main{max-width:1240px;margin:0 auto;padding:var(--s1) var(--s4) var(--s8)}
+section.persona{margin-top:var(--s4)}
+.ph{display:flex;align-items:center;gap:var(--s3);margin-bottom:var(--s2);text-decoration:none;min-height:var(--hit)}
+.ph img{width:40px;height:40px;flex:none}
+.ph h2{margin:0;font-size:var(--fs-h2);font-weight:600;line-height:1.2}
+.ph .dom{color:var(--powder);font-size:var(--fs-meta);line-height:1.4}
+.ph .counts{margin-left:auto;color:var(--powder);font-size:var(--fs-meta);text-align:right}
+.ph .counts .failed{color:var(--bad)}.ph .counts .running{color:var(--run)}.ph .counts .frozen{color:var(--stone)}
+.grid{display:grid;gap:var(--s2);grid-template-columns:repeat(auto-fill,minmax(256px,1fr))}
+.card{position:relative;overflow:hidden;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:var(--s3);box-shadow:inset 0 1px 0 rgba(255,255,255,.04);transition:border-color var(--t3) ease-out}
+.card.target,.card.armed-target:focus-visible{border-color:var(--bolt);outline:none}
+.card.armable{cursor:crosshair}
+.card .top{display:flex;justify-content:space-between;align-items:flex-start;gap:var(--s2)}
+.card .job{font-weight:600;font-size:var(--fs-body);word-break:break-word;line-height:1.25}
+.card .unit{color:var(--frost);font-size:var(--fs-meta);line-height:1.4}
+.pill{font-size:var(--fs-meta);font-weight:600;line-height:20px;padding:0 var(--s2);border-radius:99px;border:1px solid currentColor;white-space:nowrap}
 .pill.ok{color:var(--ok)}.pill.failed{color:var(--bad)}.pill.running{color:var(--run)}.pill.never{color:var(--frost)}.pill.frozen{color:var(--stone)}
-dl{display:grid;grid-template-columns:auto 1fr auto 1fr;gap:0 8px;margin:6px 0 4px;font-size:12px}dt{color:var(--powder)}dd{margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+dl{display:grid;grid-template-columns:auto 1fr auto 1fr;gap:0 var(--s2);margin:var(--s2) 0;font-size:var(--fs-sec);line-height:1.5}
+dt{color:var(--powder);font-size:var(--fs-meta);align-self:baseline}dd{margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;align-self:baseline}
 dl .wide{grid-column:2/5}
-.notes{color:var(--powder);font-size:11.5px;margin:0 0 5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.actions{display:flex;gap:6px;align-items:center}
-button{font:inherit;font-size:12px;font-weight:700;color:var(--snow);background:transparent;border:1px solid var(--line);border-radius:7px;padding:2px 9px;cursor:pointer;min-height:26px}
-button:hover{border-color:var(--powder)}button:focus-visible,a:focus-visible{outline:2px solid var(--powder);outline-offset:2px}
+.notes{color:var(--powder);font-size:var(--fs-meta);line-height:1.4;margin:0 0 var(--s2);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;max-width:70ch}
+.actions{display:flex;gap:var(--s2);align-items:center}
+button{font:inherit;font-size:var(--fs-sec);font-weight:600;color:var(--snow);background:transparent;border:1px solid var(--line);border-radius:8px;padding:0 var(--s3);cursor:pointer;min-height:36px;min-width:var(--hit);position:relative;transition:border-color var(--t2)}
+button::after{content:"";position:absolute;inset:-5px -1px}   /* stretches the hit area to 44px tall (inset is from the padding box) without a bigger-looking button */
+button:hover{border-color:var(--powder)}button:focus-visible,a:focus-visible,summary:focus-visible{outline:2px solid var(--powder);outline-offset:2px}
 button[disabled]{opacity:.45;cursor:default}
-details summary{cursor:pointer;color:var(--powder);font-size:12px;margin-right:auto}
 details{margin-right:auto}
-pre{white-space:pre-wrap;word-break:break-all;font-size:11px;color:var(--powder);max-height:220px;overflow:auto;margin:6px 0 0;background:#1a1f25;border-radius:7px;padding:6px}
+details summary{cursor:pointer;color:var(--powder);font-size:var(--fs-sec);min-height:var(--hit);display:flex;align-items:center;gap:var(--s1);list-style:none}
+details summary::before{content:"▸";transition:transform var(--t2)}details[open] summary::before{transform:rotate(90deg)}
+pre{white-space:pre-wrap;word-break:break-all;font-size:var(--fs-meta);line-height:1.4;color:var(--powder);max-height:220px;overflow:auto;margin:var(--s2) 0 0;background:#1a1f25;border-radius:8px;padding:var(--s2)}
 /* stone (frozen) */
-.stone{position:absolute;inset:0;pointer-events:none;border-radius:10px;
+.stone{position:absolute;inset:0;pointer-events:none;border-radius:12px;transform-origin:top center;
  background:radial-gradient(circle at 14% 22%,#ffffff1c 0 2px,transparent 3px),radial-gradient(circle at 70% 64%,#00000030 0 3px,transparent 4px),radial-gradient(circle at 86% 18%,#ffffff14 0 1.5px,transparent 2.5px),radial-gradient(circle at 36% 82%,#00000026 0 2.5px,transparent 3.5px),
- radial-gradient(ellipse at 30% 30%,#6e8a7a,#4d6358 55%,#3e5148);mix-blend-mode:normal;opacity:.93}
+ radial-gradient(ellipse at 30% 30%,#6e8a7a,#4d6358 55%,#3e5148);opacity:.93}
 .stone svg{position:absolute;inset:0;width:100%;height:100%}
-.card.frozen{border-color:#5f8a73;box-shadow:inset 0 0 0 1px #9fd9ae22}
+.card.frozen{border-color:#5f8a73}
 .card.frozen > *:not(.stone){position:relative;z-index:1}
-.card.frozen .job,.card.frozen dd,.card.frozen .notes,.card.frozen .unit{color:#e2ebe5;text-shadow:0 1px 0 #0006}
-.card.frozen dt{color:#bfd1c6}
-.card.shake{animation:shake .5s linear 3}
-@keyframes shake{0%,100%{transform:translate(0)}20%{transform:translate(-2px,1px)}40%{transform:translate(2px,-1px)}60%{transform:translate(-1px,-1px)}80%{transform:translate(1px,2px)}}
-.card.struck{animation:struck 1s ease-out}
-@keyframes struck{0%{box-shadow:0 0 0 0 #FFE27A}15%{box-shadow:0 0 0 3px #fff,0 0 40px 10px #FFE27A;filter:brightness(1.8)}100%{box-shadow:none;filter:none}}
-.empty{color:var(--powder);padding:16px;border:1px dashed var(--line);border-radius:10px;font-size:12.5px}
-.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--slate);color:var(--snow);padding:7px 14px;border-radius:9px;font-size:13px;font-weight:600;opacity:0;transition:opacity .25s;pointer-events:none;z-index:60}
-.toast.show{opacity:1}
+.card.frozen .job,.card.frozen dd,.card.frozen .notes,.card.frozen .unit{color:#eef3ef}
+.card.frozen dt{color:#d3e0d8}
+.card.shake{animation:shake var(--t4) linear 4}
+@keyframes shake{0%,100%{transform:translate(0)}25%{transform:translate(-2px,1px)}50%{transform:translate(2px,-1px)}75%{transform:translate(-1px,1px)}}
+.empty{color:var(--powder);padding:var(--s4);border:1px dashed var(--line);border-radius:12px;font-size:var(--fs-sec)}
+.empty b{display:block;color:var(--snow);font-weight:600;margin-bottom:var(--s1)}
+.toast{position:fixed;left:50%;bottom:var(--s6);transform:translateX(-50%);width:max-content;max-width:min(520px,calc(100vw - 32px));display:flex;align-items:center;gap:var(--s3);background:var(--slate);border:1px solid var(--line);color:var(--snow);padding:var(--s2) var(--s2) var(--s2) var(--s4);border-radius:12px;font-size:var(--fs-sec);opacity:0;transition:opacity var(--t3) ease-out;pointer-events:none;z-index:60;max-width:calc(100vw - 32px)}
+.toast.show{opacity:1;pointer-events:auto}
+.toast button{min-height:36px;flex:none}#toastText{flex:1}
 #fx{position:fixed;inset:0;pointer-events:none;z-index:49;overflow:hidden}
 #flash{position:fixed;inset:0;pointer-events:none;z-index:48;background:#fffbe0;opacity:0}
 .p{position:absolute;will-change:transform,opacity}
-.mute{position:fixed;right:10px;bottom:10px;z-index:40;font-size:11.5px;padding:2px 8px;color:var(--frost)}
+.mute{margin-left:auto;align-self:center;color:var(--powder)}
+/* confirm dialog (only for interrupting a task that is running right now) */
+dialog{background:var(--card);color:var(--snow);border:1px solid var(--line);border-radius:12px;padding:var(--s6);max-width:420px;width:calc(100vw - 32px)}
+dialog::backdrop{background:rgba(10,12,15,.6)}
+dialog h3{margin:0 0 var(--s2);font-size:var(--fs-h2);font-weight:600;line-height:1.25}
+dialog p{margin:0 0 var(--s6);color:var(--powder);line-height:1.5}
+dialog .row{display:flex;justify-content:flex-end;gap:var(--s2)}
+dialog .confirm{border-color:var(--danger);color:var(--danger)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 /* argus eyes */
-.argus .lid{transform-box:fill-box;transform-origin:center;transition:transform .25s}
+.argus .lid{transform-box:fill-box;transform-origin:center;transition:transform var(--t3)}
 .argus.glare .lid.red{transform:scaleY(.5)}
-.argus.glare .iris.red{filter:drop-shadow(0 0 2px #ff4d4d) drop-shadow(0 0 5px #ff4d4d)}
-.argus.calm .iris.blue{filter:drop-shadow(0 0 2px #6fb1ff)}
 .argus.blink .lid{transform:scaleY(.08)!important}
-@media (max-width:700px){header{grid-template-columns:1fr auto;grid-template-areas:"argus argus" "title tools";padding:8px 12px 0}
- .argus{grid-area:argus;width:min(160px,44vw)}.title{grid-area:title}.tools{grid-area:tools;gap:8px}
- .tool,#medusa,#bolt{width:62px;height:62px}.tool .hint{display:none}main,nav{padding-left:12px;padding-right:12px}.grid{grid-template-columns:1fr}.ph .counts{display:none}}
-@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+@media (max-width:767.98px){header{grid-template-columns:1fr auto;grid-template-areas:"argus argus" "title tools";padding:var(--s2) var(--s3) 0}
+ .argus{grid-area:argus;width:min(160px,44vw)}.title{grid-area:title}.tools{grid-area:tools;gap:var(--s2)}
+ .tool,#medusa,#bolt{width:64px;height:64px}.tool .hint,.tip{display:none}main,nav{padding-left:var(--s3);padding-right:var(--s3)}.grid{grid-template-columns:1fr}.ph .counts{display:none}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition-duration:1ms!important}}
 </style></head>
 <body>
 <header>
  <div class="title"><h1>Argus</h1><div class="sub" id="sub"></div></div>
- <div class="argus calm" id="argus" title="Argus is watching">
+ <div class="argus calm" id="argus" role="img" aria-label="Argus, the watchman">
   <img src="static/icons/argus.png" alt="">
   <svg viewBox="0 0 234 234" aria-hidden="true">
    <g class="eye" data-max="5.5"><ellipse class="lid" cx="117.5" cy="57.5" rx="9.6" ry="4.2" fill="#fff" stroke="#2b2f33" stroke-width="1.5"/><circle class="iris" cx="117.5" cy="57.5" r="2.4" fill="#4a4f55"/></g>
@@ -101,37 +121,40 @@ pre{white-space:pre-wrap;word-break:break-all;font-size:11px;color:var(--powder)
   </svg>
  </div>
  <div class="tools">
-  <div class="tool" id="boltHome" data-tool="bolt" title="Zeus's bolt: hurl it at an agent to run it (or restart an always-on one)">
-   <svg id="bolt" viewBox="0 0 100 100" aria-label="Zeus's lightning bolt" role="img">
-    <defs><radialGradient id="bg-bolt" cx="50%" cy="45%" r="60%"><stop offset="0" stop-color="#3a3a1c"/><stop offset="1" stop-color="#1C2127"/></radialGradient>
-     <filter id="glow-bolt" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="2.4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+  <button class="tool" id="boltHome" data-tool="bolt" type="button" aria-pressed="false" aria-describedby="tip-bolt" aria-label="Run a task with Zeus's bolt">
+   <svg id="bolt" viewBox="0 0 100 100" aria-hidden="true">
+    <defs><radialGradient id="bg-bolt" cx="50%" cy="45%" r="60%"><stop offset="0" stop-color="#3a3a1c"/><stop offset="1" stop-color="#1C2127"/></radialGradient></defs>
     <circle cx="50" cy="50" r="46" fill="url(#bg-bolt)" stroke="#A7B6C4" stroke-width="3.5"/><circle cx="50" cy="50" r="42" fill="none" stroke="#E7C35A" stroke-width="1.2"/>
-    <path class="zz" d="M56 12 L30 54 L47 54 L38 88 L70 42 L52 42 L62 12 Z" fill="#FFE27A" stroke="#fff" stroke-width="2" stroke-linejoin="round" filter="url(#glow-bolt)"/>
+    <path d="M56 12 L30 54 L47 54 L38 88 L70 42 L52 42 L62 12 Z" fill="#FFE27A" stroke="#fff" stroke-width="2" stroke-linejoin="round"/>
    </svg>
-   <div class="hint">hurl to run</div>
-  </div>
-  <div class="tool" id="medusaHome" data-tool="medusa" title="Medusa: drag onto an agent to turn it to stone (freeze), or onto stone to thaw it">
+   <span class="hint" aria-hidden="true">Run</span>
+   <span class="tip" id="tip-bolt" role="tooltip"><b>Run a task</b> – drag the bolt onto a task, or press <kbd>Enter</kbd> here and then <kbd>Enter</kbd> on a task. Always-on tasks restart. <kbd>Esc</kbd> cancels.</span>
+  </button>
+  <button class="tool" id="medusaHome" data-tool="medusa" type="button" aria-pressed="false" aria-describedby="tip-medusa" aria-label="Freeze or thaw a task with Medusa">
    <!--MEDUSA-->
-   <div class="hint">freeze / thaw</div>
-  </div>
+   <span class="hint" aria-hidden="true">Freeze / thaw</span>
+   <span class="tip" id="tip-medusa" role="tooltip"><b>Freeze or thaw a task</b> – drag Medusa onto a task to turn it to stone (stops it and pauses its timer), or onto stone to thaw it. Keyboard: <kbd>Enter</kbd> here, then <kbd>Enter</kbd> on a task. <kbd>Esc</kbd> cancels.</span>
+  </button>
  </div>
 </header>
-<nav id="nav"></nav>
+<nav><span id="nav" style="display:contents"></span><button class="mute" id="mute" type="button">Mute sounds</button></nav>
 <main id="main"></main>
 <div id="flash"></div><div id="fx"></div>
-<button class="mute" id="mute" title="Sound on/off">sound: on</button>
-<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"><span id="toastText"></span><button type="button" id="toastAct" hidden></button></div>
+<dialog id="confirm" aria-labelledby="cTitle" aria-describedby="cBody"><h3 id="cTitle"></h3><p id="cBody"></p>
+ <div class="row"><button type="button" id="cCancel">Cancel</button><button type="button" class="confirm" id="cOk"></button></div></dialog>
 <script>
 const INIT = /*STATE*/null;
 let S = INIT, busy = false;
 const $ = (s, e = document) => e.querySelector(s), $$ = (s, e = document) => [...e.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const wait = ms => new Promise(z => setTimeout(z, ms));
-// works at http://<host>:8095/ and at https://<host>.<tailnet>.ts.net/argus/  (persona pages: <base>/<persona>)
+const RM = matchMedia('(prefers-reduced-motion: reduce)');      // reduced motion: skip particles/strikes, fade only
+// works at http://<host>:8095/ and at https://<host>.<tailnet>.ts.net/argus/  (agent pages: <base>/<agent>)
 const MOUNT = /^\/argus(\/|$)/.test(location.pathname) ? '/argus/' : '/';
 const REST = location.pathname.slice(MOUNT.length - (location.pathname === '/argus' ? 1 : 0)).replace(/^\/+|\/+$/g, '');
-const PERSONA_KEYS = (S?.personas || []).map(p => p.key);
-const here = PERSONA_KEYS.includes(REST.split('/')[0]) ? REST.split('/')[0] : null;
+const AGENT_KEYS = (S?.personas || []).map(p => p.key);
+const here = AGENT_KEYS.includes(REST.split('/')[0]) ? REST.split('/')[0] : null;
 const BASE = MOUNT;
 if (location.pathname === '/argus') history.replaceState(null, '', '/argus/');
 const url = p => BASE + p;
@@ -141,40 +164,77 @@ let soundOn = true; try { soundOn = localStorage.getItem('argus-sound') !== 'off
 const SFX = {freeze: 'static/sfx/freeze.mp3', thaw: 'static/sfx/thaw.mp3', bolt: 'static/sfx/bolt.mp3'};
 const audio = Object.fromEntries(Object.entries(SFX).map(([k, v]) => { const a = new Audio(v); a.preload = 'auto'; a.volume = .8; return [k, a]; }));
 function play(k) { if (!soundOn) return; try { const a = audio[k]; a.currentTime = 0; a.play().catch(() => {}); } catch (e) {} }
-function muteLabel() { $('#mute').textContent = 'sound: ' + (soundOn ? 'on' : 'off'); }
+function muteLabel() { $('#mute').textContent = soundOn ? 'Mute sounds' : 'Unmute sounds'; }
 $('#mute').onclick = () => { soundOn = !soundOn; try { localStorage.setItem('argus-sound', soundOn ? 'on' : 'off'); } catch (e) {} muteLabel(); };
 muteLabel();
 
-function toast(t) { const e = $('#toast'); e.textContent = t; e.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.remove('show'), 2800); }
+/* ---------- toast (with an optional action, e.g. Undo) ---------- */
+function toast(text, action) {
+  const e = $('#toast'), b = $('#toastAct'); $('#toastText').textContent = text;
+  b.hidden = !action; if (action) { b.textContent = action.label; b.onclick = () => { e.classList.remove('show'); action.fn(); }; }
+  e.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.remove('show'), action ? 8000 : 4000);
+}
+// plain-language results; failures say what happened and what to do next, never blame the person
+const SAY = {
+  freeze: {ok: j => `${j} is stone: stopped, and its timer is paused.`, verb: 'freeze'},
+  thaw: {ok: j => `${j} is thawed and back on its schedule.`, verb: 'thaw'},
+  bolt: {ok: (j, m) => m.includes('restart') ? `${j} restarted.` : `${j} is running now.`, verb: 'run'},
+};
+function failText(act, job, msg) {
+  if (/frozen/.test(msg)) return `${job} is stone, so it can't run. Thaw it first, then run it.`;
+  if (/no answer/.test(msg)) return `Couldn't reach the server to ${SAY[act].verb} ${job}. Check that it's on, then try again.`;
+  return `Couldn't ${SAY[act].verb} ${job} (${msg}). Try again in a moment.`;
+}
 
+/* ---------- confirm dialog: only when an action would interrupt a task that is running right now ---------- */
+function confirmInterrupt(act, job) {
+  return new Promise(done => {
+    const d = $('#confirm'), back = document.activeElement;
+    $('#cTitle').textContent = act === 'freeze' ? `Freeze running task "${job}"?` : `Restart task "${job}"?`;
+    $('#cBody').textContent = act === 'freeze'
+      ? `It's working right now. Freezing stops this run and pauses its timer. Thawing turns it back on, but this run won't resume.`
+      : `It's an always-on task. Restarting stops it and starts it again, so anything it's doing right now is cut short.`;
+    $('#cOk').textContent = act === 'freeze' ? 'Freeze task' : 'Restart task';
+    const close = v => { d.close(); back?.focus?.(); done(v); };
+    $('#cOk').onclick = () => close(true); $('#cCancel').onclick = () => close(false);
+    d.oncancel = e => { e.preventDefault(); close(false); };          // Esc = Cancel
+    d.onclick = e => { if (e.target === d) close(false); };            // click outside = Cancel
+    d.showModal(); $('#cCancel').focus();                             // Cancel gets focus, never the destructive button
+  });
+}
+const isRunning = c => c.dataset.state === 'running';
+
+/* ---------- render ---------- */
 function render() {
   if (!S) return;
-  $('#sub').innerHTML = `${esc(S.subtitle)} · <b>${S.jobs.length}</b> watched · ${esc(S.updated)}`; $('.title h1').textContent = S.title || 'Argus';
+  $('#sub').innerHTML = `${esc(S.subtitle)} · <b>${S.jobs.length}</b> tasks watched · updated ${esc(S.updated)}`; $('.title h1').textContent = S.title || 'Argus';
   const by = {}; S.jobs.forEach(j => (by[j.persona] ||= []).push(j));
   const shown = S.personas.filter(p => by[p.key] || p.key === here);
-  $('#nav').innerHTML = `<a href="${url('')}" class="${here ? '' : 'on'}">All</a>` +
-    shown.map(p => `<a href="${url(p.key)}" class="${here === p.key ? 'on' : ''}">${esc(p.name)}</a>`).join('');
+  $('#nav').innerHTML = `<a href="${url('')}" class="${here ? '' : 'on'}" ${here ? '' : 'aria-current="page"'}>All</a>` +
+    shown.map(p => `<a href="${url(p.key)}" class="${here === p.key ? 'on' : ''}" ${here === p.key ? 'aria-current="page"' : ''}>${esc(p.name)}</a>`).join('');
   const list = here ? shown.filter(p => p.key === here) : shown;
   $('#main').innerHTML = list.map(p => {
     const js = by[p.key] || [];
     const c = s => js.filter(j => j.state === s).length;
-    const chips = ['failed', 'running', 'frozen'].filter(s => c(s)).map(s => `<span class="chip ${s}">${c(s)} ${s}</span>`).join('') + `<span class="chip">${js.length}</span>`;
-    return `<section class="persona"><a class="ph" href="${url(p.key)}"><img src="static/icons/${p.key}.png" alt=""><div><h2>${esc(p.name)}</h2><div class="dom">${esc(p.domain)}</div></div><div class="counts">${chips}</div></a>
-      ${js.length ? `<div class="grid">${js.map(card).join('')}</div>` : `<div class="empty">No ${esc(p.name)} agents yet.</div>`}</section>`;
-  }).join('') || `<div class="empty">No persona agents found.</div>`;
+    const counts = ['failed', 'running', 'frozen'].filter(s => c(s)).map(s => `<span class="${s}">${c(s)} ${s === 'frozen' ? 'stone' : s}</span>`).concat(`${js.length} task${js.length === 1 ? '' : 's'}`).join(' · ');
+    return `<section class="persona" aria-labelledby="h-${p.key}"><a class="ph" href="${url(p.key)}"><img src="static/icons/${p.key}.png" alt=""><div><h2 id="h-${p.key}">${esc(p.name)}</h2><div class="dom">${esc(p.domain)}</div></div><div class="counts">${counts}</div></a>
+      ${js.length ? `<div class="grid">${js.map(card).join('')}</div>` : `<div class="empty"><b>No ${esc(p.name)} tasks yet</b>Background jobs named <code>${esc(p.key)}-…</code> appear here on their own, so you can watch and run them. <a href="https://github.com/Celeiritas/argus-ui#which-jobs-show-up">Learn how to add a task</a></div>`}</section>`;
+  }).join('') || `<div class="empty"><b>No tasks found</b>Argus shows systemd --user jobs whose names start with an agent's key. <a href="https://github.com/Celeiritas/argus-ui#which-jobs-show-up">Learn how to add a task</a></div>`;
   $$('.card.frozen').forEach(addStone);
+  if (armed) arm(armed, true);
   look.retarget();
 }
 function card(j) {
   const fz = j.state === 'frozen';
-  return `<article class="card ${fz ? 'frozen' : ''}" data-job="${esc(j.job)}" data-state="${j.state}" data-canfreeze="${j.canfreeze}">
+  return `<article class="card ${fz ? 'frozen' : ''}" data-job="${esc(j.job)}" data-state="${j.state}" data-canfreeze="${j.canfreeze}" aria-label="${esc(j.job)}, ${fz ? 'stone (frozen)' : j.state}">
    <div class="top"><div><div class="job">${esc(j.name)}</div><div class="unit">${esc(j.job)}</div></div><span class="pill ${j.state}">${fz ? 'stone' : j.state}</span></div>
    <dl><dt>Last</dt><dd title="${esc(j.last)}">${esc(j.last)}</dd><dt>Mem</dt><dd>${j.mem}</dd><dt>Next</dt><dd title="${esc(j.next)}">${esc(j.next)}</dd><dt>Wrote</dt><dd>${j.wrote}</dd>${fz ? `<dt>Stone</dt><dd class="wide">since ${esc(j.frozen_at)}</dd>` : ''}</dl>
-   ${j.notes ? `<p class="notes" title="${esc(j.notes)}">${esc(j.notes)}</p>` : ''}
-   <div class="actions"><details data-log="${esc(j.job)}"><summary>Log</summary><pre>loading…</pre></details>
-    ${j.canfreeze ? `<button data-act="${fz ? 'thaw' : 'freeze'}" title="${fz ? 'Thaw: turn it back on as it was' : 'Freeze: turn it to stone (stop it, pause its timer)'}">${fz ? 'Thaw' : 'Freeze'}</button>` : ''}
-    <button data-act="bolt" ${fz ? 'disabled title="Thaw it first"' : 'title="Run now (restart if always on)"'}>Run</button></div></article>`;
+   ${j.notes ? `<p class="notes">${esc(j.notes)}</p>` : ''}
+   <div class="actions"><details data-log="${esc(j.job)}"><summary>Show log</summary><pre>Loading…</pre></details>
+    ${j.canfreeze ? `<button type="button" data-act="${fz ? 'thaw' : 'freeze'}" aria-label="${fz ? 'Thaw' : 'Freeze'} ${esc(j.job)}">${fz ? 'Thaw' : 'Freeze'}</button>` : ''}
+    <button type="button" data-act="bolt" ${fz ? 'disabled' : ''} aria-label="Run ${esc(j.job)}${fz ? ' (thaw it first)' : ''}">Run</button></div></article>`;
 }
+function markStone(c) { c.dataset.state = 'frozen'; const p = $('.pill', c); if (p) { p.className = 'pill frozen'; p.textContent = 'stone'; } }
 function addStone(c) {
   if ($('.stone', c)) return;
   const s = document.createElement('div'); s.className = 'stone';
@@ -183,15 +243,16 @@ function addStone(c) {
 }
 async function refresh() { if (busy) return; try { const r = await fetch(url('api/state'), {cache: 'no-store'}); S = await r.json(); const open = $$('details[open]').map(d => d.dataset.log); render(); open.forEach(k => { const d = $(`details[data-log="${CSS.escape(k)}"]`); if (d) { d.open = true; loadLog(d); } }); } catch (e) {} }
 async function post(what, job) { const r = await fetch(url('api/' + what), {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({job})}); return r.json(); }
-async function loadLog(d) { try { const r = await fetch(url('api/log/' + encodeURIComponent(d.dataset.log))); const j = await r.json(); $('pre', d).textContent = j.log || '(nothing yet)'; } catch (e) { $('pre', d).textContent = '(could not load the log)'; } }
+async function loadLog(d) { try { const r = await fetch(url('api/log/' + encodeURIComponent(d.dataset.log))); const j = await r.json(); $('pre', d).textContent = j.log || 'Nothing logged yet.'; } catch (e) { $('pre', d).textContent = "Couldn't load the log. Close and reopen it to try again."; } }
 document.addEventListener('toggle', e => { if (e.target.matches('details[data-log]') && e.target.open) loadLog(e.target); }, true);
 document.addEventListener('click', e => {
+  const c = e.target.closest('.card');
+  if (armed && c && !e.target.closest('details')) { e.preventDefault(); return castArmed(c); }
   const b = e.target.closest('button[data-act]'); if (!b) return;
-  const c = b.closest('.card'), act = b.dataset.act;
-  if (act === 'bolt') zeusStrike(c); else medusaCast(c, act);
+  if (b.dataset.act === 'bolt') zeusStrike(b.closest('.card')); else medusaCast(b.closest('.card'), b.dataset.act);
 });
 
-/* ---------- Argus eyes: follow the pointer, glare at a failed agent, calm when all is well ---------- */
+/* ---------- Argus eyes: follow the pointer, glare at a failed task, calm when all is well ---------- */
 const look = (() => {
   const A = $('#argus'), svg = $('svg', A), eyes = $$('.eye', svg).map(g => ({iris: $('.iris', g), lid: $('.lid', g), max: +g.dataset.max}));
   eyes.forEach(e => { e.cx = +e.lid.getAttribute('cx'); e.cy = +e.lid.getAttribute('cy'); });
@@ -202,121 +263,151 @@ const look = (() => {
       const sx = m.a * e.cx + m.e, sy = m.d * e.cy + m.f;
       const dx = px - sx, dy = py - sy, d = Math.hypot(dx, dy) || 1, k = Math.min(1, d / 220);
       const tx = dx / d * e.max * k, ty = dy / d * e.max * .55 * k;
-      cur[i][0] += (tx - cur[i][0]) * .25; cur[i][1] += (ty - cur[i][1]) * .25;   // smooth, a little uncanny
+      const ease = RM.matches ? 1 : .25;
+      cur[i][0] += (tx - cur[i][0]) * ease; cur[i][1] += (ty - cur[i][1]) * ease;
       e.iris.setAttribute('transform', `translate(${cur[i][0].toFixed(2)} ${cur[i][1].toFixed(2)})`);
     });
   }
   function retarget() { const bad = $('.card[data-state="failed"]'); target = bad; A.classList.toggle('glare', !!bad); A.classList.toggle('calm', !bad); }
   addEventListener('pointermove', e => { pointer = [e.clientX, e.clientY]; lastMove = performance.now(); }, {passive: true});
-  function blink() { A.classList.add('blink'); setTimeout(() => A.classList.remove('blink'), 140); setTimeout(blink, 3500 + Math.random() * 5000); }
+  addEventListener('focusin', e => { const r = e.target.getBoundingClientRect?.(); if (r && r.width) { pointer = [r.left + r.width / 2, r.top + r.height / 2]; lastMove = performance.now(); } });  // keyboard users get watched too
+  function blink() { if (!RM.matches) { A.classList.add('blink'); setTimeout(() => A.classList.remove('blink'), 150); } setTimeout(blink, 3500 + Math.random() * 5000); }
   setTimeout(blink, 4000);
   function tick(t) {
     if (drag) aim(drag.x, drag.y);                                   // he watches whatever you carry
     else if (pointer && t - lastMove < 2500) aim(...pointer);
     else if (target) { const r = target.getBoundingClientRect(); aim(r.left + r.width / 2, r.top + r.height / 2); }
-    else { if (t - wander.t > 2600) { const r = A.getBoundingClientRect(); wander = {x: r.left + r.width / 2 + (Math.random() - .5) * 700, y: r.top + r.height / 2 + Math.random() * 400, t}; } aim(wander.x, wander.y); }
+    else if (!RM.matches) { if (t - wander.t > 2600) { const r = A.getBoundingClientRect(); wander = {x: r.left + r.width / 2 + (Math.random() - .5) * 700, y: r.top + r.height / 2 + Math.random() * 400, t}; } aim(wander.x, wander.y); }
     requestAnimationFrame(tick);
   }
   requestAnimationFrame(tick);
   return {retarget};
 })();
 
-/* ---------- dragging a god's tool (Medusa or Zeus's bolt) onto an agent ---------- */
-let drag = null;
-const TOOLS = {medusa: {home: $('#medusaHome'), el: $('#medusa'), size: 110}, bolt: {home: $('#boltHome'), el: $('#bolt'), size: 90}};
+/* ---------- god tools: drag onto a task, or press the tool then choose a task (keyboard / tap) ---------- */
+let drag = null, armed = null, justDragged = false;
+const TOOLS = {medusa: {home: $('#medusaHome'), el: $('#medusa'), size: 110, label: "Medusa"}, bolt: {home: $('#boltHome'), el: $('#bolt'), size: 90, label: "Zeus's bolt"}};
+const usable = (tool, c) => c && (tool === 'medusa' ? c.dataset.canfreeze === 'true' : c.dataset.state !== 'frozen');
 function place(el, x, y, w) { el.style.width = el.style.height = w + 'px'; el.style.left = (x - w / 2) + 'px'; el.style.top = (y - w / 2) + 'px'; }
-function cardAt(x, y, tool) {
-  const el = document.elementFromPoint(x, y), c = el && el.closest('.card');
-  if (!c) return null;
-  if (tool === 'medusa' && c.dataset.canfreeze !== 'true') return null;
-  if (tool === 'bolt' && c.dataset.state === 'frozen') return null;
-  return c;
+// move a floating tool with transform/opacity only (FLIP): jump to the end box, then animate from the old box
+function flyTo(el, x, y, w, ms = 200, easing = 'ease-out') {
+  const a = el.getBoundingClientRect(); place(el, x, y, w); const b = el.getBoundingClientRect();
+  if (RM.matches || !a.width) return Promise.resolve();
+  const anim = el.animate([{transform: `translate(${a.left - b.left}px,${a.top - b.top}px) scale(${a.width / b.width})`, transformOrigin: 'top left'}, {transform: 'none', transformOrigin: 'top left'}], {duration: ms, easing});
+  return anim.finished.catch(() => {});
 }
+function cardAt(x, y, tool) { const el = document.elementFromPoint(x, y), c = el && el.closest('.card'); return usable(tool, c) ? c : null; }
 Object.entries(TOOLS).forEach(([name, T]) => {
   T.home.addEventListener('pointerdown', e => {
-    if (busy) return; e.preventDefault(); T.home.setPointerCapture(e.pointerId);
-    drag = {name, id: e.pointerId, over: null, x: e.clientX, y: e.clientY};
-    T.el.classList.add('floating'); place(T.el, e.clientX, e.clientY, T.size);
+    if (busy || e.button > 0) return; T.home.setPointerCapture(e.pointerId);
+    drag = {name, id: e.pointerId, over: null, x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, moved: false};
   });
   T.home.addEventListener('pointermove', e => {
     if (!drag || e.pointerId !== drag.id) return;
-    drag.x = e.clientX; drag.y = e.clientY; place(T.el, e.clientX, e.clientY, T.size);
+    drag.x = e.clientX; drag.y = e.clientY;
+    if (!drag.moved && Math.hypot(drag.x - drag.x0, drag.y - drag.y0) < 6) return;     // a small wobble is still a click
+    if (!drag.moved) { drag.moved = true; disarm(); T.el.classList.add('floating'); }
+    place(T.el, e.clientX, e.clientY, T.size);
     const c = cardAt(e.clientX, e.clientY, name);
     if (c !== drag.over) { drag.over?.classList.remove('target'); c?.classList.add('target'); drag.over = c; if (name === 'medusa') T.el.classList.toggle('awake', !!c); }
   });
   const end = () => {
-    if (!drag || drag.name !== name) return; const c = drag.over; c?.classList.remove('target'); drag = null;
+    if (!drag || drag.name !== name) return; const {over: c, moved} = drag; c?.classList.remove('target'); drag = null;
+    if (!moved) return;                                                      // it was a click: the click handler arms it
+    justDragged = true; setTimeout(() => justDragged = false, 50);
     if (!c) return sendHome(name);
     if (name === 'medusa') medusaCast(c, c.dataset.state === 'frozen' ? 'thaw' : 'freeze', true); else zeusStrike(c, true);
   };
   T.home.addEventListener('pointerup', end); T.home.addEventListener('pointercancel', end);
+  T.home.addEventListener('click', () => { if (justDragged || busy) return; armed === name ? disarm(true) : arm(name); });
+});
+function arm(name, quiet) {
+  disarm(); armed = name; TOOLS[name].home.setAttribute('aria-pressed', 'true');
+  const cards = $$('.card').filter(c => usable(name, c));
+  cards.forEach(c => { c.tabIndex = 0; c.classList.add('armable', 'armed-target'); });
+  if (!quiet) { toast(`Choose a task for ${TOOLS[name].label}: click it, or Tab to it and press Enter. Esc cancels.`); cards[0]?.focus(); }
+}
+function disarm(refocus) {
+  if (!armed) return; const T = TOOLS[armed]; T.home.setAttribute('aria-pressed', 'false'); armed = null;
+  $$('.card.armable').forEach(c => { c.removeAttribute('tabindex'); c.classList.remove('armable', 'armed-target'); });
+  if (refocus) T.home.focus();
+}
+function castArmed(c) { const name = armed; if (!usable(name, c)) return; disarm(); if (name === 'medusa') medusaCast(c, c.dataset.state === 'frozen' ? 'thaw' : 'freeze'); else zeusStrike(c); }
+addEventListener('keydown', e => {
+  if (e.key === 'Escape' && armed) { e.preventDefault(); disarm(true); toast('Cancelled.'); }
+  if ((e.key === 'Enter' || e.key === ' ') && armed && e.target.classList?.contains('armable')) { e.preventDefault(); castArmed(e.target); }
 });
 function sendHome(name) {
   const T = TOOLS[name], r = T.home.getBoundingClientRect();
-  T.el.classList.add('floating', 'homing'); place(T.el, r.left + r.width / 2, r.top + r.height / 2, r.width);
-  setTimeout(() => { T.el.classList.remove('floating', 'homing', 'casting', 'awake', 'freezing', 'thawing'); T.el.removeAttribute('style'); }, 420);
+  T.el.classList.add('floating');
+  flyTo(T.el, r.left + r.width / 2, r.top + r.height / 2, r.width, 300, 'ease-in').then(() => {
+    T.el.classList.remove('floating', 'awake', 'freezing', 'thawing'); T.el.removeAttribute('style');
+  });
 }
-async function liftOff(name) { const T = TOOLS[name], h = T.home.getBoundingClientRect(); T.el.classList.add('floating'); place(T.el, h.left + h.width / 2, h.top + h.height / 2, h.width); await new Promise(z => requestAnimationFrame(z)); }
+function liftOff(name) { const T = TOOLS[name], h = T.home.getBoundingClientRect(); T.el.classList.add('floating'); place(T.el, h.left + h.width / 2, h.top + h.height / 2, h.width); }
 
 /* ---------- Medusa: green stone gaze (freeze) / green fire (thaw) ---------- */
 async function medusaCast(c, act, fromDrag) {
-  if (busy) return; busy = true;
+  if (busy) return;
+  const job = c.dataset.job;
+  if (act === 'freeze' && isRunning(c) && !(await confirmInterrupt('freeze', job))) { if (fromDrag) sendHome('medusa'); return; }
+  busy = true;
   const M = TOOLS.medusa.el, r = c.getBoundingClientRect(), x = r.left + r.width / 2, y = Math.max(70, r.top - 14);
-  if (!fromDrag) await liftOff('medusa');
-  M.classList.add('casting', 'awake'); place(M, x, y, 150);
-  await wait(260);
+  if (!fromDrag) liftOff('medusa');
+  M.classList.add('awake'); await flyTo(M, x, y, 150, 200);
   M.classList.add(act === 'freeze' ? 'freezing' : 'thawing'); play(act);
-  const req = post(act, c.dataset.job).catch(() => ({ok: false, msg: 'no answer'}));
+  const req = post(act, job).catch(() => ({ok: false, msg: 'no answer'}));
   if (act === 'freeze') await petrify(c, x, y); else await crumble(c, x, y);
   const res = await req;
-  toast(res.ok ? `${c.dataset.job}: ${res.msg}` : `Could not ${act} ${c.dataset.job} (${res.msg})`);
+  if (!res.ok) toast(failText(act, job, res.msg));
+  else if (act === 'freeze') toast(SAY.freeze.ok(job), {label: 'Undo', fn: () => { const cc = $(`.card[data-job="${CSS.escape(job)}"]`); if (cc) medusaCast(cc, 'thaw'); }});
+  else toast(SAY.thaw.ok(job));
   busy = false; sendHome('medusa'); refresh();
 }
 function particle(x, y, w, h, style) { const p = document.createElement('div'); p.className = 'p'; p.style.cssText = `left:${x}px;top:${y}px;width:${w}px;height:${h}px;${style}`; $('#fx').appendChild(p); return p; }
 const ROCK = ['polygon(10% 30%,45% 0,90% 15%,100% 60%,60% 100%,10% 85%)', 'polygon(0 40%,35% 5%,80% 0,100% 45%,75% 95%,20% 100%)', 'polygon(20% 0,85% 20%,100% 75%,50% 100%,0 70%)'];
 async function petrify(c, x, y) {
   const r = c.getBoundingClientRect();
-  // jade gaze: two beams of green light from her eyes onto the card
+  if (RM.matches) { addStone(c); c.classList.add('frozen'); $('.stone', c).animate([{opacity: 0}, {opacity: .93}], {duration: 150}); await wait(150); markStone(c); return; }
+  // jade gaze: rock shards stream from her eyes onto the card
   for (let i = 0; i < 70; i++) {
     const sx = x + (Math.random() - .5) * 26, sy = y + 6, tx = r.left + Math.random() * r.width, ty = r.top + Math.random() * r.height;
     const s = 3 + Math.random() * 7, green = ['#8FD9A8', '#5E9C78', '#B9FFCF', '#7E9486', '#4E6A5A'][i % 5];
-    const p = particle(sx, sy, s, s, `background:${green};clip-path:${ROCK[i % 3]};${i % 4 ? '' : 'box-shadow:0 0 8px #7CFFA8'}`);
+    const p = particle(sx, sy, s, s, `background:${green};clip-path:${ROCK[i % 3]}`);
     p.animate([{transform: 'translate(0,0) rotate(0)', opacity: 1}, {transform: `translate(${tx - sx}px,${ty - sy}px) rotate(${Math.random() * 360}deg)`, opacity: .9, offset: .8}, {transform: `translate(${tx - sx}px,${ty - sy + 6}px) rotate(${Math.random() * 360}deg)`, opacity: 0}],
       {duration: 700 + Math.random() * 700, delay: Math.random() * 600, easing: 'cubic-bezier(.3,.6,.4,1)', fill: 'forwards'}).onfinish = () => p.remove();
   }
   await wait(450);
-  // stone creeps over the card from top to bottom while it shakes
+  // stone grows down over the card (transform only) while it shakes
   addStone(c); const st = $('.stone', c);
-  st.animate([{clipPath: 'inset(0 0 100% 0)', opacity: .5}, {clipPath: 'inset(0 0 0 0)', opacity: .93}], {duration: 1300, easing: 'cubic-bezier(.5,0,.3,1)', fill: 'forwards'});
+  st.animate([{transform: 'scaleY(0)', opacity: .5}, {transform: 'scaleY(1)', opacity: .93}], {duration: 1300, easing: 'cubic-bezier(.5,0,.3,1)', fill: 'forwards'});
   c.classList.add('frozen', 'shake');
-  // grit falling off the edges
-  for (let i = 0; i < 26; i++) {
+  for (let i = 0; i < 26; i++) {      // grit falling off the edges
     const sx = r.left + Math.random() * r.width, sy = r.top + Math.random() * r.height * .8, s = 2 + Math.random() * 5;
     const p = particle(sx, sy, s, s, `background:${['#6e8a7a', '#4d6358', '#8fa39a'][i % 3]};clip-path:${ROCK[i % 3]}`);
     p.animate([{transform: 'translate(0,0)', opacity: 1}, {transform: `translate(${(Math.random() - .5) * 30}px,${60 + Math.random() * 80}px) rotate(${Math.random() * 300}deg)`, opacity: 0}],
       {duration: 900 + Math.random() * 500, delay: 300 + Math.random() * 900, easing: 'cubic-bezier(.5,0,1,1)', fill: 'forwards'}).onfinish = () => p.remove();
   }
-  await wait(1700); c.classList.remove('shake');
+  await wait(1700); c.classList.remove('shake'); markStone(c);
 }
 async function crumble(c, x, y) {
   const r = c.getBoundingClientRect(); addStone(c); const st = $('.stone', c);
+  if (RM.matches) { await st.animate([{opacity: .93}, {opacity: 0}], {duration: 150}).finished.catch(() => {}); st.remove(); c.classList.remove('frozen'); return; }
   // cracks race across the stone
   const svg = $('svg', st), path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
   path.setAttribute('d', 'M50 30 L38 22 L30 8 L22 0 M50 30 L64 20 L72 6 L80 0 M50 30 L40 42 L34 60 M50 30 L62 40 L70 52 L76 60 M50 30 L20 34 L0 30 M50 30 L80 32 L100 26');
   path.setAttribute('stroke', '#a8ffc4'); path.setAttribute('stroke-width', '1.6'); path.setAttribute('fill', 'none'); path.setAttribute('vector-effect', 'non-scaling-stroke');
-  path.style.filter = 'drop-shadow(0 0 3px #7CFFA8)'; svg.appendChild(path);
+  svg.appendChild(path);
   path.animate([{strokeDasharray: '0 400'}, {strokeDasharray: '400 0'}], {duration: 700, easing: 'ease-out', fill: 'forwards'});
-  // green fire washes up the card
-  for (let i = 0; i < 60; i++) {
+  for (let i = 0; i < 60; i++) {      // green fire washes up the card
     const sx = r.left + Math.random() * r.width, sy = r.bottom - Math.random() * 10, s = 3 + Math.random() * 7, col = ['#CFFFDA', '#7CFFA8', '#3FD27A', '#2FBF62'][i % 4];
-    const p = particle(sx, sy, s, s * 1.6, `background:${col};border-radius:50% 50% 45% 45%;box-shadow:0 0 ${s * 2}px ${col}`);
+    const p = particle(sx, sy, s, s * 1.6, `background:${col};border-radius:50% 50% 45% 45%`);
     p.animate([{transform: 'translate(0,0) scale(1)', opacity: 0}, {opacity: 1, offset: .15}, {transform: `translate(${(Math.random() - .5) * 30}px,${-r.height - 40 - Math.random() * 60}px) scale(.2)`, opacity: 0}],
       {duration: 800 + Math.random() * 700, delay: Math.random() * 900, easing: 'ease-out', fill: 'forwards'}).onfinish = () => p.remove();
   }
   c.classList.add('shake');
   await wait(800);
-  // the stone breaks into chunks that fall away
-  const cols = 6, rows = 3, cw = r.width / cols, ch = r.height / rows;
+  const cols = 6, rows = 3, cw = r.width / cols, ch = r.height / rows;      // the stone breaks into falling chunks
   for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) {
     const p = particle(r.left + i * cw, r.top + j * ch, cw + 1, ch + 1, `background:radial-gradient(ellipse at 30% 30%,#6e8a7a,#4d6358 60%,#3e5148);clip-path:${ROCK[(i + j) % 3]}`);
     p.animate([{transform: 'translate(0,0) rotate(0)', opacity: 1}, {transform: `translate(${(Math.random() - .5) * 120}px,${200 + Math.random() * 260}px) rotate(${(Math.random() - .5) * 220}deg)`, opacity: 0}],
@@ -326,37 +417,38 @@ async function crumble(c, x, y) {
   await wait(1100); c.classList.remove('shake');
 }
 
-/* ---------- Zeus: hurl the bolt at an agent - Run (or Restart for always-on services) ---------- */
+/* ---------- Zeus: hurl the bolt at a task - Run (or Restart for always-on tasks) ---------- */
 async function zeusStrike(c, fromDrag) {
-  if (busy) return; busy = true;
+  if (busy) return;
+  const job = c.dataset.job;
+  if (isRunning(c) && !(await confirmInterrupt('bolt', job))) { if (fromDrag) sendHome('bolt'); return; }
+  busy = true;
   const B = TOOLS.bolt.el, r = c.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
-  if (!fromDrag) await liftOff('bolt');
-  B.classList.add('casting'); place(B, x, Math.max(50, r.top - 30), 70);
+  if (!fromDrag) liftOff('bolt');
+  await flyTo(B, x, Math.max(50, r.top - 30), 70, 150);
   play('bolt');
-  const req = post('bolt', c.dataset.job).catch(() => ({ok: false, msg: 'no answer'}));
-  await wait(180);
-  B.style.opacity = '0';
-  // the strike: a jagged bolt from the top of the screen, with branches
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('width', innerWidth); svg.setAttribute('height', innerHeight); svg.style.cssText = 'position:absolute;inset:0';
-  const zig = (x0, y0, x1, y1, n, jit) => { let d = `M${x0} ${y0}`; for (let i = 1; i < n; i++) { const t = i / n; d += ` L${x0 + (x1 - x0) * t + (Math.random() - .5) * jit} ${y0 + (y1 - y0) * t}`; } return d + ` L${x1} ${y1}`; };
-  const startX = x + (Math.random() - .5) * 200;
-  const main = zig(startX, -10, x, y, 12, 60);
-  const branches = [0, 1, 2].map(() => { const t = .3 + Math.random() * .4, bx = startX + (x - startX) * t, by = (y + 10) * t; return zig(bx, by, bx + (Math.random() - .5) * 160, by + 60 + Math.random() * 80, 5, 30); });
-  svg.innerHTML = `<defs><filter id="zglow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
-    <g filter="url(#zglow)" fill="none" stroke-linejoin="round" stroke-linecap="round"><path d="${main}" stroke="#FFF6C2" stroke-width="5"/><path d="${main}" stroke="#ffffff" stroke-width="2"/>${branches.map(b => `<path d="${b}" stroke="#FFE27A" stroke-width="2"/>`).join('')}</g>`;
-  $('#fx').appendChild(svg);
-  $('#flash').animate([{opacity: 0}, {opacity: .35, offset: .08}, {opacity: 0, offset: .3}, {opacity: .18, offset: .38}, {opacity: 0}], {duration: 700});
-  svg.animate([{opacity: 1}, {opacity: .2, offset: .25}, {opacity: 1, offset: .35}, {opacity: 0}], {duration: 650, fill: 'forwards'}).onfinish = () => svg.remove();
-  c.classList.add('struck');
-  for (let i = 0; i < 40; i++) {    // sparks
-    const a = Math.random() * Math.PI * 2, d = 30 + Math.random() * 90, s = 2 + Math.random() * 3;
-    const p = particle(x, y, s, s, `background:${['#ffffff', '#FFE27A', '#FFF6C2', '#9fd3ff'][i % 4]};border-radius:50%;box-shadow:0 0 6px #FFE27A`);
-    p.animate([{transform: 'translate(0,0)', opacity: 1}, {transform: `translate(${Math.cos(a) * d}px,${Math.sin(a) * d + 20}px)`, opacity: 0}], {duration: 500 + Math.random() * 500, easing: 'ease-out', fill: 'forwards'}).onfinish = () => p.remove();
+  const req = post('bolt', job).catch(() => ({ok: false, msg: 'no answer'}));
+  if (!RM.matches) {
+    B.style.opacity = '0';
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');     // a jagged bolt from the top of the screen
+    svg.setAttribute('width', innerWidth); svg.setAttribute('height', innerHeight); svg.style.cssText = 'position:absolute;inset:0';
+    const zig = (x0, y0, x1, y1, n, jit) => { let d = `M${x0} ${y0}`; for (let i = 1; i < n; i++) { const t = i / n; d += ` L${x0 + (x1 - x0) * t + (Math.random() - .5) * jit} ${y0 + (y1 - y0) * t}`; } return d + ` L${x1} ${y1}`; };
+    const startX = x + (Math.random() - .5) * 200, main = zig(startX, -10, x, y, 12, 60);
+    const branches = [0, 1, 2].map(() => { const t = .3 + Math.random() * .4, bx = startX + (x - startX) * t, by = (y + 10) * t; return zig(bx, by, bx + (Math.random() - .5) * 160, by + 60 + Math.random() * 80, 5, 30); });
+    svg.innerHTML = `<g fill="none" stroke-linejoin="round" stroke-linecap="round"><path d="${main}" stroke="#FFF6C2" stroke-width="8" opacity=".35"/><path d="${main}" stroke="#FFF6C2" stroke-width="4"/><path d="${main}" stroke="#ffffff" stroke-width="2"/>${branches.map(b => `<path d="${b}" stroke="#FFE27A" stroke-width="2"/>`).join('')}</g>`;
+    $('#fx').appendChild(svg);
+    $('#flash').animate([{opacity: 0}, {opacity: .3, offset: .08}, {opacity: 0, offset: .3}, {opacity: .15, offset: .38}, {opacity: 0}], {duration: 700});
+    svg.animate([{opacity: 1}, {opacity: .2, offset: .25}, {opacity: 1, offset: .35}, {opacity: 0}], {duration: 650, fill: 'forwards'}).onfinish = () => svg.remove();
+    const zap = document.createElement('div'); zap.style.cssText = 'position:absolute;inset:0;border-radius:12px;background:#FFE27A;pointer-events:none'; c.append(zap);
+    zap.animate([{opacity: 0}, {opacity: .45, offset: .15}, {opacity: 0}], {duration: 900, easing: 'ease-out'}).onfinish = () => zap.remove();
+    for (let i = 0; i < 40; i++) {    // sparks
+      const a = Math.random() * Math.PI * 2, d = 30 + Math.random() * 90, s = 2 + Math.random() * 3;
+      const p = particle(x, y, s, s, `background:${['#ffffff', '#FFE27A', '#FFF6C2', '#9fd3ff'][i % 4]};border-radius:50%`);
+      p.animate([{transform: 'translate(0,0)', opacity: 1}, {transform: `translate(${Math.cos(a) * d}px,${Math.sin(a) * d + 20}px)`, opacity: 0}], {duration: 500 + Math.random() * 500, easing: 'ease-out', fill: 'forwards'}).onfinish = () => p.remove();
+    }
   }
-  const res = await req; await wait(900);
-  c.classList.remove('struck');
-  toast(res.ok ? `${c.dataset.job}: ${res.msg}` : `${c.dataset.job}: ${res.msg}`);
+  const res = await req; await wait(RM.matches ? 0 : 900);
+  toast(res.ok ? SAY.bolt.ok(job, res.msg) : failText('bolt', job, res.msg));
   B.style.opacity = ''; busy = false; sendHome('bolt'); setTimeout(refresh, 1200);
 }
 

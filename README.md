@@ -44,8 +44,12 @@ scripts/install.sh      installs/updates on the target machine (keeps the old ve
 ```
 
 ## Safety
-- The page has no login. Serve it only on your own network or tailnet (`tailscale serve`, not `funnel`).
-- Freeze only stops and disables; thaw re-enables. The UI cannot delete units or files. `argus-ui` itself can't be frozen.
+There is no login, so the server protects itself in other ways:
+- **Your network only.** Serve it on your LAN or tailnet (`tailscale serve`, never `funnel`). Set `ARGUS_BIND=127.0.0.1` to accept only this machine and `tailscale serve`.
+- **No cross-site actions.** Actions must be JSON from the page itself (checked with `Sec-Fetch-Site` / `Origin`), so another website you visit can't freeze or run your tasks.
+- **No DNS rebinding.** It only answers to this machine's hostname, IP addresses, `*.ts.net` and `*.local` names, plus any in `ARGUS_ALLOWED_HOSTS` (comma separated).
+- **Can't delete anything.** Freeze only stops and disables; thaw re-enables exactly what was on. `argus-ui` itself can't be frozen. A task that's running asks for confirmation before it's interrupted.
+- Static files can't escape the `static/` folder, request bodies are capped, and text from unit descriptions can't break out of the page's script.
 
 ## License
 Code: MIT (see LICENSE). The Leafy Realm theme's artwork is **not** covered by the MIT license. See `themes/leafy-realm/ASSETS.md`.
