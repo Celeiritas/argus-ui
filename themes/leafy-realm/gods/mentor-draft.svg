@@ -14,15 +14,15 @@
   <rect x="-15" y="13" width="30" height="7" rx="3.5" fill="#D9BE8C" stroke="#B89464" stroke-width="1.2"/>
   <path d="M-15 -16.5 H15 M-15 16.5 H15" stroke="#B89464" stroke-width=".8" opacity=".6"/>
  </g>
- <!-- staff -->
- <path d="M66 70 Q60 64 66 58 Q74 54 76 62" stroke="#8a5a3a" stroke-width="5" fill="none" stroke-linecap="round"/>
- <line x1="72" y1="66" x2="76" y2="196" stroke="#8a5a3a" stroke-width="5" stroke-linecap="round"/>
+ <!-- staff: one piece, a shepherd's crook curling out at the top -->
+ <path d="M77.5 196 L74 64 Q73.5 50 64 49.5 Q55.5 49.5 55.5 57.5 Q55.5 64 61.5 64" stroke="#8a5a3a" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
  <!-- robe body -->
  <path d="M84 98 L140 98 L121 142 L124 170 H100 L103 142 Z" fill="#4A5058" stroke="#2F343A" stroke-width="2" stroke-linejoin="round"/>
  <path d="M103 142 H121" stroke="#2F343A" stroke-width="2"/>
  <path d="M112 100 L112 142" stroke="#6F7FD6" stroke-width="3"/><path d="M103 142 H121" stroke="#6F7FD6" stroke-width="3"/>
  <line x1="104" y1="168" x2="102" y2="190" stroke="#F4F6F8" stroke-width="7" stroke-linecap="round"/><line x1="120" y1="168" x2="122" y2="190" stroke="#F4F6F8" stroke-width="7" stroke-linecap="round"/>
- <path d="M88 102 L74 120" stroke="#F4F6F8" stroke-width="7" stroke-linecap="round"/>
+ <path d="M88 102 L77 120" stroke="#F4F6F8" stroke-width="7" stroke-linecap="round"/>
+ <circle cx="75.6" cy="121" r="4.6" fill="#F4F6F8"/><!-- hand gripping the staff -->
  <path d="M136 102 L146 124" stroke="#F4F6F8" stroke-width="7" stroke-linecap="round"/>
  <!-- head: bald crown, kind eyes, short beard -->
  <path d="M90 100 L93 70 Q100 54 112 51 Q124 54 131 70 L134 100 Q122 94 112 94 Q102 94 90 100 Z" fill="#4A5058" stroke="#2F343A" stroke-width="2"/>

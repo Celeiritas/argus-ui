@@ -1,5 +1,10 @@
 # Changelog
 
+## 4.3.1 – 2026-10-18
+- **HTTPS only by default**: the installer makes Argus listen on 127.0.0.1, so other devices reach it through `tailscale serve` over HTTPS and the plain-http port is closed to the network. The setting lives in `~/.config/systemd/user/argus-ui.service.d/bind.conf` and is kept across upgrades; `BIND=0.0.0.0 ./install.sh` opts back into LAN http
+- Installer checks and prints the Tailscale HTTPS address
+- Mentor medallion: the staff is one piece with his hand gripping it; icon rendered at 512 px so he stays sharp in the centre of his page
+
 ## 4.3.0 – 2026-10-18
 - **Section bar**: Argus · Watch (default), Mentor · Practice, and themed "coming later" sections (Spartamelee · Play in the Leafy Realm theme)
 - Mentor gets his own page: his medallion takes the centre, and Argus keeps watch from the corner (select him to go back to watching)

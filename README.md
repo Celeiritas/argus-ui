@@ -24,7 +24,7 @@ bash scripts/build.sh leafy-realm            # -> dist/argus-ui-<version>-leafy-
 # copy the package to the machine to watch, then on that machine:
 mkdir -p ~/argus-ui && tar -xzf argus-ui-*.tar.gz -C ~/argus-ui && bash ~/argus-ui/install.sh
 ```
-Open `http://<host>:8095`. To also publish it on your tailnet at `https://<host>.<tailnet>.ts.net/argus`:
+Argus listens on this machine only (`127.0.0.1:8095`) by default. Publish it to your devices over HTTPS on your tailnet at `https://<host>.<tailnet>.ts.net/argus` (Tailscale provides the certificate):
 ```bash
 sudo tailscale serve --bg --set-path /argus http://127.0.0.1:8095
 ```
@@ -47,7 +47,7 @@ scripts/install.sh      installs/updates on the target machine (keeps the old ve
 
 ## Safety
 There is no login, so the server protects itself in other ways:
-- **Your network only.** Serve it on your LAN or tailnet (`tailscale serve`, never `funnel`). Set `ARGUS_BIND=127.0.0.1` to accept only this machine and `tailscale serve`.
+- **Your network only.** Serve it on your LAN or tailnet (`tailscale serve`, never `funnel`). By default it accepts only this machine, so other devices reach it through `tailscale serve` over HTTPS. To use plain http on a LAN instead, install with `BIND=0.0.0.0`.
 - **No cross-site actions.** Actions must be JSON from the page itself (checked with `Sec-Fetch-Site` / `Origin`), so another website you visit can't freeze or run your tasks.
 - **No DNS rebinding.** It only answers to this machine's hostname, IP addresses, `*.ts.net` and `*.local` names, plus any in `ARGUS_ALLOWED_HOSTS` (comma separated).
 - **Can't delete anything.** Freeze only stops and disables; thaw re-enables exactly what was on. `argus-ui` itself can't be frozen. A task that's running asks for confirmation before it's interrupted.

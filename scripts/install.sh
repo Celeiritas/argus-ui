@@ -27,7 +27,19 @@ Restart=on-failure
 WantedBy=default.target
 UNIT
 fi
+# listen address: this machine only by default, reached from other devices through `tailscale serve` (HTTPS).
+# Kept across upgrades; to allow plain http on your LAN instead: BIND=0.0.0.0 ./install.sh (or edit the file below).
+mkdir -p $U/argus-ui.service.d
+if [ ! -f $U/argus-ui.service.d/bind.conf ] || [ -n "$BIND" ]; then
+  printf '[Service]\nEnvironment=ARGUS_BIND=%s\n' "${BIND:-127.0.0.1}" > $U/argus-ui.service.d/bind.conf
+  echo "== listening on ${BIND:-127.0.0.1} ($U/argus-ui.service.d/bind.conf)"
+fi
 systemctl --user daemon-reload; systemctl --user enable argus-ui >/dev/null 2>&1; systemctl --user restart argus-ui; sleep 2
 echo "== argus-ui $(cat $S/static/VERSION 2>/dev/null): $(systemctl --user is-active argus-ui)"
-curl -s -o /dev/null -w "== page: HTTP %{http_code}  ->  http://$(hostname):$PORT\n" http://127.0.0.1:$PORT/ || true
+curl -s -o /dev/null -w "== page on this machine: HTTP %{http_code}\n" http://127.0.0.1:$PORT/ || true
+TS=$(tailscale status --json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))' 2>/dev/null)
+if [ -n "$TS" ]; then
+  curl -s -o /dev/null -w "== over Tailscale HTTPS: HTTP %{http_code}  ->  https://$TS/argus/\n" https://$TS/argus/ || echo "== Tailscale HTTPS not answering. Run once: sudo tailscale serve --bg --set-path /argus http://127.0.0.1:$PORT"
+fi
+grep -q '0.0.0.0' $U/argus-ui.service.d/bind.conf 2>/dev/null && echo "== also on your LAN: http://$(hostname):$PORT" || true
 if [ -n "$TAILSCALE_PATH" ]; then sudo tailscale serve --bg --set-path $TAILSCALE_PATH http://127.0.0.1:$PORT && tailscale serve status; fi
