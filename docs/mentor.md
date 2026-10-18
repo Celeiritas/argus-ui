@@ -1,5 +1,5 @@
-# Mentor – the Practice tab
-Spaced-repetition practice with typed answers, built into Argus UI. Open `<base>/mentor` (the **Practice** tab).
+# Mentor – Practice
+Spaced-repetition practice with typed answers, built into Argus UI. Open `<base>/mentor` (**Mentor · Practice** in the section bar).
 
 ## How a card works
 1. Read the prompt, type your answer in your own words (or leave it blank), and say how sure you are.

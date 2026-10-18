@@ -1,5 +1,11 @@
 # Changelog
 
+## 4.3.0 – 2026-10-18
+- **Section bar**: Argus · Watch (default), Mentor · Practice, and themed "coming later" sections (Spartamelee · Play in the Leafy Realm theme)
+- Mentor gets his own page: his medallion takes the centre, and Argus keeps watch from the corner (select him to go back to watching)
+- **Alerts**: when a task fails, all of Argus's eyes turn red and glow, a red aura pulses, an alarm badge counts the failures (also on the Argus section button), and a short chime plays when something newly fails (muted with Mute sounds)
+- Eyes redrawn to match the medallion's almond eyes and cover them, so a blink no longer shows a second eye behind; blinks close to a lid line; the top grey eye has a pupil
+
 ## 4.2.2 – 2026-10-18
 - Practice ratings in plain words: Very well (quick, easy recall), Well enough (took moderate thought), Not well (hard to remember or explain), Needs work (run this card again soon)
 - Each choice shows when the card will come back; Mentor's suggestion is preselected

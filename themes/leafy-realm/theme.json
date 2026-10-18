@@ -67,5 +67,11 @@
       "name": "Medusa",
       "domain": "Freeze · thaw"
     }
+  ],
+  "coming_soon": [
+    {
+      "name": "Spartamelee",
+      "what": "Play"
+    }
   ]
 }

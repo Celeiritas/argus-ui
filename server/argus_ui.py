@@ -125,7 +125,8 @@ def state():
     jobs = [info(u, fz) for u in units()]
     return dict(updated=datetime.now().strftime('%I:%M %p').lstrip('0'), jobs=jobs,
                 title=THEME.get('title', 'Argus'), subtitle=THEME.get('subtitle', 'tasks'),
-                personas=[dict(key=k, name=n, domain=d) for k, n, d in PERSONAS])
+                personas=[dict(key=k, name=n, domain=d) for k, n, d in PERSONAS],
+                soon=THEME.get('coming_soon', []))
 
 def log(u):
     return run(JOURNALCTL, '--user', '-u', u, '-n', '40', '--no-pager', '-o', 'short-iso')

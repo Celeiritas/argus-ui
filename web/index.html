@@ -24,7 +24,7 @@ header{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:va
 .title h1{margin:0;font-size:var(--fs-h1);font-weight:600;line-height:1.2}
 .title .sub{color:var(--powder);font-size:var(--fs-meta);line-height:1.4}.title .sub b{color:var(--snow);font-weight:600}
 .argus{position:relative;width:clamp(160px,15vw,360px);aspect-ratio:1;justify-self:center}  /* looms larger on wide and ultrawide screens */
-.argus img,.argus svg{position:absolute;inset:0;width:100%;height:100%}
+.argus>img,.argus>svg{position:absolute;inset:0;width:100%;height:100%}
 .argus::before{content:"";position:absolute;inset:-12%;border-radius:50%;background:radial-gradient(circle,#2A9D8F26 0%,transparent 65%);pointer-events:none;transition:opacity var(--t4)}
 .argus.glare::before{background:radial-gradient(circle,#D645452B 0%,transparent 65%)}
 .tools{justify-self:end;display:flex;gap:var(--s4);align-items:flex-start}
@@ -139,24 +139,55 @@ dialog p{margin:0 0 var(--s6);color:var(--powder);line-height:1.5}
 dialog .row{display:flex;justify-content:flex-end;gap:var(--s2)}
 dialog .confirm{border-color:var(--danger);color:var(--danger)}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
-/* argus eyes */
-.argus .lid{transform-box:fill-box;transform-origin:center;transition:transform var(--t3)}
-.argus.glare .lid.red{transform:scaleY(.5)}
-.argus.blink .lid{transform:scaleY(.08)!important}
+/* argus eyes: each eye covers the one painted on the medallion, so a blink never shows a second eye behind */
+.argus .ball{transform-box:fill-box;transform-origin:center;transition:transform var(--t2) ease-out,opacity var(--t1)}
+.argus.glare .ball{transform:scaleY(.72)}
+.argus.blink .ball{transform:scaleY(.06);opacity:0}
+.argus .shut{opacity:0;transition:opacity var(--t1)}.argus.blink .shut{opacity:1}
+.argus .ir,.argus .pu{transition:fill var(--t4)}
+/* alert: every eye turns red and glows, a red aura pulses, and an alarm badge counts failed tasks */
+.argus.glare .ir{fill:#E03A3A}.argus.glare .pu{fill:#3a0d0d}
+.argus.glare .ball{filter:drop-shadow(0 0 1.6px #ff4040) drop-shadow(0 0 3px #ff404099)}
+.argus.glare::before{inset:-16%;background:radial-gradient(circle,#E03A3A00 44%,#E03A3A77 54%,#E03A3A22 64%,transparent 72%);animation:alarm 1.6s ease-in-out infinite}
+.argus.glare>img{filter:drop-shadow(0 0 6px #ff3b3b88)}
+@keyframes alarm{0%,100%{opacity:.55}50%{opacity:1}}
+.alarm{position:absolute;top:6%;right:6%;display:flex;align-items:center;gap:2px;height:26px;min-width:26px;padding:0 6px;border-radius:99px;background:#C93030;color:#fff;font-size:var(--fs-meta);font-weight:600;box-shadow:0 0 0 2px var(--night),0 0 10px #ff404088;z-index:2}
+.alarm svg{width:14px;height:14px;flex:none}
+.argus.glare .alarm{animation:ring .9s ease-in-out 3}
+@keyframes ring{0%,100%{transform:rotate(0)}20%{transform:rotate(-14deg)}40%{transform:rotate(12deg)}60%{transform:rotate(-8deg)}80%{transform:rotate(5deg)}}
+/* hub: the realm's sections. Argus watches by default; other sections keep him small in the corner */
+.realms{display:flex;align-items:center;gap:var(--s1);flex-wrap:wrap;padding:var(--s2) var(--gutter);border-bottom:1px solid var(--line)}
+.realm{position:relative;display:flex;align-items:center;gap:var(--s2);min-height:var(--hit);padding:var(--s1) var(--s3) var(--s1) var(--s1);border:1px solid transparent;border-radius:99px;text-decoration:none;color:var(--powder);transition:border-color var(--t2),background-color var(--t2)}
+.realm img,.realm>svg{width:36px;height:36px;flex:none}
+.realm b{display:block;font-size:var(--fs-sec);font-weight:600;line-height:1.2;color:var(--snow)}.realm small{display:block;font-size:var(--fs-meta);line-height:1.3}
+a.realm:hover,.realm.on{border-color:var(--line);background:var(--card)}
+.realm.soon{opacity:.6;cursor:default}
+.realm .dot{position:absolute;left:28px;top:2px;min-width:18px;height:18px;padding:0 4px;border-radius:99px;background:#C93030;color:#fff;font-size:11px;font-weight:600;line-height:18px;text-align:center;box-shadow:0 0 0 2px var(--night)}
+.realms .mute{margin-left:auto}
+header{grid-template-areas:"title argus tools"}.title{grid-area:title}.argus{grid-area:argus}.tools{grid-area:tools}
+.hero{grid-area:hero;display:none;width:clamp(120px,10vw,240px);aspect-ratio:1;justify-self:center}
+.side header{grid-template-areas:"title hero argus"}.side .hero{display:block}.side .tools,.side nav{display:none}
+.side .argus{width:80px;justify-self:end;cursor:pointer;border-radius:50%}.side .argus .alarm{top:-4px;right:-4px;height:22px;min-width:22px}
+.side .argus:focus-visible{outline:2px solid var(--powder);outline-offset:4px}
 @media (max-width:767.98px){header{grid-template-columns:1fr auto;grid-template-areas:"argus argus" "title tools";padding:var(--s2) var(--s3) 0}
  .argus{grid-area:argus;width:min(160px,44vw)}.title{grid-area:title}.tools{grid-area:tools;gap:var(--s2)}
+ .side header{grid-template-areas:"hero hero" "title argus"}.side .argus{width:64px}.hero{width:min(140px,40vw)}.realm small{display:none}
  .tool,#medusa,#bolt{width:64px;height:64px}.tool .hint,.tip{display:none}main,nav{padding-left:var(--s3);padding-right:var(--s3)}.grid{grid-template-columns:1fr}.ph .counts{display:none}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition-duration:1ms!important}}
 </style></head>
 <body>
+<div class="realms" role="navigation" aria-label="Sections"><span id="realms" style="display:contents"></span><button class="mute" id="mute" type="button">Mute sounds</button></div>
 <header>
+ <img class="hero" id="hero" alt="">
  <div class="title"><h1>Argus</h1><div class="sub" id="sub"></div></div>
  <div class="argus calm" id="argus" role="img" aria-label="Argus, the watchman">
   <img src="static/icons/argus.png" alt="">
+  <span class="alarm" id="alarm" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 0 0-6 6v4l-2 3h16l-2-3V9a6 6 0 0 0-6-6zm-2 15a2 2 0 0 0 4 0" fill="#fff"/></svg><span id="alarmN"></span></span>
   <svg viewBox="0 0 234 234" aria-hidden="true">
-   <g class="eye" data-max="5.5"><ellipse class="lid" cx="117.5" cy="57.5" rx="9.6" ry="4.2" fill="#fff" stroke="#2b2f33" stroke-width="1.5"/><circle class="iris" cx="117.5" cy="57.5" r="2.4" fill="#4a4f55"/></g>
-   <g class="eye" data-max="3.6"><ellipse class="lid red" cx="104.3" cy="78.1" rx="7.4" ry="4.1" fill="#fff" stroke="#2b2f33" stroke-width="1.5"/><g class="iris red"><circle cx="104.3" cy="78.1" r="3.1" fill="#D64545"/><circle cx="104.3" cy="78.1" r="1.3" fill="#3a1414"/></g></g>
-   <g class="eye" data-max="3.6"><ellipse class="lid blue" cx="128.4" cy="78.1" rx="7.4" ry="4.1" fill="#fff" stroke="#2b2f33" stroke-width="1.5"/><g class="iris blue"><circle cx="128.4" cy="78.1" r="3.1" fill="#3B82C4"/><circle cx="128.4" cy="78.1" r="1.3" fill="#122a40"/></g></g>
+   <defs><clipPath id="ec-top"><path d="M106.70 57.60Q116.60 50.20 126.50 57.60Q116.60 65.00 106.70 57.60Z"/></clipPath><clipPath id="ec-red"><path d="M94.00 78.10Q104.20 70.10 114.40 78.10Q104.20 86.10 94.00 78.10Z"/></clipPath><clipPath id="ec-blue"><path d="M118.80 78.10Q129.00 70.10 139.20 78.10Q129.00 86.10 118.80 78.10Z"/></clipPath></defs>
+   <g class="eye top" data-max="5.0" data-cx="116.6" data-cy="57.6"><path class="socket" d="M104.10 57.60Q116.60 45.40 129.10 57.60Q116.60 69.80 104.10 57.60Z" fill="#F2F5F7"/><path class="shut" d="M106.70 57.60Q116.60 63.52 126.50 57.60" fill="none" stroke="#1f2328" stroke-width="1.4" stroke-linecap="round"/><g class="ball"><path d="M106.70 57.60Q116.60 50.20 126.50 57.60Q116.60 65.00 106.70 57.60Z" fill="#fff"/><g clip-path="url(#ec-top)"><g class="iris"><circle class="ir" cx="116.6" cy="57.6" r="2.7" fill="#B7BEC7"/><circle class="pu" cx="116.6" cy="57.6" r="1.15" fill="#2b2f33"/></g></g><path class="rim" d="M106.70 57.60Q116.60 50.20 126.50 57.60Q116.60 65.00 106.70 57.60Z" fill="none" stroke="#1f2328" stroke-width="1.3" stroke-linejoin="round"/></g></g>
+   <g class="eye red" data-max="3.8" data-cx="104.2" data-cy="78.1"><path class="socket" d="M91.40 78.10Q104.20 65.30 117.00 78.10Q104.20 90.90 91.40 78.10Z" fill="#F2F5F7"/><path class="shut" d="M94.00 78.10Q104.20 84.50 114.40 78.10" fill="none" stroke="#1f2328" stroke-width="1.4" stroke-linecap="round"/><g class="ball"><path d="M94.00 78.10Q104.20 70.10 114.40 78.10Q104.20 86.10 94.00 78.10Z" fill="#fff"/><g clip-path="url(#ec-red)"><g class="iris"><circle class="ir" cx="104.2" cy="78.1" r="3.2" fill="#D64545"/><circle class="pu" cx="104.2" cy="78.1" r="1.35" fill="#3a1414"/></g></g><path class="rim" d="M94.00 78.10Q104.20 70.10 114.40 78.10Q104.20 86.10 94.00 78.10Z" fill="none" stroke="#1f2328" stroke-width="1.3" stroke-linejoin="round"/></g></g>
+   <g class="eye blue" data-max="3.8" data-cx="129.0" data-cy="78.1"><path class="socket" d="M116.20 78.10Q129.00 65.30 141.80 78.10Q129.00 90.90 116.20 78.10Z" fill="#F2F5F7"/><path class="shut" d="M118.80 78.10Q129.00 84.50 139.20 78.10" fill="none" stroke="#1f2328" stroke-width="1.4" stroke-linecap="round"/><g class="ball"><path d="M118.80 78.10Q129.00 70.10 139.20 78.10Q129.00 86.10 118.80 78.10Z" fill="#fff"/><g clip-path="url(#ec-blue)"><g class="iris"><circle class="ir" cx="129.0" cy="78.1" r="3.2" fill="#3B82C4"/><circle class="pu" cx="129.0" cy="78.1" r="1.35" fill="#122a40"/></g></g><path class="rim" d="M118.80 78.10Q129.00 70.10 139.20 78.10Q129.00 86.10 118.80 78.10Z" fill="none" stroke="#1f2328" stroke-width="1.3" stroke-linejoin="round"/></g></g>
   </svg>
  </div>
  <div class="tools">
@@ -176,7 +207,7 @@ dialog .confirm{border-color:var(--danger);color:var(--danger)}
   </button>
  </div>
 </header>
-<nav><span id="nav" style="display:contents"></span><button class="mute" id="mute" type="button">Mute sounds</button></nav>
+<nav aria-label="Agents"><span id="nav" style="display:contents"></span></nav>
 <main id="main"></main>
 <div id="flash"></div><div id="fx"></div>
 <div class="toast" id="toast" role="status" aria-live="polite"><span id="toastText"></span><button type="button" id="toastAct" hidden></button></div>
@@ -197,6 +228,10 @@ const here = AGENT_KEYS.includes(REST.split('/')[0]) ? REST.split('/')[0] : null
 const BASE = MOUNT;
 if (location.pathname === '/argus') history.replaceState(null, '', '/argus/');
 const url = p => BASE + p;
+// sections that are not about watching: Argus shrinks to the corner and the section's agent takes the centre
+const SIDE = ['mentor'];
+const side = SIDE.includes(here);
+document.body.classList.toggle('side', side);
 
 /* ---------- sound ---------- */
 let soundOn = true; try { soundOn = localStorage.getItem('argus-sound') !== 'off'; } catch (e) {}
@@ -206,6 +241,19 @@ function play(k) { if (!soundOn) return; try { const a = audio[k]; a.currentTime
 function muteLabel() { $('#mute').textContent = soundOn ? 'Mute sounds' : 'Unmute sounds'; }
 $('#mute').onclick = () => { soundOn = !soundOn; try { localStorage.setItem('argus-sound', soundOn ? 'on' : 'off'); } catch (e) {} muteLabel(); };
 muteLabel();
+let actx = null;
+function alarmChime() {        // two soft beeps, made in the browser (no sound file needed)
+  if (!soundOn) return;
+  try {
+    actx ||= new (window.AudioContext || window.webkitAudioContext)();
+    [[880, 0], [660, .16], [880, .32]].forEach(([f, t]) => {
+      const o = actx.createOscillator(), g = actx.createGain(), at = actx.currentTime + t;
+      o.type = 'triangle'; o.frequency.value = f; o.connect(g); g.connect(actx.destination);
+      g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(.12, at + .01); g.gain.exponentialRampToValueAtTime(.001, at + .14);
+      o.start(at); o.stop(at + .15);
+    });
+  } catch (e) {}
+}
 
 /* ---------- toast (with an optional action, e.g. Undo) ---------- */
 function toast(text, action) {
@@ -246,12 +294,20 @@ const isRunning = c => c.dataset.state === 'running';
 /* ---------- render ---------- */
 function render() {
   if (!S) return;
-  $('#sub').innerHTML = `${esc(S.subtitle)} · <b>${S.jobs.length}</b> tasks watched · updated ${esc(S.updated)}`; $('.title h1').textContent = S.title || 'Argus';
+  const me = S.personas.find(p => p.key === here);
+  if (side) {
+    $('.title h1').textContent = me.name; $('#sub').textContent = me.domain; document.title = `${me.name} · ${S.title || 'Argus'}`;
+    $('#hero').src = `static/icons/${here}.png`;
+  } else { $('#sub').innerHTML = `${esc(S.subtitle)} · <b>${S.jobs.length}</b> tasks watched · updated ${esc(S.updated)}`; $('.title h1').textContent = S.title || 'Argus'; }
+  const realm = (href, key, name, what, on) => `<a class="realm ${on ? 'on' : ''}" href="${href}" ${on ? 'aria-current="page"' : ''}><img src="static/icons/${key}.png" alt="">${key === 'argus' ? '<span class="dot" id="realmDot" hidden></span>' : ''}<span><b>${esc(name)}</b><small>${esc(what)}</small></span></a>`;
+  $('#realms').innerHTML = realm(url(''), 'argus', 'Argus', 'Watch', !side) +
+    SIDE.filter(k => AGENT_KEYS.includes(k)).map(k => { const p = S.personas.find(x => x.key === k); return realm(url(k), k, p.name, p.domain.split('·')[0].trim(), here === k); }).join('') +
+    (S.soon || []).map(x => `<span class="realm soon" aria-disabled="true"><svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="16" fill="#1C2127" stroke="#A7B6C4" stroke-width="1.5"/><path d="M10 26 26 10M26 26 10 10" stroke="#C9A36A" stroke-width="2" stroke-linecap="round"/><path d="M23 9h4v4M13 9H9v4" stroke="#A7B6C4" stroke-width="1.5" fill="none"/></svg><span><b>${esc(x.name)}</b><small>${esc(x.what)} · coming later</small></span></span>`).join('');
   const by = {}; S.jobs.forEach(j => (by[j.persona] ||= []).push(j));
-  const shown = S.personas.filter(p => by[p.key] || p.key === here);
+  const shown = S.personas.filter(p => (by[p.key] || p.key === here) && !SIDE.includes(p.key));
   const tab = (k, label) => `<a href="${url(k)}" class="${here === k ? 'on' : ''}" ${here === k ? 'aria-current="page"' : ''}>${esc(label)}</a>`;
   $('#nav').innerHTML = `<a href="${url('')}" class="${here ? '' : 'on'}" ${here ? '' : 'aria-current="page"'}>All</a>` +
-    shown.filter(p => p.key !== 'mentor').map(p => tab(p.key, p.name)).join('') + (AGENT_KEYS.includes('mentor') ? tab('mentor', 'Practice') : '');
+    shown.filter(p => !SIDE.includes(p.key)).map(p => tab(p.key, p.name)).join('');
   if (here === 'mentor') { look.retarget(); return practice.show(); }
   const list = here ? shown.filter(p => p.key === here) : shown;
   $('#main').innerHTML = list.map(p => {
@@ -295,8 +351,7 @@ document.addEventListener('click', e => {
 
 /* ---------- Argus eyes: follow the pointer, glare at a failed task, calm when all is well ---------- */
 const look = (() => {
-  const A = $('#argus'), svg = $('svg', A), eyes = $$('.eye', svg).map(g => ({iris: $('.iris', g), lid: $('.lid', g), max: +g.dataset.max}));
-  eyes.forEach(e => { e.cx = +e.lid.getAttribute('cx'); e.cy = +e.lid.getAttribute('cy'); });
+  const A = $('#argus'), svg = $('svg[viewBox="0 0 234 234"]', A), eyes = $$('.eye', svg).map(g => ({iris: $('.iris', g), max: +g.dataset.max, cx: +g.dataset.cx, cy: +g.dataset.cy}));
   let pointer = null, lastMove = 0, target = null, wander = {x: 0, y: 0, t: 0}, cur = eyes.map(() => [0, 0]);
   function aim(px, py) {
     const m = svg.getScreenCTM(); if (!m) return;
@@ -309,7 +364,23 @@ const look = (() => {
       e.iris.setAttribute('transform', `translate(${cur[i][0].toFixed(2)} ${cur[i][1].toFixed(2)})`);
     });
   }
-  function retarget() { const bad = $('.card[data-state="failed"]'); target = bad; A.classList.toggle('glare', !!bad); A.classList.toggle('calm', !bad); }
+  let lastBad = null;
+  function retarget() {
+    const bad = (S?.jobs || []).filter(j => j.state === 'failed'), n = bad.length;
+    target = $('.card[data-state="failed"]');
+    A.classList.toggle('glare', n > 0); A.classList.toggle('calm', !n);
+    $('#alarm').hidden = !n; $('#alarmN').textContent = n > 1 ? n : '';
+    const dot = $('#realmDot'); if (dot) { dot.hidden = !n; dot.textContent = n; }
+    const say = n ? `${n} task${n === 1 ? '' : 's'} failed: ${bad.map(j => j.job).join(', ')}` : 'all tasks well';
+    A.setAttribute('aria-label', side ? `Argus: ${say}. Open the watch page` : `Argus, the watchman: ${say}`);
+    if (lastBad !== null && n > lastBad) alarmChime();               // a short alarm only when something newly fails
+    lastBad = n;
+  }
+  if (side) {
+    A.setAttribute('role', 'link'); A.tabIndex = 0;
+    A.onclick = () => location.href = url('');
+    A.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); A.click(); } };
+  }
   addEventListener('pointermove', e => { pointer = [e.clientX, e.clientY]; lastMove = performance.now(); }, {passive: true});
   addEventListener('focusin', e => { const r = e.target.getBoundingClientRect?.(); if (r && r.width) { pointer = [r.left + r.width / 2, r.top + r.height / 2]; lastMove = performance.now(); } });  // keyboard users get watched too
   function blink() { if (!RM.matches) { A.classList.add('blink'); setTimeout(() => A.classList.remove('blink'), 150); } setTimeout(blink, 3500 + Math.random() * 5000); }
@@ -510,7 +581,7 @@ const practice = (() => {
     if (M.shown) return; M.shown = true;      // refresh() re-renders agent pages; Practice keeps its own state
     const [{decks}] = await Promise.all([get('decks')]);
     M.decks = decks;
-    $('#main').innerHTML = `<section class="persona practice" aria-labelledby="h-mentor"><div class="ph"><img src="static/icons/mentor.png" alt=""><div><h2 id="h-mentor">Mentor</h2><div class="dom">Practice · coaching</div></div></div>
+    $('#main').innerHTML = `<section class="persona practice" aria-label="Practice">
       <div class="decks" role="group" aria-label="Deck">${[[null, 'All decks']].concat(decks.map(d => [d.id, d.name])).map(([id, n]) => `<button type="button" data-deck="${id || ''}" aria-pressed="${(M.deck || null) === id}">${esc(n)}</button>`).join('')}</div>
       <p class="mstats" id="mstats" aria-live="polite"></p><div id="mpanel"></div></section>`;
     $$('.decks button').forEach(b => b.onclick = () => { M.deck = b.dataset.deck || null; try { M.deck ? localStorage.setItem('mentor-deck', M.deck) : localStorage.removeItem('mentor-deck'); } catch (e) {} $$('.decks button').forEach(x => x.setAttribute('aria-pressed', x === b)); next(); });
