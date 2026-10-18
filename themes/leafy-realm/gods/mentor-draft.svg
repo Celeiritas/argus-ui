@@ -12,14 +12,16 @@
  <path d="M66 70 Q60 64 66 58 Q74 54 76 62" stroke="#8a5a3a" stroke-width="5" fill="none" stroke-linecap="round"/>
  <line x1="72" y1="66" x2="76" y2="196" stroke="#8a5a3a" stroke-width="5" stroke-linecap="round"/>
  <!-- robe body -->
- <path d="M100 98 L92 168 H132 L124 98 Z" fill="#E8EBF2" stroke="#BFC6D6" stroke-width="2"/>
- <path d="M112 100 L112 168" stroke="#6F7FD6" stroke-width="3"/>
+ <path d="M98 96 L88 170 H136 L126 96 Z" fill="#4A5058" stroke="#2F343A" stroke-width="2"/>
+ <path d="M98 96 Q112 104 126 96" stroke="#5C636C" stroke-width="2" fill="none"/>
+ <path d="M112 102 L112 170" stroke="#6F7FD6" stroke-width="3"/>
  <line x1="104" y1="168" x2="102" y2="190" stroke="#F4F6F8" stroke-width="7" stroke-linecap="round"/><line x1="120" y1="168" x2="122" y2="190" stroke="#F4F6F8" stroke-width="7" stroke-linecap="round"/>
  <path d="M102 108 L74 120" stroke="#F4F6F8" stroke-width="7" stroke-linecap="round"/>
  <path d="M122 108 L140 124" stroke="#F4F6F8" stroke-width="7" stroke-linecap="round"/>
  <!-- head: bald crown, kind eyes, short beard -->
- <circle cx="112" cy="78" r="15" fill="#F4F6F8"/>
- <path d="M98 76 Q112 66 126 76" stroke="#C9CED6" stroke-width="3" fill="none"/>
+ <path d="M91 100 Q88 70 100 58 Q112 48 124 58 Q136 70 133 100 Q122 94 112 94 Q102 94 91 100 Z" fill="#4A5058" stroke="#2F343A" stroke-width="2"/>
+ <circle cx="112" cy="80" r="13.5" fill="#F4F6F8"/>
+ <path d="M97 84 Q96 64 112 61 Q128 64 127 84 Q124 70 112 68 Q100 70 97 84 Z" fill="#3B4047"/>
  <path d="M100 84 Q112 108 124 84 Q118 90 112 89 Q106 90 100 84 Z" fill="#DADFE7"/>
  <path d="M105 79 q3 2 6 0 M114 79 q3 2 6 0" stroke="#444" stroke-width="1.8" fill="none" stroke-linecap="round"/>
  <!-- Athena's owl on his shoulder -->
