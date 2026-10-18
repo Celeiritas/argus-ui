@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 234 234">
+<defs><radialGradient id="ob" cx="50%" cy="40%" r="62%"><stop offset="0" stop-color="#2b4256"/><stop offset="1" stop-color="#1C2127"/></radialGradient>
+<radialGradient id="og"><stop offset="0" stop-color="#FFE27A" stop-opacity=".7"/><stop offset="1" stop-color="#FFE27A" stop-opacity="0"/></radialGradient>
+<clipPath id="oc"><circle cx="117" cy="117" r="104"/></clipPath></defs>
+<circle cx="117" cy="117" r="113" fill="#1C2127" stroke="#A7B6C4" stroke-width="7"/>
+<circle cx="117" cy="117" r="105" fill="url(#ob)"/>
+<g clip-path="url(#oc)">
+ <circle cx="117" cy="62" r="34" fill="url(#og)"/>
+ <path d="M10 200 L62 140 L84 154 L117 76 L146 132 L168 120 L230 200 Z" fill="#3a4552"/>
+ <path d="M117 76 L104 106 L112 102 L118 112 L124 101 L131 106 Z M62 140 L54 152 L62 150 L68 155 Z M168 120 L160 132 L168 130 L174 134 Z" fill="#C9D6E3" opacity=".85"/>
+ <path d="M10 200 L62 140 L84 154 L70 176 L40 200 Z M230 200 L168 120 L146 132 L180 170 L200 200 Z" fill="#323c47"/>
+ <g fill="#E7C35A"><path d="M105 66 L117 58 L129 66 Z"/><rect x="105" y="66" width="24" height="2"/><rect x="107" y="68" width="2.6" height="9"/><rect x="112.5" y="68" width="2.6" height="9"/><rect x="118.9" y="68" width="2.6" height="9"/><rect x="124.4" y="68" width="2.6" height="9"/><rect x="103" y="77" width="28" height="3"/></g>
+ <ellipse cx="72" cy="100" rx="26" ry="7" fill="#A7B6C4" opacity=".5"/><ellipse cx="166" cy="92" rx="22" ry="6" fill="#A7B6C4" opacity=".45"/>
+ <rect x="0" y="196" width="234" height="40" fill="#24442f"/>
+ <path d="M20 196 L23 188 L25 196 M44 196 L48 186 L50 196 M80 196 L82 189 L85 196 M150 196 L154 187 L156 196 M188 196 L190 190 L193 196 M206 196 L210 186 L212 196" fill="#2f5a3c"/>
+</g>
+<circle cx="117" cy="117" r="105" fill="none" stroke="#E7C35A" stroke-width="2.5"/>
+</svg>

@@ -1,5 +1,15 @@
 # Changelog
 
+## 4.4.0 – 2026-10-18
+- **Scene** behind every page: sky, Mount Olympus with a glowing temple, grass and trees. Trees follow the season: green summer, red/orange/yellow fall with falling leaves, bare and snow-covered winter, blossoming spring
+- **Live weather** from Open-Meteo (no key; fetched only by the server, every 20 minutes, cached): rain, snow, fog, cloud, storms with lightning over the summit; night sky with stars; the current conditions appear beside Mute sounds. Location via `WEATHER=<lat>,<lon> ./install.sh`
+- **Olympus · Playground** section: controls for weather, season and time of day (the address keeps the choice), and all three powers on the scene
+- Zeus's medallion now hands you a bolt instead of flying itself: drop it on a task or tree, or fling it at the trees (it arcs and strikes a tree or the ground). Flung bolts never run tasks
+- Struck trees burn, smoke and stand charred with debris; **Poseidon** (new tool on Olympus) washes debris, scorch marks and rubble away so trees grow back. Elsewhere, struck trees clean up after 30 s
+- Medusa can turn a tree to stone and back
+- Medusa's sleeping Zs sit outside her rim with a dark outline, so the pale rim no longer hides them
+- docs/scene.md: weather sources compared, privacy, and the layer order for art and effects
+
 ## 4.3.1 – 2026-10-18
 - **HTTPS only by default**: the installer makes Argus listen on 127.0.0.1, so other devices reach it through `tailscale serve` over HTTPS and the plain-http port is closed to the network. The setting lives in `~/.config/systemd/user/argus-ui.service.d/bind.conf` and is kept across upgrades; `BIND=0.0.0.0 ./install.sh` opts back into LAN http
 - Installer checks and prints the Tailscale HTTPS address

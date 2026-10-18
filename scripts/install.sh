@@ -13,7 +13,7 @@ if [ -e ~/.local/bin/argus-ui ] || [ -d $S/static ]; then
   echo "== previous version kept in $B"
 fi
 cp "$D/argus_ui.py" ~/.local/bin/argus-ui; chmod +x ~/.local/bin/argus-ui
-cp "$D/mentor.py" $S/mentor.py; mkdir -p $S/decks   # your own decks go in ~/.local/share/argus-ui/decks
+cp "$D/mentor.py" $S/mentor.py; cp "$D/sky.py" $S/sky.py; mkdir -p $S/decks   # your own decks go in ~/.local/share/argus-ui/decks
 cp -r "$D/static" $S/static
 if [ ! -f $U/argus-ui.service ]; then
 cat > $U/argus-ui.service <<UNIT
@@ -27,6 +27,10 @@ Restart=on-failure
 WantedBy=default.target
 UNIT
 fi
+# weather for the background scene: WEATHER=<lat>,<lon> ./install.sh  (kept in ~/.config/argus-ui/weather.json; add UNITS=c for Celsius)
+if [ -n "$WEATHER" ]; then mkdir -p ~/.config/argus-ui
+  printf '{"lat": %s, "lon": %s, "units": "%s"}\n' "${WEATHER%%,*}" "${WEATHER##*,}" "${UNITS:-f}" > ~/.config/argus-ui/weather.json
+  echo "== weather location saved (~/.config/argus-ui/weather.json)"; fi
 # listen address: this machine only by default, reached from other devices through `tailscale serve` (HTTPS).
 # Kept across upgrades; to allow plain http on your LAN instead: BIND=0.0.0.0 ./install.sh (or edit the file below).
 mkdir -p $U/argus-ui.service.d
@@ -37,6 +41,7 @@ fi
 systemctl --user daemon-reload; systemctl --user enable argus-ui >/dev/null 2>&1; systemctl --user restart argus-ui; sleep 2
 echo "== argus-ui $(cat $S/static/VERSION 2>/dev/null): $(systemctl --user is-active argus-ui)"
 curl -s -o /dev/null -w "== page on this machine: HTTP %{http_code}\n" http://127.0.0.1:$PORT/ || true
+curl -s http://127.0.0.1:$PORT/api/sky | python3 -c 'import json,sys; d=json.load(sys.stdin); print("== weather:", d.get("desc") or d.get("reason"), d.get("temp", ""), d.get("unit", ""))' 2>/dev/null || true
 TS=$(tailscale status --json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))' 2>/dev/null)
 if [ -n "$TS" ]; then
   curl -s -o /dev/null -w "== over Tailscale HTTPS: HTTP %{http_code}  ->  https://$TS/argus/\n" https://$TS/argus/ || echo "== Tailscale HTTPS not answering. Run once: sudo tailscale serve --bg --set-path /argus http://127.0.0.1:$PORT"

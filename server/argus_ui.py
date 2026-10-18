@@ -19,6 +19,7 @@ JOURNALCTL = os.environ.get('ARGUS_JOURNALCTL', 'journalctl')
 # Mentor (Practice tab) lives in mentor.py next to this file, or in ~/.local/share/argus-ui when installed
 sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)), os.path.expanduser('~/.local/share/argus-ui')]
 import mentor
+import sky          # weather for the background scene (sky.py; fetched server-side, cached 20 min)
 SHARE = os.path.expanduser('~/.local/share/argus-ui')
 MENTOR_DB = os.environ.get('ARGUS_MENTOR_DB', f'{SHARE}/mentor.db')
 DECK_DIRS = [os.path.join(STATIC, 'decks'), os.environ.get('ARGUS_DECKS', f'{SHARE}/decks')]   # built-in + your own
@@ -34,6 +35,7 @@ FROZEN = f'{REG}/frozen.json'
 PERSONAS = [(a['key'], a['name'], a.get('domain', '')) for a in THEME.get('agents', [])] or [('argus', 'Argus', 'Watchman · monitoring')]
 NEVER_FREEZE = set(THEME.get('never_freeze', ['argus-ui']))
 PKEYS = [p[0] for p in PERSONAS]
+PAGES = ['olympus']      # sections that are not agents (the Olympus playground)
 GODS = re.compile(r'^(%s)-' % '|'.join(PKEYS))
 
 def run(*a):
@@ -222,10 +224,11 @@ class H(BaseHTTPRequestHandler):
             if not os.path.isfile(f): return self.out('not found', 'text/plain', 404)
             with open(f, 'rb') as fh: return self.out(fh.read(), 'application/manifest+json' if p.endswith('manifest') else 'text/javascript')
         if p == 'api/state': return self.out(json.dumps(state()), 'application/json')
+        if p == 'api/sky': return self.out(json.dumps(sky.current()), 'application/json')
         if p.startswith('api/log/'):
             u = p[8:]
             return self.out(json.dumps({'log': log(u) if u in units() else ''}), 'application/json')
-        if p == '' or p.split('/')[0] in PKEYS: return self.out(page())
+        if p == '' or p.split('/')[0] in PKEYS or p.split('/')[0] in PAGES: return self.out(page())
         return self.out('not found', 'text/plain', 404)
 
     def deny(self, code, msg): return self.out(json.dumps({'ok': False, 'msg': msg}), 'application/json', code)

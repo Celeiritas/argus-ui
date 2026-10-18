@@ -10,6 +10,8 @@ Jobs are shown as **tasks**, grouped under **agents** (personas you define). Eac
 
 **Sections:** a bar across the top switches between **Argus · Watch** (the default) and other sections such as **Mentor · Practice**, a spaced-repetition coach with typed answers, key-idea grading and confidence calibration ([docs/mentor.md](docs/mentor.md)). A theme can list sections that are still coming (`coming_soon` in `theme.json`).
 
+**Scene:** every page sits on Mount Olympus with grass and trees that follow the season and the live weather (rain, snow, fog, storms), fetched by the server from Open-Meteo with no API key. The **Olympus · Playground** section lets you try the powers on the scene: strike or fling bolts at trees, turn them to stone with Medusa, wash the debris away with Poseidon. See [docs/scene.md](docs/scene.md). To show live weather, install with `WEATHER=<lat>,<lon>`.
+
 The watchman, Argus, sits at the top: his eyes follow your pointer and glare at anything that has failed. When a task fails, all his eyes turn red and glow, a red aura pulses, an alarm badge counts the failures and a short chime plays (unless muted). On other sections he keeps watch from the corner; select him to go back.
 
 > Status: early and personal. It runs the author's home server and is being generalized. Expect changes.
