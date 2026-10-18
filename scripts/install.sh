@@ -1,11 +1,11 @@
 #!/bin/bash
 # install.sh - run on the machine to watch, from the unpacked package folder: bash install.sh
 # Installs to ~/.local/bin/argus-ui + ~/.local/share/argus-ui/static and runs it as a systemd --user service.
-# An existing install is MOVED to ~/.local/share/argus-ui/.set-aside-<date>/ (never deleted).
+# An existing install is MOVED to ~/.local/share/argus-ui/.set-aside-<date>/ (never deleted). Your sounds: ~/.config/argus-ui/sfx/
 #   PORT=8095 (default)      TAILSCALE_PATH=/argus  -> also publish on your tailnet (needs sudo once)
 set -e
 D=$(cd "$(dirname "$0")" && pwd); S=~/.local/share/argus-ui; U=~/.config/systemd/user; PORT=${PORT:-8095}
-mkdir -p $S ~/.local/bin $U
+mkdir -p $S ~/.local/bin $U; B=
 if [ -e ~/.local/bin/argus-ui ] || [ -d $S/static ]; then
   B=$S/.set-aside-$(date +%F-%H%M); mkdir -p $B
   [ -e ~/.local/bin/argus-ui ] && cp -a ~/.local/bin/argus-ui $B/argus-ui.py
@@ -15,6 +15,12 @@ fi
 cp "$D/argus_ui.py" ~/.local/bin/argus-ui; chmod +x ~/.local/bin/argus-ui
 cp "$D/mentor.py" $S/mentor.py; cp "$D/sky.py" $S/sky.py; mkdir -p $S/decks   # your own decks go in ~/.local/share/argus-ui/decks
 cp -r "$D/static" $S/static
+# your own sounds live in ~/.config/argus-ui/sfx/ and are added on every install, so a package built from git
+# (which carries no sound files) keeps them. The first time, it is filled from the sounds already installed.
+X=~/.config/argus-ui/sfx; mkdir -p $X
+[ -n "$B" ] && [ -d $B/static/sfx ] && for f in $B/static/sfx/*.mp3; do [ -e "$f" ] && [ ! -e "$X/$(basename "$f")" ] && cp "$f" $X/; done
+for f in "$D"/static/sfx/*.mp3; do [ -e "$f" ] && [ ! -e "$X/$(basename "$f")" ] && cp "$f" $X/; done
+cp $X/*.mp3 $S/static/sfx/ 2>/dev/null && echo "== sounds: $(ls $X/*.mp3 2>/dev/null | wc -l) from $X" || echo "== no sound files (the page works silently; put .mp3s in $X)"
 if [ ! -f $U/argus-ui.service ]; then
 cat > $U/argus-ui.service <<UNIT
 [Unit]

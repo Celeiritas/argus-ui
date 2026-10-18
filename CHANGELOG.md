@@ -1,5 +1,17 @@
 # Changelog
 
+## 4.5.0 – 2026-10-18
+- **Olympus playground rebuilt around items**: the twelve Olympians on an Ω with Zeus at the top; Hades in a **Chthonic** spot and Medusa **Beyond Olympus**. Seats show each god's item; gods without a power yet are dashed placeholders
+- Drag and fling any item (a still release drops it): Zeus's bolt, Medusa's snake (stone and back), Poseidon's trident (an opaque tsunami resets the playground), Hades' bident (skeletons rise from the ground and rattle; it crumbles them too), Demeter's seeds (seasonal flowers), Apollo's bow (arrows that stick), Hephaestus' hammer (digs ever-deeper holes, smashes skeletons). Click-then-place for keyboard and touch
+- Zeus's bolt burns skeletons black until they crumble; the hammer smashes stone skeletons
+- Scene controls collapse into a "Weather, season, time" bar, so the field stays reachable on phones; the section bar stays one row on phones
+- Mount Olympus keeps its summit on wide and ultrawide screens; the storm flash covers the whole sky instead of being clipped
+- Taller ground with turf, soil, clay and bedrock
+- Sounds for the hammer, burning, digging, rattling and crumbling bones, sprouting seeds, the bow and arrow hits (supplied by the owner; not in the repository). Install copies your sounds from `~/.config/argus-ui/sfx/`, so packages built from git keep them
+- **The page is split into files**: `web/css/` and `web/js/` (core, scene, powers, olympus, mentor, main), loaded with `?v=<version>` so browsers never mix old and new files
+- **Tests in the repository**: `bash tests/run.sh` with fake systemd units and Playwright checks for Watch, Mentor and Olympus. `scripts/deploy.sh` (git pull + build + install on the host). `CLAUDE.md` for Claude Code sessions
+- A pause before letting go now counts as a drop on the Watch page too
+
 ## 4.4.0 – 2026-10-18
 - **Scene** behind every page: sky, Mount Olympus with a glowing temple, grass and trees. Trees follow the season: green summer, red/orange/yellow fall with falling leaves, bare and snow-covered winter, blossoming spring
 - **Live weather** from Open-Meteo (no key; fetched only by the server, every 20 minutes, cached): rain, snow, fog, cloud, storms with lightning over the summit; night sky with stars; the current conditions appear beside Mute sounds. Location via `WEATHER=<lat>,<lon> ./install.sh`

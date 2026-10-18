@@ -1,0 +1,59 @@
+/* ---------- Olympus playground: the Ω dock of items, things thrown into the scene ---------- */
+.play header{grid-template-columns:1fr auto;grid-template-areas:"title argus"}.play .hero,.play .tools{display:none!important}
+.playwrap{display:flex;justify-content:space-between;align-items:flex-start;gap:var(--s4);margin-top:var(--s2)}
+.dock{display:flex;flex-direction:column;align-items:center;gap:var(--s2);margin-left:auto}
+.omega{position:relative;width:var(--ow);height:var(--oh)}
+.omega .oline{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}
+.seat{position:absolute;width:var(--ss);height:var(--ss);transform:translate(-50%,-50%);border-radius:50%;padding:0;border:0;background:none;touch-action:none;cursor:grab;min-width:0;min-height:0}
+.seat::after{content:"";position:absolute;inset:-4px;border-radius:50%}
+.seat svg{width:100%;height:100%;display:block;transition:filter var(--t2)}
+.seat.zeus{width:var(--zs);height:var(--zs)}
+.seat:hover svg,.seat:focus-visible svg{filter:drop-shadow(0 0 8px var(--glow,#FFE27A))}
+.seat:focus-visible{outline:2px solid var(--powder);outline-offset:3px}
+.seat[aria-pressed=true]{outline:2px solid var(--bolt);outline-offset:3px}
+.seat.off{width:calc(var(--ss) * .7);height:calc(var(--ss) * .7);border:1.5px dashed #A7B6C466;color:var(--frost);display:flex;align-items:center;justify-content:center;font-size:var(--fs-meta);font-weight:600;cursor:default;background:#1C2127cc}
+.beyond{display:flex;align-items:center;gap:var(--s3);padding:var(--s1) var(--s1) var(--s1) var(--s4);border:1px solid var(--line);border-radius:99px;background:#1C2127cc}
+.beyond .seat{position:relative;transform:none}
+.groups{display:flex;gap:var(--s2);flex-wrap:wrap;justify-content:center}
+.dock-label{font-size:var(--fs-meta);color:var(--powder);white-space:nowrap}
+.dock-help{margin:0;max-width:340px;text-align:center;color:var(--powder);font-size:var(--fs-meta);line-height:1.4;min-height:2.8em}
+.dock-help b{color:var(--snow)}
+details.lab{max-width:520px;background:#232A31e6;border:1px solid var(--line);border-radius:12px;padding:0 var(--s4);margin-top:0}
+details.lab[open]{padding-bottom:var(--s3)}
+details.lab summary{display:flex;align-items:center;gap:var(--s2);min-height:var(--hit);cursor:pointer;list-style:none;font-weight:600}
+details.lab summary::-webkit-details-marker{display:none}
+details.lab summary::before{content:"";width:8px;height:8px;border-right:2px solid var(--powder);border-bottom:2px solid var(--powder);transform:rotate(-45deg);transition:transform var(--t2);flex:none}
+details.lab[open] summary::before{transform:rotate(45deg)}
+details.lab summary .now{font-weight:400;color:var(--powder);font-size:var(--fs-meta)}
+@media (max-width:767.98px){.playwrap{flex-direction:column;align-items:stretch;gap:var(--s2)}.dock{margin:0 auto;gap:var(--s1)}details.lab{max-width:none}
+ details.lab summary{white-space:nowrap;overflow:hidden}details.lab summary .now{overflow:hidden;text-overflow:ellipsis}.dock-help{display:none}
+ .realms{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}.realms .realm,.realms .mute{flex:none}}
+/* thrown items */
+.thrown{position:fixed;z-index:50;pointer-events:none;transform-origin:50% 50%}
+.thrown svg{width:100%;height:100%;display:block;overflow:visible}
+.thrown.snake svg{animation:wig .28s ease-in-out infinite alternate}@keyframes wig{from{transform:skewX(10deg)}to{transform:skewX(-10deg)}}
+.thrown.bolt{filter:drop-shadow(0 0 6px #FFE27A)}.thrown.trident{filter:drop-shadow(0 0 6px #9fd3ff)}.thrown.bident{filter:drop-shadow(0 0 6px #8B6BB8)}
+.seed{position:fixed;z-index:50;pointer-events:none;width:7px;height:5px;border-radius:50%;background:#E8D3A8;box-shadow:0 0 0 1px #8a6a3e}
+/* skeletons (Hades) */
+.skel{position:absolute;bottom:0;width:46px;transform:translateX(-50%);--bone:#E8E4D8}
+.skel .rise{overflow:hidden;height:82px}.skel.up .rise{overflow:visible}
+.skel svg{display:block;width:46px;height:82px;overflow:visible}
+.skel .b{stroke:var(--bone);fill:none;stroke-linecap:round;stroke-linejoin:round;transition:stroke .6s}.skel .bf{fill:var(--bone);transition:fill .6s}
+.skel .arm,.skel .jaw,.skel .head{transform-box:fill-box;transform-origin:50% 0}
+.skel.up .arm.l{animation:rattle 2.6s var(--d,0s) ease-in-out infinite}.skel.up .arm.r{animation:rattle 2.6s calc(var(--d,0s) + .08s) ease-in-out infinite reverse}
+.skel.up .head{animation:nod 2.6s var(--d,0s) ease-in-out infinite}.skel.up .jaw{animation:chatter 2.6s var(--d,0s) linear infinite}
+.skel.up .body{animation:jig 2.6s var(--d,0s) linear infinite}
+@keyframes rattle{0%,60%,100%{transform:rotate(0)}64%{transform:rotate(9deg)}69%{transform:rotate(-8deg)}74%{transform:rotate(7deg)}79%{transform:rotate(-5deg)}85%{transform:rotate(3deg)}}
+@keyframes nod{0%,60%,100%{transform:rotate(0)}66%{transform:rotate(-6deg)}74%{transform:rotate(5deg)}82%{transform:rotate(-3deg)}}
+@keyframes chatter{0%,60%,100%{transform:translateY(0)}63%,69%,75%,81%,87%{transform:translateY(2px)}66%,72%,78%,84%,90%{transform:translateY(0)}}
+@keyframes jig{0%,60%,100%{transform:translateX(0)}65%{transform:translateX(-1px)}70%{transform:translateX(1px)}75%{transform:translateX(-1px)}80%{transform:translateX(.5px)}}
+.skel.burning svg{filter:drop-shadow(0 0 6px #FF7A2F) drop-shadow(0 0 12px #FFB34788)}
+.skel.charred{--bone:#141414}.skel.charred *{animation:none!important}
+.skel.statue svg{filter:grayscale(1) sepia(.35) hue-rotate(80deg) brightness(.85)}.skel.statue *{animation-play-state:paused!important}
+/* flowers (Demeter) and stuck arrows (Apollo) */
+.flower{position:absolute;bottom:0;width:calc(24px * var(--s,1));transform:translateX(-50%);transform-origin:50% 100%}
+.flower svg{display:block;width:100%;height:auto;overflow:visible}
+.arrowstuck{position:absolute;pointer-events:none}.arrowstuck svg{width:100%;height:100%;display:block;overflow:visible}
+/* tsunami (Poseidon) */
+.tsunami{position:fixed;top:0;bottom:0;z-index:55;pointer-events:none;background:linear-gradient(#d6efff,#a9dcff 30%,#8fcaf5)}
+.tsunami svg{position:absolute;top:0;height:100%;width:70px}

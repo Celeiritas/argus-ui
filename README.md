@@ -12,6 +12,8 @@ Jobs are shown as **tasks**, grouped under **agents** (personas you define). Eac
 
 **Scene:** every page sits on Mount Olympus with grass and trees that follow the season and the live weather (rain, snow, fog, storms), fetched by the server from Open-Meteo with no API key. The **Olympus · Playground** section lets you try the powers on the scene: strike or fling bolts at trees, turn them to stone with Medusa, wash the debris away with Poseidon. See [docs/scene.md](docs/scene.md). To show live weather, install with `WEATHER=<lat>,<lon>`.
 
+**Develop and test:** `bash tests/run.sh` runs the package against fake systemd units and checks every page in a real browser (needs Playwright; see `CLAUDE.md`). On the machine that runs Argus, `bash scripts/deploy.sh` pulls the latest code from git, builds it and installs it, keeping your sounds (`~/.config/argus-ui/sfx/`), weather location and settings.
+
 The watchman, Argus, sits at the top: his eyes follow your pointer and glare at anything that has failed. When a task fails, all his eyes turn red and glow, a red aura pulses, an alarm badge counts the failures and a short chime plays (unless muted). On other sections he keeps watch from the corner; select him to go back.
 
 > Status: early and personal. It runs the author's home server and is being generalized. Expect changes.

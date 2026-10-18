@@ -26,39 +26,43 @@ Why Open-Meteo:
 
 **Preview any look:** use the Olympus controls, or add URL options to any page, e.g. `?sky=storm&season=winter&night=1`.
 
-## Powers in the scene
+## The Olympus playground (`<base>/olympus`)
 
-- **Zeus's bolt.** The medallion stays home and hands you a bolt.
-  - Drop it on a task to run it, or on a tree to strike it.
-  - Fling it, by letting go while moving fast, and it flies on with a little gravity until it hits a tree or the ground, leaving a scorch mark and rubble.
-  - Flung bolts never touch task cards; only a deliberate drop runs a task.
-- **Medusa** turns a tree to stone; drag her onto it again to bring it back.
-- **Poseidon** (Olympus only for now) washes away debris (ash, charred sticks, scorch marks, rubble) with a wave. Charred trees in its path grow back.
-- On pages other than Olympus, a struck tree cleans itself up after 30 seconds.
-- With reduced motion turned on, the weather is a still picture and the powers skip their particles.
+The twelve Olympians sit on an **Ω**, left foot to right foot: Dionysus, Hermes, Artemis, Apollo, Demeter, Hera, **Zeus at the top**, Poseidon, Hephaestus, Athena, Ares, Aphrodite. Twelve seats can't split evenly around a top seat, so the left side has six and the right five. Gods who aren't Olympians have their own spots below: **Chthonic** (Hades) and **Beyond Olympus** (Medusa). Seats show the god's *item*, not the god; seats without a power yet are dashed initials.
+
+**Using an item:** drag it out of its seat and let go. It keeps the speed you gave it and falls, so a still release drops it straight down and a quick flick throws it. Pausing before you let go counts as a drop. Letting go over the dock puts it back. Without a mouse: click or press Enter on an item, then click the field (Enter again uses it in the middle of the field). Esc cancels.
+
+| Item | Does |
+|---|---|
+| Zeus's bolt | strikes a tree (it burns and stands charred), burns a skeleton black until it crumbles to ash, scorches the ground |
+| Medusa's snake | turns a tree or skeleton to stone, or back; on bare ground it slithers away |
+| Poseidon's trident | wherever it lands, an opaque light-blue tsunami sweeps the screen and the playground comes back fresh |
+| Hades' bident | raises a skeleton out of the ground (its bones rattle while it waits), or crumbles one it hits |
+| Demeter's seeds | scatter and sprout flowers for the season: pastel blue or pink in spring, dandelions in summer, mushrooms in fall, poinsettias in winter |
+| Apollo's bow | draws an arrow that flies and sticks where it lands: ground, tree (it sways with it) or skeleton |
+| Hephaestus' hammer | digs a hole that deepens with every blow on the same spot, down to bedrock; smashes skeletons |
+
+On the **Watch** page, Zeus's medallion also hands out bolts (drop one on a task to run it; flung bolts only hit trees and the ground, never tasks), and Medusa freezes and thaws tasks. A tree struck there tidies itself up after 30 seconds. With reduced motion turned on, the weather is a still picture, particles are skipped and the tsunami is a fade.
 
 ## Layers (back to front)
 
 Keep this order whenever you add art or effects, so nothing is covered by mistake.
 
 1. `html` background (night colour)
-2. `#scene` (fixed, `z-index: -1`, no pointer events):
-   1. sky gradient (by weather and night)
-   2. stars
-   3. Olympus: far range, massif, snow, temple glow, clouds, summit bolt
-   4. grass
-   5. trees
-   6. debris
-   7. weather canvas (rain and snow fall in front of the trees)
-   8. fog
-3. Page content: section bar, header (title, Argus, tools), agent tabs, `main`. Cards are opaque, so the scene shows only around them and at the end of each page (which has 220px of open space).
-4. A tool being dragged, and the bolt in hand: `.floating` / `.shot` (z 50)
-5. `#flash` (48) and `#fx` effects (49): lightning, sparks, flames, smoke, water
-6. Toast (60)
-7. Dialogs (the browser's top layer)
+2. `#scene` (fixed, `z-index: -1`, no pointer events), in DOM order:
+   1. sky gradient (by weather and night), stars
+   2. `.skyflash`: the storm flash, a full-sky layer centred on the summit (never clipped to the mountain's box)
+   3. Olympus (`.olympus` SVG: ranges that run far past the sides, massif, snow, temple glow, clouds, summit bolt). Script sets `meet` on wide screens and `slice` on narrow ones, so the full height, summit included, is always shown
+   4. `.ground` (height `--gh`: turf, topsoil, clay, bedrock), with Hephaestus' `.hole`s inside it
+   5. `.debris` (ash, sticks, scorch, rubble, bones), `.trees`, `.flora` (flowers), `.skels` (skeletons), `.stuck` (arrows and spears in the ground). All are anchored to the ground's surface
+   6. weather canvas (rain and snow fall in front of everything above), then fog
+3. Page content: section bar, header (title, Argus, tools), agent tabs, `main` (cards, Mentor, the Olympus dock). Cards are opaque, so the scene shows around them and at the end of each page
+4. Things in hand or in flight: `.floating`, `.shot`, `.thrown`, `.seed` (z 50)
+5. `#flash` (48) and `#fx` effects (49): lightning, sparks, flames, smoke, dirt, bone pieces
+6. The tsunami (55), then the toast (60), then dialogs (the browser's top layer)
 
 **Inside a medallion:** background → figure → rim → anything that belongs *outside* the rim (Medusa's sleeping Zs, effect particles). Draw those last and outside the rim's radius, with a dark outline so they read on the pale rim, and keep `overflow: visible` on the SVG.
 
-**Hit-testing the scene:** the scene sits behind the page, so tools find trees and debris by their boxes, and only where nothing else (a card, a panel, a button) is on top.
+**Hit-testing the scene:** the scene sits behind the page, so items find trees, skeletons and debris by their boxes, and only where nothing else (a card, a panel, the dock, a button) is on top. Thrown items test at their tip every frame and land when the tip reaches the ground's surface.
 
-**Class names:** scene states are `.struck` and `.statue` on `.tree`. Don't reuse `.stone`, which is the overlay on frozen task cards and is positioned absolutely.
+**Class names:** scene states are `.struck` and `.statue` (trees), `.up`, `.burning`, `.charred`, `.statue`, `.dying` (skeletons). Don't reuse `.stone`, which is the overlay on frozen task cards and is positioned absolutely.

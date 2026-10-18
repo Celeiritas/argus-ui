@@ -2,3 +2,6 @@ dist/
 __pycache__/
 themes/*/sfx/*.mp3
 themes/*/sfx/**/*.mp3
+node_modules/
+CLAUDE.local.md
+.claude/settings.local.json

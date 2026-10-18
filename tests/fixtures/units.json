@@ -1,0 +1,64 @@
+{
+ "mnemosyne-backup": {
+  "Result": "success",
+  "ActiveState": "inactive",
+  "ExecMainExitTimestamp": "",
+  "MemoryPeak": "301989888",
+  "IOWriteBytes": "432013312",
+  "timer": true,
+  "timer_on": true,
+  "timer_en": true,
+  "Description": "Mnemosyne - weekly backup",
+  "ExecMainStartTimestamp": ""
+ },
+ "hermes-sort": {
+  "Result": "success",
+  "ActiveState": "inactive",
+  "ExecMainExitTimestamp": "Sun 2026-10-18 09:20:44 MDT",
+  "MemoryPeak": "41943040",
+  "IOWriteBytes": "1048576",
+  "timer": true,
+  "timer_on": true,
+  "timer_en": true,
+  "Description": "Hermes sorting - file finished downloads into the libraries"
+ },
+ "hermes-media": {
+  "Result": "success",
+  "ActiveState": "active",
+  "ExecMainExitTimestamp": "Sun 2026-10-18 09:20:44 MDT",
+  "MemoryPeak": "301989888",
+  "IOWriteBytes": "432013312",
+  "timer": true,
+  "timer_on": true,
+  "timer_en": true
+ },
+ "hermes-rename": {
+  "Result": "exit-code",
+  "ActiveState": "inactive",
+  "ExecMainExitTimestamp": "Sun 2026-10-18 10:00:12 MDT",
+  "timer": true,
+  "timer_on": true,
+  "timer_en": true,
+  "Description": "Names new files from an online lookup. Hardlinks only; originals are kept."
+ },
+ "hermes-mail": {
+  "Result": "success",
+  "ActiveState": "active",
+  "ExecMainExitTimestamp": "Sun 2026-10-18 09:20:44 MDT",
+  "MemoryPeak": "301989888",
+  "IOWriteBytes": "432013312",
+  "timer": false,
+  "timer_on": true,
+  "timer_en": true,
+  "service_en": true,
+  "ExecMainStartTimestamp": "Sat 2026-10-17 20:52:00 MDT",
+  "Description": "Inbox of files sent from other devices"
+ },
+ "argus-ui": {
+  "Result": "success",
+  "ActiveState": "active",
+  "ExecMainStartTimestamp": "Sun 2026-10-18 09:24:02 MDT",
+  "service_en": true,
+  "MemoryPeak": "25165824"
+ }
+}
