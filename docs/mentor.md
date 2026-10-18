@@ -4,7 +4,7 @@ Spaced-repetition practice with typed answers, built into Argus UI. Open `<base>
 ## How a card works
 1. Read the prompt, type your answer in your own words (or leave it blank), and say how sure you are.
 2. Mentor checks which **key ideas** you covered, shows the model answer, and suggests a rating.
-3. You pick the rating (Again / Hard / Good / Easy, or keys 1–4). That sets when the card returns ([FSRS-4.5](https://github.com/open-spaced-repetition/fsrs4anki/wiki/The-Algorithm) scheduling).
+3. You pick how well you knew it (Very well / Well enough / Not well / Needs work, or keys 1–4), then confirm with the button. Each choice shows when the card returns ([FSRS-4.5](https://github.com/open-spaced-repetition/fsrs4anki/wiki/The-Algorithm) scheduling; internally Easy / Good / Hard / Again, stored as 4–1).
 4. If Mentor's grade was off, tick **Mentor's grade was wrong**. That flag is training data for the learning grader.
 
 The stats line also tracks **calibration**: how your confidence compares with what you actually covered.

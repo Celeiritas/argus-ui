@@ -1,5 +1,10 @@
 # Changelog
 
+## 4.2.2 – 2026-10-18
+- Practice ratings in plain words: Very well (quick, easy recall), Well enough (took moderate thought), Not well (hard to remember or explain), Needs work (run this card again soon)
+- Each choice shows when the card will come back; Mentor's suggestion is preselected
+- Rating is now pick-then-confirm: a verb button follows your choice ("Run again in 10 min" or "Save and next card"); keys 1–4 choose in on-screen order, Enter confirms
+
 ## 4.2.1 – 2026-10-18
 - Mentor medallion: hooded dark grey robe, broad-shouldered torso, scraggly beard, Athena's owl with wing lines, a tan scroll rolled top and bottom
 

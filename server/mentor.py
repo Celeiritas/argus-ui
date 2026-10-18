@@ -174,7 +174,10 @@ def answer(db, card_id, text, confidence, ms):
                          "VALUES(?,?,?,?,?,?,?,?,?,?,?)", (card_id, time.time(), text, confidence, ms, cov,
                          json.dumps(hits), json.dumps(missed), json.dumps(feats), sug, 'rubric-A'))
         db.commit()
-    return {'attempt': cur.lastrowid, 'coverage': round(cov, 2), 'hits': hits, 'missed': missed,
+    srow = db.execute("SELECT * FROM sched WHERE card_id=?", (card_id,)).fetchone()
+    now = time.time()
+    previews = {g: round((schedule(srow, g, now)[2] - now) / DAY, 3) for g in (1, 2, 3, 4)}   # days until it returns
+    return {'attempt': cur.lastrowid, 'coverage': round(cov, 2), 'hits': hits, 'missed': missed, 'previews': previews,
             'reference': c['answer'], 'suggested': sug, 'coach': coach_line(cov, confidence, len(json.loads(c['points'])), hits)}
 
 def coach_line(cov, conf, n, hits):

@@ -122,9 +122,12 @@ fieldset{border:0;padding:0;margin:var(--s4) 0}
 .model{border-left:3px solid var(--line);padding:var(--s1) var(--s3);margin:0 0 var(--s4);color:var(--snow)}
 .coach{color:var(--powder);margin:0 0 var(--s4)}
 .coach b{color:var(--snow)}
-.rate button{min-width:96px}
-.rate button.sug{border-color:var(--ok)}
-.rate .tag{font-size:var(--fs-meta);color:var(--ok);margin-left:var(--s1)}
+.seg.rates{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.seg.rates label{align-items:flex-start;padding:var(--s2) var(--s3)}
+.seg.rates span{display:flex;flex-direction:column;gap:2px}
+.seg.rates b{font-weight:600;font-size:var(--fs-sec)}.seg.rates small{color:var(--powder);font-size:var(--fs-meta);line-height:1.4}
+.seg.rates .when{color:var(--snow)}
+.seg.rates .tag{font-style:normal;font-size:var(--fs-meta);color:var(--ok)}
 .check{display:inline-flex;align-items:center;gap:var(--s2);min-height:var(--hit);font-size:var(--fs-sec);color:var(--powder);cursor:pointer}
 .check input{width:18px;height:18px;margin:0}
 kbd{font:inherit;font-size:var(--fs-meta);padding:0 var(--s1);border:1px solid var(--frost);border-radius:4px}
@@ -496,7 +499,10 @@ const practice = (() => {
   try { M.deck = localStorage.getItem('mentor-deck') || null; } catch (e) {}
   const get = async p => (await fetch(url('api/mentor/' + p), {cache: 'no-store'})).json();
   const send = async (p, body) => (await fetch(url('api/mentor/' + p), {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)})).json();
-  const RATES = [[1, 'Again'], [2, 'Hard'], [3, 'Good'], [4, 'Easy']];
+  // shown best to worst; value = FSRS rating (4 Easy ... 1 Again)
+  const RATES = [[4, 'Very well', 'Quick, easy recall'], [3, 'Well enough', 'Took moderate thought'], [2, 'Not well', 'Hard to remember or explain'], [1, 'Needs work', 'Run this card again soon']];
+  const back = d => d < 1 / 24 ? `${Math.max(1, Math.round(d * 1440))} min` : d < 1 ? `${Math.round(d * 24)} hour${Math.round(d * 24) === 1 ? '' : 's'}` : `${Math.round(d)} day${Math.round(d) === 1 ? '' : 's'}`;
+  const verb = v => v === 1 ? 'Run again in 10 min' : 'Save and next card';
   const CONF = [[1, 'Guessing'], [2, 'Unsure'], [3, 'Fairly sure'], [4, 'Certain']];
   function calText(c) { if (c == null) return 'not enough answers yet'; if (c > .15) return 'running overconfident'; if (c < -.15) return 'running underconfident'; return 'well calibrated'; }
   function when(ts) { if (!ts) return ''; const d = new Date(ts * 1000), m = (ts * 1000 - Date.now()) / 60000; return m < 60 ? `in ${Math.max(1, Math.round(m))} min` : m < 1440 ? `at ${d.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'})}` : d.toLocaleDateString([], {weekday: 'short', month: 'short', day: 'numeric'}); }
@@ -554,22 +560,29 @@ const practice = (() => {
       <ul class="ideas">${r.hits.map(h => `<li class="hit">${esc(h)}</li>`).join('')}${r.missed.map(h => `<li class="miss">Missing: ${esc(h)}</li>`).join('')}</ul>
       <p class="deckname">Model answer</p><p class="model">${esc(r.reference)}</p>
       <p class="coach"><b>Mentor:</b> ${esc(r.coach)}</p>
-      <fieldset><legend>How well did you know it? This sets when you'll see it again.</legend>
-        <div class="row rate">${RATES.map(([v, n]) => `<button type="button" data-rate="${v}" class="${v === r.suggested ? 'sug' : ''}" aria-describedby="${v === r.suggested ? 'sugnote' : ''}">${v}. ${n}${v === r.suggested ? '<span class="tag">suggested</span>' : ''}</button>`).join('')}</div>
-        <p class="help" id="sugnote">Mentor suggests <b>${RATES[r.suggested - 1][1]}</b> from the key ideas you covered; pick what feels true. Keys <kbd>1</kbd>–<kbd>4</kbd> work too.</p></fieldset>
+      <fieldset><legend>How well did you know it?</legend>
+        <div class="seg rates">${RATES.map(([v, n, d], i) => `<label><input type="radio" name="rate" value="${v}" ${v === r.suggested ? 'checked' : ''}><span><b>${i + 1}. ${n}</b><small>${d}</small><small class="when">Back in ${back(r.previews[v])}</small>${v === r.suggested ? '<em class="tag">Mentor suggests</em>' : ''}</span></label>`).join('')}</div>
+        <p class="help">Mentor's suggestion comes from the key ideas you covered; pick what feels true. Keys <kbd>1</kbd>–<kbd>4</kbd> choose, <kbd>Enter</kbd> confirms.</p></fieldset>
+      <div class="row" style="margin-bottom:var(--s3)"><button type="button" class="primary" id="rateBtn">${verb(r.suggested)}</button></div>
       <label class="check"><input type="checkbox" id="gw"> Mentor's grade was wrong (your answer was better or worse than it scored)</label></div>`;
     $('#rhead').focus();
     $('#gw').onchange = e => M.grade_wrong = e.target.checked;
-    $$('[data-rate]').forEach(b => b.onclick = () => rate(+b.dataset.rate));
+    const pick = () => +($('input[name=rate]:checked')?.value || 0);
+    $$('input[name=rate]').forEach(i => i.onchange = () => $('#rateBtn').textContent = verb(pick()));
+    $('#rateBtn').onclick = () => pick() && rate(pick());
   }
   async function rate(v) {
     if (!M.result) return; const r = M.result; M.result = null;
     let s; try { s = await send('rate', {attempt: r.attempt, rating: v, grade_wrong: M.grade_wrong}); } catch (e) { s = {ok: false}; }
     if (!s.ok) { M.result = r; return toast("Couldn't save that rating. Try again in a moment."); }
-    toast(v === 1 ? 'Back in 10 minutes.' : `Next review in ${s.days < 1 ? 'about an hour' : s.days + ' days'}.`);
+    toast(v === 1 ? 'Coming back in 10 minutes for another try.' : `Saved. Next review in ${back(s.days)}.`);
     next();
   }
-  addEventListener('keydown', e => { if (here === 'mentor' && M.result && /^[1-4]$/.test(e.key) && !(document.activeElement.tagName === 'TEXTAREA' || /^(text|search|email|number)$/.test(document.activeElement.type || ''))) rate(+e.key); });
+  addEventListener('keydown', e => {
+    if (here !== 'mentor' || !M.result || document.activeElement.tagName === 'TEXTAREA') return;
+    if (/^[1-4]$/.test(e.key)) { const i = $$('input[name=rate]')[+e.key - 1]; if (i) { i.checked = true; i.dispatchEvent(new Event('change')); i.focus(); } }
+    else if (e.key === 'Enter' && document.activeElement.type === 'radio') { e.preventDefault(); $('#rateBtn').click(); }
+  });
   return {show};
 })();
 
