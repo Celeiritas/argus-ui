@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 234 234">
+<defs><radialGradient id="bg-poseidon" cx="50%" cy="45%" r="60%"><stop offset="0" stop-color="#123f52"/><stop offset="1" stop-color="#1C2127"/></radialGradient>
+<clipPath id="c-poseidon"><circle cx="117" cy="117" r="104"/></clipPath></defs>
+<circle cx="117" cy="117" r="113" fill="#1C2127" stroke="#A7B6C4" stroke-width="7"/>
+<circle cx="117" cy="117" r="105" fill="url(#bg-poseidon)"/>
+<circle cx="117" cy="117" r="105" fill="none" stroke="#2E86AB" stroke-width="2.5"/>
+<g clip-path="url(#c-poseidon)">
+ <!-- waves -->
+ <path d="M10 190 Q30 178 50 190 T90 190 T130 190 T170 190 T210 190 T250 190 V240 H10 Z" fill="#2E86AB" opacity=".55"/>
+ <path d="M10 202 Q30 192 50 202 T90 202 T130 202 T170 202 T210 202 T250 202 V240 H10 Z" fill="#1f6a8a" opacity=".8"/>
+ <!-- soap bubbles -->
+ <g fill="#BFE6F5" fill-opacity=".15" stroke="#BFE6F5" stroke-width="2"><circle cx="58" cy="122" r="6"/><circle cx="44" cy="104" r="3.5"/><circle cx="66" cy="96" r="2.8"/><circle cx="50" cy="140" r="2.2"/></g>
+ <path d="M55 119 a3 3 0 0 1 4 -2" stroke="#fff" stroke-width="1.5" fill="none"/>
+ <!-- body -->
+ <line x1="110" y1="104" x2="110" y2="150" stroke="#F4F6F8" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+ <path d="M110 150 L96 188 M110 150 L124 188" stroke="#F4F6F8" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+ <path d="M110 118 L88 132" stroke="#F4F6F8" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+ <path d="M110 116 L136 108" stroke="#F4F6F8" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+ <!-- head: wild hair, sea-foam beard -->
+ <circle cx="110" cy="82" r="14" fill="#F4F6F8"/>
+ <path d="M96 80 Q92 66 102 64 Q106 56 116 60 Q126 58 126 68 Q132 74 124 80" fill="none" stroke="#9FD3E6" stroke-width="5" stroke-linecap="round"/>
+ <path d="M97 92 Q110 120 123 92 Q120 86 110 88 Q100 86 97 92 Z" fill="#CFE9F2"/>
+ <path d="M104 80 l4 1 M117 80 l-4 1" stroke="#333" stroke-width="2" stroke-linecap="round"/>
+ <!-- trident: shaft + three tines, each ending in a flared broom head (bristles up) -->
+ <g transform="translate(0 20)">
+ <line x1="140" y1="64" x2="140" y2="196" stroke="#C9CED6" stroke-width="5" stroke-linecap="round"/>
+ <path d="M120 66 Q140 82 160 66" stroke="#C9CED6" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+ <path d="M120 66 V56 M140 74 V52 M160 66 V56" stroke="#C9CED6" stroke-width="4.5" stroke-linecap="round"/>
+ <g transform="translate(120 50)">
+  <rect x="-3" y="0" width="6" height="7" rx="1.5" fill="#8a5a3a"/>
+  <path d="M-4 -1 L4 -1 L13 -30 Q0 -35 -13 -30 Z" fill="#D9B26A" stroke="#A8823F" stroke-width="1.2" stroke-linejoin="round"/>
+  <path d="M-2 -2 L-9 -30 M0 -2 L-3 -32 M2 -2 L3 -32 M3 -2 L9 -30 M-1 -2 L-6 -31 M1 -2 L6 -31" stroke="#A8823F" stroke-width="1"/>
+  <path d="M-6 -12 L6 -12" stroke="#8a5a3a" stroke-width="2.4" stroke-linecap="round"/></g><g transform="translate(140 46)">
+  <rect x="-3" y="0" width="6" height="7" rx="1.5" fill="#8a5a3a"/>
+  <path d="M-4 -1 L4 -1 L13 -30 Q0 -35 -13 -30 Z" fill="#D9B26A" stroke="#A8823F" stroke-width="1.2" stroke-linejoin="round"/>
+  <path d="M-2 -2 L-9 -30 M0 -2 L-3 -32 M2 -2 L3 -32 M3 -2 L9 -30 M-1 -2 L-6 -31 M1 -2 L6 -31" stroke="#A8823F" stroke-width="1"/>
+  <path d="M-6 -12 L6 -12" stroke="#8a5a3a" stroke-width="2.4" stroke-linecap="round"/></g><g transform="translate(160 50)">
+  <rect x="-3" y="0" width="6" height="7" rx="1.5" fill="#8a5a3a"/>
+  <path d="M-4 -1 L4 -1 L13 -30 Q0 -35 -13 -30 Z" fill="#D9B26A" stroke="#A8823F" stroke-width="1.2" stroke-linejoin="round"/>
+  <path d="M-2 -2 L-9 -30 M0 -2 L-3 -32 M2 -2 L3 -32 M3 -2 L9 -30 M-1 -2 L-6 -31 M1 -2 L6 -31" stroke="#A8823F" stroke-width="1"/>
+  <path d="M-6 -12 L6 -12" stroke="#8a5a3a" stroke-width="2.4" stroke-linecap="round"/></g>
+ </g>
+</g></svg>

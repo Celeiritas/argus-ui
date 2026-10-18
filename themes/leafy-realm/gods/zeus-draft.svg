@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 234 234">
+<defs><radialGradient id="bg-zeus" cx="50%" cy="45%" r="60%"><stop offset="0" stop-color="#3b3a5c"/><stop offset="1" stop-color="#1C2127"/></radialGradient>
+<clipPath id="c-zeus"><circle cx="117" cy="117" r="104"/></clipPath></defs>
+<circle cx="117" cy="117" r="113" fill="#1C2127" stroke="#A7B6C4" stroke-width="7"/>
+<circle cx="117" cy="117" r="105" fill="url(#bg-zeus)"/>
+<circle cx="117" cy="117" r="105" fill="none" stroke="#F2D14B" stroke-width="2.5"/>
+<g clip-path="url(#c-zeus)">
+ <!-- storm cloud with code brackets -->
+ <g fill="#C9CED6" opacity=".9"><circle cx="58" cy="68" r="16"/><circle cx="78" cy="58" r="20"/><circle cx="100" cy="68" r="15"/><rect x="44" y="66" width="70" height="17" rx="8"/></g>
+ <text x="78" y="81" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="17" font-weight="700" fill="#3b3a5c">&lt;/&gt;</text>
+ <!-- body -->
+ <line x1="122" y1="108" x2="120" y2="150" stroke="#F4F6F8" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+ <path d="M120 150 L106 188 M120 150 L136 188" stroke="#F4F6F8" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+ <path d="M121 120 L100 136" stroke="#F4F6F8" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+ <path d="M122 118 L146 100 L156 78" stroke="#F4F6F8" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+ <!-- robe sash -->
+ <path d="M109 106 Q122 102 134 108 L130 152 L112 152 Z" fill="#F4F6F8"/>
+ <path d="M112 108 L132 150" stroke="#F2D14B" stroke-width="3"/>
+ <!-- head: crown of points, big beard -->
+ <circle cx="122" cy="84" r="14" fill="#F4F6F8"/>
+ <path d="M108 104 Q122 126 136 104 Q136 92 122 94 Q108 92 108 104 Z" fill="#E6E9EE"/>
+ <path d="M110 74 L113 64 L117 72 L122 61 L127 72 L131 64 L134 74 Z" fill="#F2D14B"/>
+ <path d="M115 82 l4 1 M129 82 l-4 1" stroke="#333" stroke-width="2" stroke-linecap="round"/>
+ <!-- lightning bolt raised -->
+ <path d="M164 40 L146 74 L158 74 L148 104 L174 64 L161 64 L172 40 Z" fill="#F2D14B" stroke="#FFF6C2" stroke-width="2" stroke-linejoin="round"/>
+ <path d="M150 30 l-6 -8 M178 34 l6 -6 M182 54 l8 0" stroke="#F2D14B" stroke-width="3" stroke-linecap="round"/></g></svg>

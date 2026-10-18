@@ -1,0 +1,66 @@
+{
+  "name": "Leafy Realm",
+  "title": "Argus",
+  "subtitle": "LeafyBard agents",
+  "registry": "~/.config/leafy/agents",
+  "never_freeze": [
+    "argus-ui"
+  ],
+  "agents": [
+    {
+      "key": "argus",
+      "name": "Argus",
+      "domain": "Watchman · monitoring"
+    },
+    {
+      "key": "hermes",
+      "name": "Hermes",
+      "domain": "Delivery · messaging"
+    },
+    {
+      "key": "mnemosyne",
+      "name": "Mnemosyne",
+      "domain": "Memory · backups"
+    },
+    {
+      "key": "chronos",
+      "name": "Chronos",
+      "domain": "Time · automations"
+    },
+    {
+      "key": "zeus",
+      "name": "Zeus",
+      "domain": "Lightning · coding · run & restart"
+    },
+    {
+      "key": "hephaestus",
+      "name": "Hephaestus",
+      "domain": "The forge · modding"
+    },
+    {
+      "key": "poseidon",
+      "name": "Poseidon",
+      "domain": "Tides · cleaning · tidying"
+    },
+    {
+      "key": "janus",
+      "name": "Janus",
+      "domain": "Gatekeeper · Tailscale"
+    },
+    {
+      "key": "calliope",
+      "name": "Calliope",
+      "domain": "Song · music library"
+    },
+    {
+      "key": "heracles",
+      "name": "Heracles",
+      "domain": "Strength · workouts"
+    },
+    {
+      "key": "medusa",
+      "name": "Medusa",
+      "domain": "Freeze · thaw"
+    }
+  ]
+}
