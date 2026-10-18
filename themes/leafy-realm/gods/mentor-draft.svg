@@ -12,17 +12,18 @@
  <path d="M66 70 Q60 64 66 58 Q74 54 76 62" stroke="#8a5a3a" stroke-width="5" fill="none" stroke-linecap="round"/>
  <line x1="72" y1="66" x2="76" y2="196" stroke="#8a5a3a" stroke-width="5" stroke-linecap="round"/>
  <!-- robe body -->
- <path d="M98 96 L88 170 H136 L126 96 Z" fill="#4A5058" stroke="#2F343A" stroke-width="2"/>
- <path d="M98 96 Q112 104 126 96" stroke="#5C636C" stroke-width="2" fill="none"/>
- <path d="M112 102 L112 170" stroke="#6F7FD6" stroke-width="3"/>
+ <path d="M84 98 L140 98 L121 142 L124 170 H100 L103 142 Z" fill="#4A5058" stroke="#2F343A" stroke-width="2" stroke-linejoin="round"/>
+ <path d="M103 142 H121" stroke="#2F343A" stroke-width="2"/>
+ <path d="M112 100 L112 142" stroke="#6F7FD6" stroke-width="3"/><path d="M103 142 H121" stroke="#6F7FD6" stroke-width="3"/>
  <line x1="104" y1="168" x2="102" y2="190" stroke="#F4F6F8" stroke-width="7" stroke-linecap="round"/><line x1="120" y1="168" x2="122" y2="190" stroke="#F4F6F8" stroke-width="7" stroke-linecap="round"/>
- <path d="M102 108 L74 120" stroke="#F4F6F8" stroke-width="7" stroke-linecap="round"/>
- <path d="M122 108 L140 124" stroke="#F4F6F8" stroke-width="7" stroke-linecap="round"/>
+ <path d="M88 102 L74 120" stroke="#F4F6F8" stroke-width="7" stroke-linecap="round"/>
+ <path d="M136 102 L146 124" stroke="#F4F6F8" stroke-width="7" stroke-linecap="round"/>
  <!-- head: bald crown, kind eyes, short beard -->
- <path d="M91 100 Q88 70 100 58 Q112 48 124 58 Q136 70 133 100 Q122 94 112 94 Q102 94 91 100 Z" fill="#4A5058" stroke="#2F343A" stroke-width="2"/>
+ <path d="M90 100 L93 70 Q100 54 112 51 Q124 54 131 70 L134 100 Q122 94 112 94 Q102 94 90 100 Z" fill="#4A5058" stroke="#2F343A" stroke-width="2"/>
  <circle cx="112" cy="80" r="13.5" fill="#F4F6F8"/>
  <path d="M97 84 Q96 64 112 61 Q128 64 127 84 Q124 70 112 68 Q100 70 97 84 Z" fill="#3B4047"/>
- <path d="M100 84 Q112 108 124 84 Q118 90 112 89 Q106 90 100 84 Z" fill="#DADFE7"/>
+ <path d="M99 83 Q101 90 104 92 L102 101 L106 96 L107 108 L110 99 L112 113 L114 100 L117 107 L118 96 L122 101 L120 92 Q123 90 125 83 Q119 89 112 89 Q105 89 99 83 Z" fill="#DADFE7" stroke="#B9C0CB" stroke-width="1" stroke-linejoin="round"/>
+ <path d="M106 93 L105 99 M112 92 L112 101 M118 93 L119 98" stroke="#B9C0CB" stroke-width="1" stroke-linecap="round"/>
  <path d="M105 79 q3 2 6 0 M114 79 q3 2 6 0" stroke="#444" stroke-width="1.8" fill="none" stroke-linecap="round"/>
  <!-- Athena's owl on his shoulder -->
  <g transform="translate(134 88)">
