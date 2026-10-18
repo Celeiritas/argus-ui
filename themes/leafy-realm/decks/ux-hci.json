@@ -1,0 +1,831 @@
+{
+ "id": "ux-hci",
+ "name": "UX & HCI terms",
+ "blurb": "The vocabulary from the Argus UX audit. Define each in your own words.",
+ "cards": [
+  {
+   "id": "accessible-name",
+   "prompt": "Define: accessible name",
+   "answer": "The name assistive technology such as a screen reader announces for a control, set by visible text or an aria-label. It is separate from any tooltip.",
+   "points": [
+    {
+     "idea": "what a screen reader announces",
+     "any": [
+      "screen reader",
+      "assistive",
+      "announce",
+      "read out"
+     ]
+    },
+    {
+     "idea": "comes from visible text or aria-label",
+     "any": [
+      "aria label",
+      "aria-label",
+      "visible text",
+      "label"
+     ]
+    },
+    {
+     "idea": "belongs to a control or element",
+     "any": [
+      "control",
+      "button",
+      "element",
+      "input"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "affordance",
+   "prompt": "Define: affordance (Norman)",
+   "answer": "What an object or element lets a person do, the possible actions it allows (a button affords pressing).",
+   "points": [
+    {
+     "idea": "possible actions",
+     "any": [
+      "action",
+      "let",
+      "allow",
+      "possible",
+      "can do",
+      "enable"
+     ]
+    },
+    {
+     "idea": "a property of the object in relation to the person",
+     "any": [
+      "object",
+      "element",
+      "thing",
+      "relationship",
+      "person",
+      "user"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "arm-then-choose",
+   "prompt": "Define: arm-then-choose",
+   "answer": "A keyboard and tap alternative to drag-and-drop: first select the tool or action, then select the target it applies to.",
+   "points": [
+    {
+     "idea": "alternative to dragging",
+     "any": [
+      "drag",
+      "instead of drag",
+      "alternative"
+     ]
+    },
+    {
+     "idea": "pick the tool first",
+     "any": [
+      "select tool",
+      "pick tool",
+      "choose tool",
+      "first",
+      "arm"
+     ]
+    },
+    {
+     "idea": "then pick the target",
+     "any": [
+      "target",
+      "then",
+      "second",
+      "destination"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "confirmation-fatigue",
+   "prompt": "Define: confirmation fatigue",
+   "answer": "When people see confirmation prompts too often they stop reading them and click through by habit, so the prompts stop protecting them (habituation).",
+   "points": [
+    {
+     "idea": "too many prompts",
+     "any": [
+      "too many",
+      "often",
+      "frequent",
+      "every",
+      "repeated"
+     ]
+    },
+    {
+     "idea": "people click through without reading",
+     "any": [
+      "without reading",
+      "stop reading",
+      "click through",
+      "ignore",
+      "automatic",
+      "habit"
+     ]
+    },
+    {
+     "idea": "so the protection is lost",
+     "any": [
+      "stop protecting",
+      "useless",
+      "lose",
+      "no longer",
+      "habituation",
+      "ineffective"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "csrf",
+   "prompt": "Define: CSRF",
+   "answer": "Cross-site request forgery: a malicious website makes your browser send a request to another site you are trusted on, performing an action without your intent.",
+   "points": [
+    {
+     "idea": "cross-site request forgery",
+     "any": [
+      "cross site request forgery",
+      "forgery",
+      "cross site"
+     ]
+    },
+    {
+     "idea": "another website triggers it",
+     "any": [
+      "malicious site",
+      "another site",
+      "other website",
+      "attacker",
+      "evil"
+     ]
+    },
+    {
+     "idea": "through your own browser / session",
+     "any": [
+      "browser",
+      "session",
+      "cookie",
+      "trusted",
+      "logged in"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "design-tokens",
+   "prompt": "Define: design tokens",
+   "answer": "Named values for design decisions, like sizes, colours, spacing and durations, used everywhere instead of raw numbers so the system stays consistent and changes in one place.",
+   "points": [
+    {
+     "idea": "named values",
+     "any": [
+      "named",
+      "variable",
+      "name"
+     ]
+    },
+    {
+     "idea": "for sizes, colours, spacing, durations",
+     "any": [
+      "color",
+      "colour",
+      "size",
+      "spacing",
+      "duration",
+      "font"
+     ]
+    },
+    {
+     "idea": "consistency, change in one place",
+     "any": [
+      "consistent",
+      "one place",
+      "reuse",
+      "single source",
+      "everywhere"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "dns-rebinding",
+   "prompt": "Define: DNS rebinding",
+   "answer": "An attack where an attacker's domain is made to resolve to a local or private address, so their web page can talk to services on your network as if they were same-origin.",
+   "points": [
+    {
+     "idea": "attacker's domain points to your local address",
+     "any": [
+      "resolve",
+      "domain",
+      "dns",
+      "point"
+     ]
+    },
+    {
+     "idea": "local or private network service",
+     "any": [
+      "local",
+      "private",
+      "home network",
+      "internal",
+      "localhost"
+     ]
+    },
+    {
+     "idea": "bypasses same-origin protection",
+     "any": [
+      "same origin",
+      "origin",
+      "bypass",
+      "trick the browser"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "easing",
+   "prompt": "Define: easing (in motion design)",
+   "answer": "The speed curve of an animation over time. Ease-out (fast then slowing) suits things entering; ease-in suits things leaving.",
+   "points": [
+    {
+     "idea": "speed curve over time",
+     "any": [
+      "speed",
+      "curve",
+      "acceleration",
+      "timing function",
+      "rate"
+     ]
+    },
+    {
+     "idea": "ease-out for entering",
+     "any": [
+      "ease out",
+      "decelerat",
+      "slow down",
+      "entering",
+      "enter"
+     ]
+    },
+    {
+     "idea": "ease-in for leaving",
+     "any": [
+      "ease in",
+      "accelerat",
+      "exit",
+      "leaving",
+      "leave"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "fitts",
+   "prompt": "Define: Fitts's law",
+   "answer": "The time to point at a target grows with the distance to it and shrinks as the target gets larger: MT = a + b·log2(D/W + 1).",
+   "points": [
+    {
+     "idea": "time to point at / acquire a target",
+     "any": [
+      "time",
+      "point",
+      "acquire",
+      "reach",
+      "click",
+      "movement",
+      "fast",
+      "faster",
+      "slow",
+      "long",
+      "quick",
+      "speed"
+     ]
+    },
+    {
+     "idea": "increases with distance",
+     "any": [
+      "distance",
+      "far",
+      "further",
+      "close",
+      "closer",
+      "away",
+      "near"
+     ]
+    },
+    {
+     "idea": "decreases with target size",
+     "any": [
+      "size",
+      "bigger",
+      "larger",
+      "width",
+      "small",
+      "big",
+      "tiny",
+      "area"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "flip",
+   "prompt": "Define: FLIP animation technique",
+   "answer": "First, Last, Invert, Play: put an element in its end position, then animate it with a transform from where it started, so only transform (not layout) animates.",
+   "points": [
+    {
+     "idea": "first, last, invert, play",
+     "any": [
+      "first last invert play",
+      "invert",
+      "flip"
+     ]
+    },
+    {
+     "idea": "jump to the end position",
+     "any": [
+      "end",
+      "final",
+      "last position",
+      "destination"
+     ]
+    },
+    {
+     "idea": "animate with transform instead of layout",
+     "any": [
+      "transform",
+      "not layout",
+      "translate",
+      "gpu"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "gestalt-proximity",
+   "prompt": "Define: Gestalt principle of proximity",
+   "answer": "Elements placed close together are perceived as belonging to the same group.",
+   "points": [
+    {
+     "idea": "close together",
+     "any": [
+      "close",
+      "near",
+      "proximity",
+      "spacing",
+      "distance"
+     ]
+    },
+    {
+     "idea": "perceived as a group",
+     "any": [
+      "group",
+      "belong",
+      "related",
+      "together",
+      "unit"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "gulf-evaluation",
+   "prompt": "Define: gulf of evaluation (Norman)",
+   "answer": "The gap between what the system shows and the person's ability to tell what state it is in and whether their action worked. Feedback bridges it.",
+   "points": [
+    {
+     "idea": "understanding the system's state / result",
+     "any": [
+      "state",
+      "result",
+      "what happened",
+      "interpret",
+      "understand"
+     ]
+    },
+    {
+     "idea": "whether the action worked",
+     "any": [
+      "action worked",
+      "succeed",
+      "outcome",
+      "goal"
+     ]
+    },
+    {
+     "idea": "feedback closes it",
+     "any": [
+      "feedback",
+      "display",
+      "show",
+      "visible"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "habituation",
+   "prompt": "Define: habituation",
+   "answer": "A decrease in response to a stimulus after it is repeated many times; people stop noticing what they see constantly.",
+   "points": [
+    {
+     "idea": "reduced response",
+     "any": [
+      "decrease",
+      "less",
+      "reduced",
+      "stop notic",
+      "ignore",
+      "diminish"
+     ]
+    },
+    {
+     "idea": "after repeated exposure",
+     "any": [
+      "repeat",
+      "repeated",
+      "exposure",
+      "over and over",
+      "constant"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "heuristic-evaluation",
+   "prompt": "Define: heuristic evaluation",
+   "answer": "An expert inspection method where evaluators review an interface against a set of usability rules of thumb, such as Nielsen's 10 heuristics.",
+   "points": [
+    {
+     "idea": "experts inspect the interface",
+     "any": [
+      "expert",
+      "evaluator",
+      "review",
+      "inspect",
+      "inspection"
+     ]
+    },
+    {
+     "idea": "against rules of thumb / heuristics",
+     "any": [
+      "rules of thumb",
+      "heuristic",
+      "guideline",
+      "principle",
+      "nielsen"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "hick",
+   "prompt": "Define: Hick's law (Hick-Hyman)",
+   "answer": "Decision time increases with the number of choices, roughly logarithmically.",
+   "points": [
+    {
+     "idea": "decision / choice time",
+     "any": [
+      "decision",
+      "choose",
+      "reaction",
+      "time",
+      "decide"
+     ]
+    },
+    {
+     "idea": "grows with number of options",
+     "any": [
+      "number of choice",
+      "number of option",
+      "more option",
+      "more choice",
+      "options"
+     ]
+    },
+    {
+     "idea": "logarithmic",
+     "any": [
+      "log",
+      "logarithm"
+     ],
+     "weight": 0.5
+    }
+   ]
+  },
+  {
+   "id": "hit-area",
+   "prompt": "Define: hit area",
+   "answer": "The region that responds to a click or tap, which can be larger than the control's visible size.",
+   "points": [
+    {
+     "idea": "region that responds to click/tap",
+     "any": [
+      "click",
+      "tap",
+      "touch",
+      "respond",
+      "clickable"
+     ]
+    },
+    {
+     "idea": "can be bigger than it looks",
+     "any": [
+      "larger",
+      "bigger",
+      "invisible",
+      "visible size",
+      "beyond"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "page-pattern",
+   "prompt": "Define: page pattern",
+   "answer": "A standard, recognizable screen layout for a type of task (list, detail, form, dashboard...) that people already know how to use.",
+   "points": [
+    {
+     "idea": "standard / recognizable layout",
+     "any": [
+      "standard",
+      "common",
+      "known",
+      "familiar",
+      "recogniz",
+      "layout",
+      "template"
+     ]
+    },
+    {
+     "idea": "matched to a type of task",
+     "any": [
+      "task",
+      "type",
+      "purpose",
+      "list",
+      "form",
+      "dashboard"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "pre-attentive",
+   "prompt": "Define: pre-attentive processing",
+   "answer": "Fast, automatic detection of basic visual features such as colour, size, orientation and motion, before focused attention, in under about 250ms.",
+   "points": [
+    {
+     "idea": "before conscious / focused attention",
+     "any": [
+      "before attention",
+      "unconscious",
+      "automatic",
+      "without attention",
+      "pre attentive",
+      "conscious"
+     ]
+    },
+    {
+     "idea": "basic visual features",
+     "any": [
+      "color",
+      "colour",
+      "size",
+      "shape",
+      "orientation",
+      "motion"
+     ]
+    },
+    {
+     "idea": "very fast",
+     "any": [
+      "fast",
+      "quick",
+      "instant",
+      "250",
+      "millisecond"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "reduced-motion",
+   "prompt": "Define: reduced motion (prefers-reduced-motion)",
+   "answer": "An operating-system setting for people who are harmed by on-screen motion, such as those with vestibular disorders; web pages detect it and replace animation with instant changes or fades.",
+   "points": [
+    {
+     "idea": "OS / user setting",
+     "any": [
+      "setting",
+      "preference",
+      "operating system",
+      "os"
+     ]
+    },
+    {
+     "idea": "for people harmed by motion",
+     "any": [
+      "vestibular",
+      "dizz",
+      "nausea",
+      "motion sick",
+      "harm"
+     ]
+    },
+    {
+     "idea": "pages remove or soften animation",
+     "any": [
+      "remove animation",
+      "fade",
+      "instant",
+      "less animation",
+      "turn off",
+      "reduce"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "signifier",
+   "prompt": "Define: signifier (Norman)",
+   "answer": "A perceivable cue that communicates what action is possible and where, such as a label, border, icon or cursor change.",
+   "points": [
+    {
+     "idea": "a perceivable cue / signal",
+     "any": [
+      "cue",
+      "signal",
+      "indicator",
+      "hint",
+      "sign",
+      "visible"
+     ]
+    },
+    {
+     "idea": "tells what action is possible",
+     "any": [
+      "action",
+      "possible",
+      "what to do",
+      "how to use",
+      "affordance"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "slip-mistake",
+   "prompt": "Define: slip vs mistake (Norman)",
+   "answer": "A slip is the right goal carried out with the wrong action; a mistake is choosing the wrong goal or plan. Slips are best handled by undo, mistakes by better information.",
+   "points": [
+    {
+     "idea": "slip = right goal, wrong action",
+     "any": [
+      "right goal",
+      "correct goal",
+      "wrong action",
+      "execution"
+     ]
+    },
+    {
+     "idea": "mistake = wrong goal or plan",
+     "any": [
+      "wrong goal",
+      "wrong plan",
+      "wrong intention",
+      "plan"
+     ]
+    },
+    {
+     "idea": "slips need undo / mistakes need information",
+     "any": [
+      "undo",
+      "better information",
+      "feedback",
+      "prevent"
+     ],
+     "weight": 0.5
+    }
+   ]
+  },
+  {
+   "id": "type-scale",
+   "prompt": "Define: type scale",
+   "answer": "A small fixed set of text sizes, each with a role (body, secondary, meta, headings), so size differences carry meaning.",
+   "points": [
+    {
+     "idea": "small set of sizes",
+     "any": [
+      "set of size",
+      "few size",
+      "sizes",
+      "scale"
+     ]
+    },
+    {
+     "idea": "each has a role",
+     "any": [
+      "role",
+      "body",
+      "heading",
+      "meta",
+      "secondary",
+      "purpose"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "visual-hierarchy",
+   "prompt": "Define: visual hierarchy",
+   "answer": "The arrangement of elements so their importance is clear, controlling the order in which the eye notices them, mainly through size, position, contrast and spacing.",
+   "points": [
+    {
+     "idea": "order of importance / what is noticed first",
+     "any": [
+      "importance",
+      "order",
+      "first",
+      "priority",
+      "rank"
+     ]
+    },
+    {
+     "idea": "created with size, contrast, position, spacing",
+     "any": [
+      "size",
+      "contrast",
+      "position",
+      "spacing",
+      "color",
+      "weight"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "von-restorff",
+   "prompt": "Define: Von Restorff (isolation) effect",
+   "answer": "An item that stands out from its surroundings is more likely to be noticed and remembered.",
+   "points": [
+    {
+     "idea": "stands out / differs",
+     "any": [
+      "stand out",
+      "different",
+      "distinct",
+      "odd",
+      "unique",
+      "isolat"
+     ]
+    },
+    {
+     "idea": "remembered / noticed more",
+     "any": [
+      "remember",
+      "memorable",
+      "notic",
+      "recall"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "wcag",
+   "prompt": "Define: WCAG",
+   "answer": "Web Content Accessibility Guidelines from the W3C, organized into testable success criteria at levels A, AA and AAA.",
+   "points": [
+    {
+     "idea": "web content accessibility guidelines",
+     "any": [
+      "web content accessibility guideline",
+      "accessibility guideline",
+      "accessibility standard"
+     ]
+    },
+    {
+     "idea": "levels A, AA, AAA",
+     "any": [
+      "aa",
+      "aaa",
+      "level",
+      "conformance"
+     ]
+    },
+    {
+     "idea": "W3C / success criteria",
+     "any": [
+      "w3c",
+      "success criteria",
+      "criteria"
+     ],
+     "weight": 0.5
+    }
+   ]
+  }
+ ]
+}

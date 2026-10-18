@@ -23,6 +23,11 @@
       "domain": "Memory · backups"
     },
     {
+      "key": "mentor",
+      "name": "Mentor",
+      "domain": "Practice · coaching"
+    },
+    {
       "key": "chronos",
       "name": "Chronos",
       "domain": "Time · automations"

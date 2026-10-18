@@ -3,7 +3,8 @@
 #   Open it at http://<host>:8095, or anywhere on your tailnet with:  tailscale serve --bg --set-path /argus http://127.0.0.1:8095
 # Powers on the page: Medusa freezes/thaws a task (stop + pause its timer; thaw restores it), Zeus's bolt runs/restarts it.
 # Which agents exist, their names and the page title come from the theme (static/theme.json).
-import json, os, re, socket, subprocess, threading, mimetypes, ipaddress
+import json, os, re, socket, subprocess, sys, threading, mimetypes, ipaddress
+from urllib.parse import urlsplit, parse_qs
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from datetime import datetime
 
@@ -14,6 +15,15 @@ HOME = os.path.expanduser('~')
 STATIC = os.environ.get('ARGUS_STATIC', f'{HOME}/.local/share/argus-ui/static')
 SYSTEMCTL = os.environ.get('ARGUS_SYSTEMCTL', 'systemctl')
 JOURNALCTL = os.environ.get('ARGUS_JOURNALCTL', 'journalctl')
+
+# Mentor (Practice tab) lives in mentor.py next to this file, or in ~/.local/share/argus-ui when installed
+sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)), os.path.expanduser('~/.local/share/argus-ui')]
+import mentor
+SHARE = os.path.expanduser('~/.local/share/argus-ui')
+MENTOR_DB = os.environ.get('ARGUS_MENTOR_DB', f'{SHARE}/mentor.db')
+DECK_DIRS = [os.path.join(STATIC, 'decks'), os.environ.get('ARGUS_DECKS', f'{SHARE}/decks')]   # built-in + your own
+MDB = mentor.connect(MENTOR_DB)
+for _d in DECK_DIRS: mentor.load_decks(MDB, _d)
 
 def load_theme():
     try: return json.load(open(os.path.join(STATIC, 'theme.json'), encoding='utf-8'))
@@ -199,6 +209,7 @@ class H(BaseHTTPRequestHandler):
 
     def get(self):
         p = self.path_parts()
+        if p.startswith('api/mentor/'): return self.mentor_get(p[11:], parse_qs(urlsplit(self.path).query))
         if p.startswith('static/'):
             root = os.path.realpath(STATIC); f = os.path.realpath(os.path.join(root, p[7:]))
             if os.path.commonpath([root, f]) != root or not os.path.isfile(f): return self.out('not found', 'text/plain', 404)
@@ -231,8 +242,10 @@ class H(BaseHTTPRequestHandler):
         if n < 0 or n > MAX_BODY: return self.deny(413, 'request too large')
         try: body = json.loads(self.rfile.read(n) or b'{}')
         except Exception: return self.deny(400, 'bad json')
-        u = str(body.get('job', '')) if isinstance(body, dict) else ''
+        if not isinstance(body, dict): return self.deny(400, 'bad json')
         p = self.path_parts()
+        if p.startswith('api/mentor/'): return self.mentor_post(p[11:], body)
+        u = str(body.get('job', ''))
         actions = {'api/freeze': freeze, 'api/thaw': thaw, 'api/bolt': bolt, 'api/run': bolt}
         if p not in actions: return self.deny(404, 'not found')
         if u not in units(): return self.deny(400, 'unknown task')
@@ -241,6 +254,33 @@ class H(BaseHTTPRequestHandler):
         except subprocess.TimeoutExpired: ok, msg = False, 'systemctl timed out'
         except Exception: ok, msg = False, 'server error'
         self.out(json.dumps({'ok': ok, 'msg': msg}), 'application/json')
+
+    # ---------- Mentor ----------
+    def mentor_get(self, what, q):
+        deck = (q.get('deck') or [None])[0] or None
+        if what == 'decks':
+            decks = []
+            for d in DECK_DIRS: decks += mentor.deck_list(d)
+            return self.out(json.dumps({'decks': decks}), 'application/json')
+        if what == 'next':
+            card, next_due = mentor.next_card(MDB, deck, (q.get('extra') or ['0'])[0] == '1')
+            return self.out(json.dumps({'card': card, 'next_due': next_due}), 'application/json')
+        if what == 'stats': return self.out(json.dumps(mentor.stats(MDB, deck)), 'application/json')
+        return self.deny(404, 'not found')
+
+    def mentor_post(self, what, body):
+        try:
+            if what == 'answer':
+                text = str(body.get('text', ''))[:2000]
+                conf = body.get('confidence'); conf = int(conf) if conf in (1, 2, 3, 4, '1', '2', '3', '4') else None
+                ms = int(body.get('ms') or 0)
+                r = mentor.answer(MDB, str(body.get('card', '')), text, conf, max(0, min(ms, 3_600_000)))
+            elif what == 'rate':
+                r = mentor.rate(MDB, int(body.get('attempt') or 0), int(body.get('rating') or 0), bool(body.get('grade_wrong')))
+            else: return self.deny(404, 'not found')
+        except (ValueError, TypeError): return self.deny(400, 'bad request')
+        if r is None: return self.deny(400, 'unknown card or attempt')
+        self.out(json.dumps({'ok': True, **r}), 'application/json')
 
 if __name__ == '__main__':
     ThreadingHTTPServer((BIND, PORT), H).serve_forever()

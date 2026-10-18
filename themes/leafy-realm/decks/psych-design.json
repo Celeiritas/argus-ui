@@ -1,0 +1,32 @@
+{
+  "id": "psych-design",
+  "name": "Psych behind design",
+  "blurb": "Cognitive and learning science that design leans on.",
+  "cards": [
+    {"id": "working-memory", "prompt": "Define: working memory capacity (and why it matters for UI)", "answer": "The small amount of information people can hold and manipulate at once, about 4 chunks (Cowan); interfaces should show options rather than make people remember them.",
+     "points": [{"idea": "limited, about 4 chunks", "any": ["4", "four", "limited", "small", "seven", "chunk"]},
+                {"idea": "hold and manipulate information at once", "any": ["hold", "temporar", "at once", "manipulat", "short term"]},
+                {"idea": "design: recognition over recall", "any": ["recognition", "show option", "don't make", "remember", "recall"]}]},
+    {"id": "recognition-recall", "prompt": "Define: recognition over recall", "answer": "Recognizing something you see is easier than recalling it from memory, so interfaces should make options and information visible.",
+     "points": [{"idea": "recognizing is easier than recalling", "any": ["easier", "recogniz", "recall"]},
+                {"idea": "make options visible", "any": ["visible", "show", "display", "see"]}]},
+    {"id": "spacing-effect", "prompt": "Define: the spacing effect", "answer": "Learning is retained longer when study is spread out over time rather than crammed into one session.",
+     "points": [{"idea": "spread out over time", "any": ["spread", "spaced", "over time", "interval", "distributed"]},
+                {"idea": "better long-term retention than cramming", "any": ["retain", "remember", "long term", "cram", "massed"]}]},
+    {"id": "retrieval-practice", "prompt": "Define: retrieval practice (testing effect)", "answer": "Actively recalling information from memory strengthens it more than re-reading or re-studying it.",
+     "points": [{"idea": "actively recall from memory", "any": ["recall", "retriev", "from memory", "test yourself", "remember"]},
+                {"idea": "stronger than re-reading", "any": ["re read", "reread", "restudy", "re study", "review", "stronger", "better"]}]},
+    {"id": "generation-effect", "prompt": "Define: the generation effect", "answer": "Information you produce yourself, like typing a definition, is remembered better than information you only read.",
+     "points": [{"idea": "producing it yourself", "any": ["produce", "generate", "yourself", "own words", "type", "create"]},
+                {"idea": "remembered better than reading", "any": ["remember", "better", "read", "retain"]}]},
+    {"id": "metacognition", "prompt": "Define: metacognitive calibration", "answer": "How well your confidence matches your actual performance; overconfidence means feeling you know more than you do.",
+     "points": [{"idea": "confidence vs actual performance", "any": ["confidence", "feel", "think you know", "actual", "performance", "accuracy"]},
+                {"idea": "match / mismatch (over- or underconfidence)", "any": ["match", "overconfiden", "underconfiden", "gap", "align"]}]},
+    {"id": "cognitive-load", "prompt": "Define: cognitive load", "answer": "The amount of mental effort working memory is using; good design removes unnecessary (extraneous) load so effort goes to the task.",
+     "points": [{"idea": "mental effort in working memory", "any": ["mental effort", "working memory", "effort", "processing", "demand"]},
+                {"idea": "reduce extraneous load", "any": ["extraneous", "reduce", "unnecessary", "remove", "simplif"]}]},
+    {"id": "change-blindness", "prompt": "Define: change blindness", "answer": "Failing to notice a visible change, especially when it happens during a distraction or out of focus; why UI changes need feedback or motion cues.",
+     "points": [{"idea": "failing to notice a change", "any": ["not notice", "fail to notice", "miss", "unnoticed", "don't see"]},
+                {"idea": "even when visible / during a disruption", "any": ["visible", "distract", "blink", "flicker", "interrupt", "attention"]}]}
+  ]
+}

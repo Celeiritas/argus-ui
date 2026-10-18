@@ -8,6 +8,8 @@ Jobs are shown as **tasks**, grouped under **agents** (personas you define). Eac
 - **Medusa's gaze**: drag Medusa onto a task to *freeze* it (stop it and pause its timer; the card turns to stone). Drag her onto a stone card to *thaw* it, which restores exactly what was enabled or running. Nothing is ever deleted.
 - **Zeus's bolt**: hurl it at a task to *run* it now, or *restart* it if it's an always-on service.
 
+**Practice (Mentor):** a spaced-repetition tab with typed answers, key-idea grading and confidence calibration. See [docs/mentor.md](docs/mentor.md).
+
 The watchman, Argus, sits at the top: his eyes follow your pointer and glare at anything that has failed.
 
 > Status: early and personal. It runs the author's home server and is being generalized. Expect changes.

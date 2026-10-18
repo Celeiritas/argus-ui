@@ -13,6 +13,7 @@ if [ -e ~/.local/bin/argus-ui ] || [ -d $S/static ]; then
   echo "== previous version kept in $B"
 fi
 cp "$D/argus_ui.py" ~/.local/bin/argus-ui; chmod +x ~/.local/bin/argus-ui
+cp "$D/mentor.py" $S/mentor.py; mkdir -p $S/decks   # your own decks go in ~/.local/share/argus-ui/decks
 cp -r "$D/static" $S/static
 if [ ! -f $U/argus-ui.service ]; then
 cat > $U/argus-ui.service <<UNIT

@@ -1,5 +1,12 @@
 # Changelog
 
+## 4.2.0 – 2026-10-18
+- **Mentor / Practice tab**: typed-answer flashcards with key-idea (rubric) grading, model answers, coaching notes, confidence and calibration tracking, FSRS-4.5 spaced repetition, keys 1–4 to rate, "Practice ahead" when caught up
+- Every attempt is saved with grading features and your final rating, as training data for a future learning grader (docs/mentor.md)
+- Decks: UX & HCI terms (25), Psych behind design (8), AI-assisted coding habits (9); add your own in `~/.local/share/argus-ui/decks/`
+- Ultrawide: Argus scales with the window (up to 360px), content column widens to 1600px, header aligns with it
+- Mentor agent in the Leafy Realm theme (icon draft)
+
 ## 4.1.0 – 2026-10-18
 UX audit (VectorLab UX skills) and security review.
 - **Type:** 16/14/12px scale (no text under 12px), task details at 14px, weights 400/600 only, body line-height 1.5
