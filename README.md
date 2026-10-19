@@ -2,11 +2,13 @@
 
 A small, self-hosted web page that watches the background jobs on a Linux machine (systemd `--user` services and timers) and lets you act on them from any device on your Tailscale network. It's one Python file with no dependencies, plus a static page, and it comes with a hand-drawn Greek-myth theme.
 
-![The Watch page: task cards grouped by agent, with Zeus's bolt and Medusa's gaze as tools](docs/screenshots/watch.png)
+![A 30-second tour: Zeus's bolt runs a task, Medusa freezes one, then the Olympus playground with skeletons, seeds, arrows, a hammer and the tsunami reset](docs/screenshots/preview.gif)
 
 ## What it does
 
 **Watch.** Jobs are shown as **tasks**, grouped under **agents** (personas you define). Each card shows whether the task is OK, running, failed or frozen, when it last ran and next runs, its memory use and its latest log. Argus, the many-eyed watchman, follows your pointer. When a task fails, his eyes turn red, a red aura pulses, an alarm badge counts the failures and a short chime plays (unless muted).
+
+![The Watch page: task cards grouped by agent, with Zeus's bolt and Medusa's gaze as tools](docs/screenshots/watch.png)
 
 **Powers.** Drag a medallion onto a task card:
 - **Zeus's bolt** runs the task now, or restarts an always-on service.

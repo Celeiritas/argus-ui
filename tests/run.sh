@@ -1,6 +1,7 @@
 #!/bin/bash
 # tests/run.sh - build the package, run it against fake systemd units, and run the browser checks.
 #   bash tests/run.sh            all checks          bash tests/run.sh olympus      just tests/olympus.test.js
+#   bash tests/run.sh demo       records docs/screenshots/preview.gif for the README (needs ffmpeg)
 # Needs python3, node and Playwright with Chromium (npm install; npx playwright install chromium).
 # Nothing outside a temporary folder is touched: a throwaway HOME, fake systemctl/journalctl, a saved weather reading.
 set -e
@@ -15,6 +16,11 @@ HOME="$T/home" ARGUS_DEV=1 ARGUS_WEATHER=40,-111 ARGUS_STATIC="$T/pkg/static" AR
 trap 'kill $PID 2>/dev/null; echo "(server log and screenshots: $T)"' EXIT
 for i in $(seq 50); do curl -s -o /dev/null "http://127.0.0.1:$PORT/" && break; sleep .2; done
 fail=0
+if [ "$1" = demo ]; then   # bash tests/run.sh demo: record the README preview GIF
+  BASE="http://127.0.0.1:$PORT/argus/" FIXTURES="$T/fx" SHOTS="$T" node "$R/tests/demo.js" || exit 1
+  ffmpeg -loglevel error -y -ss 1.5 -i "$T/demo.webm" -vf "setpts=PTS/1.5,fps=10,scale=720:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=64:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle" "$R/docs/screenshots/preview.gif"
+  echo "== wrote docs/screenshots/preview.gif ($(du -h "$R/docs/screenshots/preview.gif" | cut -f1))"; exit 0
+fi
 for t in "$R"/tests/${1:-*}.test.js; do
   echo "== $(basename "$t" .test.js)"
   BASE="http://127.0.0.1:$PORT/argus/" FIXTURES="$T/fx" SHOTS="$T" node "$t" || fail=1

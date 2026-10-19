@@ -1,5 +1,8 @@
 # Changelog
 
+## 4.5.3 – 2026-10-19
+- README opens with a short preview GIF of Watch and the Olympus playground. `bash tests/run.sh demo` records it again from the fake tasks (needs ffmpeg)
+
 ## 4.5.2 – 2026-10-19
 - **`scripts/new-theme.py`** makes a theme in one step: theme.json, a lettered medallion per agent, a plain Argus, a snowflake freeze medallion, app icons and a sample practice deck (needs Pillow)
 - **`themes/starter`**, a free (MIT) placeholder theme made with it, so the project can be tried without the Leafy Realm art
