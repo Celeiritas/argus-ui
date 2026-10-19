@@ -4,7 +4,7 @@ Where it comes from: Open-Meteo (https://open-meteo.com), free, no account or AP
 calls it - at most once every 20 minutes - so the browser never talks to an outside site, and the
 only things Open-Meteo learns are this server's IP address and the rounded location in your config.
 
-Location: ~/.config/argus-ui/weather.json  {"lat": 40.39, "lon": -111.85, "units": "f"}
+Location: ~/.config/argus-ui/weather.json  {"lat": 51.51, "lon": -0.13, "units": "c"}  (example: London)
 (or ARGUS_WEATHER="lat,lon"). With no location set, the page still shows the season, just no weather.
 """
 import json, os, threading, time, urllib.request

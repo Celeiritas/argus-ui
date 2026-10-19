@@ -1,22 +1,40 @@
 # Argus UI
 
-A small, self-hosted web page that watches the background jobs on a Linux machine (systemd `--user` services and timers) and lets you act on them, from any device on your Tailscale network.
+A small, self-hosted web page that watches the background jobs on a Linux machine (systemd `--user` services and timers) and lets you act on them from any device on your Tailscale network. It's one Python file with no dependencies, plus a static page, and it comes with a hand-drawn Greek-myth theme.
 
-Jobs are shown as **tasks**, grouped under **agents** (personas you define). Each task card shows whether it is OK, running, failed or frozen, when it last ran and runs next, its memory use and its latest log.
+![The Watch page: task cards grouped by agent, with Zeus's bolt and Medusa's gaze as tools](docs/screenshots/watch.png)
 
-**Powers** you can throw at a task card:
-- **Medusa's gaze**: drag Medusa onto a task to *freeze* it (stop it and pause its timer; the card turns to stone). Drag her onto a stone card to *thaw* it, which restores exactly what was enabled or running. Nothing is ever deleted.
-- **Zeus's bolt**: hurl it at a task to *run* it now, or *restart* it if it's an always-on service.
+## What it does
 
-**Sections:** a bar across the top switches between **Argus · Watch** (the default) and other sections such as **Mentor · Practice**, a spaced-repetition coach with typed answers, key-idea grading and confidence calibration ([docs/mentor.md](docs/mentor.md)). A theme can list sections that are still coming (`coming_soon` in `theme.json`).
+**Watch.** Jobs are shown as **tasks**, grouped under **agents** (personas you define). Each card shows whether the task is OK, running, failed or frozen, when it last ran and next runs, its memory use and its latest log. Argus, the many-eyed watchman, follows your pointer. When a task fails, his eyes turn red, a red aura pulses, an alarm badge counts the failures and a short chime plays (unless muted).
 
-**Scene:** every page sits on Mount Olympus with grass and trees that follow the season and the live weather (rain, snow, fog, storms), fetched by the server from Open-Meteo with no API key. The **Olympus · Playground** section lets you try the powers on the scene: strike or fling bolts at trees, turn them to stone with Medusa, wash the debris away with Poseidon. See [docs/scene.md](docs/scene.md). To show live weather, install with `WEATHER=<lat>,<lon>`.
+**Powers.** Drag a medallion onto a task card:
+- **Zeus's bolt** runs the task now, or restarts an always-on service.
+- **Medusa's gaze** *freezes* a task: it stops it and pauses its timer, and the card turns to stone. Use her again to *thaw* it, which restores exactly what was enabled or running. Nothing is ever deleted.
 
-**Develop and test:** `bash tests/run.sh` runs the package against fake systemd units and checks every page in a real browser (needs Playwright; see `CLAUDE.md`). On the machine that runs Argus, `bash scripts/deploy.sh` pulls the latest code from git, builds it and installs it, keeping your sounds (`~/.config/argus-ui/sfx/`), weather location and settings.
+**Scene.** Every page sits on Mount Olympus. The grass and trees follow the season, and the sky follows the live weather (rain, snow, fog, storms). The server fetches the weather from Open-Meteo, which needs no API key.
 
-The watchman, Argus, sits at the top: his eyes follow your pointer and glare at anything that has failed. When a task fails, all his eyes turn red and glow, a red aura pulses, an alarm badge counts the failures and a short chime plays (unless muted). On other sections he keeps watch from the corner; select him to go back.
+**Olympus · Playground.** The twelve Olympians sit on an Ω, each with an item you can drag, drop or fling onto the scene:
+- Zeus's bolt burns trees.
+- Medusa's snake turns things to stone.
+- Poseidon's trident sends a tsunami that resets everything.
+- Hades' bident raises rattling skeletons.
+- Demeter's seeds grow seasonal flowers.
+- Apollo's bow fires arrows that stick.
+- Hephaestus' hammer digs holes.
 
-> Status: early and personal. It runs the author's home server and is being generalized. Expect changes.
+See [docs/scene.md](docs/scene.md).
+
+![The Olympus playground: items on an omega, a burning tree, an arrow, flowers and a hole in the ground](docs/screenshots/olympus.png)
+
+**Mentor · Practice.** A spaced-repetition coach. You type each answer, it grades the key ideas, and it tracks how well your confidence matches your results. See [docs/mentor.md](docs/mentor.md).
+
+![The Mentor page: a flashcard with a typed answer and a confidence rating](docs/screenshots/mentor.png)
+
+## How it runs
+There's no Docker and no container. Argus is a single Python file (standard library only) that runs as a **systemd user service** on the machine it watches. It reads task status straight from systemd (`systemctl --user`, `journalctl`). It listens only on `127.0.0.1`, and `tailscale serve` publishes it to your own devices over HTTPS. The page is plain HTML, CSS and JavaScript with no build framework.
+
+> Status: personal project, actively changing. It runs the author's home server. The code is MIT-licensed; the Leafy Realm artwork is not (see License). Sound effects are not included.
 
 ## What you need
 - Linux with systemd and Python 3 (no extra packages).
@@ -38,16 +56,22 @@ On a phone, open that address and use **Add to Home screen** to install it as an
 Any `systemd --user` service whose name starts with an agent key from the theme, followed by a dash. With the Leafy Realm theme, `hermes-sort` appears under Hermes and `mnemosyne-backup` under Mnemosyne. A JSON file per task in the registry folder (`~/.config/argus-ui/agents/<task>.json`, or the theme's `registry`) can add `notes` shown on the card.
 
 ## Themes
-A theme is a folder in `themes/` with `theme.json` (title, subtitle, agents, which tasks may never be frozen), an icon per agent and the Medusa SVG. Sound effects are optional and not included: drop your own `freeze.mp3`, `thaw.mp3` and `bolt.mp3` into the theme's `sfx/` folder. See [docs/themes.md](docs/themes.md).
+A theme is a folder in `themes/` with `theme.json` (title, subtitle, agents, which tasks may never be frozen, sections still to come), an icon per agent and the god artwork. Sound effects are optional and not included. Put your own files in `~/.config/argus-ui/sfx/` on the machine that runs Argus; [themes/leafy-realm/sfx/README.md](themes/leafy-realm/sfx/README.md) lists the file names. Without them, the page plays simple built-in sounds. See [docs/themes.md](docs/themes.md).
 
 ## Repository layout
 ```
-server/argus_ui.py      the whole server (Python standard library only)
-web/                    the page (index.html), app manifest, service worker
-themes/leafy-realm/     the author's theme: agents, icons, Medusa, sounds, source artwork
+server/                 argus_ui.py (HTTP server), mentor.py (practice), sky.py (weather); standard library only
+web/                    index.html, css/, js/ (core, scene, powers, olympus, mentor, main), manifest, service worker
+themes/leafy-realm/     the author's theme: agents, icons, god artwork, practice decks
 scripts/build.sh        builds an installable package for a theme
 scripts/install.sh      installs/updates on the target machine (keeps the old version)
+scripts/deploy.sh       on the target machine: git pull + build + install
+tests/                  bash tests/run.sh: fake systemd units + browser checks (Playwright)
+docs/                   scene and layer order, Mentor, themes, UX audit, screenshots
 ```
+
+## Develop and test
+`bash tests/run.sh` builds the package, runs it against fake systemd units and checks every page in a real browser (Chromium through Playwright), including a 375px phone and an ultrawide screen. The screenshots above come from that run. On the machine that runs Argus, `bash scripts/deploy.sh` pulls the latest code, builds it and installs it, keeping your sounds, weather location and settings.
 
 ## Safety
 There is no login, so the server protects itself in other ways:

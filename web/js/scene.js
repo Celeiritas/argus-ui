@@ -1,5 +1,5 @@
 // Argus UI - the scene behind every page: sky, Olympus, ground, seasonal trees, live weather (see docs/scene.md).
-/* ---------- scene: season from the date, weather from LeafyBard (api/sky), trees Zeus can strike ----------
+/* ---------- scene: season from the date, weather from the server (api/sky), trees Zeus can strike ----------
    Preview any look with URL options, e.g.  ?sky=storm&season=fall&night=1   (sky: clear cloudy rain storm snow fog) */
 const scene = (() => {
   const SC = $('#scene'), Q = new URLSearchParams(location.search);

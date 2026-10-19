@@ -1,5 +1,9 @@
 # Changelog
 
+## 4.5.1 – 2026-10-19
+- README rewritten for visitors: screenshots of Watch, Olympus and Mentor (taken by the test run with fake tasks), what each section does, and how Argus runs (a systemd user service, no containers)
+- The weather example uses a sample location instead of a real one; comments no longer name the author's machine
+
 ## 4.5.0 – 2026-10-18
 - **Olympus playground rebuilt around items**: the twelve Olympians on an Ω with Zeus at the top; Hades in a **Chthonic** spot and Medusa **Beyond Olympus**. Seats show each god's item; gods without a power yet are dashed placeholders
 - Drag and fling any item (a still release drops it): Zeus's bolt, Medusa's snake (stone and back), Poseidon's trident (an opaque tsunami resets the playground), Hades' bident (skeletons rise from the ground and rattle; it crumbles them too), Demeter's seeds (seasonal flowers), Apollo's bow (arrows that stick), Hephaestus' hammer (digs ever-deeper holes, smashes skeletons). Click-then-place for keyboard and touch
