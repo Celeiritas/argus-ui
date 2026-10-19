@@ -1,5 +1,11 @@
 # Changelog
 
+## 4.5.2 – 2026-10-19
+- **`scripts/new-theme.py`** makes a theme in one step: theme.json, a lettered medallion per agent, a plain Argus, a snowflake freeze medallion, app icons and a sample practice deck (needs Pillow)
+- **`themes/starter`**, a free (MIT) placeholder theme made with it, so the project can be tried without the Leafy Realm art
+- **docs/sounds.md**: file names, free sound sources, trimming with ffmpeg and where to put the files; docs/themes.md rewritten
+- README install steps no longer scroll sideways; `THEME=<name> bash tests/run.sh` builds another theme for the tests
+
 ## 4.5.1 – 2026-10-19
 - README rewritten for visitors: screenshots of Watch, Olympus and Mentor (taken by the test run with fake tasks), what each section does, and how Argus runs (a systemd user service, no containers)
 - The weather example uses a sample location instead of a real one; comments no longer name the author's machine

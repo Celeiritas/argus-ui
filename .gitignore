@@ -5,3 +5,5 @@ themes/*/sfx/**/*.mp3
 node_modules/
 CLAUDE.local.md
 .claude/settings.local.json
+themes/*/sfx/*.wav
+themes/*/sfx/*.ogg

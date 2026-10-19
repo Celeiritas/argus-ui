@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 234 234" class="medusa" overflow="visible" style="overflow:visible">
+<style>
+.medusa{--ring:#7FA7C9;--glow:#B9D6EE}
+.medusa.awake{--ring:#A9CBEA}.medusa.freezing{--ring:#D8F0FF;--glow:#FFFFFF}.medusa.thawing{--ring:#9FE3B5;--glow:#C9F5D6}
+.medusa .flake{fill:none;stroke:var(--glow);stroke-width:9;stroke-linecap:round}
+</style>
+<circle cx="117" cy="117" r="108" fill="#1C2127" stroke="var(--ring)" stroke-width="10"/>
+<g class="flake" transform="translate(117 117)">
+<path d="M0-62V62M-54-31 54 31M-54 31 54-31"/>
+<path d="M-14-48 0-34 14-48M-14 48 0 34 14 48M-48-10-30-17-34-36M48 10 30 17 34 36M-48 10-30 17-34 36M48-10 30-17 34-36"/>
+</g>
+</svg>

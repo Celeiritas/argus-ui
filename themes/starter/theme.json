@@ -1,0 +1,35 @@
+{
+  "name": "starter",
+  "title": "Argus",
+  "subtitle": "My server",
+  "never_freeze": [
+    "argus-ui"
+  ],
+  "agents": [
+    {
+      "key": "argus",
+      "name": "Argus",
+      "domain": "Watchman · monitoring"
+    },
+    {
+      "key": "backup",
+      "name": "Backup",
+      "domain": "Copies · snapshots"
+    },
+    {
+      "key": "media",
+      "name": "Media",
+      "domain": "Library · streaming"
+    },
+    {
+      "key": "sync",
+      "name": "Sync",
+      "domain": "Files between devices"
+    },
+    {
+      "key": "mentor",
+      "name": "Mentor",
+      "domain": "Practice · coaching"
+    }
+  ]
+}

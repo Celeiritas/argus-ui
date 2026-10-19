@@ -41,11 +41,18 @@ There's no Docker and no container. Argus is a single Python file (standard libr
 - Optional: [Tailscale](https://tailscale.com) to reach the page from your other devices over HTTPS.
 
 ## Install
+Build a package from a theme. `starter` is free to use; `leafy-realm` is the author's art.
 ```bash
-bash scripts/build.sh leafy-realm            # -> dist/argus-ui-<version>-leafy-realm.tar.gz
-# copy the package to the machine to watch, then on that machine:
-mkdir -p ~/argus-ui && tar -xzf argus-ui-*.tar.gz -C ~/argus-ui && bash ~/argus-ui/install.sh
+bash scripts/build.sh starter
 ```
+Copy `dist/argus-ui-<version>-starter.tar.gz` to the machine to watch. Then, on that machine:
+```bash
+mkdir -p ~/argus-ui
+tar -xzf argus-ui-*.tar.gz -C ~/argus-ui
+bash ~/argus-ui/install.sh
+```
+To show live weather, run the last line as `WEATHER=<lat>,<lon> bash ~/argus-ui/install.sh`.
+
 Argus listens on this machine only (`127.0.0.1:8095`) by default. Publish it to your devices over HTTPS on your tailnet at `https://<host>.<tailnet>.ts.net/argus` (Tailscale provides the certificate):
 ```bash
 sudo tailscale serve --bg --set-path /argus http://127.0.0.1:8095
@@ -55,17 +62,20 @@ On a phone, open that address and use **Add to Home screen** to install it as an
 ## Which jobs show up
 Any `systemd --user` service whose name starts with an agent key from the theme, followed by a dash. With the Leafy Realm theme, `hermes-sort` appears under Hermes and `mnemosyne-backup` under Mnemosyne. A JSON file per task in the registry folder (`~/.config/argus-ui/agents/<task>.json`, or the theme's `registry`) can add `notes` shown on the card.
 
-## Themes
-A theme is a folder in `themes/` with `theme.json` (title, subtitle, agents, which tasks may never be frozen, sections still to come), an icon per agent and the god artwork. Sound effects are optional and not included. Put your own files in `~/.config/argus-ui/sfx/` on the machine that runs Argus; [themes/leafy-realm/sfx/README.md](themes/leafy-realm/sfx/README.md) lists the file names. Without them, the page plays simple built-in sounds. See [docs/themes.md](docs/themes.md).
+## Themes and sounds
+- **Themes:** `python3 scripts/new-theme.py mytheme --agent "backup:Backup:Copies"` makes a theme with placeholder art in one step. Swap in your own art whenever you like. See [docs/themes.md](docs/themes.md).
+- **Sounds:** none are included. Put your own short mp3s in `~/.config/argus-ui/sfx/` on the machine that runs Argus. [docs/sounds.md](docs/sounds.md) has the file names, free sources and how to trim them.
 
 ## Repository layout
 ```
 server/                 argus_ui.py (HTTP server), mentor.py (practice), sky.py (weather); standard library only
 web/                    index.html, css/, js/ (core, scene, powers, olympus, mentor, main), manifest, service worker
-themes/leafy-realm/     the author's theme: agents, icons, god artwork, practice decks
+themes/leafy-realm/     the author's theme (art all rights reserved)
+themes/starter/         a free placeholder theme made by scripts/new-theme.py
 scripts/build.sh        builds an installable package for a theme
 scripts/install.sh      installs/updates on the target machine (keeps the old version)
 scripts/deploy.sh       on the target machine: git pull + build + install
+scripts/new-theme.py    makes a new theme with placeholder art
 tests/                  bash tests/run.sh: fake systemd units + browser checks (Playwright)
 docs/                   scene and layer order, Mentor, themes, UX audit, screenshots
 ```

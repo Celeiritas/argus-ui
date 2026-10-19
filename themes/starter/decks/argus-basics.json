@@ -1,0 +1,78 @@
+{
+ "id": "argus-basics",
+ "name": "Argus basics",
+ "blurb": "A sample deck. Add your own JSON decks to this folder.",
+ "cards": [
+  {
+   "id": "task",
+   "prompt": "Which background jobs does Argus show?",
+   "answer": "systemd --user services and timers whose names start with an agent key and a dash, such as backup-nightly.",
+   "points": [
+    {
+     "idea": "systemd user services",
+     "any": [
+      "systemd",
+      "service",
+      "timer"
+     ]
+    },
+    {
+     "idea": "named after an agent key",
+     "any": [
+      "key",
+      "prefix",
+      "name",
+      "starts"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "freeze",
+   "prompt": "What does freezing a task do?",
+   "answer": "It stops the task and pauses its timer without deleting anything; thawing restores exactly what was on.",
+   "points": [
+    {
+     "idea": "stops it and pauses the timer",
+     "any": [
+      "stop",
+      "pause",
+      "timer"
+     ]
+    },
+    {
+     "idea": "nothing is deleted; thaw restores it",
+     "any": [
+      "delete",
+      "restore",
+      "thaw",
+      "undo"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "serve",
+   "prompt": "How do other devices reach Argus safely?",
+   "answer": "Argus listens on 127.0.0.1 only, and tailscale serve publishes it over HTTPS to devices on your tailnet.",
+   "points": [
+    {
+     "idea": "only listens locally",
+     "any": [
+      "127.0.0.1",
+      "localhost",
+      "local"
+     ]
+    },
+    {
+     "idea": "tailscale serve over https",
+     "any": [
+      "tailscale",
+      "tailnet",
+      "https"
+     ]
+    }
+   ]
+  }
+ ]
+}
