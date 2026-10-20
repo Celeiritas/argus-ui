@@ -28,6 +28,21 @@ Code an AI writes for you skips the part where you build the mental model (the *
 
 Argus ships one lesson, **Argus: caching, locks and the Mentor scheduler** (`themes/leafy-realm/decks/argus-code.json`), made from this project's own `sky.py` and `mentor.py`. It doubles as an example of the format, Learn fields included. A lesson needs no drills: terms and explain cards alone import and run, and a spot-it snippet can be a terminal transcript rather than code. Anything that names your machines, paths or hosts belongs in your private inbox or decks folder, not in a theme: themes ship with the repository.
 
+## Placeholders: your machines, never in a lesson
+A lesson is meant to move between people (and to sit in a public repository), so it never names a real machine, path or account. It says `{{SERVER}}` instead, and Mentor fills that in every time it shows a card, from `~/.config/leafy/realm.json` on the machine that runs it (yours alone; never commit it). Every field a card shows is filled: prompts, answers, hints, snippets, the Lessons view. Grading compares your answer against the filled-in text, so you type your server's real name. The database keeps the `{{…}}` form, so editing `realm.json` takes effect on the next card, with no restart and no re-import.
+
+| Placeholder | Means | Default (no `realm.json`) |
+|---|---|---|
+| `{{SERVER}}` | the always-on machine that runs Argus | `homeserver` |
+| `{{PC}}` | the computer you code on | `desktop` |
+| `{{PHONE}}` | your phone | `phone` |
+| `{{SSH}}` | the ssh name of the server (`ssh {{SSH}}`) | `server` |
+| `{{HOME_PC}}` | your home folder on the PC | `C:\Users\you` |
+| `{{HOME_SERVER}}` | your home folder on the server | `~` |
+| `{{REPO_URL}}` | your clone's URL | `https://github.com/you/argus-ui` |
+
+Copy [`realm.example.json`](realm.example.json) to `~/.config/leafy/realm.json` and change the values; keys you leave out keep their default, and key case doesn't matter. A missing or broken file means the defaults (`LEAFY_REALM` points Mentor at another file). Unknown `{{NAMES}}` and `{{BLANK_n}}` are left alone. `scripts/check-private.sh` stops a push that names a real home path, host, address or email (see `CLAUDE.md`).
+
 ## How a card works
 1. Read the prompt and type: the missing code in each box (levels 1–2), the whole body (level 3; <kbd>Enter</kbd> keeps the indent and adds one after a colon), the missing term, or your explanation. Say how sure you are.
 2. Mentor checks it:

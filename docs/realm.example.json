@@ -1,0 +1,9 @@
+{
+  "SERVER": "homeserver",
+  "PC": "desktop",
+  "PHONE": "phone",
+  "SSH": "server",
+  "HOME_PC": "C:\\Users\\you",
+  "HOME_SERVER": "~",
+  "REPO_URL": "https://github.com/you/argus-ui"
+}
