@@ -1,0 +1,384 @@
+{
+ "metadata": {
+  "timestamp": "2026-10-20T11:30:00",
+  "module_name": "Git basics: three copies that never sync on their own",
+  "project": "argus-ui",
+  "source_files": [
+   "scripts/deploy.sh",
+   "claude/leafy_workflow.md"
+  ],
+  "concepts_covered": [
+   "repository",
+   "clone",
+   "origin",
+   "commit",
+   "branch",
+   "pull",
+   "push",
+   "pull request",
+   "merge"
+  ]
+ },
+ "cta_summary": {
+  "schematic_mental_model": "There are three copies of argus-ui: GitHub (the one true copy), a clone on LeafyVictus and a clone on LeafyBard. Nothing moves between them by itself. git pull brings GitHub's commits down into the clone you are standing in; git push sends your commits up; git clone makes a copy once. A branch is a side line of commits; a pull request asks GitHub to merge it into main; deploy.sh installs whatever main holds after its own git pull.",
+  "design_rules_heuristics": "Build on a branch, review in a pull request, merge, then pull in each clone before you copy or deploy from it. Clone once per machine; after that, pull.",
+  "hard_rules_invariants": "A clone knows nothing new until it pulls. A commit exists only where it was made until it is pushed. deploy.sh runs from main, so main must always work.",
+  "hci_human_factors_bridge": "Git names its mechanism, not your goal, so the words (pull, pull request, origin, fast-forward) build the wrong mental model unless you replace it with: three copies, one direction per command, nothing moves until told.",
+  "orientation": "argus-ui lives in three places: GitHub, a clone on LeafyVictus (C:\\Users\\daxic\\src\\argus-ui) and a clone on LeafyBard (~/src/argus-ui). They never sync on their own: git pull brings GitHub's changes down into the clone you are in, git push sends yours up, and a pull request is GitHub's review page for merging a branch into main. After this lesson you can update a clone, explain why deploy.sh pulls first, and read git status and git log without guessing.",
+  "expert_move": "Ask where the change lives right now (GitHub, this clone, that clone) and which single command moves it one step."
+ },
+ "tier_1_faded_code_drills": [],
+ "tier_2_self_explanation_cards": [
+  {
+   "id": "card_01",
+   "card_type": "Pre-Mortem",
+   "file_breadcrumb": "LeafyVictus -> C:\\Users\\daxic\\src\\argus-ui",
+   "front_prompt": "You merged PR #4 on GitHub, then straight away ran this on LeafyVictus. The command copies the *old* file. Why, and which one line fixes it?\n```\ncopy C:\\Users\\daxic\\src\\argus-ui\\docs\\mentor-command.md C:\\Users\\daxic\\.claude\\commands\\mentor.md\n```",
+   "back_explanation": "Merging changes the repository on GitHub only. The clone on LeafyVictus still holds the files from its last `git pull`, so the copy takes the old command. Run `cd C:\\Users\\daxic\\src\\argus-ui; git pull` first, then copy. Rule: a clone knows nothing new until it pulls.",
+   "eval_rubric": [
+    {
+     "idea": "merging changed GitHub, not the clone",
+     "any": [
+      "github",
+      "remote",
+      "origin",
+      "not the clone",
+      "only on"
+     ]
+    },
+    {
+     "idea": "the clone is stale until it pulls",
+     "any": [
+      "pull",
+      "stale",
+      "old",
+      "out of date",
+      "last"
+     ]
+    },
+    {
+     "idea": "fix: git pull in the clone first",
+     "any": [
+      "git pull",
+      "pull first",
+      "then copy"
+     ]
+    }
+   ],
+   "expert_move": "Ask where the change lives right now (GitHub, this clone, that clone) and which command moves it one step closer.",
+   "preread": {
+    "key_ideas": [
+     "The three copies (GitHub, LeafyVictus, LeafyBard) never sync on their own.",
+     "A change made on GitHub reaches a clone only through `git pull`, run inside that clone.",
+     "Copying or deploying from a clone uses whatever that clone last pulled."
+    ],
+    "near_example": {
+     "code": "# on LeafyBard\nssh bard 'cd ~/src/argus-ui && bash scripts/deploy.sh'\n# deploy.sh begins with:  git pull",
+     "ask": "Why does deploy.sh start with git pull?",
+     "answer": "Because the clone on LeafyBard is stale until it pulls; without it, deploy would build and install the previous version."
+    }
+   },
+   "hints": [
+    "Where is the new file right now, and where is the copy command looking?",
+    "Near example: refreshing a web page after someone else edited it: nothing changes on your screen until you reload."
+   ]
+  },
+  {
+   "id": "card_02",
+   "card_type": "Trade-Off",
+   "file_breadcrumb": "GitHub -> branches",
+   "front_prompt": "4.8.0 was built on a branch (`mentor-learn`) and offered as a pull request, instead of committing straight to `main`. What does the branch buy, and what does it cost?",
+   "back_explanation": "`main` is what `deploy.sh` installs on LeafyBard, so a half-finished change on `main` could reach the live site. A branch keeps the work separate until the diff and tests are reviewed; the pull request is where that review happens. The cost is two extra steps (merge, then pull in each clone) and the chance of a conflict if `main` moved meanwhile.",
+   "eval_rubric": [
+    {
+     "idea": "main is what gets deployed, so it must stay working",
+     "any": [
+      "deploy",
+      "live",
+      "install",
+      "stays working",
+      "safe"
+     ]
+    },
+    {
+     "idea": "the branch lets you review before merging",
+     "any": [
+      "review",
+      "diff",
+      "pull request",
+      "check",
+      "tests"
+     ]
+    },
+    {
+     "idea": "cost: extra steps or conflicts",
+     "any": [
+      "extra step",
+      "merge",
+      "pull again",
+      "conflict",
+      "slower"
+     ]
+    }
+   ],
+   "expert_move": "Ask what happens to the live site if this commit is wrong; that decides whether it belongs on a branch.",
+   "preread": {
+    "key_ideas": [
+     "`main` is the trunk: deploy.sh installs whatever is on it.",
+     "A side branch is a parallel line of commits that does not touch `main` until merged.",
+     "A pull request is the review step between a branch and `main`."
+    ],
+    "near_example": {
+     "code": "git checkout -b fix-typo     # new branch, work here\ngit commit -m \"fix typo\"\ngit push -u origin fix-typo  # now a PR can be opened",
+     "ask": "What is on main after these three commands?",
+     "answer": "Nothing new: the commit is on fix-typo only, until a pull request merges it."
+    }
+   },
+   "hints": [
+    "Which branch does LeafyBard actually run?",
+    "Near example: editing a draft copy of a form instead of the one taped to the wall."
+   ]
+  },
+  {
+   "id": "card_03",
+   "card_type": "HCI-Bridge",
+   "file_breadcrumb": "git -> mental model",
+   "front_prompt": "Beginners often type `git pull` and expect it to also upload their changes, or run `git clone` a second time to \"update\". Which design principle explains the confusion, and what would a clearer mental model be?",
+   "back_explanation": "Git exposes its mechanism (fetch, merge, remote, tracking) rather than the user's goal (keep copies in sync), so the system image does not match the conceptual model people arrive with (Norman). \"Pull\" and \"push\" sound symmetric but only one is safe to repeat; \"pull request\" is not a pull at all. A better model: three copies that never talk unless told; pull = down to me, push = up to GitHub, clone = make a copy once.",
+   "eval_rubric": [
+    {
+     "idea": "mismatch between system image and user's mental model",
+     "any": [
+      "mental model",
+      "conceptual model",
+      "norman",
+      "system image",
+      "mismatch",
+      "expect"
+     ]
+    },
+    {
+     "idea": "commands name mechanism, not the user's goal",
+     "any": [
+      "mechanism",
+      "goal",
+      "name",
+      "vocabulary",
+      "jargon",
+      "sync"
+     ]
+    },
+    {
+     "idea": "a clearer model: copies that only move when told",
+     "any": [
+      "copies",
+      "down",
+      "up",
+      "once",
+      "never sync",
+      "direction"
+     ]
+    }
+   ],
+   "expert_move": "When a tool confuses you, ask what model its words assume and what model you brought.",
+   "preread": {
+    "key_ideas": [
+     "A conceptual model is the user's picture of how a thing works; the system image (names, feedback) is what builds it (Norman, 2013).",
+     "Git's names describe its mechanism, not the user's goal of keeping copies in sync.",
+     "The working model: three copies; nothing moves until a command moves it, and each command has one direction."
+    ],
+    "near_example": {
+     "code": "git pull     # GitHub -> me\ngit push     # me -> GitHub\ngit clone    # make a copy, once",
+     "ask": "Which of these is safe to run any time, and which should you almost never run twice in the same folder?",
+     "answer": "pull is safe any time; clone twice makes a second, unrelated copy."
+    }
+   },
+   "hints": [
+    "Whose words are these commands in: the tool's or the user's?",
+    "Near example: a thermostat labelled \"valve open %\" instead of \"temperature\"."
+   ]
+  }
+ ],
+ "tier_3_terminology_cards": [
+  {
+   "id": "term_01",
+   "term": "repository",
+   "category": "Git",
+   "teach_order": 1,
+   "concise_definition": "A project folder plus its entire history of saved snapshots (commits).",
+   "project_anchor": "argus-ui: the GitHub copy is the one true repository; LeafyVictus and LeafyBard each hold a clone of it",
+   "contrast_anchor": "Unlike a plain folder, a repository remembers every past version and who changed what.",
+   "cloze_prompt": "`C:\\Users\\daxic\\src\\argus-ui` is not just a folder: with its `.git` inside it is a {{BLANK}}, so every past version can be brought back.",
+   "expert_move": "Look for a `.git` folder: a folder with one is a repository, whatever else is in it.",
+   "spot_it": {
+    "snippet": "C:\\Users\\daxic\\src\\argus-ui\n  .git\\\n  server\\\n  web\\\n  README.md",
+    "line": 2,
+    "why": "The hidden `.git` folder holds the history; that is what makes this folder a repository."
+   },
+   "hints": [
+    "What is the one thing a folder needs for `git` commands to work inside it?",
+    "Near example: a Word document with Track Changes on is a file plus its history; a repository is a folder plus its history."
+   ]
+  },
+  {
+   "id": "term_02",
+   "term": "clone",
+   "category": "Git",
+   "teach_order": 2,
+   "concise_definition": "A full copy of a repository, history included, made once on a machine with `git clone <url>`.",
+   "project_anchor": "LeafyVictus: `git clone https://github.com/Celeiritas/argus-ui C:\\Users\\daxic\\src\\argus-ui` (done once); LeafyBard: `~/src/argus-ui`",
+   "contrast_anchor": "Unlike a download of a zip, a clone keeps the history and remembers where it came from, so it can pull and push later.",
+   "cloze_prompt": "Each machine gets its own {{BLANK}} of the GitHub repository, made once with `git clone`; after that you update it with `git pull`, never by cloning again.",
+   "expert_move": "Ask: does this machine already have a clone? If yes, pull; cloning twice makes two unrelated copies.",
+   "spot_it": {
+    "snippet": "PS C:\\Users\\daxic\\src> git clone https://github.com/Celeiritas/argus-ui\nCloning into 'argus-ui'...\nPS C:\\Users\\daxic\\src> cd argus-ui\nPS C:\\Users\\daxic\\src\\argus-ui> git pull\nAlready up to date.",
+    "line": 1,
+    "why": "The first command copies the whole repository to this machine; everything after works inside that copy."
+   },
+   "hints": [
+    "Which command is run once per machine, and which one every time after?",
+    "Near example: installing an app once (clone) versus checking for updates (pull)."
+   ]
+  },
+  {
+   "id": "term_03",
+   "term": "origin",
+   "category": "Git",
+   "teach_order": 3,
+   "concise_definition": "The name a clone gives the repository it was cloned from; the default remote.",
+   "project_anchor": "In both clones, `origin` = `https://github.com/Celeiritas/argus-ui`; `git push -u origin mentor-learn` sends a branch there",
+   "contrast_anchor": "Unlike `main` (a branch, a line of commits), `origin` is a place: the other repository your clone talks to.",
+   "cloze_prompt": "`git pull` fetches from {{BLANK}}, the clone's name for the GitHub repository it came from.",
+   "expert_move": "Read `git remote -v`: whatever it lists is where pull and push go.",
+   "spot_it": {
+    "snippet": "PS C:\\Users\\daxic\\src\\argus-ui> git remote -v\norigin  https://github.com/Celeiritas/argus-ui (fetch)\norigin  https://github.com/Celeiritas/argus-ui (push)",
+    "line": 2,
+    "why": "`origin` is the label; the URL after it is the GitHub repository it stands for."
+   },
+   "hints": [
+    "It is a nickname for a place, not a branch. What place?",
+    "Near example: \"home\" in a phone's contacts is a name for one address; `origin` is a name for one repository URL."
+   ]
+  },
+  {
+   "id": "term_04",
+   "term": "commit",
+   "category": "Git",
+   "teach_order": 4,
+   "concise_definition": "One saved snapshot of the repository with a message saying what changed and why.",
+   "project_anchor": "`7cd03e8 Mentor 4.8.0: the Learn phase, a hint ladder and stuck detection` is one commit on the `mentor-learn` branch",
+   "contrast_anchor": "Unlike saving a file (which overwrites), a commit adds a new snapshot and keeps the old ones.",
+   "cloze_prompt": "`git log --oneline` lists each {{BLANK}}: a short id, then the message that was written when the snapshot was saved.",
+   "expert_move": "Read the message first, then the id: the message says what changed, the id is only an address.",
+   "spot_it": {
+    "snippet": "PS C:\\Users\\daxic\\src\\argus-ui> git log --oneline -3\n7cd03e8 Mentor 4.8.0: the Learn phase, a hint ladder and stuck detection\n3c276cf 4.7.0: Mentor teaches the code you build\n30d9699 4.6.0: LeafyPlugins",
+    "line": 2,
+    "why": "Each line is one commit: its id (`7cd03e8`) and its message. The top one is the newest."
+   },
+   "hints": [
+    "Which lines are snapshots, and which is the command that lists them?",
+    "Near example: a save point in a game that you can always go back to, with a label."
+   ]
+  },
+  {
+   "id": "term_05",
+   "term": "branch",
+   "category": "Git",
+   "teach_order": 5,
+   "concise_definition": "A named line of commits; `main` is the trunk, side branches hold work in progress.",
+   "project_anchor": "4.8.0 was built on the branch `mentor-learn`, so `main` (what deploy.sh installs) stayed unchanged until the merge",
+   "contrast_anchor": "Unlike a clone (a copy on another machine), a branch is a parallel line of work inside the same repository.",
+   "cloze_prompt": "New work goes on a side {{BLANK}} such as `mentor-learn`, and `main` only changes when that work is merged in.",
+   "expert_move": "Run `git status`; the first line says which branch you are on. Decide nothing before you know that.",
+   "spot_it": {
+    "snippet": "PS C:\\Users\\daxic\\src\\argus-ui> git status\nOn branch main\nYour branch is up to date with 'origin/main'.\nnothing to commit, working tree clean",
+    "line": 2,
+    "why": "`On branch main`: this clone is sitting on the trunk. Deploying from here installs `main`."
+   },
+   "hints": [
+    "Which line names the line of commits you are standing on?",
+    "Near example: a document with a \"draft\" copy you edit while the published copy stays as it is."
+   ]
+  },
+  {
+   "id": "term_06",
+   "term": "pull",
+   "category": "Git",
+   "teach_order": 6,
+   "concise_definition": "`git pull`: bring your clone up to date with the remote (fetch the new commits, then merge them in).",
+   "project_anchor": "On LeafyVictus: `cd C:\\Users\\daxic\\src\\argus-ui; git pull` before copying the new `docs/mentor-command.md`; `scripts/deploy.sh` runs `git pull` first on LeafyBard",
+   "contrast_anchor": "Unlike `git push` (your commits go up to GitHub), `pull` brings GitHub's commits down to you.",
+   "cloze_prompt": "After merging a pull request on GitHub, each clone still has the old files until you run `git {{BLANK}}` inside it.",
+   "expert_move": "Before deploying or copying a file from a clone, ask: when did this clone last pull?",
+   "spot_it": {
+    "snippet": "PS C:\\Users\\daxic> cd C:\\Users\\daxic\\src\\argus-ui\nPS C:\\Users\\daxic\\src\\argus-ui> git pull\nUpdating 3c276cf..7cd03e8\nFast-forward\n docs/mentor-command.md | 40 +++++\n 15 files changed",
+    "line": 2,
+    "why": "`git pull`, run inside the clone, downloads the new commits and updates the files; the lines after it report what changed."
+   },
+   "hints": [
+    "Which command moves commits from GitHub to the machine you are sitting at?",
+    "Near example: \"Check for updates\" in an app store: fetch what is new, then apply it."
+   ]
+  },
+  {
+   "id": "term_07",
+   "term": "push",
+   "category": "Git",
+   "teach_order": 7,
+   "concise_definition": "`git push`: send your local commits (a branch) up to the remote.",
+   "project_anchor": "Cloud sessions and Claude Code on LeafyVictus end with `git push`, which is how a branch appears on GitHub for a pull request",
+   "contrast_anchor": "Unlike `pull`, `push` changes GitHub, not your files; it is refused if GitHub has commits you have not pulled.",
+   "cloze_prompt": "A commit made on LeafyVictus is invisible to GitHub and to LeafyBard until you {{BLANK}} it.",
+   "expert_move": "A commit only exists where it was made until it is pushed; if another machine cannot see it, that is why.",
+   "spot_it": {
+    "snippet": "PS C:\\Users\\daxic\\src\\argus-ui> git push -u origin mentor-learn\nEnumerating objects: 31, done.\nTo https://github.com/Celeiritas/argus-ui\n * [new branch]      mentor-learn -> mentor-learn\nbranch 'mentor-learn' set up to track 'origin/mentor-learn'.",
+    "line": 1,
+    "why": "`push -u origin mentor-learn` sends the branch to GitHub and (`-u`) makes the local branch track its GitHub twin, so later `pull`/`push` need no arguments."
+   },
+   "hints": [
+    "Which command moves commits from this machine to GitHub?",
+    "Near example: saving a photo to the cloud so your other devices can see it."
+   ]
+  },
+  {
+   "id": "term_08",
+   "term": "pull request",
+   "category": "Git",
+   "teach_order": 8,
+   "concise_definition": "A GitHub page that asks to merge one branch into another, showing the full diff for review first.",
+   "project_anchor": "PR #4 on `Celeiritas/argus-ui`: merge `mentor-learn` into `main`; you read the diff and the test screenshots, then press Merge",
+   "contrast_anchor": "Unlike `git pull` (a command that updates your clone), a pull request is a review page on GitHub; the names clash, the things do not.",
+   "cloze_prompt": "A branch becomes part of `main` only after its {{BLANK}} is reviewed and merged on GitHub.",
+   "expert_move": "Open the Files changed tab first: the diff is the truth, the description is a summary.",
+   "spot_it": {
+    "snippet": "github.com/Celeiritas/argus-ui/pull/4\nMentor 4.8.0: the Learn phase, a hint ladder and stuck detection\nmentor-learn -> main   Open\n[ Merge pull request ]",
+    "line": 3,
+    "why": "The PR is the request to merge the branch on the left into the one on the right; Merge does it."
+   },
+   "hints": [
+    "It lives on GitHub, not in your terminal. What does it ask for?",
+    "Near example: a document sent for review with \"accept all changes\" at the end."
+   ]
+  },
+  {
+   "id": "term_09",
+   "term": "merge",
+   "category": "Git",
+   "teach_order": 9,
+   "concise_definition": "Combine the commits of one branch into another; a conflict is when both changed the same lines.",
+   "project_anchor": "Merging PR #4 puts the 4.8.0 commit on `main`; `git pull` then merges `origin/main` into each clone's `main`",
+   "contrast_anchor": "Unlike `git clone` (copy everything), a merge brings in only what the other line has that you do not.",
+   "cloze_prompt": "`git pull` is really two steps: fetch the new commits, then {{BLANK}} them into the branch you are on.",
+   "expert_move": "Ask what each side changed; a merge only hurts when both touched the same lines.",
+   "spot_it": {
+    "snippet": "PS C:\\Users\\daxic\\src\\argus-ui> git pull\nUpdating 3c276cf..7cd03e8\nFast-forward\n docs/mentor.md | 224 ++++",
+    "line": 3,
+    "why": "`Fast-forward` is the simplest merge: your branch had nothing new, so it just moved up to GitHub's commit."
+   },
+   "hints": [
+    "Which line says how the two lines of commits were joined?",
+    "Near example: two edited copies of a recipe folded into one; it is easy unless both changed the same step."
+   ]
+  }
+ ]
+}

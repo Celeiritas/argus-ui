@@ -137,7 +137,7 @@ run(async b => {
   fs.writeFileSync(path.join(INBOX, '20261020_120000_inbox_test.json'), JSON.stringify(mod));
   fs.writeFileSync(path.join(INBOX, '20261020_120100_broken.json'), '{"tier_1_faded_code_drills": [');
   await p.locator('[data-view=modules]').click(); await p.waitForTimeout(700);
-  check(await p.locator('.module').count() === 2, 'a lesson copied into the inbox shows up without a restart');
+  check(await p.locator('.module').count() === 3, 'a lesson copied into the inbox shows up without a restart');
   await p.locator('.module').first().locator('details', {hasText: 'Read the lesson again'}).locator('summary').click();
   check(await p.locator('.module').first().locator('[data-read]').count() === 18, 'every Learn card of a lesson can be read again');
   await p.locator('.module').first().locator('[data-read]').nth(1).click(); await p.waitForTimeout(600);
