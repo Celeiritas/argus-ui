@@ -3,7 +3,7 @@
 ## 4.9.0 – 2026-10-20
 - **Placeholders in lessons.** A lesson says `{{SERVER}}`, `{{PC}}`, `{{PHONE}}`, `{{SSH}}`, `{{HOME_PC}}`, `{{HOME_SERVER}}` or `{{REPO_URL}}`, and Mentor fills them in from `~/.config/leafy/realm.json` in every field it shows (prompts, answers, hints, snippets, the Lessons view), falling back to public defaults (`homeserver`, `desktop` …). Grading compares against the filled-in text. The database keeps the placeholders, so lessons move between people unchanged and an edit to `realm.json` shows on the next card. `docs/realm.example.json`; docs/mentor.md explains the file
 - **`scripts/check-private.sh`** stops personal data reaching the public repo: home paths, `*.ts.net` names, IPv4/IPv6 addresses, emails, and every line of your own `~/.config/leafy/denylist.txt` (never committed). It checks the staged changes, a commit range (`main..HEAD`, messages included), the whole tree (`--tree`) or history (`--history`), and prints file:line. `scripts/install-hooks.sh` runs it before every push; a GitHub Actions job runs the generic checks on every pull request
-- The service worker's comment no longer names a device. CLAUDE.md: the placeholder rule, the check before every push, personal lessons never in `themes/`
+- The Leafy Realm theme's subtitle is now "Leafy Realm agents" (it named a device), with a new Watch screenshot; the service worker's comment no longer names a device. CLAUDE.md: the placeholder rule, the check before every push, personal lessons never in `themes/`
 - Tests: a lesson with `{{SERVER}}` shows the public default without `realm.json` and the `realm.json` value with it, and is graded against it
 
 ## 4.8.0 – 2026-10-20
