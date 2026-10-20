@@ -50,6 +50,41 @@ MOVE = {'drill': 'Look at what the function already returns and what each name h
 WORDS = re.compile(r"[A-Za-z0-9_']+")
 STUCK_WINDOW, LAPSE_WINDOW = 2 * 3600, 7 * 86400
 
+# ---------- placeholders: a lesson says {{SERVER}}, never a real machine name or path ----------
+# Filled in from ~/.config/leafy/realm.json (yours, never committed) every time a card is shown or graded; the database
+# keeps the {{...}} form, so a lesson moves between people unchanged and an edit to realm.json shows up at once.
+REALM_FILE = os.path.expanduser(os.environ.get('LEAFY_REALM', '~/.config/leafy/realm.json'))
+REALM_DEFAULTS = {'SERVER': 'homeserver', 'PC': 'desktop', 'PHONE': 'phone', 'SSH': 'server',
+                  'HOME_PC': 'C:\\Users\\you', 'HOME_SERVER': '~', 'REPO_URL': 'https://github.com/you/argus-ui'}
+PLACE = re.compile(r'\{\{\s*(' + '|'.join(REALM_DEFAULTS) + r')\s*\}\}')
+_realm = [None, {}]        # realm.json's mtime when last read, and its values
+
+def realm():
+    """The placeholder values: realm.json over the public defaults. A missing or broken file means the defaults."""
+    try: mt = os.stat(REALM_FILE).st_mtime
+    except OSError: return dict(REALM_DEFAULTS)
+    if _realm[0] != mt:
+        try:
+            with open(REALM_FILE, encoding='utf-8') as fh: doc = json.load(fh)
+        except (OSError, ValueError): doc = {}
+        _realm[:] = [mt, {str(k).upper(): str(v) for k, v in (doc.items() if isinstance(doc, dict) else [])
+                          if str(k).upper() in REALM_DEFAULTS and isinstance(v, (str, int, float)) and str(v).strip()}]
+    return {**REALM_DEFAULTS, **_realm[1]}
+
+def fill(s, vals=None, as_json=False):
+    """Put the realm's values where {{SERVER}} etc. sit. as_json: s is JSON text, so each value goes in escaped."""
+    if not isinstance(s, str) or '{{' not in s: return s
+    vals = vals or realm()
+    return PLACE.sub(lambda m: json.dumps(vals[m.group(1)])[1:-1] if as_json else vals[m.group(1)], s)
+
+def filled(c):
+    """A card row with its placeholders filled in: what the page shows and what grading compares against."""
+    if c is None: return None
+    vals, d = realm(), dict(c)
+    for k in ('prompt', 'answer'): d[k] = fill(d.get(k), vals)
+    for k in ('points', 'data'): d[k] = fill(d.get(k), vals, as_json=True)
+    return d
+
 # ---------- storage ----------
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS cards(
@@ -119,7 +154,7 @@ def deck_list(folder):
         try:
             with open(f, encoding='utf-8') as fh: d = json.load(fh)
             if is_module(d): continue
-            out.append({'id': d['id'], 'name': d.get('name', d['id']), 'blurb': d.get('blurb', ''), 'count': len(d.get('cards', []))})
+            out.append({'id': d['id'], 'name': fill(d.get('name', d['id'])), 'blurb': fill(d.get('blurb', '')), 'count': len(d.get('cards', []))})
         except Exception:
             pass
     return out
@@ -520,10 +555,11 @@ def hint_rungs(c, level=None):
 
 def card_payload(db, c, read_only=False):
     """What the page needs to ask the question - never the answer (a Learn card is the lesson, so it carries it)."""
+    c = filled(c)
     data = json.loads(c['data'] or '{}')
     mod = db.execute("SELECT name, project FROM modules WHERE id=?", (c['deck'],)).fetchone()
     out = {'id': c['id'], 'deck': c['deck'], 'kind': c['kind'], 'tier': TIER.get(c['kind'], 3), 'prompt': c['prompt'],
-           'reps': c['reps'] or 0, 'module': mod['name'] if mod else None, 'project': mod['project'] if mod else None,
+           'reps': c['reps'] or 0, 'module': fill(mod['name']) if mod else None, 'project': fill(mod['project']) if mod else None,
            'learn_of': c['learn_of'], 'refresh': bool(c['refresh']) if 'refresh' in c.keys() else False}
     if c['kind'] == 'drill':
         lv = card_level(c, c['level'])
@@ -592,7 +628,7 @@ def next_card(db, deck=None, extra=False):
 
 def hint(db, card_id, rung):
     """One rung of the hint ladder (1-4). Rung 4 is the answer; the page then submits a blank answer with hints=4."""
-    c = db.execute("SELECT c.*, s.level FROM cards c LEFT JOIN sched s ON s.card_id=c.id WHERE c.id=?", (card_id,)).fetchone()
+    c = filled(db.execute("SELECT c.*, s.level FROM cards c LEFT JOIN sched s ON s.card_id=c.id WHERE c.id=?", (card_id,)).fetchone())
     if not c or c['kind'] in LEARN or rung not in (1, 2, 3, 4): return None
     level = card_level(c, c['level']) if c['kind'] == 'drill' else None
     rungs = hint_rungs(c, level)
@@ -640,7 +676,7 @@ def learn_answer(db, c, text, ms, skipped):
             'suggested': 0, 'previews': {}, 'level_after': None, 'coach': coach, 'learn': True, **extra}
 
 def answer(db, card_id, text, confidence, ms, hints=0, reflections=None, skipped=False):
-    c = db.execute("SELECT c.*, s.level FROM cards c LEFT JOIN sched s ON s.card_id=c.id WHERE c.id=?", (card_id,)).fetchone()
+    c = filled(db.execute("SELECT c.*, s.level FROM cards c LEFT JOIN sched s ON s.card_id=c.id WHERE c.id=?", (card_id,)).fetchone())
     if not c: return None
     if c['kind'] in LEARN: return learn_answer(db, c, text, ms, skipped)
     data = json.loads(c['data'] or '{}')
@@ -774,12 +810,12 @@ def modules(db):
         d = json.loads(r['data'] or '{}')
         title = {'orientation': 'Orientation', 'teach': f"Teach: {r['prompt']}", 'level0': f"Worked example: {(d.get('breadcrumb') or '').split('->')[-1].strip() or r['prompt'][:40]}",
                  'preread': f"Before {(d.get('type') or 'the explain card').lower().replace('pre-mortem', 'the bug hunt')}: {(d.get('breadcrumb') or '').split('->')[-1].strip()}"}[r['kind']]
-        learn.setdefault(r['deck'], []).append({'id': r['id'], 'kind': r['kind'], 'title': title.rstrip(': '), 'seen': bool(r['reps'])})
+        learn.setdefault(r['deck'], []).append({'id': r['id'], 'kind': r['kind'], 'title': fill(title.rstrip(': ')), 'seen': bool(r['reps'])})
     for m in db.execute("SELECT * FROM modules ORDER BY built_in, at DESC").fetchall():
         cards = by.get(m['id'], {})
-        out.append({'id': m['id'], 'name': m['name'], 'project': m['project'], 'built_in': bool(m['built_in']), 'at': m['at'],
-                    'summary': json.loads(m['summary'] or '{}'), 'concepts': json.loads(m['concepts'] or '[]'),
-                    'files': json.loads(m['files'] or '[]'), 'cards': cards, 'learn': learn.get(m['id'], []),
+        out.append({'id': m['id'], 'name': fill(m['name']), 'project': fill(m['project']), 'built_in': bool(m['built_in']), 'at': m['at'],
+                    'summary': json.loads(fill(m['summary'], as_json=True) or '{}'), 'concepts': json.loads(fill(m['concepts'], as_json=True) or '[]'),
+                    'files': json.loads(fill(m['files'], as_json=True) or '[]'), 'cards': cards, 'learn': learn.get(m['id'], []),
                     'to_learn': sum(c['n'] - c['seen'] for k, c in cards.items() if k in LEARN)})
     return out
 

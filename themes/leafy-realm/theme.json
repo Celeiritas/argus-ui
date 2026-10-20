@@ -1,7 +1,7 @@
 {
   "name": "Leafy Realm",
   "title": "Argus",
-  "subtitle": "LeafyBard agents",
+  "subtitle": "Leafy Realm agents",
   "registry": "~/.config/leafy/agents",
   "never_freeze": [
     "argus-ui"

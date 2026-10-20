@@ -204,4 +204,26 @@ run(async b => {
   await ph.locator('.module').first().locator('[data-read*="level0"]').first().click(); await ph.waitForTimeout(600);
   check(await ph.locator('#annot .callout').count() >= 1 && await noOverflow(ph), 'phone: a worked example with its callouts fits without sideways scrolling');
   await shot(ph, 'mentor-phone-level0');
+
+  // placeholders: a lesson says {{SERVER}}; Mentor fills it from ~/.config/leafy/realm.json, else the public default
+  const REALM = path.join(process.env.FIXTURES || '.', '..', 'home', '.config', 'leafy', 'realm.json');
+  fs.writeFileSync(path.join(INBOX, '20261020_120300_realm.json'), JSON.stringify({metadata: {module_name: 'realm_test'},
+    tier_3_terminology_cards: [{term: '{{SERVER}}', concise_definition: 'The always-on machine; its files are under {{HOME_SERVER}}.',
+      cloze_prompt: 'You reach it with `ssh {{SSH}}`; its name is {{BLANK}}.', project_anchor: '{{REPO_URL}} is cloned on it.'}]}));
+  const DECK = '20261020_120300_realm';
+  const d1 = (await api(p, 'next?deck=' + DECK)).card;
+  check(d1 && d1.kind === 'teach' && d1.prompt === 'homeserver' && /under ~\./.test(d1.definition), 'without realm.json a placeholder shows its public default');
+  fs.mkdirSync(path.dirname(REALM), {recursive: true});
+  fs.writeFileSync(REALM, JSON.stringify({SERVER: 'TestHost', ssh: 'thost', REPO_URL: 'https://example.com/elaia'}));
+  const d2 = (await api(p, 'next?deck=' + DECK)).card;
+  check(d2.prompt === 'TestHost' && d2.anchor === 'https://example.com/elaia is cloned on it.', 'with realm.json the same card shows its values, with no restart');
+  await skip(p, DECK, 'teach', 1);
+  const rt = (await api(p, 'next?deck=' + DECK)).card;
+  check(rt.kind === 'term' && /ssh thost/.test(rt.prompt) && !/\{\{(SSH|SERVER)\}\}/.test(rt.prompt), 'every field is filled, a lowercase key too');
+  const ra = await api(p, 'answer', {card: rt.id, text: 'testhost', confidence: 3, ms: 2000});
+  check(ra.coverage === 1 && ra.reference === 'TestHost', 'grading compares against the filled-in text');
+  await p.selectOption('#mdeck', ''); await p.waitForTimeout(300);
+  await p.locator('[data-view=modules]').click(); await p.waitForTimeout(600);
+  check(await p.locator('.module', {hasText: 'realm test'}).locator('[data-read]', {hasText: 'TestHost'}).count() === 1, 'the Lessons view shows the filled-in name too');
+  fs.unlinkSync(REALM);
 });
