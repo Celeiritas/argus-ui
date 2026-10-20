@@ -1,0 +1,405 @@
+{
+ "metadata": {
+  "timestamp": "2026-10-20T12:00:00",
+  "module_name": "Argus: caching, locks and the Mentor scheduler",
+  "project": "argus-ui",
+  "source_files": [
+   "server/sky.py",
+   "server/mentor.py"
+  ],
+  "concepts_covered": [
+   "context managers",
+   "generator expressions",
+   "early returns",
+   "atomic writes",
+   "thread locks",
+   "SQL parameters",
+   "expertise reversal",
+   "interleaving"
+  ]
+ },
+ "cta_summary": {
+  "schematic_mental_model": "A browser asks the Python server for /api/sky; sky.current() answers from an in-memory dict while it is under 20 minutes old, otherwise fetches Open-Meteo once under a lock and saves a copy to disk. Mentor works the same way round: mentor.py keeps cards, schedules and attempts in SQLite, and the page only ever asks for the next card and sends back an answer.",
+  "design_rules_heuristics": "Fetch and grade on the server, so the browser holds no secrets and no answers. Cache with a time-to-live instead of fetching per request. Keep each rule (thresholds, levels) in one small function with early returns so it reads like a table.",
+  "hard_rules_invariants": "Shared state (_mem, the database) is only changed while holding its lock. Files are replaced atomically, never written in place. SQL values always go through ? parameters. current() never raises: a failed fetch keeps the last reading and marks it stale.",
+  "hci_human_factors_bridge": "Caching keeps the page fast and the sky stable when the network is not. In Mentor, the server holds back the answer until you have typed yours (the testing effect), and drills lose hints as you get fast (expertise reversal), so the effort stays where learning happens."
+ },
+ "tier_1_faded_code_drills": [
+  {
+   "id": "drill_01",
+   "file_breadcrumb": "server -> sky.py -> current()",
+   "context_comment": "Serve the weather from memory while it is younger than TTL; otherwise fetch it once, under a lock, and keep the old reading if the fetch fails.",
+   "full_canonical_code": "def current(loc):\n    \"\"\"Return the weather, from the cache while it is fresh. Never raises.\"\"\"\n    with _lock:\n        if _mem.get('at', 0) > time.time() - TTL:\n            return _mem\n        try:\n            data = fetch(loc)\n            _mem.clear()\n            _mem.update(data)\n        except Exception:\n            _mem['stale'] = True\n        return _mem",
+   "level_1_fade": "def current(loc):\n    \"\"\"Return the weather, from the cache while it is fresh. Never raises.\"\"\"\n    with _lock:\n        if _mem.get('at', 0) > time.time() - TTL:\n            return {{BLANK_1}}\n        try:\n            data = fetch(loc)\n            _mem.clear()\n            _mem.update({{BLANK_2}})\n        except Exception:\n            _mem['stale'] = True\n        return _mem",
+   "level_2_fade": "def current(loc):\n    \"\"\"Return the weather, from the cache while it is fresh. Never raises.\"\"\"\n    {{BLANK_1}}:\n        if {{BLANK_2}}:\n            return _mem\n        try:\n            data = fetch(loc)\n            _mem.clear()\n            _mem.update(data)\n        except Exception:\n            _mem['stale'] = True\n        return _mem",
+   "level_3_fade": "def current(loc):\n    \"\"\"Return the weather, from the cache while it is fresh. Never raises.\"\"\"\n    {{BLANK_1}}",
+   "answers": {
+    "level_1": [
+     "_mem",
+     "data"
+    ],
+    "level_2": [
+     "with _lock",
+     "_mem.get('at', 0) > time.time() - TTL"
+    ],
+    "level_3": [
+     "    with _lock:\n        if _mem.get('at', 0) > time.time() - TTL:\n            return _mem\n        try:\n            data = fetch(loc)\n            _mem.clear()\n            _mem.update(data)\n        except Exception:\n            _mem['stale'] = True\n        return _mem"
+    ]
+   },
+   "python_fluency_note": "`with _lock:` releases the lock even when fetch() raises, which a manual acquire()/release() pair can forget. `dict.get('at', 0)` gives a default instead of a KeyError on the very first call, when the cache is empty."
+  },
+  {
+   "id": "drill_02",
+   "file_breadcrumb": "server -> mentor.py -> next_card() (interleaving)",
+   "context_comment": "Pick the next card so that two cards in a row come from different decks when possible: the core of interleaved practice.",
+   "full_canonical_code": "def pick(pool, last_deck):\n    \"\"\"The earliest card from a different deck than last time; else the earliest card.\"\"\"\n    if not pool:\n        return None\n    return next((r for r in pool if r['deck'] != last_deck), pool[0])",
+   "level_1_fade": "def pick(pool, last_deck):\n    \"\"\"The earliest card from a different deck than last time; else the earliest card.\"\"\"\n    if not pool:\n        return {{BLANK_1}}\n    return next((r for r in pool if r['deck'] != last_deck), {{BLANK_2}})",
+   "level_2_fade": "def pick(pool, last_deck):\n    \"\"\"The earliest card from a different deck than last time; else the earliest card.\"\"\"\n    if not pool:\n        return None\n    return next(({{BLANK_1}}), pool[0])",
+   "level_3_fade": "def pick(pool, last_deck):\n    \"\"\"The earliest card from a different deck than last time; else the earliest card.\"\"\"\n    {{BLANK_1}}",
+   "answers": {
+    "level_1": [
+     "None",
+     "pool[0]"
+    ],
+    "level_2": [
+     "r for r in pool if r['deck'] != last_deck"
+    ],
+    "level_3": [
+     "    if not pool:\n        return None\n    return next((r for r in pool if r['deck'] != last_deck), pool[0])"
+    ]
+   },
+   "python_fluency_note": "`next(generator, default)` stops at the first match and never builds a list; the second argument is what you get when nothing matches, so there is no StopIteration to catch."
+  },
+  {
+   "id": "drill_03",
+   "file_breadcrumb": "server -> mentor.py -> suggest_rating()",
+   "context_comment": "Turn the share of key ideas you covered (0 to 1) and how sure you said you were into Mentor's suggested rating.",
+   "full_canonical_code": "def suggest_rating(coverage, confidence):\n    \"\"\"1 Again, 2 Hard, 3 Good, 4 Easy. Low confidence turns a full answer's Easy into Good.\"\"\"\n    if coverage < 0.34:\n        return 1\n    if coverage < 0.67:\n        return 2\n    if coverage < 0.99 or (confidence or 4) <= 2:\n        return 3\n    return 4",
+   "level_1_fade": "def suggest_rating(coverage, confidence):\n    \"\"\"1 Again, 2 Hard, 3 Good, 4 Easy. Low confidence turns a full answer's Easy into Good.\"\"\"\n    if coverage < 0.34:\n        return 1\n    if coverage < 0.67:\n        return {{BLANK_2}}\n    if coverage < 0.99 or (confidence or 4) <= 2:\n        return 3\n    return {{BLANK_1}}",
+   "level_2_fade": "def suggest_rating(coverage, confidence):\n    \"\"\"1 Again, 2 Hard, 3 Good, 4 Easy. Low confidence turns a full answer's Easy into Good.\"\"\"\n    if coverage < 0.34:\n        return 1\n    if coverage < 0.67:\n        return 2\n    if coverage < 0.99 or {{BLANK_1}}:\n        return 3\n    return 4",
+   "level_3_fade": "def suggest_rating(coverage, confidence):\n    \"\"\"1 Again, 2 Hard, 3 Good, 4 Easy. Low confidence turns a full answer's Easy into Good.\"\"\"\n    {{BLANK_1}}",
+   "answers": {
+    "level_1": [
+     "4",
+     "2"
+    ],
+    "level_2": [
+     "(confidence or 4) <= 2"
+    ],
+    "level_3": [
+     "    if coverage < 0.34:\n        return 1\n    if coverage < 0.67:\n        return 2\n    if coverage < 0.99 or (confidence or 4) <= 2:\n        return 3\n    return 4"
+    ]
+   },
+   "python_fluency_note": "Early returns keep each threshold on its own line, so the function reads top to bottom like a table. `confidence or 4` treats a missing answer (None) as fully sure without an extra if."
+  },
+  {
+   "id": "drill_04",
+   "file_breadcrumb": "server -> sky.py -> current() (cache file)",
+   "context_comment": "Save the weather cache with an atomic write: write a temporary file, then swap it into place in one step.",
+   "full_canonical_code": "def save(data, path):\n    \"\"\"Write JSON so that a crash halfway through never leaves a half-written file.\"\"\"\n    os.makedirs(os.path.dirname(path), exist_ok=True)\n    tmp = path + '.tmp'\n    with open(tmp, 'w') as f:\n        json.dump(data, f)\n    os.replace(tmp, path)",
+   "level_1_fade": "def save(data, path):\n    \"\"\"Write JSON so that a crash halfway through never leaves a half-written file.\"\"\"\n    os.makedirs(os.path.dirname(path), exist_ok=True)\n    tmp = path + '.tmp'\n    with open(tmp, 'w') as f:\n        json.dump(data, f)\n    os.replace({{BLANK_1}}, {{BLANK_2}})",
+   "level_2_fade": "def save(data, path):\n    \"\"\"Write JSON so that a crash halfway through never leaves a half-written file.\"\"\"\n    os.makedirs(os.path.dirname(path), exist_ok=True)\n    tmp = path + '.tmp'\n    {{BLANK_1}} as f:\n        {{BLANK_2}}\n    os.replace(tmp, path)",
+   "level_3_fade": "def save(data, path):\n    \"\"\"Write JSON so that a crash halfway through never leaves a half-written file.\"\"\"\n    {{BLANK_1}}",
+   "answers": {
+    "level_1": [
+     "tmp",
+     "path"
+    ],
+    "level_2": [
+     "with open(tmp, 'w')",
+     "json.dump(data, f)"
+    ],
+    "level_3": [
+     "    os.makedirs(os.path.dirname(path), exist_ok=True)\n    tmp = path + '.tmp'\n    with open(tmp, 'w') as f:\n        json.dump(data, f)\n    os.replace(tmp, path)"
+    ]
+   },
+   "python_fluency_note": "`os.replace` swaps the file in a single filesystem step, so a reader sees the old file or the new one, never half of one. `exist_ok=True` makes makedirs safe to call every time."
+  }
+ ],
+ "tier_2_self_explanation_cards": [
+  {
+   "id": "card_01",
+   "card_type": "Pre-Mortem",
+   "file_breadcrumb": "server -> sky.py -> current() (cache file)",
+   "front_prompt": "This version saves the cache in one line. The server is killed halfway through the write. What does the next start find, and why does the real code avoid it?\n```python\njson.dump(data, open(CACHE, 'w'))\n```",
+   "back_explanation": "open(CACHE, 'w') empties the file at once, so a crash mid-write leaves a truncated or empty file; on the next start json.load fails and the cache is lost. The real code writes to a .tmp file and swaps it in with os.replace, which is atomic: readers see the whole old file or the whole new one.",
+   "eval_rubric": [
+    {
+     "idea": "a crash leaves a half-written or empty file",
+     "any": [
+      "half",
+      "partial",
+      "truncated",
+      "incomplete",
+      "empty",
+      "corrupt"
+     ]
+    },
+    {
+     "idea": "the next read fails to parse it",
+     "any": [
+      "json",
+      "parse",
+      "decode",
+      "fail",
+      "error",
+      "invalid",
+      "load"
+     ]
+    },
+    {
+     "idea": "write a temp file, then swap it in atomically",
+     "any": [
+      "atomic",
+      "all or nothing",
+      "replace",
+      "rename",
+      "swap",
+      "temp"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "card_02",
+   "card_type": "Pre-Mortem",
+   "file_breadcrumb": "server -> sky.py -> current()",
+   "front_prompt": "Someone deletes `with _lock:` and dedents the body to make the code shorter. Two browser tabs ask for the weather at the same moment, just after the cache expires. What can go wrong?",
+   "back_explanation": "Both requests see a stale cache and both call Open-Meteo: a race condition that doubles the outside calls. Worse, one thread can run _mem.clear() while the other is reading or returning _mem, so a request can get an empty or half-filled dict. The lock makes check-fetch-update one step that only one thread runs at a time.",
+   "eval_rubric": [
+    {
+     "idea": "two requests run the check at the same time (a race)",
+     "any": [
+      "race",
+      "same time",
+      "both",
+      "concurrent",
+      "thread",
+      "simultaneous"
+     ]
+    },
+    {
+     "idea": "the outside service gets called twice",
+     "any": [
+      "twice",
+      "two fetch",
+      "double",
+      "extra call",
+      "two call"
+     ]
+    },
+    {
+     "idea": "a reader can see a cleared or half-updated dict",
+     "any": [
+      "empty",
+      "cleared",
+      "half",
+      "inconsistent",
+      "partial",
+      "missing"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "card_03",
+   "card_type": "Trade-Off",
+   "file_breadcrumb": "server -> sky.py",
+   "front_prompt": "Argus fetches the weather on the server and caches it for 20 minutes. Why not let the browser call Open-Meteo directly on every page load?",
+   "back_explanation": "Privacy: the browser never talks to an outside site, and Open-Meteo only learns the server's IP and a rounded location. Load: one call per 20 minutes however many tabs are open, which respects the free API. Resilience: the server keeps the last reading and marks it stale when the API is down, so the page still draws a sky.",
+   "eval_rubric": [
+    {
+     "idea": "privacy: the browser never contacts an outside site",
+     "any": [
+      "privacy",
+      "outside site",
+      "third party",
+      "ip",
+      "browser never",
+      "track"
+     ]
+    },
+    {
+     "idea": "far fewer calls: one per 20 minutes, shared by every tab",
+     "any": [
+      "once",
+      "fewer",
+      "limit",
+      "20 min",
+      "cache",
+      "rate",
+      "shared"
+     ]
+    },
+    {
+     "idea": "a stale reading still works when the API is down",
+     "any": [
+      "stale",
+      "last reading",
+      "fallback",
+      "down",
+      "unavailable",
+      "offline",
+      "old reading"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "card_04",
+   "card_type": "HCI-Bridge",
+   "file_breadcrumb": "server -> mentor.py -> next_level()",
+   "front_prompt": "A drill moves up a level (fewer hints) when you fill every blank correctly and fast. Which human-factors finding is this built on, and why is speed a sensible signal?",
+   "back_explanation": "The expertise reversal effect (Kalyuga et al., 2003): scaffolding that helps a novice adds redundant load for someone who already knows the pattern, because they must still process hints they no longer need. Fast, fully correct recall suggests the pattern is automated, so the hints can go.",
+   "eval_rubric": [
+    {
+     "idea": "expertise reversal: help for novices hurts experts",
+     "any": [
+      "expertise reversal",
+      "expert",
+      "novice",
+      "redundant",
+      "already know"
+     ]
+    },
+    {
+     "idea": "hints cost working memory / cognitive load",
+     "any": [
+      "load",
+      "working memory",
+      "effort",
+      "cognitive",
+      "process"
+     ]
+    },
+    {
+     "idea": "fast and correct means the skill is automatic",
+     "any": [
+      "fast",
+      "speed",
+      "quick",
+      "time",
+      "automatic",
+      "fluent"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "card_05",
+   "card_type": "Trade-Off",
+   "file_breadcrumb": "server -> mentor.py -> next_card() (interleaving)",
+   "front_prompt": "Mentor tries not to show two cards in a row from the same deck or module. Studying one module at a time feels smoother. Why mix them?",
+   "back_explanation": "Interleaving forces you to work out which rule or pattern applies each time instead of reusing the one already loaded, which is the skill real code demands. It feels harder and slower in the session (a desirable difficulty) but improves long-term retention and transfer compared with blocked practice.",
+   "eval_rubric": [
+    {
+     "idea": "you must work out which rule applies",
+     "any": [
+      "which rule",
+      "which pattern",
+      "discriminate",
+      "distinguish",
+      "tell apart",
+      "choose",
+      "decide"
+     ]
+    },
+    {
+     "idea": "it feels harder now (a desirable difficulty)",
+     "any": [
+      "desirable difficult",
+      "harder",
+      "effort",
+      "slower",
+      "difficult"
+     ]
+    },
+    {
+     "idea": "better retention and transfer later",
+     "any": [
+      "long term",
+      "retention",
+      "remember",
+      "transfer",
+      "stick",
+      "later"
+     ]
+    }
+   ]
+  }
+ ],
+ "tier_3_terminology_cards": [
+  {
+   "id": "term_01",
+   "term": "context manager",
+   "category": "Python Syntax",
+   "concise_definition": "An object used with `with` that runs setup on entry and cleanup on exit, even after an error.",
+   "project_anchor": "sky.py -> current(): `with _lock:`",
+   "contrast_anchor": "Unlike a hand-written try/finally, the cleanup lives in the object, so you can't forget it.",
+   "cloze_prompt": "`with _lock:` uses the lock as a {{BLANK}}, so it is released even if fetch() raises."
+  },
+  {
+   "id": "term_02",
+   "term": "generator expression",
+   "category": "Python Syntax",
+   "concise_definition": "A lazy comprehension in parentheses that yields one item at a time instead of building a list.",
+   "project_anchor": "mentor.py -> next_card(): `next((r for r in pool if ...), pool[0])`",
+   "contrast_anchor": "Unlike a list comprehension [...], it builds nothing up front and can stop at the first match.",
+   "cloze_prompt": "`(r for r in pool if r['deck'] != last)` is a {{BLANK}}: next() pulls items from it only until one matches."
+  },
+  {
+   "id": "term_03",
+   "term": "short-circuit evaluation",
+   "category": "Python Syntax",
+   "concise_definition": "`and`/`or` stop as soon as the result is known and return that operand, not just True/False.",
+   "project_anchor": "mentor.py -> suggest_rating(): `(confidence or 4)`",
+   "contrast_anchor": "Unlike a ternary `x if c else y`, `or` falls back on ANY falsy value, including 0 and ''.",
+   "cloze_prompt": "`confidence or 4` gives 4 when confidence is None because of {{BLANK}}."
+  },
+  {
+   "id": "term_04",
+   "term": "atomic write",
+   "category": "Software Architecture",
+   "concise_definition": "Writing to a temporary file, then swapping it into place in one step, so readers never see half a file.",
+   "project_anchor": "sky.py -> current(): `os.replace(tmp, CACHE)`",
+   "contrast_anchor": "Unlike writing in place, a crash leaves the old file intact rather than a truncated one.",
+   "cloze_prompt": "Saving to sky.json.tmp and then calling os.replace() is an {{BLANK}}."
+  },
+  {
+   "id": "term_05",
+   "term": "race condition",
+   "category": "Software Architecture",
+   "concise_definition": "A bug whose outcome depends on the timing of two threads touching the same data.",
+   "project_anchor": "sky.py: `_lock` guards `_mem`",
+   "contrast_anchor": "Unlike a deadlock (threads stuck waiting forever), a race runs on and quietly produces wrong results.",
+   "cloze_prompt": "Without the lock, two requests could both refetch and clear _mem at once: a {{BLANK}}."
+  },
+  {
+   "id": "term_06",
+   "term": "parameterized query",
+   "category": "Software Architecture",
+   "concise_definition": "SQL with ? placeholders whose values the database driver passes separately from the query text.",
+   "project_anchor": "mentor.py -> answer(): `db.execute(\"... WHERE c.id=?\", (card_id,))`",
+   "contrast_anchor": "Unlike building SQL with an f-string, user text can never be run as SQL (no injection).",
+   "cloze_prompt": "`WHERE id=?` with the value in a tuple is a {{BLANK}}, which blocks SQL injection."
+  },
+  {
+   "id": "term_07",
+   "term": "expertise reversal effect",
+   "category": "HCI & Human Factors",
+   "concise_definition": "Support that helps novices (worked steps, hints) becomes extra load that slows down experts.",
+   "project_anchor": "mentor.py -> next_level(): drills fade further when you answer fast",
+   "contrast_anchor": "Unlike the worked-example effect (examples help beginners), it says when to take the examples away.",
+   "cloze_prompt": "Drills drop their hints once you're fast because of the {{BLANK}}."
+  },
+  {
+   "id": "term_08",
+   "term": "interleaved practice",
+   "category": "HCI & Human Factors",
+   "concise_definition": "Mixing different kinds of problems in one session instead of finishing one kind before the next.",
+   "project_anchor": "mentor.py -> next_card(): `_last['deck']`",
+   "contrast_anchor": "Unlike blocked practice (AAA BBB), it feels harder in the moment but sticks better.",
+   "cloze_prompt": "Showing a card from a different module after each answer is {{BLANK}}."
+  }
+ ]
+}

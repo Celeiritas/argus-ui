@@ -1,0 +1,39 @@
+/* Argus UI - Mentor's own styles (loaded by js/mentor.js). Shared pieces (.panel, .seg, .ideas, .meter, .rates) are in argus.css. */
+.mentor{--mono:ui-monospace,"Cascadia Code","SF Mono",Consolas,"Liberation Mono",monospace}
+.mbar{display:flex;flex-wrap:wrap;gap:var(--s3);align-items:center;justify-content:space-between;margin:var(--s2) 0 var(--s3)}
+.views{display:flex;gap:var(--s2)}
+.views button{min-height:var(--hit)}
+.views button[aria-pressed="true"]{border-color:var(--powder);background:var(--card)}
+.pick{display:flex;align-items:center;gap:var(--s2);min-width:0;flex:1 1 220px;justify-content:flex-end}
+.pick label{font-size:var(--fs-sec);font-weight:600;color:var(--powder)}
+.pick select{font:inherit;font-size:var(--fs-sec);color:var(--snow);background:var(--card);border:1px solid var(--line);border-radius:8px;min-height:var(--hit);padding:0 var(--s3);min-width:0;max-width:100%;flex:0 1 auto;cursor:pointer}
+.pick select:focus-visible{outline:2px solid var(--powder);outline-offset:2px}
+.mentor .kind{color:var(--powder);font-size:var(--fs-meta);font-weight:600;margin:0 0 var(--s1)}
+.mentor .crumb{display:flex;flex-wrap:wrap;gap:0 var(--s1);color:var(--frost);font-size:var(--fs-meta);margin:0 0 var(--s3);font-family:var(--mono)}
+.mentor .big{margin:0 0 var(--s3)}.mentor .big p{color:var(--powder);margin:0 0 var(--s2)}
+.mentor code{font-family:var(--mono);font-size:.9em;background:#1a1f25;border-radius:4px;padding:0 var(--s1)}
+.mentor pre.code{white-space:pre;word-break:normal;overflow:auto;max-height:none;font-family:var(--mono);font-size:var(--fs-sec);line-height:1.6;color:var(--snow);background:#1a1f25;border:1px solid var(--line);border-radius:8px;padding:var(--s3);margin:0 0 var(--s4);tab-size:4}
+.mentor pre.code code{background:none;padding:0;font-size:inherit}
+.mentor input.blank{font:inherit;font-family:var(--mono);font-size:var(--fs-sec);color:var(--snow);background:var(--card);border:1px solid var(--powder);border-radius:4px;padding:0 var(--s1);min-width:4ch;height:1.6em;vertical-align:baseline}
+.mentor input.blank:focus-visible{outline:2px solid var(--powder);outline-offset:1px}
+.mentor input.blank.term{font-family:inherit;font-size:var(--fs-body);min-width:12ch;width:16ch;height:auto;min-height:var(--hit);padding:0 var(--s2)}
+.mentor .ghost,.mentor .slot{color:var(--frost);border:1px dashed var(--frost);border-radius:4px;padding:0 var(--s1)}
+.mentor textarea.codein{font-family:var(--mono);font-size:var(--fs-sec);line-height:1.6;min-height:200px;white-space:pre;overflow:auto;tab-size:4}
+.mentor .cloze{font-size:var(--fs-body);line-height:2.2;margin:0 0 var(--s2)}
+.mentor .prompt{font-size:var(--fs-body);margin:0 0 var(--s4)}.mentor .prompt p{margin:0 0 var(--s3);line-height:1.5}
+.mentor .model p{margin:0 0 var(--s2)}.mentor .model p:last-child{margin-bottom:0}
+.mentor .model.mine{border-color:var(--frost)}
+.mentor .pair>div{min-width:0}
+.mentor .defs{display:block;margin:0 0 var(--s4);font-size:var(--fs-body)}   /* the Watch cards' dl is a 4-column grid; here it's a list */
+.mentor .defs dt{font-size:var(--fs-meta);font-weight:600;color:var(--frost);margin:var(--s3) 0 var(--s1)}
+.mentor .defs dd{margin:0;line-height:1.5;white-space:normal;overflow:visible}.mentor .defs dd p{margin:0 0 var(--s2)}
+.mentor .ideas li.hit code{color:var(--ok)}
+.mentor .ideas code{word-break:break-word}
+.modules .module{border-top:1px solid var(--line);padding:var(--s4) 0}
+.modules h4{margin:0 0 var(--s1);font-size:var(--fs-body);font-weight:600}
+.modules .meta{color:var(--powder);font-size:var(--fs-meta);margin:0 0 var(--s1);overflow-wrap:anywhere}
+.modules details{margin:var(--s1) 0}
+.mentor .tags{display:flex;flex-wrap:wrap;gap:var(--s1);list-style:none;padding:0;margin:var(--s2) 0 var(--s3)}
+.mentor .tags li{font-size:var(--fs-meta);color:var(--powder);border:1px solid var(--line);border-radius:99px;padding:0 var(--s2)}
+.modules .addh{margin-top:var(--s6)}
+.modules .steps{padding-left:var(--s6);margin:0 0 var(--s4)}.modules .steps li{margin:0 0 var(--s2);line-height:1.5;overflow-wrap:anywhere}

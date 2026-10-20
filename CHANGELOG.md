@@ -1,5 +1,13 @@
 # Changelog
 
+## 4.7.0 – 2026-10-20
+- **Mentor teaches the code you build.** Code modules made by the `/mentor` command in Claude Code (a Cognitive Task Analysis of real code, saved as JSON) give three tiers of cards: **code drills** with blanks typed straight into the snippet, faded over three levels (endings → logic → whole body); **explain cards** (find the bug, why this design, human factors link); and **term cards** (fill in the term, then see what it does, where it is in your code and its look-alike)
+- New modules unlock terms → drills → explain cards (pre-training); drills move up a level when you're right and fast, or right twice in a row, and down on "Needs work"; reviews interleave across modules and decks
+- Whole bodies are checked with Python's parser (never run): same structure as the model, how alike they are, or Python's syntax error with its line
+- **Inbox**: copy a module into `~/.local/share/argus-ui/inbox/` and it appears without a restart; broken files are listed with the reason. A **Code modules** view shows each module's breakdown and progress, and a **Study** picker replaces the deck buttons
+- Ships one module made from Argus's own `sky.py` and `mentor.py`; `docs/mentor-command.md` is the `/mentor` command (adds a project name, accepted wordings for each rubric idea, and the one-line reply); `docs/mentor.md` rewritten
+- Older Mentor databases gain the new columns on start; every attempt now also records the card kind, drill level and code-grading features for the learning grader
+
 ## 4.6.0 – 2026-10-20
 - **LeafyPlugins:** drop a folder with a `plugin.json` into `~/.config/argus-ui/plugins/<id>/` and Argus shows a new section at `<base>/<id>` with its own pill, no code change or restart. Static plugins (games, tools) run in a sandboxed frame with an opaque origin, so they can't use the powers or read your tasks, even when a plugin page is opened in its own tab. A plugin replaces a theme's "coming later" pill of the same name. The contract is in `docs/leafy-plugin.md`, including the planned `module` kind for moving Mentor over
 - **Spartamelee · Play** is the first plugin: its `scripts/deploy.sh` installs to `plugins/spartamelee/`
