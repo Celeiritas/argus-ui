@@ -90,25 +90,27 @@ A key idea counts as covered when **all** words of **any** of its phrases appear
 ## The Learn phase (planned for 4.8.0)
 Status: **spec, not built yet.** Everything above describes 4.7.0; this section is the design for the next version.
 
+**Naming (decided 2026-10-20):** a code module becomes a **lesson** in 4.8.0 (it clashes with Python modules, which Mentor teaches). The JSON format and the `/mentor` command keep their field names; the UI says *Lessons* where it said *Code modules*. This section already uses the new word.
+
 Mentor 4.7 tests before it teaches: every card is a test with the lesson on the back. A term card probes a term that was never introduced, a drill opens at level 1 with no worked example, an explain card asks about a failure mode nobody explained, and the only escape is *Show answer*, which costs the card. For someone who vibe-codes, the lesson has to come first, once, and then the tests. This spec adds that phase without touching the Practice half (FSRS, calibration, graders), which is sound.
 
 The research line: pre-train the vocabulary (Mayer & Pilegard, 2014) → study a complete, annotated worked example and self-explain it (Sweller & Cooper, 1985; Chi et al., 1989; Renkl, 2014) → fade backwards into completion problems (Renkl, Atkinson & Große, 2004; already Mentor's levels 1–3) → erroneous examples only after the correct one is secure (Große & Renkl, 2007) → retrieval with graded hints, never the answer handed over (Roediger & Karpicke, 2006; VanLehn, 2011; Koedinger & Aleven, 2007). Fading is visible and reversible (Collins, Brown & Newman, 1989), and the learner's own confidence is checked against reality so AI-written code can't fake competence (Bjork, Dunlosky & Kornell, 2013; Kazemitabaar et al., 2023).
 
 ### 1. The Learn phase
 
-A module has two phases. **Learn** runs once per card, in a fixed order, and gates **Practice**, which is the existing FSRS loop.
+A lesson has two phases. **Learn** runs once per card, in a fixed order, and gates **Practice**, which is the existing FSRS loop.
 
 | Step | Card | What the learner does | Gate to the next step |
 |---|---|---|---|
-| 0 Orient | **Orientation** (1 per module) | Reads one screen: what the code does in 3 sentences, the files, the terms coming, and *why this module* (the `hci_human_factors_bridge`). Types a one-line "in my words, this code…". | Typed ≥ 5 words (retrieve-first; the text is stored, never graded) |
+| 0 Orient | **Orientation** (1 per lesson) | Reads one screen: what the code does in 3 sentences, the files, the terms coming, and *why this lesson* (the `hci_human_factors_bridge`). Types a one-line "in my words, this code…". | Typed ≥ 5 words (retrieve-first; the text is stored, never graded) |
 | 1 Teach terms | **Teach card** (1 per term, before its term card) | Reads definition → anchor in their code → contrast. Then one **spot-it** check: a 2–6 line snippet with the term's instance highlighted-on-answer; the learner clicks or types the line/token where the term appears. | Spot-it right, or wrong once then shown (either way it counts as seen) |
 | 2 Worked example | **Level 0** of each drill (1 per drill, before level 1) | Full code with 3–6 numbered annotations revealed one at a time. For each, the learner types *why* that line is there (≥ 3 words) **before** the annotation's `why` appears (Renkl 2014: generation, not reading). After the last one, one self-explanation prompt graded by rubric. | All annotations stepped through and the self-explain answered (any coverage) |
 | 3 Pre-read | **Pre-read** (1 per explain card, before it) | The explain card's `key_ideas` as 2–4 short statements, then a **near example**: the same principle in different code, with a one-line "what would break here?" typed before the answer shows. | Typed and shown |
 | → Practice | term cards → drills L1–3 → explain cards | Unchanged FSRS loop, now with hints (§2). | — |
 
-**Gate rule.** Within a module, the existing funnel (`terms → drills → explain`) stays, and each practice card additionally requires its own Learn card to be *seen*. `next_card()` therefore orders new cards: orientation → teach_01…n → term_01…n → level0_01…n → drill_01…n (level 1) → preread_01…n → card_01…n. "Everything, mixed" keeps interleaving across modules for *due* cards; *new* Learn cards still come in module order so a lesson isn't split by a review from another module.
+**Gate rule.** Within a lesson, the existing funnel (`terms → drills → explain`) stays, and each practice card additionally requires its own Learn card to be *seen*. `next_card()` therefore orders new cards: orientation → teach_01…n → term_01…n → level0_01…n → drill_01…n (level 1) → preread_01…n → card_01…n. "Everything, mixed" keeps interleaving across lessons for *due* cards; *new* Learn cards still come in lesson order so a lesson isn't split by a review from another lesson.
 
-**Learn cards are never scheduled by FSRS.** They get a `sched` row with `reps=1`, `due=NULL`, `stability=NULL`: seen, never due. They stay reachable from *Code modules → Read the breakdown* (re-read any time, no rating). Two triggers bring one back into the queue:
+**Learn cards are never scheduled by FSRS.** They get a `sched` row with `reps=1`, `due=NULL`, `stability=NULL`: seen, never due. They stay reachable from *Lessons → Read the breakdown* (re-read any time, no rating). Two triggers bring one back into the queue:
 - **Stuck** on its practice card (§4) → the Learn card is re-queued once, immediately, as a *refresher* (`attempts.kind='refresh'`), then the practice card returns.
 - **Lapse twice** on a practice card (two *Needs work* ratings within 7 days) → same.
 
@@ -125,7 +127,7 @@ Four rungs, in order, on every practice card. The learner picks *Hint* instead o
 | 3 | Near example | The same move in different code, 2–4 lines, answer visible | `hints[level][1]` | suggested rating capped at *Not well* (2); drill can't move up a level this attempt |
 | 4 | Answer | The model answer (what *Show answer* does today) | — | counts as a blank answer: coverage 0, suggested *Needs work* (1) |
 
-For drills the ladder is per level (`hints.level_1` etc.); for terms and explain cards a single list. A card with no authored hints still gets rungs 2 and 4 (the module's `expert_move`, or a kind-level default: *"Look at what the function already returns"* for drills, *"Name what it does before you name it"* for terms, *"Start from what can go wrong, then why the code prevents it"* for explain cards).
+For drills the ladder is per level (`hints.level_1` etc.); for terms and explain cards a single list. A card with no authored hints still gets rungs 2 and 4 (the lesson's `expert_move`, or a kind-level default: *"Look at what the function already returns"* for drills, *"Name what it does before you name it"* for terms, *"Start from what can go wrong, then why the code prevents it"* for explain cards).
 
 **Logging.** `attempts.hints` INTEGER = highest rung reached (0–4); `attempts.reflections` TEXT = JSON list of the typed reflections. Both feed the learning grader (the rung reached is a strong feature) and the stats line shows *hints per card* for the week.
 
@@ -169,19 +171,19 @@ Sweller (1988, 2019): working memory holds ~4 interacting elements; annotations 
 - **Blanks**: level 1 ≤ 2, level 2 ≤ 3, level 3 = 1 (the body). A blank is one token or one expression, never two statements.
 - **Annotations (level 0)**: 3–6, each ≤ 25 words, each attached to one line number, in reading order. Annotate the *why*, not the *what* ("holds the lock so a second request can't fetch too" — not "acquires lock").
 - **One new term per card.** A teach card introduces its term only; if the anchor line needs a second new term, that term's teach card must come first (`ord`).
-- **Pre-train**: every term used in a drill's annotations has a teach card earlier in the module (the command checks this; the importer notes misses in *Code modules*).
+- **Pre-train**: every term used in a drill's annotations has a teach card earlier in the lesson (the command checks this; the importer notes misses in *Lessons*).
 - **Self-explanation prompts** ask *why*, not *what*: "Why does `current()` return `_mem` instead of `data` after a failed fetch?" not "What does it return?"
 - **Erroneous examples** (pre-mortems) always after the level-0 worked example of the same code (Große & Renkl, 2007): the `preread` is required for a Pre-Mortem card; the importer notes its absence.
 - **Hints** never contain the answer token for that blank; rung 3's near example uses different names.
 
-### 6. JSON additions (all optional; old modules import unchanged)
+### 6. JSON additions (all optional; old lessons import unchanged)
 
 ```json
 {
   "cta_summary": {
     "…existing four…": "…",
     "orientation": "3 sentences max, plain words: what this code does, in which files, and what you'll be able to do after",
-    "expert_move": "Module-level default: the first thing an expert looks at in this code"
+    "expert_move": "Lesson-level default: the first thing an expert looks at in this code"
   },
   "tier_3_terminology_cards": [{
     "…existing…": "…",
@@ -216,29 +218,29 @@ Sweller (1988, 2019): working memory holds ~4 interacting elements; annotations 
 }
 ```
 
-**Learn cards for modules without these fields.** The importer derives a plainer Learn phase from what every module already has, so the shipped module and any older inbox file get one without being regenerated: an orientation from `schematic_mental_model`; a teach card per term from `concise_definition`, `project_anchor` and `contrast_anchor` (no spot-it check, so it is read-and-confirm); a level 0 per drill from `full_canonical_code` with `python_fluency_note` and `context_comment` as one annotation; a pre-read per explain card from the rubric's `idea` lines. The authored fields, when present, replace these. Plain decks get no Learn phase (their cards are already self-contained).
+**Learn cards for lessons without these fields.** The importer derives a plainer Learn phase from what every lesson already has, so the shipped lesson and any older inbox file get one without being regenerated: an orientation from `schematic_mental_model`; a teach card per term from `concise_definition`, `project_anchor` and `contrast_anchor` (no spot-it check, so it is read-and-confirm); a level 0 per drill from `full_canonical_code` with `python_fluency_note` and `context_comment` as one annotation; a pre-read per explain card from the rubric's `idea` lines. The authored fields, when present, replace these. Plain decks get no Learn phase (their cards are already self-contained).
 
-Names follow the existing style (`snake_case`, `*_prompt`, `eval_rubric`-style `{idea, any}` lists). `spot_it.line` is 1-based within `snippet`. `hints` lists are 1–2 strings (rungs 1 and 3); rung 2 is `expert_move`, rung 4 is the answer. Card-level `expert_move` falls back to the module's, then the kind default.
+Names follow the existing style (`snake_case`, `*_prompt`, `eval_rubric`-style `{idea, any}` lists). `spot_it.line` is 1-based within `snippet`. `hints` lists are 1–2 strings (rungs 1 and 3); rung 2 is `expert_move`, rung 4 is the answer. Card-level `expert_move` falls back to the lesson's, then the kind default.
 
 ### 7. Changes to the `/mentor` command
 
 Add to `docs/mentor-command.md`:
 
-- **§3 Extraction**, new tier 0: *"Pre-training & worked examples. For every term, write a `spot_it` snippet (2–6 lines from the same code, `line` = where the term's instance is) and a `teach_order` so no term's anchor uses a term taught later. For every drill, write `level_0_worked`: 3–6 annotations (`line`, `note` ≤ 8 words, `why` ≤ 25 words) that explain *why* the line exists, plus one `self_explain` prompt that asks why, with a 1–3 idea rubric. For every explain card, write `preread.key_ideas` (2–4 statements the card's rubric assumes) and a `near_example` in different code. For every card and the module, write `expert_move`: the first thing an expert looks at, one sentence, no answer tokens. For every drill level and every term/explain card write `hints`: [a question that points at the principle, a 2–4 line near example with different names]."*
-- **§5 Authoring rules** = §5 above, verbatim as a checklist the command runs before writing the file; a module that breaks a rule is still written, with a `"lint": ["…"]` list in `metadata` so *Code modules* shows the misses.
+- **§3 Extraction**, new tier 0: *"Pre-training & worked examples. For every term, write a `spot_it` snippet (2–6 lines from the same code, `line` = where the term's instance is) and a `teach_order` so no term's anchor uses a term taught later. For every drill, write `level_0_worked`: 3–6 annotations (`line`, `note` ≤ 8 words, `why` ≤ 25 words) that explain *why* the line exists, plus one `self_explain` prompt that asks why, with a 1–3 idea rubric. For every explain card, write `preread.key_ideas` (2–4 statements the card's rubric assumes) and a `near_example` in different code. For every card and the lesson, write `expert_move`: the first thing an expert looks at, one sentence, no answer tokens. For every drill level and every term/explain card write `hints`: [a question that points at the principle, a 2–4 line near example with different names]."*
+- **§5 Authoring rules** = §5 above, verbatim as a checklist the command runs before writing the file; a lesson that breaks a rule is still written, with a `"lint": ["…"]` list in `metadata` so *Lessons* shows the misses.
 - **Reply line** unchanged (one line), plus the count of Learn cards: `Mentor: weather_cache → 8 terms, 4 drills, 5 explain cards (+17 learn cards)`.
 
 ### 8. UI flow
 
 **Where Learn lives.** No new view. The Practice panel shows the card the server sends; Learn cards are kinds like any other. Two additions:
-- Stats line: `3 to learn · 0 due · 51 new · …` (`stats.learn` = unseen Learn cards in the selection). The *Study* picker's module entries get a suffix while learning: `argus-ui: Argus… (learning 3/17)`.
-- *Code modules*: the breakdown shows the orientation and each Learn card as a re-readable list (*Teach: context manager*, *Worked example: current()*, *Pre-read: find the bug*), each a 44px row that opens it read-only.
+- Stats line: `3 to learn · 0 due · 51 new · …` (`stats.learn` = unseen Learn cards in the selection). The *Study* picker's lesson entries get a suffix while learning: `argus-ui: Argus… (learning 3/17)`.
+- *Lessons*: the breakdown shows the orientation and each Learn card as a re-readable list (*Teach: context manager*, *Worked example: current()*, *Pre-read: find the bug*), each a 44px row that opens it read-only.
 
 **States per card** (one `<form class="panel">`, as now; the `kind` line names the state):
 
 | Kind | Screen | Keyboard | Primary button |
 |---|---|---|---|
-| orientation | Module name; orientation text (16px); files; terms as a plain list; one textarea "In my words, this code…" | Ctrl+Enter | *Start learning* |
+| orientation | Lesson name; orientation text (16px); files; terms as a plain list; one textarea "In my words, this code…" | Ctrl+Enter | *Start learning* |
 | teach | `Teach · <category>`; the term as `<h3>`; three labelled blocks *What it does / In your code / Not to be confused with*; then the spot-it snippet with clickable lines (`<button class="line">`) and a text box alternative "or type the line number" | ↑/↓ moves between lines, Enter picks; or type a number + Enter | *That's the line* → feedback → *Next* ; secondary *I know this, test me* |
 | level0 (drill) | `Worked example · <breadcrumb>`; full code; annotation *k of n* shown as a callout attached to its line (the line is highlighted, the callout sits directly under it to avoid split attention); a one-line input "Why is this line here?"; after typing, the `why` appears under it; *Next annotation*. After the last: the self-explain prompt with a textarea, graded by rubric, feedback shown, no rating | Enter in the one-liner reveals and advances; Ctrl+Enter checks the self-explain | *Reveal* / *Next annotation* / *Check* / *Next* |
 | preread | `Before the bug hunt · <breadcrumb>`; key ideas as 2–4 `<li>`; the near example code; a one-line "What would break here?"; Enter reveals the answer | Enter | *Reveal* → *Next* |
@@ -248,7 +250,7 @@ Learn cards have **no** confidence radios and **no** rating: finishing one calls
 
 **Routes stay fixed.** `next` returns Learn kinds (`orientation|teach|level0|preread`) in the same payload shape (`prompt`, `data`, `kind`); `answer` accepts the spot-it line number, the annotation reflections (as a JSON list in `text`, like drill blanks) and the self-explain text; `rate` accepts `rating: 0`. `answer` also accepts `{"card": …, "hint": k, "text": "<reflection>"}` to log a rung without grading (returns the rung's content), so hints never need a new route. POST bodies stay under 4 KB (reflections are capped at 300 chars each).
 
-### 9. Worked example (argus-code module)
+### 9. Worked example (argus-code lesson)
 
 **Teach card: context manager**
 - What it does: An object used with `with` that runs setup on entry and cleanup on exit, even after an error.
@@ -264,7 +266,7 @@ Learn cards have **no** confidence radios and **no** rating: finishing one calls
   Answer: line 2. Why: "`with _lock:` — the lock is the context manager; the block under it is what runs while it's held."
 - expert_move: "Look for `with …:`; whatever follows `with` is a context manager."
 
-**drill_01 at level 0** (`current()`, the full code as in the module)
+**drill_01 at level 0** (`current()`, the full code as in the lesson)
 | # | Line | Note | Why (shown after the learner types) |
 |---|---|---|---|
 | 1 | `with _lock:` | Takes the lock first | Two requests can arrive at once; only one may fetch and write `_mem`. The `with` releases it even if `fetch()` raises. |
@@ -299,14 +301,14 @@ Self-explain: "Why does `current()` return `_mem` rather than `data` after the `
 **DB.** Append to `ADDED`: `('attempts','hints','INTEGER DEFAULT 0')`, `('attempts','reflections','TEXT')`, `('attempts','stuck','TEXT')`, `('attempts','skipped','INTEGER DEFAULT 0')`, `('cards','learn_of','TEXT')` (the practice card a Learn card gates; NULL for practice cards). `sched.due` becomes nullable-by-convention for Learn cards (`reps=1, due=NULL`); `stats.new` must exclude Learn cards and report them as `stats.learn`. `rate` accepts `rating=0` only for Learn kinds. `FUNNEL` gains `orientation: -1, teach: 0, level0: 1, preread: 2` with the extra rule "a practice card is new-eligible only when its `learn_of` partner has `reps>0`".
 
 **`tests/mentor.test.js`** adds:
-- a new module starts with its orientation card; typing < 5 words keeps *Start learning* disabled; 5 words enables it
+- a new lesson starts with its orientation card; typing < 5 words keeps *Start learning* disabled; 5 words enables it
 - the first teach card precedes its term card; clicking the wrong spot-it line shows the `why` and still advances; *I know this, test me* skips and logs `skipped=1`
 - level 0 reveals annotation 1 only; the `why` is hidden until ≥ 3 words are typed; after annotation n the self-explain appears and is graded by rubric; no rating radios are shown
 - a drill at level 1 is not offered until its level 0 is seen; an explain card not until its pre-read is seen
 - *Hint* on a drill shows rung 1; *Next hint* is disabled until 3 words are typed; rung 2 caps the suggested rating at 3; rung 4 marks the attempt as shown with coverage 0; `attempts.hints` records the highest rung
 - blank *Show answer* first offers a hint; two wrong answers in a row re-queue the Learn card before the next try; the toast says so
-- stats line shows `N to learn`; *Code modules* lists the Learn cards and opens one read-only
-- an old module JSON (no Learn fields) still imports, gets derived Learn cards (orientation, read-and-confirm teach cards, one-annotation level 0, rubric pre-reads), and uses kind defaults for rungs 2 and 4
+- stats line shows `N to learn`; *Lessons* lists the Learn cards and opens one read-only
+- an old lesson JSON (no Learn fields) still imports, gets derived Learn cards (orientation, read-and-confirm teach cards, one-annotation level 0, rubric pre-reads), and uses kind defaults for rungs 2 and 4
 - 375 px: the annotation callout sits under the code line, no sideways scroll
 
 ## Notes for changing it
