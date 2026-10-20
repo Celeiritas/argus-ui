@@ -36,6 +36,42 @@ PERSONAS = [(a['key'], a['name'], a.get('domain', '')) for a in THEME.get('agent
 NEVER_FREEZE = set(THEME.get('never_freeze', ['argus-ui']))
 PKEYS = [p[0] for p in PERSONAS]
 PAGES = ['olympus']      # sections that are not agents (the Olympus playground)
+
+# ---------- LeafyPlugins (docs/leafy-plugin.md) ----------
+# A plugin is a folder ~/.config/argus-ui/plugins/<id>/ with a plugin.json manifest. "static" plugins
+# (a browser game, a tool) are plain files shown in a sandboxed frame on their own section <base>/<id>.
+# They live outside the install, so upgrades keep them, like the sounds.
+PLUGINS = os.path.expanduser(os.environ.get('ARGUS_PLUGINS', '~/.config/argus-ui/plugins'))
+PLUGIN_ID = re.compile(r'^[a-z][a-z0-9-]{0,31}$')
+RESERVED = {'api', 'static', 'plugins', 'play', 'all', 'argus', 'sw.js', 'manifest.webmanifest'}   # 'play' means Olympus in the page
+mimetypes.add_type('text/javascript', '.js'); mimetypes.add_type('text/javascript', '.mjs')
+mimetypes.add_type('model/gltf-binary', '.glb'); mimetypes.add_type('application/json', '.json')
+mimetypes.add_type('application/wasm', '.wasm')
+
+def plugins():
+    """Valid plugins, read fresh each call (a deploy shows up without a restart). Bad ones are skipped."""
+    found = []
+    try: names = sorted(os.listdir(PLUGINS))
+    except OSError: return found
+    for pid in names:
+        d = os.path.join(PLUGINS, pid)
+        if not PLUGIN_ID.match(pid) or pid in RESERVED or pid in PKEYS or pid in PAGES: continue
+        try: m = json.load(open(os.path.join(d, 'plugin.json'), encoding='utf-8'))
+        except Exception: continue
+        if not isinstance(m, dict) or m.get('id') != pid or m.get('kind', 'static') != 'static': continue
+        entry = str(m.get('entry') or 'index.html')
+        if not os.path.isfile(os.path.join(d, entry)) or '..' in entry or entry.startswith('/'): continue
+        icon = str(m.get('icon') or '')
+        found.append(dict(id=pid, name=str(m.get('name') or pid)[:40], subtitle=str(m.get('subtitle') or '')[:40],
+                          entry=entry, icon=icon if icon and '..' not in icon and os.path.isfile(os.path.join(d, icon)) else '',
+                          version=str(m.get('version') or '')[:20], order=m.get('order', 100) if isinstance(m.get('order'), int) else 100))
+    return sorted(found, key=lambda p: (p['order'], p['name']))
+
+# Headers on every plugin file: a sandboxed, opaque origin (even when opened in its own tab) that can't
+# read Argus's state or post to its powers, plus CORS so its own module scripts and fetches still load.
+PLUGIN_HEADERS = {'Content-Security-Policy': "sandbox allow-scripts allow-pointer-lock allow-popups; frame-ancestors 'self'",
+                  'Access-Control-Allow-Origin': '*', 'X-Content-Type-Options': 'nosniff',
+                  'Referrer-Policy': 'no-referrer', 'Cross-Origin-Resource-Policy': 'cross-origin'}
 GODS = re.compile(r'^(%s)-' % '|'.join(PKEYS))
 
 def run(*a):
@@ -128,7 +164,8 @@ def state():
     return dict(updated=datetime.now().strftime('%I:%M %p').lstrip('0'), jobs=jobs,
                 title=THEME.get('title', 'Argus'), subtitle=THEME.get('subtitle', 'tasks'),
                 personas=[dict(key=k, name=n, domain=d) for k, n, d in PERSONAS],
-                soon=THEME.get('coming_soon', []))
+                soon=THEME.get('coming_soon', []),
+                plugins=[{k: p[k] for k in ('id', 'name', 'subtitle', 'icon', 'version')} for p in plugins()])
 
 def log(u):
     return run(JOURNALCTL, '--user', '-u', u, '-n', '40', '--no-pager', '-o', 'short-iso')
@@ -199,11 +236,29 @@ class H(BaseHTTPRequestHandler):
         if p.startswith('/argus'): p = p[6:]          # works whether or not Tailscale strips /argus
         return p.lstrip('/')
 
-    def out(self, body, ctype='text/html; charset=utf-8', code=200, cache='no-store'):
+    def out(self, body, ctype='text/html; charset=utf-8', code=200, cache='no-store', headers=None):
         b = body if isinstance(body, bytes) else body.encode()
         self.send_response(code)
         self.send_header('Content-Type', ctype); self.send_header('Content-Length', str(len(b)))
+        for k, v in (headers or {}).items(): self.send_header(k, v)
         self.send_header('Cache-Control', cache); self.end_headers(); self.wfile.write(b)
+
+    def plugin_file(self, rest):
+        # plugins/<id>/<path>: files of a static plugin, inside its folder only (same guard as static/).
+        pid, _, sub = rest.partition('/')
+        p = next((x for x in plugins() if x['id'] == pid), None)
+        if not p: return self.out('not found', 'text/plain', 404)
+        if '/' not in rest:                                   # plugins/<id> -> plugins/<id>/ so relative URLs resolve
+            self.send_response(301); self.send_header('Location', self.path.split('?', 1)[0] + '/')
+            self.send_header('Content-Length', '0'); self.end_headers(); return
+        root = os.path.realpath(os.path.join(PLUGINS, pid)); f = os.path.realpath(os.path.join(root, sub or p['entry']))
+        if os.path.isdir(f): f = os.path.join(f, 'index.html')
+        if os.path.commonpath([root, f]) != root or not os.path.isfile(f) or os.path.basename(f) == 'plugin.json':
+            return self.out('not found', 'text/plain', 404, headers=PLUGIN_HEADERS)
+        ct = mimetypes.guess_type(f)[0] or 'application/octet-stream'
+        if ct.startswith('text/') or ct in ('application/json',): ct += '; charset=utf-8'
+        with open(f, 'rb') as fh:
+            return self.out(fh.read(), ct, cache='no-cache' if f.endswith('.html') else 'max-age=300', headers=PLUGIN_HEADERS)
 
     def do_GET(self):
         if not host_ok(self.headers.get('Host')): return self.out('unknown host', 'text/plain', 421)
@@ -228,7 +283,9 @@ class H(BaseHTTPRequestHandler):
         if p.startswith('api/log/'):
             u = p[8:]
             return self.out(json.dumps({'log': log(u) if u in units() else ''}), 'application/json')
-        if p == '' or p.split('/')[0] in PKEYS or p.split('/')[0] in PAGES: return self.out(page())
+        if p.startswith('plugins/'): return self.plugin_file(p[8:])
+        first = p.split('/')[0]
+        if p == '' or first in PKEYS or first in PAGES or first in {x['id'] for x in plugins()}: return self.out(page())
         return self.out('not found', 'text/plain', 404)
 
     def deny(self, code, msg): return self.out(json.dumps({'ok': False, 'msg': msg}), 'application/json', code)
