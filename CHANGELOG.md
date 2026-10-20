@@ -8,6 +8,7 @@
 - **"Code modules" are now lessons** (the old word clashed with Python modules, which Mentor teaches): *Lessons* view, *Study this lesson*, *Add a lesson*; the Study picker shows learning progress. Each lesson lists its Learn cards to read again. The section is **Mentor · Learn**
 - **Lesson format**: optional `orientation`, `expert_move`, `spot_it`, `teach_order`, `level_0_worked`, `look_at`, `preread`, `hints` and `metadata.lint` (`docs/mentor-command.md`, with authoring limits). Older files get derived Learn cards from what they already have. The shipped lesson has the authored fields for its first term, drill and explain card
 - API: `answer` with `hint: k` returns one rung; the final answer carries `hints` and `reflections`; `rate` with `rating: 0` marks a Learn card read; `next?card=<id>` returns a Learn card to read again. Database: `cards.learn_of`, `sched.refresh`, `attempts.hints/reflections/stuck/skipped` (older databases gain them on start)
+- A second built-in lesson, **Git basics: three copies that never sync on their own** (`themes/leafy-realm/decks/git-basics.json`): nine terms with spot-it checks on real terminal transcripts, three explain cards with pre-reads, no drills. The first lesson that is not about Python
 - Tests: the Learn flow end to end, the hint ladder, stuck detection, read-again, an old-shape lesson, the worked example on a phone
 
 ## 4.7.0 – 2026-10-20

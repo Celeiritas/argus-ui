@@ -76,7 +76,9 @@ const practice = (() => {
   async function next(extra) {
     if (M.view !== 'practice') return;
     clearIdle(); stats();
+    const seq = M.seq = (M.seq || 0) + 1;         // two quick picker changes: only the last request may draw
     const r = await get('next?' + (M.deck ? 'deck=' + encodeURIComponent(M.deck) + '&' : '') + (extra ? 'extra=1' : ''));
+    if (seq !== M.seq || M.view !== 'practice') return;
     M.card = r.card; M.result = null; M.hints = 0; M.reflections = []; M.step = 0; M.notes = [];
     if (!M.card) {
       $('#mpanel').innerHTML = `<div class="panel"><h3>All caught up</h3><p class="coach">Nothing is due here${r.next_due ? `; the next card comes back ${when(r.next_due)}` : ''}. Spacing reviews out is what makes them stick, so stopping here is a good choice.</p>

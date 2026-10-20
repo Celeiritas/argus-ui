@@ -26,7 +26,7 @@ Code an AI writes for you skips the part where you build the mental model (the *
 3. **Copy the file to the inbox** on the machine that runs Argus: `~/.local/share/argus-ui/inbox/` (or set `ARGUS_MENTOR_INBOX`). For example: `scp mentor_inbox/*.json <host>:.local/share/argus-ui/inbox/`.
 4. **Study.** The lesson appears the next time Mentor shows a card (no restart). **Lessons** lists every lesson with its breakdown (big picture, design rules, rules that must hold, human factors link), your progress per tier, every Learn card to read again, any notes the `/mentor` command left about its own output, and **Study this lesson**. Files with problems are listed there with the reason; inbox files are read, never moved or deleted. Changing a file re-imports it and keeps your history.
 
-Argus ships one lesson, **Argus: caching, locks and the Mentor scheduler** (`themes/leafy-realm/decks/argus-code.json`), made from this project's own `sky.py` and `mentor.py`. It doubles as an example of the format, Learn fields included.
+Argus ships one lesson, **Argus: caching, locks and the Mentor scheduler** (`themes/leafy-realm/decks/argus-code.json`), made from this project's own `sky.py` and `mentor.py`. It doubles as an example of the format, Learn fields included. A second one, **Git basics**, has terms and explain cards only (spot-it snippets can be terminal transcripts, not just code), so a lesson needs no drills.
 
 ## How a card works
 1. Read the prompt and type: the missing code in each box (levels 1–2), the whole body (level 3; <kbd>Enter</kbd> keeps the indent and adds one after a colon), the missing term, or your explanation. Say how sure you are.
