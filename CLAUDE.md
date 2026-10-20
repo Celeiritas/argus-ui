@@ -4,10 +4,11 @@ A small, dependency-free web page that watches `systemd --user` services ("tasks
 
 ## Map
 - `server/argus_ui.py` – HTTP server (routing under `/` or `/argus/`, host allowlist, JSON-only POSTs, powers via `systemctl --user`). `server/mentor.py` – spaced repetition (SQLite, FSRS-4.5, rubric grader). `server/sky.py` – weather from Open-Meteo, fetched server-side and cached.
-- `web/index.html` – markup only. `web/css/argus.css` (core), `scene.css`, `olympus.css`. `web/js/` loads in this order and shares one global scope: `core` (helpers, routing, render, Argus's eyes) → `scene` (sky, Olympus, trees, weather) → `powers` (Watch-page tools and strikes) → `olympus` (playground items) → `mentor` → `main`.
+- `web/index.html` – markup only. `web/css/argus.css` (core), `scene.css`, `olympus.css`. `web/js/` loads in this order and shares one global scope: `core` (helpers, routing, render, Argus's eyes) → `scene` (sky, Olympus, trees, weather) → `powers` (Watch-page tools and strikes) → `olympus` (playground items) → `mentor` → `plugins` (LeafyPlugin sections) → `main`.
 - `themes/<name>/` – `theme.json` (agents, title, `coming_soon`), `icons/*.png`, `gods/*.svg` (sources), `decks/*.json`. Sounds are never in git (see `themes/leafy-realm/sfx/README.md`).
 - `scripts/build.sh [theme]` → `dist/argus-ui-<VERSION>-<theme>.tar.gz` (inlines Medusa's SVG, versions script/style URLs). `scripts/install.sh` installs it on the host. `scripts/deploy.sh` = `git pull` + build + install, run on the host. `scripts/new-theme.py <name>` makes a theme with placeholder art (`themes/starter` was made with it).
-- `docs/` – `scene.md` (weather sources, items, **layer order**), `mentor.md`, `themes.md`, `sounds.md`, `ux-audit-4.1.md`, `screenshots/`.
+- LeafyPlugins – `docs/leafy-plugin.md` is the contract: folders in `~/.config/argus-ui/plugins/<id>/` (manifest `plugin.json`), served sandboxed at `<base>/plugins/<id>/` and shown as the section `<base>/<id>` (server `plugins()` / `plugin_file()`, client `web/js/plugins.js`). Never give plugin frames `allow-same-origin`. Test fixture: `tests/plugin-fixtures/`.
+- `docs/` – `scene.md` (weather sources, items, **layer order**), `mentor.md`, `leafy-plugin.md`, `themes.md`, `sounds.md`, `ux-audit-4.1.md`, `screenshots/`.
 
 ## Test before you say it works
 `bash tests/run.sh` (or `bash tests/run.sh olympus`) builds the package, runs it in a temp HOME against fake systemd units (`tests/fixtures/`), and drives Chromium with Playwright: Watch powers and alarm, Mentor rating flow, every Olympus item, ultrawide and 375px phone. Needs python3, node, `npm install` and `npx playwright install chromium` (Linux; on Windows use a cloud session or the host). Add a check to the matching `tests/*.test.js` when you add a feature.

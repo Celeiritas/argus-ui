@@ -1,5 +1,11 @@
 # Changelog
 
+## 4.6.0 – 2026-10-20
+- **LeafyPlugins:** drop a folder with a `plugin.json` into `~/.config/argus-ui/plugins/<id>/` and Argus shows a new section at `<base>/<id>` with its own pill, no code change or restart. Static plugins (games, tools) run in a sandboxed frame with an opaque origin, so they can't use the powers or read your tasks, even when a plugin page is opened in its own tab. A plugin replaces a theme's "coming later" pill of the same name. The contract is in `docs/leafy-plugin.md`, including the planned `module` kind for moving Mentor over
+- **Spartamelee · Play** is the first plugin: its `scripts/deploy.sh` installs to `plugins/spartamelee/`
+- The 15-second refresh never reloads a plugin's frame, so a game keeps running; "Show full screen" for plugins; the frame fits the window and a 375px phone
+- Tests: `tests/plugins.test.js` with a demo plugin in `tests/plugin-fixtures/` (pill, side page, its module script and JSON load, a blocked POST to `api/freeze`, blocked `api/state`, refresh keeps the frame, no `..` or `plugin.json`, headers, redirect, phone)
+
 ## 4.5.3 – 2026-10-19
 - README opens with a short preview GIF of Watch and the Olympus playground. `bash tests/run.sh demo` records it again from the fake tasks (needs ffmpeg)
 

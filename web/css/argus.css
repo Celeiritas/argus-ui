@@ -135,3 +135,12 @@ dialog p{margin:0 0 var(--s6);color:var(--powder);line-height:1.5}
 dialog .row{display:flex;justify-content:flex-end;gap:var(--s2)}
 dialog .confirm{border-color:var(--danger);color:var(--danger)}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+/* LeafyPlugins (docs/leafy-plugin.md): the plugin's page in a sandboxed frame, full width of the content area */
+#hero[hidden]{display:none}   /* a plugin without an icon: no empty image box */
+.plugin{position:relative;z-index:2;padding:0 var(--gutter) var(--s6)}
+.plugin-frame{display:block;width:100%;height:clamp(320px,calc(100dvh - 300px),1000px);border:1px solid var(--line);border-radius:12px;background:var(--night)}
+.plugin-frame:focus-visible{outline:2px solid var(--powder);outline-offset:3px}
+.plugin-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--s2) var(--s4);margin-top:var(--s2)}
+.plugin-bar p{margin:0;font-size:var(--fs-sec);color:var(--powder)}
+.plugin-bar kbd{font:inherit;font-size:var(--fs-meta);padding:0 var(--s1);border:1px solid var(--frost);border-radius:4px}
+.plugin-bar .ver{font-size:var(--fs-meta);color:var(--frost)}
