@@ -29,7 +29,7 @@ See [docs/scene.md](docs/scene.md).
 
 ![The Olympus playground: items on an omega, a burning tree, an arrow, flowers and a hole in the ground](docs/screenshots/olympus.png)
 
-**Mentor · Practice.** A spaced-repetition coach. You type each answer, it grades the key ideas, and it tracks how well your confidence matches your results. See [docs/mentor.md](docs/mentor.md).
+**Mentor · Learn.** A study coach for the code you build with an AI: it teaches each lesson first (a worked example you annotate, the terms, the ideas behind each bug hunt), then tests you with spaced repetition, graded typed answers, a hint ladder and a calibration check. See [docs/mentor.md](docs/mentor.md).
 
 ![The Mentor page: a flashcard with a typed answer and a confidence rating](docs/screenshots/mentor.png)
 
@@ -73,7 +73,7 @@ A **LeafyPlugin** adds a section without touching Argus's code. Put a folder wit
 
 ## Repository layout
 ```
-server/                 argus_ui.py (HTTP server), mentor.py (practice), sky.py (weather); standard library only
+server/                 argus_ui.py (HTTP server), mentor.py (lessons, grading, scheduling), sky.py (weather); standard library only
 web/                    index.html, css/, js/ (core, scene, powers, olympus, mentor, plugins, main), manifest, service worker
 themes/leafy-realm/     the author's theme (art all rights reserved)
 themes/starter/         a free placeholder theme made by scripts/new-theme.py

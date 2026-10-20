@@ -37,3 +37,33 @@
 .mentor .tags li{font-size:var(--fs-meta);color:var(--powder);border:1px solid var(--line);border-radius:99px;padding:0 var(--s2)}
 .modules .addh{margin-top:var(--s6)}
 .modules .steps{padding-left:var(--s6);margin:0 0 var(--s4)}.modules .steps li{margin:0 0 var(--s2);line-height:1.5;overflow-wrap:anywhere}
+/* 4.8: Learn cards and the hint ladder */
+.mentor .meta{color:var(--powder);font-size:var(--fs-meta);margin:0 0 var(--s2)}
+.mentor input.blank.wide{font-family:inherit;font-size:var(--fs-body);width:100%;max-width:100%;height:auto;min-height:var(--hit);padding:0 var(--s2);display:block;margin:var(--s1) 0 0}
+.mentor .lines{list-style:none;padding:0;margin:0 0 var(--s2);background:#1a1f25;border:1px solid var(--line);border-radius:8px;overflow:auto}
+.mentor .lines li{margin:0}
+.mentor .line{display:flex;gap:var(--s3);align-items:center;width:100%;min-height:var(--hit);padding:0 var(--s3);border:0;border-radius:0;background:none;color:var(--snow);font-family:var(--mono);font-size:var(--fs-sec);text-align:left;white-space:pre;cursor:pointer}
+.mentor .line .n{color:var(--frost);min-width:2ch;text-align:right;font-size:var(--fs-meta)}
+.mentor .line code{background:none;padding:0;font-size:inherit}
+.mentor button.line:hover{background:#2b333c}
+.mentor button.line:focus-visible{outline:2px solid var(--powder);outline-offset:-2px}
+.mentor .line.is{background:#2b333c;box-shadow:inset 3px 0 0 var(--powder)}
+.mentor pre.code.worked .ln{display:inline-block;min-width:100%;padding:0 var(--s2);margin:0 calc(-1 * var(--s2))}
+.mentor pre.code.worked .ln.hi{background:#2b333c;box-shadow:inset 3px 0 0 var(--powder)}
+.mentor .callout{border:1px solid var(--line);border-left:3px solid var(--powder);border-radius:8px;padding:var(--s3);margin:0 0 var(--s3);background:var(--card)}
+.mentor .callout b{display:block;font-weight:600;font-size:var(--fs-sec);margin:0 0 var(--s2)}
+.mentor .callout label{display:block;font-size:var(--fs-sec);font-weight:600;margin:var(--s2) 0 var(--s1)}
+.mentor .callout p{margin:var(--s2) 0 0;line-height:1.5}
+.mentor .callout.ask textarea{width:100%}
+.mentor .ideas.keys{list-style:decimal;padding-left:var(--s6)}.mentor .ideas.keys li{font-size:var(--fs-body);line-height:1.5;padding:var(--s1) 0}
+.mentor .hint{border:1px solid var(--line);border-radius:8px;padding:var(--s3);margin:var(--s3) 0 0}
+.mentor .hint label{display:block;font-size:var(--fs-sec);font-weight:600;margin:var(--s2) 0 var(--s1)}
+.mentor .hint textarea{width:100%;min-height:0}
+.mentor .hint.offer p{margin:0 0 var(--s2);font-weight:600}
+.mentor .coach.back{border-left:3px solid var(--powder);padding-left:var(--s3)}
+.mentor .learnlist{list-style:none;padding:0;margin:var(--s2) 0}
+.mentor .learnlist button{display:flex;justify-content:space-between;gap:var(--s3);width:100%;min-height:var(--hit);text-align:left;padding:0 var(--s3)}
+.mentor .learnlist small{color:var(--powder);font-size:var(--fs-meta)}
+@keyframes mentor-pulse{0%,100%{box-shadow:0 0 0 0 rgba(176,196,222,.6)}50%{box-shadow:0 0 0 6px rgba(176,196,222,0)}}
+.mentor #hintBtn.pulse{animation:mentor-pulse 1.2s ease-out 2;border-color:var(--powder)}
+@media (prefers-reduced-motion:reduce){.mentor #hintBtn.pulse{animation:none;border-color:var(--powder)}}

@@ -22,7 +22,9 @@
   "schematic_mental_model": "A browser asks the Python server for /api/sky; sky.current() answers from an in-memory dict while it is under 20 minutes old, otherwise fetches Open-Meteo once under a lock and saves a copy to disk. Mentor works the same way round: mentor.py keeps cards, schedules and attempts in SQLite, and the page only ever asks for the next card and sends back an answer.",
   "design_rules_heuristics": "Fetch and grade on the server, so the browser holds no secrets and no answers. Cache with a time-to-live instead of fetching per request. Keep each rule (thresholds, levels) in one small function with early returns so it reads like a table.",
   "hard_rules_invariants": "Shared state (_mem, the database) is only changed while holding its lock. Files are replaced atomically, never written in place. SQL values always go through ? parameters. current() never raises: a failed fetch keeps the last reading and marks it stale.",
-  "hci_human_factors_bridge": "Caching keeps the page fast and the sky stable when the network is not. In Mentor, the server holds back the answer until you have typed yours (the testing effect), and drills lose hints as you get fast (expertise reversal), so the effort stays where learning happens."
+  "hci_human_factors_bridge": "Caching keeps the page fast and the sky stable when the network is not. In Mentor, the server holds back the answer until you have typed yours (the testing effect), and drills lose hints as you get fast (expertise reversal), so the effort stays where learning happens.",
+  "orientation": "sky.py answers the page's weather request from a dict in memory while the reading is under 20 minutes old, and fetches Open-Meteo once, under a lock, when it is older. mentor.py keeps your cards, schedule and attempts in SQLite and hands the page one card at a time. After this lesson you can read a cached function, say why it holds a lock and never raises, and spot an unsafe file write.",
+  "expert_move": "Follow one request through the function: what is already in memory, what gets fetched, and what every path returns."
  },
  "tier_1_faded_code_drills": [
   {
@@ -46,7 +48,96 @@
      "    with _lock:\n        if _mem.get('at', 0) > time.time() - TTL:\n            return _mem\n        try:\n            data = fetch(loc)\n            _mem.clear()\n            _mem.update(data)\n        except Exception:\n            _mem['stale'] = True\n        return _mem"
     ]
    },
-   "python_fluency_note": "`with _lock:` releases the lock even when fetch() raises, which a manual acquire()/release() pair can forget. `dict.get('at', 0)` gives a default instead of a KeyError on the very first call, when the cache is empty."
+   "python_fluency_note": "`with _lock:` releases the lock even when fetch() raises, which a manual acquire()/release() pair can forget. `dict.get('at', 0)` gives a default instead of a KeyError on the very first call, when the cache is empty.",
+   "expert_move": "Scan the `return` statements first: whatever every path returns is the cache.",
+   "look_at": {
+    "level_1": [
+     "the last line of the function",
+     "what `fetch()` hands back"
+    ],
+    "level_2": [
+     "the first line inside the function",
+     "the `if` that decides fresh or stale"
+    ],
+    "level_3": [
+     "the docstring: fresh, fetch, never raises"
+    ]
+   },
+   "level_0_worked": {
+    "annotations": [
+     {
+      "line": 3,
+      "note": "Takes the lock first",
+      "why": "Two requests can arrive at once; only one may fetch and write `_mem`. The `with` releases it even if `fetch()` raises."
+     },
+     {
+      "line": 4,
+      "note": "Is the cache fresh?",
+      "why": "`.get('at', 0)` gives 0 on the very first call instead of a KeyError; `time.time() - TTL` is \"TTL seconds ago\"."
+     },
+     {
+      "line": 5,
+      "note": "Serve from memory",
+      "why": "Nothing is fetched; the dict already holds the last reading."
+     },
+     {
+      "line": 8,
+      "note": "Replace, don't rebind",
+      "why": "`_mem = data` would make a new dict that other code never sees; clearing and updating keeps the one shared object."
+     },
+     {
+      "line": 11,
+      "note": "Never raise",
+      "why": "The page must always get something; a failed fetch keeps the old reading and flags it as stale."
+     },
+     {
+      "line": 12,
+      "note": "Every path returns `_mem`",
+      "why": "Fresh, refetched or stale, the caller always gets the same dict."
+     }
+    ],
+    "self_explain": {
+     "prompt": "Why does `current()` return `_mem` rather than `data` after the `try`?",
+     "rubric": [
+      {
+       "idea": "every path returns the same dict",
+       "any": [
+        "same dict",
+        "every path",
+        "both",
+        "always _mem",
+        "one object",
+        "shared"
+       ]
+      },
+      {
+       "idea": "a failed fetch keeps the old reading",
+       "any": [
+        "old",
+        "last",
+        "previous",
+        "stale",
+        "fail",
+        "except"
+       ]
+      }
+     ]
+    }
+   },
+   "hints": {
+    "level_1": [
+     "Every branch of this function hands back the same thing. Which name appears on the last line?",
+     "Near example:\n```python\ndef read(key):\n    if key in _seen:\n        return _seen\n    _seen.update(load(key))\n    return _seen\n```\nThe dict that is returned is the one that is updated."
+    ],
+    "level_2": [
+     "What has to be true before the function can skip the fetch, and what guards the whole block?",
+     "Near example:\n```python\nwith _guard:\n    if _box.get('t', 0) > time.time() - MAX_AGE:\n        return _box\n```"
+    ],
+    "level_3": [
+     "Three parts: take the lock, return early if fresh, else fetch and keep the old reading on failure.",
+     "Near example:\n```python\nwith _guard:\n    if fresh(): return _box\n    try:\n        _box.clear(); _box.update(load())\n    except Exception:\n        _box['stale'] = True\n    return _box\n```"
+    ]
+   }
   },
   {
    "id": "drill_02",
@@ -113,7 +204,8 @@
      "    os.makedirs(os.path.dirname(path), exist_ok=True)\n    tmp = path + '.tmp'\n    with open(tmp, 'w') as f:\n        json.dump(data, f)\n    os.replace(tmp, path)"
     ]
    },
-   "python_fluency_note": "`os.replace` swaps the file in a single filesystem step, so a reader sees the old file or the new one, never half of one. `exist_ok=True` makes makedirs safe to call every time."
+   "python_fluency_note": "`os.replace` swaps the file in a single filesystem step, so a reader sees the old file or the new one, never half of one. `exist_ok=True` makes makedirs safe to call every time.",
+   "expert_move": "Ask: at which line could the process die, and what is on disk at that moment?"
   }
  ],
  "tier_2_self_explanation_cards": [
@@ -158,6 +250,23 @@
       "temp"
      ]
     }
+   ],
+   "expert_move": "Ask: at which line could the process die, and what is on disk at that moment?",
+   "preread": {
+    "key_ideas": [
+     "A file is written in pieces; the process can die between pieces.",
+     "A half-written JSON file does not parse, so the next start has nothing.",
+     "Write to a temporary file, then `os.replace()` it over the real one: the replace is one step, so the real file is always whole."
+    ],
+    "near_example": {
+     "code": "f = open(LOG, 'w')\nf.write(big)   # power cut here",
+     "ask": "What does the next start find in LOG?",
+     "answer": "A truncated LOG: only the bytes written so far, which may stop mid-line."
+    }
+   },
+   "hints": [
+    "Where could the process stop between opening and closing the file?",
+    "Near example: an editor's `.swp` file is the same trick: write elsewhere, then rename over the original."
    ]
   },
   {
@@ -199,7 +308,8 @@
       "missing"
      ]
     }
-   ]
+   ],
+   "expert_move": "Find the shared thing and ask who else can touch it between the check and the write."
   },
   {
    "id": "card_03",
@@ -336,7 +446,18 @@
    "concise_definition": "An object used with `with` that runs setup on entry and cleanup on exit, even after an error.",
    "project_anchor": "sky.py -> current(): `with _lock:`",
    "contrast_anchor": "Unlike a hand-written try/finally, the cleanup lives in the object, so you can't forget it.",
-   "cloze_prompt": "`with _lock:` uses the lock as a {{BLANK}}, so it is released even if fetch() raises."
+   "cloze_prompt": "`with _lock:` uses the lock as a {{BLANK}}, so it is released even if fetch() raises.",
+   "teach_order": 1,
+   "expert_move": "Look for `with …:`; whatever follows `with` is a context manager.",
+   "spot_it": {
+    "snippet": "def current(loc):\n    with _lock:\n        if _mem.get('at', 0) > time.time() - TTL:\n            return _mem",
+    "line": 2,
+    "why": "`with _lock:` is the context manager in use: the lock is taken on entry and released on exit, even if the block raises."
+   },
+   "hints": [
+    "What keyword starts the block the lock lives in?",
+    "Near example: `with open(path) as f:` — `open(path)` is one of these too."
+   ]
   },
   {
    "id": "term_02",
@@ -363,7 +484,17 @@
    "concise_definition": "Writing to a temporary file, then swapping it into place in one step, so readers never see half a file.",
    "project_anchor": "sky.py -> current(): `os.replace(tmp, CACHE)`",
    "contrast_anchor": "Unlike writing in place, a crash leaves the old file intact rather than a truncated one.",
-   "cloze_prompt": "Saving to sky.json.tmp and then calling os.replace() is an {{BLANK}}."
+   "cloze_prompt": "Saving to sky.json.tmp and then calling os.replace() is an {{BLANK}}.",
+   "expert_move": "Ask: if the process died on this line, would the file on disk be whole?",
+   "spot_it": {
+    "snippet": "with open(tmp, 'w') as f:\n    json.dump(data, f)\nos.replace(tmp, CACHE)",
+    "line": 3,
+    "why": "`os.replace` swaps the finished file in as one step, so readers only ever see the old file or the new one."
+   },
+   "hints": [
+    "Which line is the one that can't be interrupted halfway?",
+    "Near example: editors save to `file.swp` and rename it over `file` for the same reason."
+   ]
   },
   {
    "id": "term_05",
@@ -372,7 +503,17 @@
    "concise_definition": "A bug whose outcome depends on the timing of two threads touching the same data.",
    "project_anchor": "sky.py: `_lock` guards `_mem`",
    "contrast_anchor": "Unlike a deadlock (threads stuck waiting forever), a race runs on and quietly produces wrong results.",
-   "cloze_prompt": "Without the lock, two requests could both refetch and clear _mem at once: a {{BLANK}}."
+   "cloze_prompt": "Without the lock, two requests could both refetch and clear _mem at once: a {{BLANK}}.",
+   "expert_move": "Find the shared thing (a dict, a file, a row) and ask who else can touch it at the same moment.",
+   "spot_it": {
+    "snippet": "if _mem.get('at', 0) > time.time() - TTL:\n    return _mem\ndata = fetch(loc)\n_mem.clear()",
+    "line": 4,
+    "why": "Between the check and `_mem.clear()` a second request can run the same check and both fetch; the lock stops that."
+   },
+   "hints": [
+    "Two tabs ask at once. Which line could they both reach before either has written?",
+    "Near example: two people editing one shared note, each saving over the other's change."
+   ]
   },
   {
    "id": "term_06",
