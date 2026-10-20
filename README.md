@@ -68,10 +68,13 @@ Any `systemd --user` service whose name starts with an agent key from the theme,
 - **Themes:** `python3 scripts/new-theme.py mytheme --agent "backup:Backup:Copies"` makes a theme with placeholder art in one step. Swap in your own art whenever you like. See [docs/themes.md](docs/themes.md).
 - **Sounds:** none are included. Put your own short mp3s in `~/.config/argus-ui/sfx/` on the machine that runs Argus. [docs/sounds.md](docs/sounds.md) has the file names, free sources and how to trim them.
 
+## Plugins
+A **LeafyPlugin** adds a section without touching Argus's code. Put a folder with a `plugin.json` in `~/.config/argus-ui/plugins/<id>/`, and the next page load shows a new pill and a page at `<base>/<id>`. The plugin's own page runs there in a sandboxed frame: it can be a game (Spartamelee is the first) or any static web tool, and it can't use Argus's powers or read your tasks. Plugins live outside the install, so upgrades keep them. See [docs/leafy-plugin.md](docs/leafy-plugin.md).
+
 ## Repository layout
 ```
 server/                 argus_ui.py (HTTP server), mentor.py (practice), sky.py (weather); standard library only
-web/                    index.html, css/, js/ (core, scene, powers, olympus, mentor, main), manifest, service worker
+web/                    index.html, css/, js/ (core, scene, powers, olympus, mentor, plugins, main), manifest, service worker
 themes/leafy-realm/     the author's theme (art all rights reserved)
 themes/starter/         a free placeholder theme made by scripts/new-theme.py
 scripts/build.sh        builds an installable package for a theme
@@ -79,7 +82,7 @@ scripts/install.sh      installs/updates on the target machine (keeps the old ve
 scripts/deploy.sh       on the target machine: git pull + build + install
 scripts/new-theme.py    makes a new theme with placeholder art
 tests/                  bash tests/run.sh: fake systemd units + browser checks (Playwright)
-docs/                   scene and layer order, Mentor, themes, UX audit, screenshots
+docs/                   scene and layer order, Mentor, LeafyPlugins, themes, UX audit, screenshots
 ```
 
 ## Develop and test
@@ -91,6 +94,7 @@ There is no login, so the server protects itself in other ways:
 - **No cross-site actions.** Actions must be JSON from the page itself (checked with `Sec-Fetch-Site` / `Origin`), so another website you visit can't freeze or run your tasks.
 - **No DNS rebinding.** It only answers to this machine's hostname, IP addresses, `*.ts.net` and `*.local` names, plus any in `ARGUS_ALLOWED_HOSTS` (comma separated).
 - **Can't delete anything.** Freeze only stops and disables; thaw re-enables exactly what was on. `argus-ui` itself can't be frozen. A task that's running asks for confirmation before it's interrupted.
+- **Plugins are sandboxed.** A plugin's page gets an opaque origin (sandboxed frame plus a `Content-Security-Policy: sandbox` header on its files), so it can't post to the powers or read your tasks, even when opened in its own tab. Its files are served from its own folder only.
 - Static files can't escape the `static/` folder, request bodies are capped, and text from unit descriptions can't break out of the page's script.
 
 ## License
