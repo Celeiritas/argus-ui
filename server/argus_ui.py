@@ -16,7 +16,7 @@ STATIC = os.environ.get('ARGUS_STATIC', f'{HOME}/.local/share/argus-ui/static')
 SYSTEMCTL = os.environ.get('ARGUS_SYSTEMCTL', 'systemctl')
 JOURNALCTL = os.environ.get('ARGUS_JOURNALCTL', 'journalctl')
 
-# Mentor (Practice tab) lives in mentor.py next to this file, or in ~/.local/share/argus-ui when installed
+# Mentor (the Learn section) lives in mentor.py next to this file, or in ~/.local/share/argus-ui when installed
 sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)), os.path.expanduser('~/.local/share/argus-ui')]
 import mentor
 import sky          # weather for the background scene (sky.py; fetched server-side, cached 20 min)
@@ -324,6 +324,8 @@ class H(BaseHTTPRequestHandler):
             for d in DECK_DIRS: decks += mentor.deck_list(d)
             return self.out(json.dumps({'decks': decks}), 'application/json')
         if what == 'next':
+            if q.get('card'):                      # one Learn card to read again (Lessons view); never a practice card
+                return self.out(json.dumps({'card': mentor.one_card(MDB, q['card'][0])}), 'application/json')
             card, next_due = mentor.next_card(MDB, deck, (q.get('extra') or ['0'])[0] == '1')
             return self.out(json.dumps({'card': card, 'next_due': next_due}), 'application/json')
         if what == 'stats': return self.out(json.dumps(mentor.stats(MDB, deck)), 'application/json')
@@ -331,11 +333,14 @@ class H(BaseHTTPRequestHandler):
 
     def mentor_post(self, what, body):
         try:
-            if what == 'answer':
+            if what == 'answer' and body.get('hint'):       # one rung of the hint ladder; no attempt is written yet
+                r = mentor.hint(MDB, str(body.get('card', '')), int(body['hint']))
+            elif what == 'answer':
                 text = str(body.get('text', ''))[:2000]
                 conf = body.get('confidence'); conf = int(conf) if conf in (1, 2, 3, 4, '1', '2', '3', '4') else None
                 ms = int(body.get('ms') or 0)
-                r = mentor.answer(MDB, str(body.get('card', '')), text, conf, max(0, min(ms, 3_600_000)))
+                r = mentor.answer(MDB, str(body.get('card', '')), text, conf, max(0, min(ms, 3_600_000)),
+                                  int(body.get('hints') or 0), body.get('reflections') or [], bool(body.get('skipped')))
             elif what == 'rate':
                 r = mentor.rate(MDB, int(body.get('attempt') or 0), int(body.get('rating') or 0), bool(body.get('grade_wrong')))
             else: return self.deny(404, 'not found')

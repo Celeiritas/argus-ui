@@ -1,9 +1,9 @@
 # Argus UI – notes for Claude Code
 
-A small, dependency-free web page that watches `systemd --user` services ("tasks") grouped by Greek-god "agents", with powers (Medusa freeze/thaw, Zeus run), a Mentor practice page and the Olympus playground. Python stdlib server + one static page. MIT code; the Leafy Realm theme's art is all rights reserved (`themes/leafy-realm/ASSETS.md`).
+A small, dependency-free web page that watches `systemd --user` services ("tasks") grouped by Greek-god "agents", with powers (Medusa freeze/thaw, Zeus run), Mentor's Learn page (lessons: teach first, then spaced practice) and the Olympus playground. Python stdlib server + one static page. MIT code; the Leafy Realm theme's art is all rights reserved (`themes/leafy-realm/ASSETS.md`).
 
 ## Map
-- `server/argus_ui.py` – HTTP server (routing under `/` or `/argus/`, host allowlist, JSON-only POSTs, powers via `systemctl --user`). `server/mentor.py` – spaced repetition (SQLite, FSRS-4.5, rubric grader). `server/sky.py` – weather from Open-Meteo, fetched server-side and cached.
+- `server/argus_ui.py` – HTTP server (routing under `/` or `/argus/`, host allowlist, JSON-only POSTs, powers via `systemctl --user`). `server/mentor.py` – lessons (Learn cards derived or authored), grading, the hint ladder, stuck detection, spaced repetition (SQLite, FSRS-4.5). `server/sky.py` – weather from Open-Meteo, fetched server-side and cached.
 - `web/index.html` – markup only. `web/css/argus.css` (core), `scene.css`, `olympus.css`. `web/js/` loads in this order and shares one global scope: `core` (helpers, routing, render, Argus's eyes) → `scene` (sky, Olympus, trees, weather) → `powers` (Watch-page tools and strikes) → `olympus` (playground items) → `mentor` → `plugins` (LeafyPlugin sections) → `main`.
 - `themes/<name>/` – `theme.json` (agents, title, `coming_soon`), `icons/*.png`, `gods/*.svg` (sources), `decks/*.json`. Sounds are never in git (see `themes/leafy-realm/sfx/README.md`).
 - `scripts/build.sh [theme]` → `dist/argus-ui-<VERSION>-<theme>.tar.gz` (inlines Medusa's SVG, versions script/style URLs). `scripts/install.sh` installs it on the host. `scripts/deploy.sh` = `git pull` + build + install, run on the host. `scripts/new-theme.py <name>` makes a theme with placeholder art (`themes/starter` was made with it).

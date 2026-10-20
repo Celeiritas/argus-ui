@@ -1,15 +1,22 @@
-"""Mentor - the study coach behind the Practice page: learn the code you build with an AI. Python standard library only.
+"""Mentor - the study coach behind the Learn page: learn the code you build with an AI. Python standard library only.
 
-What it teaches (see docs/mentor.md): each "code module" is a Cognitive Task Analysis of real code, written by the
-/mentor command in Claude Code (docs/mentor-command.md) as JSON. A module has three tiers of cards:
+What it teaches (see docs/mentor.md): each "lesson" is a Cognitive Task Analysis of real code, written by the
+/mentor command in Claude Code (docs/mentor-command.md) as JSON. A lesson has three tiers of practice cards:
   Tier 1  drill    faded worked examples: a 5-15 line snippet with blanks, level 1 (endings) -> 2 (logic) -> 3 (whole body)
   Tier 2  explain  self-explanation: find the bug (pre-mortem), why this design (trade-off), human factors link
   Tier 3  term     vocabulary: a cloze sentence; the feedback shows the definition, where it is in your code, its look-alike
-Plain decks (kind "define", the older format) still work and mix in with the modules.
+and, since 4.8, a Learn card in front of each one (teach before test):
+  orientation  one screen: what the code does and why this lesson      teach    a term, its anchor, its look-alike, spot it
+  level0       the drill's full code, annotated line by line, self-explained    preread  the key ideas an explain card assumes
+Learn cards are seen once (never scheduled); they come back only when you are stuck. Plain decks (kind "define", the
+older format) still work and mix in with the lessons.
 
-Order of study: inside a module, new cards unlock terms -> drills -> explain cards (pre-training first, Mayer & Pilegard
-2014). Reviews interleave: the next due card comes from a different module or deck when one is due (Bjork & Bjork 2011).
+Order of study: inside a lesson, new cards unlock orientation -> teach -> terms -> worked examples -> drills -> pre-reads
+-> explain cards (pre-training first, Mayer & Pilegard 2014; worked examples before problems, Sweller & Cooper 1985).
+Reviews interleave: the next due card comes from a different lesson or deck when one is due (Bjork & Bjork 2011).
 Drills move up a level when you get every blank right fast, or right twice in a row; "Needs work" moves them down.
+Every practice card has a hint ladder (nudge -> the expert's first move -> a near example -> the answer); each rung
+caps the rating Mentor suggests, and the rung reached is stored with the attempt.
 
 Grading roadmap (each stage keeps the data the next one learns from):
   A    rubric grader (this file): key ideas + accepted wordings; drill blanks compared as code; whole bodies parsed with ast.
@@ -29,9 +36,19 @@ from difflib import SequenceMatcher
 
 DB_LOCK = threading.Lock()
 INBOX = os.path.expanduser(os.environ.get('ARGUS_MENTOR_INBOX', '~/.local/share/argus-ui/inbox'))
-TIER = {'term': 3, 'drill': 1, 'explain': 2, 'define': 3}
-FUNNEL = {'term': 0, 'drill': 1, 'explain': 2}       # new cards in a module unlock in this order
+TIER = {'term': 3, 'drill': 1, 'explain': 2, 'define': 3, 'orientation': 0, 'teach': 0, 'level0': 0, 'preread': 0}
+# new cards in a lesson unlock in this order; a practice card also waits for its own Learn card (cards.learn_of)
+FUNNEL = {'orientation': 0, 'teach': 1, 'term': 2, 'level0': 3, 'drill': 4, 'preread': 5, 'explain': 6}
+LEARN = ('orientation', 'teach', 'level0', 'preread')
 LEVELS = {1: 'Fill in the endings', 2: 'Fill in the logic', 3: 'Write the body'}
+RUNGS = ('Nudge', "The expert's first move", 'A near example', 'The answer')
+# what an expert looks at first, when the lesson doesn't say (rung 2 of the hint ladder and the coach line)
+MOVE = {'drill': 'Look at what the function already returns and what each name holds by then.',
+        'term': 'Name what it does before you name it.',
+        'explain': 'Start from what can go wrong, then say why the code prevents it.',
+        'define': 'Say what it is for before you say what it is.'}
+WORDS = re.compile(r"[A-Za-z0-9_']+")
+STUCK_WINDOW, LAPSE_WINDOW = 2 * 3600, 7 * 86400
 
 # ---------- storage ----------
 SCHEMA = """
@@ -50,7 +67,11 @@ CREATE TABLE IF NOT EXISTS imports(
 """
 # columns added after 4.5 (older databases get them on start; nothing is lost)
 ADDED = [('cards', 'data', "TEXT DEFAULT '{}'"), ('cards', 'ord', 'INTEGER DEFAULT 0'),
-         ('sched', 'level', 'INTEGER DEFAULT 1'), ('attempts', 'kind', 'TEXT'), ('attempts', 'level', 'INTEGER')]
+         ('sched', 'level', 'INTEGER DEFAULT 1'), ('attempts', 'kind', 'TEXT'), ('attempts', 'level', 'INTEGER'),
+         # 4.8: Learn cards and the hint ladder
+         ('cards', 'learn_of', 'TEXT'), ('sched', 'refresh', 'INTEGER DEFAULT 0'),
+         ('attempts', 'hints', 'INTEGER DEFAULT 0'), ('attempts', 'reflections', 'TEXT'), ('attempts', 'stuck', 'TEXT'),
+         ('attempts', 'skipped', 'INTEGER DEFAULT 0')]
 
 def connect(path):
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -84,12 +105,12 @@ def load_decks(db, folder):
     db.commit()
     return n
 
-def upsert_card(db, cid, deck, kind, prompt, answer, points, data, tags, ord_):
-    db.execute("INSERT INTO cards(id,deck,kind,prompt,answer,points,tags,updated,data,ord) VALUES(?,?,?,?,?,?,?,?,?,?) "
+def upsert_card(db, cid, deck, kind, prompt, answer, points, data, tags, ord_, learn_of=None):
+    db.execute("INSERT INTO cards(id,deck,kind,prompt,answer,points,tags,updated,data,ord,learn_of) VALUES(?,?,?,?,?,?,?,?,?,?,?) "
                "ON CONFLICT(id) DO UPDATE SET deck=excluded.deck,kind=excluded.kind,prompt=excluded.prompt,"
                "answer=excluded.answer,points=excluded.points,tags=excluded.tags,updated=excluded.updated,"
-               "data=excluded.data,ord=excluded.ord",
-               (cid, deck, kind, prompt, answer, json.dumps(points), json.dumps(tags), time.time(), json.dumps(data), ord_))
+               "data=excluded.data,ord=excluded.ord,learn_of=excluded.learn_of",
+               (cid, deck, kind, prompt, answer, json.dumps(points), json.dumps(tags), time.time(), json.dumps(data), ord_, learn_of))
 
 def deck_list(folder):
     """Plain decks only; code modules are listed by stats() (they also come from the inbox)."""
@@ -119,23 +140,55 @@ def blanks_in(code):
 def as_list(v):
     return v if isinstance(v, list) else [] if v is None else [v]
 
+def hints_of(item, levels=False):
+    """The authored hint ladder: rungs 1 and 3 (a nudge, a near example) as 1-2 strings, per drill level or one list."""
+    h = item.get('hints')
+    if levels:
+        if isinstance(h, dict): return {str(lv): [str(x) for x in as_list(h.get(f'level_{lv}') or h.get(str(lv)))][:2] for lv in (1, 2, 3)}
+        return {str(lv): [str(x) for x in as_list(h)][:2] for lv in (1, 2, 3)}
+    return [str(x) for x in as_list(h)][:2]
+
+def worked(d):
+    """A drill's level-0 worked example: authored (`level_0_worked`), else one annotation made from what the drill has."""
+    w = d.get('level_0_worked') if isinstance(d.get('level_0_worked'), dict) else {}
+    ann = [{'line': int(a.get('line') or 1), 'note': str(a.get('note') or ''), 'why': str(a.get('why') or '')}
+           for a in as_list(w.get('annotations')) if isinstance(a, dict) and (a.get('why') or a.get('note'))][:8]
+    se = w.get('self_explain') if isinstance(w.get('self_explain'), dict) else {}
+    if not ann:
+        ann = [{'line': 1, 'note': str(d.get('context_comment') or 'What this does'), 'why': str(d.get('python_fluency_note') or d.get('context_comment') or '')}]
+    prompt = str(se.get('prompt') or 'In your words: what does this code do, and why is it written this way?')
+    return ann, prompt, rubric_points(as_list(se.get('rubric'))), bool(w)
+
 def import_module(db, doc, mid, source, built_in):
-    """Turn one module JSON into cards. Returns (cards added, notes about anything skipped). Caller holds DB_LOCK."""
+    """Turn one lesson JSON into cards: the practice cards, and a Learn card in front of each (and one orientation).
+    Returns (cards added, notes about anything skipped). Caller holds DB_LOCK."""
     meta = doc.get('metadata') if isinstance(doc.get('metadata'), dict) else {}
     name = str(meta.get('module_name') or doc.get('module_name') or mid).replace('_', ' ')
     summary = doc.get('cta_summary') if isinstance(doc.get('cta_summary'), dict) else {}
-    cards, notes = [], []
+    move = str(summary.get('expert_move') or '')
+    cards, notes = [], []          # (item id, kind, prompt, answer, points, data, ord, learn_of item id)
+    orient = str(summary.get('orientation') or summary.get('schematic_mental_model') or '')
     terms = as_list(doc.get('tier_3_terminology_cards'))
+    if orient:
+        cards.append(('orientation', 'orientation', orient, '', [], {'files': [str(x) for x in as_list(meta.get('source_files'))],
+                      'terms': [str(t.get('term')) for t in terms if isinstance(t, dict) and t.get('term')],
+                      'bridge': str(summary.get('hci_human_factors_bridge') or ''), 'authored': bool(summary.get('orientation'))}, -1, None))
     for i, t in enumerate(terms):
         if not isinstance(t, dict) or not str(t.get('term', '')).strip():
             notes.append(f'term {i + 1}: no term'); continue
-        term = str(t['term']).strip()
+        term, tid = str(t['term']).strip(), t.get('id') or f'term_{i + 1:02}'
         cloze = str(t.get('cloze_prompt') or '')
         if not BLANK.search(cloze):
             cloze = f"{t.get('concise_definition') or 'Name the term.'} This is called {{{{BLANK}}}}."
         data = {k: str(t.get(src) or '') for k, src in (('category', 'category'), ('definition', 'concise_definition'),
                 ('anchor', 'project_anchor'), ('contrast', 'contrast_anchor'))}
-        cards.append((t.get('id') or f'term_{i + 1:02}', 'term', cloze, term, [], data, i))
+        data.update({'move': str(t.get('expert_move') or move), 'hints': hints_of(t)})
+        o = int(t.get('teach_order') or i + 1) * 2
+        cards.append((tid, 'term', cloze, term, [], data, o + 1, None))
+        spot = t.get('spot_it') if isinstance(t.get('spot_it'), dict) and t['spot_it'].get('snippet') else None
+        td = {k: data[k] for k in ('category', 'definition', 'anchor', 'contrast', 'move')}
+        td['spot'] = {'snippet': str(spot['snippet']), 'line': int(spot.get('line') or 1), 'why': str(spot.get('why') or '')} if spot else None
+        cards.append((f'teach-{tid}', 'teach', term, str(td['spot']['line']) if spot else '', [], td, o, tid))
     for i, d in enumerate(as_list(doc.get('tier_1_faded_code_drills') or doc.get('faded_code_drills'))):
         if not isinstance(d, dict) or not d.get('full_canonical_code'):
             notes.append(f'drill {i + 1}: no code'); continue
@@ -150,34 +203,54 @@ def import_module(db, doc, mid, source, built_in):
                 notes.append(f"drill {i + 1} level {lv}: {n} blank{'s' if n != 1 else ''} but {len(a)} answer{'s' if len(a) != 1 else ''}")
         if not fades:
             notes.append(f'drill {i + 1}: no usable level'); continue
+        did = d.get('id') or f'drill_{i + 1:02}'
+        look = d.get('look_at') if isinstance(d.get('look_at'), dict) else {}
         data = {'breadcrumb': str(d.get('file_breadcrumb') or ''), 'context': str(d.get('context_comment') or ''),
-                'note': str(d.get('python_fluency_note') or ''), 'fades': fades}
-        cards.append((d.get('id') or f'drill_{i + 1:02}', 'drill', str(d.get('context_comment') or 'Complete the code.'),
-                      str(d['full_canonical_code']), [], data, 100 + i))
+                'note': str(d.get('python_fluency_note') or ''), 'fades': fades, 'move': str(d.get('expert_move') or move),
+                'hints': hints_of(d, levels=True), 'look': {str(lv): [str(x) for x in as_list(look.get(f'level_{lv}'))] for lv in (1, 2, 3)}}
+        cards.append((did, 'drill', str(d.get('context_comment') or 'Complete the code.'), str(d['full_canonical_code']), [], data, 100 + 2 * i + 1, None))
+        ann, prompt, pts, authored = worked(d)
+        cards.append((f'level0-{did}', 'level0', prompt, str(d['full_canonical_code']), pts,
+                      {'breadcrumb': data['breadcrumb'], 'context': data['context'], 'annotations': ann, 'authored': authored}, 100 + 2 * i, did))
     for i, c in enumerate(as_list(doc.get('tier_2_self_explanation_cards') or doc.get('self_explanation_flashcards'))):
         if not isinstance(c, dict) or not c.get('front_prompt') or not c.get('back_explanation'):
             notes.append(f'explain card {i + 1}: needs a front prompt and a back explanation'); continue
         pts = rubric_points(as_list(c.get('eval_rubric')))
-        data = {'type': str(c.get('card_type') or ''), 'breadcrumb': str(c.get('file_breadcrumb') or '')}
-        cards.append((c.get('id') or f'card_{i + 1:02}', 'explain', str(c['front_prompt']), str(c['back_explanation']), pts, data, 200 + i))
-    keep = set()
-    for item_id, kind, prompt, answer, pts, data, o in cards:
+        cid_ = c.get('id') or f'card_{i + 1:02}'
+        data = {'type': str(c.get('card_type') or ''), 'breadcrumb': str(c.get('file_breadcrumb') or ''),
+                'move': str(c.get('expert_move') or move), 'hints': hints_of(c)}
+        cards.append((cid_, 'explain', str(c['front_prompt']), str(c['back_explanation']), pts, data, 200 + 2 * i + 1, None))
+        pre = c.get('preread') if isinstance(c.get('preread'), dict) else {}
+        ideas = [str(x) for x in as_list(pre.get('key_ideas'))] or [p['idea'] for p in pts]
+        near = pre.get('near_example') if isinstance(pre.get('near_example'), dict) and pre['near_example'].get('code') else None
+        pd = {'type': data['type'], 'breadcrumb': data['breadcrumb'], 'ideas': ideas, 'authored': bool(pre),
+              'near': {'code': str(near['code']), 'ask': str(near.get('ask') or 'What would break here?')} if near else None}
+        cards.append((f'preread-{cid_}', 'preread', str(near.get('ask') or 'What would break here?') if near else '',
+                      str(near.get('answer') or '') if near else '', [], pd, 200 + 2 * i, cid_))
+    keep, ids = set(), {}
+    for item_id, kind, prompt, answer, pts, data, o, learn_of in cards:
         cid = f'{mid}:{slug(item_id)}'
         if cid in keep: cid = f'{cid}-{o}'
-        keep.add(cid)
-        upsert_card(db, cid, mid, kind, prompt, answer, pts, data, as_list(meta.get('concepts_covered')), o)
+        keep.add(cid); ids[item_id] = cid
+    for item_id, kind, prompt, answer, pts, data, o, learn_of in cards:
+        upsert_card(db, ids[item_id], mid, kind, prompt, answer, pts, data, as_list(meta.get('concepts_covered')), o,
+                    ids.get(learn_of) if learn_of else None)
+    # a practice card points at its Learn card too, so the page can offer "read the lesson again"
+    for item_id, kind, prompt, answer, pts, data, o, learn_of in cards:
+        if learn_of: db.execute("UPDATE cards SET learn_of=? WHERE id=? AND kind NOT IN (?,?,?,?)", (ids[item_id], ids[learn_of], *LEARN))
     for (old,) in db.execute("SELECT id FROM cards WHERE deck=?", (mid,)).fetchall():
         if old not in keep: db.execute("DELETE FROM cards WHERE id=?", (old,))     # attempts and schedule rows are kept
+    lint = [str(x) for x in as_list(meta.get('lint'))]
     db.execute("INSERT INTO modules(id,name,project,built_in,at,summary,concepts,files,source) VALUES(?,?,?,?,?,?,?,?,?) "
                "ON CONFLICT(id) DO UPDATE SET name=excluded.name,project=excluded.project,built_in=excluded.built_in,"
                "summary=excluded.summary,concepts=excluded.concepts,files=excluded.files,source=excluded.source",
                (mid, name, str(meta.get('project') or ''), 1 if built_in else 0, stamp(meta.get('timestamp'), mid),
-                json.dumps({k: str(summary.get(k) or '') for k in ('schematic_mental_model', 'design_rules_heuristics',
-                            'hard_rules_invariants', 'hci_human_factors_bridge')}),
+                json.dumps({**{k: str(summary.get(k) or '') for k in ('schematic_mental_model', 'design_rules_heuristics',
+                            'hard_rules_invariants', 'hci_human_factors_bridge')}, 'lint': lint}),
                 json.dumps([str(x) for x in as_list(meta.get('concepts_covered'))]),
                 json.dumps([str(x) for x in as_list(meta.get('source_files'))]), os.path.basename(source)))
     db.commit()
-    return len(cards), notes
+    return sum(1 for c in cards if c[1] not in LEARN), notes
 
 def stamp(iso, mid):
     """When the module was written: its ISO timestamp, else the YYYYMMDD_HHMMSS file name, else now."""
@@ -400,6 +473,7 @@ def next_level(db, card, srow, attempt, g):
         lower = [int(k) for k in fades if int(k) < lv]
         return (max(lower) if lower else lv), False
     if g < 3 or attempt['coverage'] < 0.99 or lv >= 3: return lv, False
+    if (attempt['hints'] or 0) >= 3: return lv, False       # a near example or the answer was shown: no step up this time
     feats = json.loads(attempt['features'] or '{}')
     prev = db.execute("SELECT coverage FROM attempts WHERE card_id=? AND id<? AND level=? AND rating IS NOT NULL ORDER BY id DESC LIMIT 1",
                       (card['id'], attempt['id'], lv)).fetchone()
@@ -431,58 +505,156 @@ def card_level(card, srow_level):
     lv = srow_level or min(int(k) for k in fades)
     return lv if str(lv) in fades else min(int(k) for k in fades)
 
-def card_payload(db, c):
-    """What the page needs to ask the question - never the answer."""
+def hint_rungs(c, level=None):
+    """The four rungs for a card: authored nudge and near example, the expert's move, the answer."""
+    data = json.loads(c['data'] or '{}')
+    h = data.get('hints') or []
+    if c['kind'] == 'drill': h = (h.get(str(level)) if isinstance(h, dict) else h) or []
+    move = data.get('move') or MOVE.get(c['kind'], MOVE['define'])
+    if c['kind'] == 'drill' and level == 3:
+        ans = c['answer']
+    elif c['kind'] == 'drill':
+        ans = ', '.join(a if isinstance(a, str) else a[0] for a in data['fades'][str(level)]['answers'])
+    else: ans = c['answer']
+    return [h[0] if h else None, move, h[1] if len(h) > 1 else None, ans]
+
+def card_payload(db, c, read_only=False):
+    """What the page needs to ask the question - never the answer (a Learn card is the lesson, so it carries it)."""
     data = json.loads(c['data'] or '{}')
     mod = db.execute("SELECT name, project FROM modules WHERE id=?", (c['deck'],)).fetchone()
     out = {'id': c['id'], 'deck': c['deck'], 'kind': c['kind'], 'tier': TIER.get(c['kind'], 3), 'prompt': c['prompt'],
-           'reps': c['reps'] or 0, 'module': mod['name'] if mod else None, 'project': mod['project'] if mod else None}
+           'reps': c['reps'] or 0, 'module': mod['name'] if mod else None, 'project': mod['project'] if mod else None,
+           'learn_of': c['learn_of'], 'refresh': bool(c['refresh']) if 'refresh' in c.keys() else False}
     if c['kind'] == 'drill':
         lv = card_level(c, c['level'])
         fade = data['fades'][str(lv)]
+        rungs = hint_rungs(c, lv)
         out.update({'level': lv, 'levels': sorted(int(k) for k in data['fades']), 'level_name': LEVELS[lv], 'code': fade['code'],
                     'breadcrumb': data.get('breadcrumb', ''), 'context': data.get('context', ''),
-                    'widths': [max(len(x if isinstance(x, str) else x[0]), 3) for x in fade['answers']]})
+                    'widths': [max(len(x if isinstance(x, str) else x[0]), 3) for x in fade['answers']],
+                    'rungs': [bool(r) for r in rungs]})
     elif c['kind'] == 'explain':
-        out.update({'type': data.get('type', ''), 'breadcrumb': data.get('breadcrumb', '')})
+        out.update({'type': data.get('type', ''), 'breadcrumb': data.get('breadcrumb', ''), 'rungs': [bool(r) for r in hint_rungs(c)]})
     elif c['kind'] == 'term':
-        out.update({'category': data.get('category', '')})
+        out.update({'category': data.get('category', ''), 'rungs': [bool(r) for r in hint_rungs(c)]})
+    elif c['kind'] == 'define':
+        out.update({'rungs': [bool(r) for r in hint_rungs(c)]})
+    elif c['kind'] == 'orientation':
+        out.update({k: data.get(k) for k in ('files', 'terms', 'bridge')})
+    elif c['kind'] == 'teach':
+        spot = data.get('spot')
+        out.update({k: data.get(k, '') for k in ('category', 'definition', 'anchor', 'contrast', 'move')})
+        out['spot'] = {'snippet': spot['snippet'], 'lines': len(spot['snippet'].split('\n'))} if spot else None
+        if read_only and spot: out['spot'].update({'line': spot['line'], 'why': spot['why']})
+    elif c['kind'] == 'level0':
+        out.update({'code': c['answer'], 'annotations': data.get('annotations', []), 'breadcrumb': data.get('breadcrumb', ''),
+                    'context': data.get('context', ''), 'graded': bool(json.loads(c['points'] or '[]'))})
+    elif c['kind'] == 'preread':
+        out.update({'type': data.get('type', ''), 'breadcrumb': data.get('breadcrumb', ''), 'ideas': data.get('ideas', []),
+                    'near': data.get('near')})
+        if read_only and data.get('near'): out['near'] = {**data['near'], 'answer': c['answer']}
     return out
+
+CARD_Q = ("SELECT c.*, s.due, s.reps, s.level, s.refresh, m.at AS mat FROM cards c LEFT JOIN sched s ON s.card_id=c.id "
+          "LEFT JOIN modules m ON m.id=c.deck")
+
+def one_card(db, card_id):
+    """A card to read again (Lessons view): a Learn card with its answers, never a practice card's answer."""
+    c = db.execute(CARD_Q + " WHERE c.id=?", (card_id,)).fetchone()
+    if not c or c['kind'] not in LEARN: return None
+    return card_payload(db, c, read_only=True)
 
 def next_card(db, deck=None, extra=False):
     scan_inbox(db)
     now = time.time()
-    q = ("SELECT c.*, s.due, s.reps, s.level, m.at AS mat FROM cards c LEFT JOIN sched s ON s.card_id=c.id "
-         "LEFT JOIN modules m ON m.id=c.deck")
-    args = []
+    q, args = CARD_Q, []
     if deck: q += " WHERE c.deck=?"; args.append(deck)
     rows = db.execute(q, args).fetchall()
-    # funnel: a module's drills wait until its terms have been seen once, its explain cards until its drills have
-    stage = {}
+    # a Learn card sent back by stuck detection comes first, before any review
+    back = [r for r in rows if r['refresh'] and r['kind'] in LEARN]
+    if back: return card_payload(db, back[0]), None
+    # funnel: a lesson's cards unlock in FUNNEL order, each practice card after its own Learn card
+    stage, seen = {}, {r['id'] for r in rows if r['reps']}
     for r in rows:
         if r['kind'] in FUNNEL and not r['reps']:
             stage[r['deck']] = min(stage.get(r['deck'], 9), FUNNEL[r['kind']])
+    def ready(r):
+        if r['reps'] or r['due'] is not None: return False
+        if FUNNEL.get(r['kind'], 0) > stage.get(r['deck'], 9): return False
+        return r['kind'] in LEARN or not r['learn_of'] or r['learn_of'] in seen
     due = sorted((r for r in rows if r['due'] is not None and r['due'] <= now), key=lambda r: r['due'])
-    new = sorted((r for r in rows if r['due'] is None and FUNNEL.get(r['kind'], 0) <= stage.get(r['deck'], 9)),
-                 key=lambda r: (r['mat'] or 0, r['deck'], r['ord'] or 0, r['id']))
+    new = sorted((r for r in rows if ready(r)), key=lambda r: (r['mat'] or 0, r['deck'], r['ord'] or 0, r['id']))
     pool = due or new
     if pool: c = interleave(pool)
-    elif extra and rows: c = min(rows, key=lambda r: r['due'] or now)                # practise ahead: the soonest-due card
+    elif extra and [r for r in rows if r['due']]: c = min((r for r in rows if r['due']), key=lambda r: r['due'])   # practise ahead
     else: return None, min((r['due'] for r in rows if r['due']), default=None)
     return card_payload(db, c), None
 
-def answer(db, card_id, text, confidence, ms):
+def hint(db, card_id, rung):
+    """One rung of the hint ladder (1-4). Rung 4 is the answer; the page then submits a blank answer with hints=4."""
+    c = db.execute("SELECT c.*, s.level FROM cards c LEFT JOIN sched s ON s.card_id=c.id WHERE c.id=?", (card_id,)).fetchone()
+    if not c or c['kind'] in LEARN or rung not in (1, 2, 3, 4): return None
+    level = card_level(c, c['level']) if c['kind'] == 'drill' else None
+    rungs = hint_rungs(c, level)
+    while rung < 4 and not rungs[rung - 1]: rung += 1       # a card without an authored nudge or near example skips that rung
+    return {'rung': rung, 'name': RUNGS[rung - 1], 'text': rungs[rung - 1], 'next': next((k + 1 for k in range(rung, 4) if rungs[k]), None)}
+
+def cap(sug, rungs):
+    """The hint ladder caps the suggested rating: rung 2 -> at most Good, rung 3 -> at most Hard, rung 4 -> Again."""
+    return min(sug, {0: 4, 1: 4, 2: 3, 3: 2}.get(rungs, 1))
+
+def refresh(db, learn_id):
+    if not learn_id: return False
+    db.execute("INSERT INTO sched(card_id,reps,refresh) VALUES(?,1,1) ON CONFLICT(card_id) DO UPDATE SET refresh=1", (learn_id,))
+    return True
+
+def learn_answer(db, c, text, ms, skipped):
+    """A Learn card is read, not graded: the typed reflections are stored, the spot-it check and self-explanation are checked."""
+    data, kind = json.loads(c['data'] or '{}'), c['kind']
+    cov, hits, missed, extra, feats = None, [], [], {}, {'words': len(WORDS.findall(text))}
+    if kind == 'teach' and data.get('spot'):
+        ok = text.strip() == str(data['spot']['line'])
+        cov = 1.0 if ok else 0.0
+        extra = {'line': data['spot']['line'], 'why': data['spot']['why'], 'spot_ok': ok}
+    elif kind == 'level0':
+        try: parts = json.loads(text) if text.strip().startswith('{') else {}
+        except ValueError: parts = {}
+        explain = str(parts.get('explain') or '')
+        if json.loads(c['points'] or '[]') and explain.strip():
+            cov, hits, missed, f = grade(c, explain); feats.update(f)
+        extra = {'reflections': [str(x)[:300] for x in as_list(parts.get('reflections'))][:8]}
+    elif kind == 'preread':
+        extra = {'answer': c['answer']}
+    if skipped: feats['skipped'] = True
+    with DB_LOCK:
+        cur = db.execute("INSERT INTO attempts(card_id,at,answer,confidence,ms,coverage,hits,missed,features,suggested,grader,kind,level,skipped,reflections) "
+                         "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (c['id'], time.time(), text[:2000], None, ms, cov, json.dumps(hits),
+                         json.dumps(missed), json.dumps(feats), 0, 'learn', kind, None, 1 if skipped else 0, json.dumps(extra.get('reflections', []))))
+        db.commit()
+    n = len(hits) + len(missed)
+    if skipped: coach = 'Skipped. If the practice card goes wrong, this one comes back.'
+    elif 'spot_ok' in extra: coach = f"That's it: {extra['why']}" if extra['spot_ok'] else f"It's on line {extra['line']}: {extra['why']}"
+    elif n: coach = f"All {n} key ideas." if cov >= 0.99 else f"{round(cov * n)} of {n} key ideas. Read the model answer, then say the missing part in your own words."
+    else: coach = 'Read it once more, then move on: the practice card will show what stuck.'
+    return {'attempt': cur.lastrowid, 'kind': kind, 'coverage': cov, 'hits': hits, 'missed': missed, 'reference': c['answer'],
+            'suggested': 0, 'previews': {}, 'level_after': None, 'coach': coach, 'learn': True, **extra}
+
+def answer(db, card_id, text, confidence, ms, hints=0, reflections=None, skipped=False):
     c = db.execute("SELECT c.*, s.level FROM cards c LEFT JOIN sched s ON s.card_id=c.id WHERE c.id=?", (card_id,)).fetchone()
     if not c: return None
+    if c['kind'] in LEARN: return learn_answer(db, c, text, ms, skipped)
     data = json.loads(c['data'] or '{}')
     level, per, extra = None, None, {}
+    hints = max(0, min(4, int(hints or 0)))
+    if hints == 4: text = ''                       # the answer was shown: this attempt counts as a blank one
     if c['kind'] == 'drill':
         level = card_level(c, c['level'])
         cov, feats, per = grade_drill(c, level, text)
         hits = [f"Blank {p['n']}" for p in per if p['ok']]; missed = [f"Blank {p['n']}" for p in per if not p['ok']]
         grader = 'drill-A'
         extra = {'level': level, 'canonical': c['answer'], 'note': data.get('note', ''), 'blanks': per,
-                 'problem': feats.get('problem'), 'same_structure': feats.get('same_structure')}
+                 'problem': feats.get('problem'), 'same_structure': feats.get('same_structure'),
+                 'look': (data.get('look') or {}).get(str(level)) or []}
         if level == 3: extra['yours'] = fill_body(data['fades']['3']['code'], text)
     elif c['kind'] == 'term':
         cov = grade_term(c, text)
@@ -493,12 +665,25 @@ def answer(db, card_id, text, confidence, ms):
         cov, hits, missed, feats = grade(c, text)
         grader = 'rubric-A-auto' if feats.get('auto_points') else 'rubric-A'
         extra = {'breadcrumb': data.get('breadcrumb', ''), 'rough': bool(feats.get('auto_points'))}
-    feats.update({'confidence': confidence, 'ms': ms, 'kind': c['kind'], 'level': level})
-    sug = suggest_rating(cov, confidence)
+    extra['move'] = data.get('move') or MOVE.get(c['kind'], MOVE['define'])
+    # slip or mistake (Norman): a blank that was right before, or the same card right at another time, is a slip
+    prev = db.execute("SELECT * FROM attempts WHERE card_id=? AND kind=? ORDER BY id DESC LIMIT 1", (card_id, c['kind'])).fetchone()
+    extra['slip'] = bool(prev and cov < 0.99 and (prev['coverage'] or 0) >= 0.99)
+    # stuck: wrong twice in a row within a session -> the lesson's Learn card comes back before the next try
+    stuck = None
+    if cov < 0.5 and prev and (prev['coverage'] or 0) < 0.5 and time.time() - prev['at'] < STUCK_WINDOW:
+        stuck = 'repeat'
+    elif cov < 0.5 and c['learn_of']:
+        la = db.execute("SELECT skipped FROM attempts WHERE card_id=? ORDER BY id DESC LIMIT 1", (c['learn_of'],)).fetchone()
+        if la and la['skipped']: stuck = 'skipped'     # "I know this, test me" was a miscalibration
+    feats.update({'confidence': confidence, 'ms': ms, 'kind': c['kind'], 'level': level, 'hints': hints, 'slip': extra['slip']})
+    sug = cap(suggest_rating(cov, confidence), hints)
     with DB_LOCK:
-        cur = db.execute("INSERT INTO attempts(card_id,at,answer,confidence,ms,coverage,hits,missed,features,suggested,grader,kind,level) "
-                         "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)", (card_id, time.time(), text, confidence, ms, cov,
-                         json.dumps(hits), json.dumps(missed), json.dumps(feats), sug, grader, c['kind'], level))
+        cur = db.execute("INSERT INTO attempts(card_id,at,answer,confidence,ms,coverage,hits,missed,features,suggested,grader,kind,level,hints,reflections,stuck) "
+                         "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (card_id, time.time(), text, confidence, ms, cov,
+                         json.dumps(hits), json.dumps(missed), json.dumps(feats), sug, grader, c['kind'], level, hints,
+                         json.dumps([str(x)[:300] for x in as_list(reflections)][:4]), stuck))
+        if stuck: refresh(db, c['learn_of'])
         db.commit()
     att = db.execute("SELECT * FROM attempts WHERE id=?", (cur.lastrowid,)).fetchone()
     srow = db.execute("SELECT * FROM sched WHERE card_id=?", (card_id,)).fetchone()
@@ -508,62 +693,94 @@ def answer(db, card_id, text, confidence, ms):
     level_after = {g: p[5] for g, p in plans.items()} if c['kind'] == 'drill' else None
     n = len(hits) + len(missed)
     return {'attempt': cur.lastrowid, 'kind': c['kind'], 'coverage': round(cov, 2), 'hits': hits, 'missed': missed,
-            'previews': previews, 'level_after': level_after, 'reference': c['answer'], 'suggested': sug,
-            'coach': coach_line(c['kind'], cov, confidence, n, extra), **extra}
+            'previews': previews, 'level_after': level_after, 'reference': c['answer'], 'suggested': sug, 'hints': hints,
+            'stuck': stuck, 'coach': coach_line(c['kind'], cov, confidence, n, extra), **extra}
 
 def coach_line(kind, cov, conf, n, extra):
-    k = round(cov * n)
+    """At most two sentences: what the result was, then the expert's first move and one place to look (Hattie &
+    Timperley 2007: task and process feedback, never about the person). A right answer gets one sentence."""
+    k, move = round(cov * n), extra.get('move', '')
+    look = extra.get('look') or []
     if conf and conf >= 3 and cov < 0.5:
-        return f"You felt sure but got {k} of {n}. Cards like this are where overconfidence hides: slow down on it next time."
+        return f"You felt sure but got {k} of {n}. {move}"
     if conf and conf <= 2 and cov >= 0.99:
         return "You knew more than you thought: it's all there. Trust that answer next time."
+    if extra.get('slip') and cov < 0.99:
+        return f"Right idea, wrong detail: you had this one before. {move}"
     if kind == 'drill':
         if extra.get('level') == 3:
-            if extra.get('problem'): return f"Python can't read your version ({extra['problem']}). Compare the two, then fix that line in your head."
+            if extra.get('problem'): return f"Python can't read your version ({extra['problem']}). Fix that line in your head, then compare the two."
             if extra.get('same_structure'): return "Same structure as the model answer. You wrote it from memory."
-            return "It runs differently from the model answer. Spot the line that differs, then say why the model does it that way."
+            return f"It runs differently from the model answer. {move}"
         if cov >= 0.99: return f"All {n} blank{'s' if n != 1 else ''} right."
-        return f"{k} of {n} blanks right. Read the full code below and trace what each missing piece does."
+        where = f" Look at {look[0]}." if look else ''
+        return f"{k} of {n} blanks right. {move}{where}"
     if kind == 'term':
         if cov >= 0.99: return "Right term. Read where it lives in your code, so you'll spot it next time."
-        if cov > 0: return "Close, but not the exact term. Compare your wording with the one below."
-        return "Not this time. Read the definition and the look-alike term, then say the term out loud."
+        if cov > 0: return f"Close, not the exact term. {move}"
+        return f"{move} The term is below: find it in your code first, then in the look-alike."
     rough = ' (this card checks content words only, so judge for yourself)' if extra.get('rough') else ''
-    if cov >= 0.99: return f"All {n} key ideas. Solid."
-    if cov == 0: return "None of the key ideas yet. Read the model answer, then say it back in your own words before rating." + rough
-    return f"{k} of {n} key ideas{rough}. Look at what's missing and add it to your own version."
+    if cov >= 0.99: return f"All {n} key ideas."
+    if cov == 0: return f"None of the key ideas yet{rough}. {move}"
+    return f"{k} of {n} key ideas{rough}. {move}"
 
 def rate(db, attempt_id, rating, grade_wrong):
     a = db.execute("SELECT * FROM attempts WHERE id=?", (attempt_id,)).fetchone()
-    if not a or rating not in (1, 2, 3, 4): return None
+    if not a: return None
     c = db.execute("SELECT * FROM cards WHERE id=?", (a['card_id'],)).fetchone()
     now = time.time()
+    if c and c['kind'] in LEARN:                 # a Learn card is seen, never scheduled; rating 0 (or any) marks it read
+        with DB_LOCK:
+            db.execute("INSERT INTO sched(card_id,reps,refresh,last) VALUES(?,1,0,?) ON CONFLICT(card_id) DO UPDATE SET reps=1,refresh=0,last=excluded.last",
+                       (c['id'], now))
+            db.execute("UPDATE attempts SET rating=0 WHERE id=?", (attempt_id,))
+            db.commit()
+        return {'due': None, 'days': None, 'level': None, 'level_change': 0, 'learn': True}
+    if rating not in (1, 2, 3, 4): return None
+    held, back = False, False
     with DB_LOCK:
         srow = db.execute("SELECT * FROM sched WHERE card_id=?", (a['card_id'],)).fetchone()
         if c is None: s, d, due, reps, lapses, level, up = (*schedule(srow, rating, now), 1, False)
         else: s, d, due, reps, lapses, level, up = plan(db, c, srow, a, rating, now)
+        if c and c['learn_of']:
+            older = db.execute("SELECT hints, rating, at FROM attempts WHERE card_id=? AND id<? AND rating IS NOT NULL ORDER BY id DESC LIMIT 3",
+                               (c['id'], attempt_id)).fetchall()
+            # the answer was shown twice, or "Needs work" twice in a week: hold the card a day and send its Learn card back
+            if (a['hints'] == 4 and any(o['hints'] == 4 for o in older)) or (rating == 1 and any(o['rating'] == 1 and now - o['at'] < LAPSE_WINDOW for o in older)):
+                held, due = True, max(due, now + DAY)
+                back = refresh(db, c['learn_of'])
         db.execute("INSERT INTO sched(card_id,stability,difficulty,due,last,reps,lapses,level) VALUES(?,?,?,?,?,?,?,?) "
                    "ON CONFLICT(card_id) DO UPDATE SET stability=excluded.stability,difficulty=excluded.difficulty,"
                    "due=excluded.due,last=excluded.last,reps=excluded.reps,lapses=excluded.lapses,level=excluded.level",
                    (a['card_id'], s, d, due, now, reps, lapses, level))
-        db.execute("UPDATE attempts SET rating=?, grade_wrong=? WHERE id=?", (rating, 1 if grade_wrong else 0, attempt_id))
+        db.execute("UPDATE attempts SET rating=?, grade_wrong=?, stuck=COALESCE(stuck, ?) WHERE id=?",
+                   (rating, 1 if grade_wrong else 0, 'held' if held else None, attempt_id))
         db.commit()
     old = a['level']
     return {'due': due, 'days': round((due - now) / DAY, 1), 'level': level if c and c['kind'] == 'drill' else None,
-            'level_change': (level - old) if old and c and c['kind'] == 'drill' else 0}
+            'level_change': (level - old) if old and c and c['kind'] == 'drill' else 0, 'held': held, 'back': back}
 
 def modules(db):
-    """Code modules for the Modules view: the CTA summary, what's in them and how far along you are."""
+    """Lessons for the Lessons view: the CTA summary, what's in them, how far along you are, and the Learn cards to read again."""
     out = []
     counts = db.execute("SELECT c.deck, c.kind, COUNT(*) n, SUM(CASE WHEN s.reps>0 THEN 1 ELSE 0 END) seen, "
                         "SUM(CASE WHEN c.kind='drill' AND s.level=3 THEN 1 ELSE 0 END) top "
                         "FROM cards c LEFT JOIN sched s ON s.card_id=c.id GROUP BY c.deck, c.kind").fetchall()
     by = {}
     for r in counts: by.setdefault(r['deck'], {})[r['kind']] = {'n': r['n'], 'seen': r['seen'] or 0, 'top': r['top'] or 0}
+    learn = {}
+    for r in db.execute("SELECT c.id, c.deck, c.kind, c.prompt, c.answer, c.data, s.reps FROM cards c LEFT JOIN sched s ON s.card_id=c.id "
+                        "WHERE c.kind IN (?,?,?,?) ORDER BY c.ord, c.id", LEARN).fetchall():
+        d = json.loads(r['data'] or '{}')
+        title = {'orientation': 'Orientation', 'teach': f"Teach: {r['prompt']}", 'level0': f"Worked example: {(d.get('breadcrumb') or '').split('->')[-1].strip() or r['prompt'][:40]}",
+                 'preread': f"Before {(d.get('type') or 'the explain card').lower().replace('pre-mortem', 'the bug hunt')}: {(d.get('breadcrumb') or '').split('->')[-1].strip()}"}[r['kind']]
+        learn.setdefault(r['deck'], []).append({'id': r['id'], 'kind': r['kind'], 'title': title.rstrip(': '), 'seen': bool(r['reps'])})
     for m in db.execute("SELECT * FROM modules ORDER BY built_in, at DESC").fetchall():
+        cards = by.get(m['id'], {})
         out.append({'id': m['id'], 'name': m['name'], 'project': m['project'], 'built_in': bool(m['built_in']), 'at': m['at'],
                     'summary': json.loads(m['summary'] or '{}'), 'concepts': json.loads(m['concepts'] or '[]'),
-                    'files': json.loads(m['files'] or '[]'), 'cards': by.get(m['id'], {})})
+                    'files': json.loads(m['files'] or '[]'), 'cards': cards, 'learn': learn.get(m['id'], []),
+                    'to_learn': sum(c['n'] - c['seen'] for k, c in cards.items() if k in LEARN)})
     return out
 
 def stats(db, deck=None):
@@ -578,12 +795,17 @@ def stats(db, deck=None):
     # calibration: confidence (1-4 -> 0..1) minus coverage; positive = overconfident
     cal = round(sum((a['confidence'] - 1) / 3 - a['coverage'] for a in conf) / len(conf), 2) if conf else None
     imports = [dict(r) for r in db.execute("SELECT path, ok, msg, module, at FROM imports ORDER BY at DESC LIMIT 8")]
-    return {'cards': len(cards), 'new': sum(1 for c in cards if c['due'] is None),
-            'due': sum(1 for c in cards if c['due'] is not None and c['due'] <= now),
-            'learned': sum(1 for c in cards if (c['reps'] or 0) > 0),
-            'today': sum(1 for a in att if a['at'] >= day0),
+    practice = [c for c in cards if c['kind'] not in LEARN]
+    week = [a for a in att if a['at'] >= now - 7 * DAY and a['kind'] not in LEARN]
+    return {'cards': len(practice), 'new': sum(1 for c in practice if c['due'] is None),
+            'learn': sum(1 for c in cards if c['kind'] in LEARN and not c['reps']),
+            'due': sum(1 for c in practice if c['due'] is not None and c['due'] <= now),
+            'learned': sum(1 for c in practice if (c['reps'] or 0) > 0),
+            'today': sum(1 for a in att if a['at'] >= day0 and a['kind'] not in LEARN),
             'avg_coverage': round(sum(a['coverage'] for a in rated) / len(rated), 2) if rated else None,
             'calibration': cal, 'labels': len(rated),
             'grade_disputes': sum(1 for a in rated if a['grade_wrong']),
+            'hints_per_card': round(sum(a['hints'] or 0 for a in week) / len(week), 2) if week else None,
+            'sent_back': sum(1 for a in att if a['stuck'] in ('held', 'repeat', 'skipped') and a['at'] >= day0),
             'modules': modules(db), 'imports': imports,
             'inbox': INBOX.replace(os.path.expanduser('~'), '~', 1)}

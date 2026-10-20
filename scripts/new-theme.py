@@ -15,7 +15,7 @@ R = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BG, RIM, INK = (28, 33, 39), (167, 182, 196), (242, 245, 247)
 DEFAULT_AGENTS = ['argus:Argus:Watchman · monitoring', 'backup:Backup:Copies · snapshots',
                   'media:Media:Library · streaming', 'sync:Sync:Files between devices',
-                  'mentor:Mentor:Practice · coaching']
+                  'mentor:Mentor:Learn · coaching']
 
 
 def hue(i):
