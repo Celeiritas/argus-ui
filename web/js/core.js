@@ -10,13 +10,15 @@ const MOUNT = /^\/argus(\/|$)/.test(location.pathname) ? '/argus/' : '/';
 const REST = location.pathname.slice(MOUNT.length - (location.pathname === '/argus' ? 1 : 0)).replace(/^\/+|\/+$/g, '');
 const AGENT_KEYS = (S?.personas || []).map(p => p.key);
 const PAGES = ['olympus'];                                    // sections that are not agents
-const here = [...AGENT_KEYS, ...PAGES].includes(REST.split('/')[0]) ? REST.split('/')[0] : null;
+const PLUGINS = S?.plugins || [];                             // LeafyPlugins: each has its own section (docs/leafy-plugin.md)
+const here = [...AGENT_KEYS, ...PAGES, ...PLUGINS.map(p => p.id)].includes(REST.split('/')[0]) ? REST.split('/')[0] : null;
+const plugin = PLUGINS.find(p => p.id === here) || null;
 const BASE = MOUNT;
 if (location.pathname === '/argus') history.replaceState(null, '', '/argus/');
 const url = p => BASE + p;
 // sections that are not about watching: Argus shrinks to the corner and the section's agent takes the centre
 const SIDE = ['mentor', 'olympus'];
-const side = SIDE.includes(here), onOlympus = here === 'olympus';     // Olympus: a playground where the powers act on the scene
+const side = SIDE.includes(here) || !!plugin, onOlympus = here === 'olympus';     // Olympus: a playground where the powers act on the scene
 document.body.classList.toggle('side', side); document.body.classList.toggle('play', onOlympus);
 let gaze = null, drag = null, armed = null, justDragged = false;   // what Argus watches; drag/armed belong to the god tools (powers.js)                                                // Argus watches whatever you throw on Olympus
 
@@ -86,7 +88,10 @@ const isRunning = c => c.dataset.state === 'running';
 function render() {
   if (!S) return;
   const me = S.personas.find(p => p.key === here);
-  if (side && !onOlympus) {
+  if (plugin) {
+    $('.title h1').textContent = plugin.name; $('#sub').textContent = plugin.subtitle; document.title = `${plugin.name} · ${S.title || 'Argus'}`;
+    $('#hero').hidden = !plugin.icon; if (plugin.icon) $('#hero').src = url(`plugins/${plugin.id}/${plugin.icon}`);
+  } else if (side && !onOlympus) {
     $('.title h1').textContent = me.name; $('#sub').textContent = me.domain; document.title = `${me.name} · ${S.title || 'Argus'}`;
     $('#hero').src = `static/icons/${here}.png`;
   } else if (onOlympus) {
@@ -96,12 +101,14 @@ function render() {
   $('#realms').innerHTML = realm(url(''), 'argus', 'Argus', 'Watch', !side) +
     SIDE.filter(k => AGENT_KEYS.includes(k)).map(k => { const p = S.personas.find(x => x.key === k); return realm(url(k), k, p.name, p.domain.split('·')[0].trim(), here === k); }).join('') +
     realm(url('olympus'), 'olympus', 'Olympus', 'Playground', onOlympus) +
-    (S.soon || []).map(x => `<span class="realm soon" aria-disabled="true"><svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="16" fill="#1C2127" stroke="#A7B6C4" stroke-width="1.5"/><path d="M10 26 26 10M26 26 10 10" stroke="#C9A36A" stroke-width="2" stroke-linecap="round"/><path d="M23 9h4v4M13 9H9v4" stroke="#A7B6C4" stroke-width="1.5" fill="none"/></svg><span><b>${esc(x.name)}</b><small>${esc(x.what)} · coming later</small></span></span>`).join('');
+    PLUGINS.map(p => pluginRealm(p, here === p.id)).join('') +
+    (S.soon || []).filter(x => !PLUGINS.some(p => p.name === x.name)).map(x => `<span class="realm soon" aria-disabled="true"><svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="16" fill="#1C2127" stroke="#A7B6C4" stroke-width="1.5"/><path d="M10 26 26 10M26 26 10 10" stroke="#C9A36A" stroke-width="2" stroke-linecap="round"/><path d="M23 9h4v4M13 9H9v4" stroke="#A7B6C4" stroke-width="1.5" fill="none"/></svg><span><b>${esc(x.name)}</b><small>${esc(x.what)} · coming later</small></span></span>`).join('');
   const by = {}; S.jobs.forEach(j => (by[j.persona] ||= []).push(j));
   const shown = S.personas.filter(p => (by[p.key] || p.key === here) && !SIDE.includes(p.key));
   const tab = (k, label) => `<a href="${url(k)}" class="${here === k ? 'on' : ''}" ${here === k ? 'aria-current="page"' : ''}>${esc(label)}</a>`;
   $('#nav').innerHTML = `<a href="${url('')}" class="${here ? '' : 'on'}" ${here ? '' : 'aria-current="page"'}>All</a>` +
     shown.filter(p => !SIDE.includes(p.key)).map(p => tab(p.key, p.name)).join('');
+  if (plugin) { look.retarget(); return leafy.show(plugin); }
   if (here === 'mentor') { look.retarget(); return practice.show(); }
   if (onOlympus) { look.retarget(); return playground.show(); }
   const list = here ? shown.filter(p => p.key === here) : shown;
@@ -115,6 +122,12 @@ function render() {
   $$('.card.frozen').forEach(addStone);
   if (armed) arm(armed, true);
   look.retarget();
+}
+// A plugin's pill in the section bar: its own icon, or a plain laurel-and-blades mark.
+function pluginRealm(p, on) {
+  const mark = p.icon ? `<img src="${esc(url(`plugins/${p.id}/${p.icon}`))}" alt="">`
+    : `<svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="16" fill="#1C2127" stroke="#A7B6C4" stroke-width="1.5"/><path d="M10 26 26 10M26 26 10 10" stroke="#C9A36A" stroke-width="2" stroke-linecap="round"/><path d="M23 9h4v4M13 9H9v4" stroke="#A7B6C4" stroke-width="1.5" fill="none"/></svg>`;
+  return `<a class="realm ${on ? 'on' : ''}" href="${url(p.id)}" ${on ? 'aria-current="page"' : ''}>${mark}<span><b>${esc(p.name)}</b><small>${esc(p.subtitle || 'Plugin')}</small></span></a>`;
 }
 function card(j) {
   const fz = j.state === 'frozen';
