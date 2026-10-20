@@ -7,3 +7,4 @@ CLAUDE.local.md
 .claude/settings.local.json
 themes/*/sfx/*.wav
 themes/*/sfx/*.ogg
+mentor_inbox/
