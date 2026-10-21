@@ -4,6 +4,8 @@ run(async b => {
   const p = await page(b);
   await p.goto(BASE); await p.waitForTimeout(1000);
   check(await p.locator('.card').count() >= 5, 'task cards are shown');
+  const h = await (await p.request.get(BASE + 'api/health')).json();
+  check(h.ok === true && /^\d+\.\d+\.\d+$/.test(h.version) && h.uptime_s >= 0, 'api/health answers with the version and uptime');
   check(await p.locator('nav a').count() >= 3, 'agent tabs are shown');
   check(await p.locator('#argus').evaluate(e => e.classList.contains('glare')), 'Argus glares: a fixture task has failed');
   check(!(await p.locator('#alarm').isHidden()), 'alarm badge is visible');

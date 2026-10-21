@@ -1,5 +1,10 @@
 # Changelog
 
+## 4.9.1 – 2026-10-21
+- **`GET api/health`**: `{ "ok": true, "version": "4.9.1", "uptime_s": 120 }`, for a deploy tool to confirm the new version came up and for a door probe to see the page is alive. Nothing personal in it
+- **`scripts/deploy.sh --no-pull`** builds and installs the commit that is checked out without touching git, and prints `ZEUS_STAGE=install` before the install starts, so a deploy tool (Zeus) knows whether a failure changed anything. Without the flag it pulls `main` as before
+- Test: `api/health` is checked on the Watch run
+
 ## 4.9.0 – 2026-10-20
 - **Placeholders in lessons.** A lesson says `{{SERVER}}`, `{{PC}}`, `{{PHONE}}`, `{{SSH}}`, `{{HOME_PC}}`, `{{HOME_SERVER}}` or `{{REPO_URL}}`, and Mentor fills them in from `~/.config/leafy/realm.json` in every field it shows (prompts, answers, hints, snippets, the Lessons view), falling back to public defaults (`homeserver`, `desktop` …). Grading compares against the filled-in text. The database keeps the placeholders, so lessons move between people unchanged and an edit to `realm.json` shows on the next card. `docs/realm.example.json`; docs/mentor.md explains the file
 - **`scripts/check-private.sh`** stops personal data reaching the public repo: home paths, `*.ts.net` names, IPv4/IPv6 addresses, emails, and every line of your own `~/.config/leafy/denylist.txt` (never committed). It checks the staged changes, a commit range (`main..HEAD`, messages included), the whole tree (`--tree`) or history (`--history`), and prints file:line. `scripts/install-hooks.sh` runs it before every push; a GitHub Actions job runs the generic checks on every pull request
