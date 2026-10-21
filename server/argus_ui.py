@@ -87,6 +87,14 @@ def sc(*a):
 def sc_ok(*a):
     return run_ok(SYSTEMCTL, '--user', *a)
 
+STARTED = datetime.now()
+def health():
+    # for a deploy tool (Zeus) and Janus's door probe: is this version up and answering? Nothing personal in it.
+    try:
+        with open(os.path.join(STATIC, 'VERSION')) as f: v = f.read().strip()
+    except OSError: v = 'dev'
+    return {'ok': True, 'version': v, 'uptime_s': int((datetime.now() - STARTED).total_seconds())}
+
 def units():
     out = sc('list-unit-files', '--type=service', '--no-legend')
     us = set()
@@ -280,6 +288,7 @@ class H(BaseHTTPRequestHandler):
             with open(f, 'rb') as fh: return self.out(fh.read(), 'application/manifest+json' if p.endswith('manifest') else 'text/javascript')
         if p == 'api/state': return self.out(json.dumps(state()), 'application/json')
         if p == 'api/sky': return self.out(json.dumps(sky.current()), 'application/json')
+        if p == 'api/health': return self.out(json.dumps(health()), 'application/json', cache='no-store')
         if p.startswith('api/log/'):
             u = p[8:]
             return self.out(json.dumps({'log': log(u) if u in units() else ''}), 'application/json')
