@@ -1,5 +1,11 @@
 # Changelog
 
+## 4.10.0 – 2026-10-22
+- **Server plugins** (`"kind": "server"`): trusted plugins with a Python side and a page inside Elaia, for the agents' pages (Hermes · Delivery, Janus · Map, Zeus · Throne) and, later, Mentor. At startup Elaia imports each one's `plugin.py` by path and calls `init(ctx)` with its own data folder (`~/.local/share/argus-ui/plugins/<id>/`); `GET`/`POST api/<id>/<path>` go to its `get(path, query, ctx)` / `post(path, body, ctx)`, which answer `(status, obj)`. POSTs pass Elaia's usual checks first (host, JSON only, same-origin, 4 KB) and run one at a time per plugin; `ctx.headers` carries `Tailscale-User-Login`, `Tailscale-User-Name` and `X-Forwarded-For` for the agent's CLI to check with Janus. `GET api/<id>/status` is reserved for the Home page's one line. A plugin that fails to load is logged and skipped, and Elaia starts anyway; an exception in a request is a 500, not a crash
+- The page script runs in Elaia's page (no frame) and calls `leafy.register(id, {show, refresh})`; it gets `api.get` / `api.post` for its own API, `esc`, `toast` and `url`. Its section is a side page like Mentor's, and the 15-second refresh calls `refresh()` instead of rebuilding it. Script and style URLs carry their file time, so a changed page is fetched fresh. `plugin.py` is never served
+- Plugin ids can no longer be the names of built-in API routes (`state`, `sky`, `health`, `log`, `freeze`, `thaw`, `bolt`, `run`)
+- `docs/leafy-plugin.md`: the *Server plugins* section with a minimal example, replacing the planned "module" kind. Test fixtures `demo-server` and `demo-broken`; `tests/run.sh plugins` checks the server kind end to end, and that a sandboxed static plugin can't read a server plugin's API
+
 ## 4.9.1 – 2026-10-21
 - **`GET api/health`**: `{ "ok": true, "version": "4.9.1", "uptime_s": 120 }`, for a deploy tool to confirm the new version came up and for a door probe to see the page is alive. Nothing personal in it
 - **`scripts/deploy.sh --no-pull`** builds and installs the commit that is checked out without touching git, and prints `ZEUS_STAGE=install` before the install starts, so a deploy tool (Zeus) knows whether a failure changed anything. Without the flag it pulls `main` as before

@@ -3,7 +3,7 @@
 #   Open it at http://<host>:8095, or anywhere on your tailnet with:  tailscale serve --bg --set-path /argus http://127.0.0.1:8095
 # Powers on the page: Medusa freezes/thaws a task (stop + pause its timer; thaw restores it), Zeus's bolt runs/restarts it.
 # Which agents exist, their names and the page title come from the theme (static/theme.json).
-import json, os, re, socket, subprocess, sys, threading, mimetypes, ipaddress
+import json, os, re, socket, subprocess, sys, threading, mimetypes, ipaddress, importlib.util, traceback, types
 from urllib.parse import urlsplit, parse_qs
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from datetime import datetime
@@ -40,32 +40,77 @@ PAGES = ['olympus']      # sections that are not agents (the Olympus playground)
 # ---------- LeafyPlugins (docs/leafy-plugin.md) ----------
 # A plugin is a folder ~/.config/argus-ui/plugins/<id>/ with a plugin.json manifest. "static" plugins
 # (a browser game, a tool) are plain files shown in a sandboxed frame on their own section <base>/<id>.
-# They live outside the install, so upgrades keep them, like the sounds.
+# "server" plugins are trusted code the owner installed: a Python side (plugin.py, loaded once at startup,
+# answering api/<id>/...) and a page script that runs inside Elaia's own page, like Mentor.
+# Both live outside the install, so upgrades keep them, like the sounds.
 PLUGINS = os.path.expanduser(os.environ.get('ARGUS_PLUGINS', '~/.config/argus-ui/plugins'))
 PLUGIN_ID = re.compile(r'^[a-z][a-z0-9-]{0,31}$')
-RESERVED = {'api', 'static', 'plugins', 'play', 'all', 'argus', 'sw.js', 'manifest.webmanifest'}   # 'play' means Olympus in the page
+RESERVED = {'api', 'static', 'plugins', 'play', 'all', 'argus', 'sw.js', 'manifest.webmanifest',   # 'play' means Olympus in the page
+            'state', 'sky', 'health', 'log', 'freeze', 'thaw', 'bolt', 'run'}                     # built-in api/<name> routes
 mimetypes.add_type('text/javascript', '.js'); mimetypes.add_type('text/javascript', '.mjs')
 mimetypes.add_type('model/gltf-binary', '.glb'); mimetypes.add_type('application/json', '.json')
 mimetypes.add_type('application/wasm', '.wasm')
+SERVER_PLUGINS = {}      # id -> the loaded plugin.py module (load_server_plugins, at startup)
+PLUGIN_LOCKS = {}        # id -> lock: one POST at a time per plugin, like the powers' LOCK
+
+def safe_file(d, name):
+    # a file named in a manifest: relative, inside the folder, and there
+    name = str(name or '')
+    return name if name and '..' not in name and not name.startswith('/') and os.path.isfile(os.path.join(d, name)) else ''
+
+def manifest(pid):
+    """The checked manifest of one plugin folder, or None when it isn't a valid plugin."""
+    d = os.path.join(PLUGINS, pid)
+    if not PLUGIN_ID.match(pid) or pid in RESERVED or pid in PKEYS or pid in PAGES: return None
+    try: m = json.load(open(os.path.join(d, 'plugin.json'), encoding='utf-8'))
+    except Exception: return None
+    if not isinstance(m, dict) or m.get('id') != pid: return None
+    p = dict(id=pid, kind=m.get('kind', 'static'), name=str(m.get('name') or pid)[:40], subtitle=str(m.get('subtitle') or '')[:40],
+             icon=safe_file(d, m.get('icon')), version=str(m.get('version') or '')[:20],
+             order=m.get('order', 100) if isinstance(m.get('order'), int) else 100)
+    if p['kind'] == 'static':
+        p['entry'] = safe_file(d, m.get('entry') or 'index.html')
+        return p if p['entry'] else None
+    if p['kind'] == 'server':
+        p['server'], p['page'] = safe_file(d, m.get('server') or 'plugin.py'), safe_file(d, m.get('page') or 'page.js')
+        p['style'] = safe_file(d, m.get('style'))
+        return p if p['server'].endswith('.py') and p['page'] else None
+    return None                                                        # an unknown kind is skipped
 
 def plugins():
-    """Valid plugins, read fresh each call (a deploy shows up without a restart). Bad ones are skipped."""
-    found = []
+    """Valid plugins, read fresh each call (a static plugin's deploy shows up without a restart). Bad ones are skipped.
+    A server plugin is listed only once its plugin.py has loaded, so its page never meets a missing API."""
     try: names = sorted(os.listdir(PLUGINS))
-    except OSError: return found
-    for pid in names:
-        d = os.path.join(PLUGINS, pid)
-        if not PLUGIN_ID.match(pid) or pid in RESERVED or pid in PKEYS or pid in PAGES: continue
-        try: m = json.load(open(os.path.join(d, 'plugin.json'), encoding='utf-8'))
-        except Exception: continue
-        if not isinstance(m, dict) or m.get('id') != pid or m.get('kind', 'static') != 'static': continue
-        entry = str(m.get('entry') or 'index.html')
-        if not os.path.isfile(os.path.join(d, entry)) or '..' in entry or entry.startswith('/'): continue
-        icon = str(m.get('icon') or '')
-        found.append(dict(id=pid, name=str(m.get('name') or pid)[:40], subtitle=str(m.get('subtitle') or '')[:40],
-                          entry=entry, icon=icon if icon and '..' not in icon and os.path.isfile(os.path.join(d, icon)) else '',
-                          version=str(m.get('version') or '')[:20], order=m.get('order', 100) if isinstance(m.get('order'), int) else 100))
+    except OSError: return []
+    found = [p for p in map(manifest, names) if p and (p['kind'] == 'static' or p['id'] in SERVER_PLUGINS)]
     return sorted(found, key=lambda p: (p['order'], p['name']))
+
+def plugin_ctx(pid):
+    # what a server plugin gets at init(ctx); each request gets a copy with .headers added (H.plugin_call)
+    try:
+        with open(os.path.join(STATIC, 'VERSION')) as f: v = f.read().strip()
+    except OSError: v = 'dev'
+    return types.SimpleNamespace(id=pid, data_dir=os.path.join(SHARE, 'plugins', pid), config_dir=os.path.join(PLUGINS, pid),
+                                 base_url=os.environ.get('ARGUS_BASE_URL', '/argus/'), version=v, headers={})
+
+def load_server_plugins():
+    """Import each server plugin's plugin.py by path and call its init(ctx) once. One that fails is logged and
+    skipped; the rest of Elaia starts. A newly installed server plugin needs a restart (static ones don't)."""
+    try: names = sorted(os.listdir(PLUGINS))
+    except OSError: return
+    for pid in names:
+        p = manifest(pid)
+        if not p or p['kind'] != 'server': continue
+        try:
+            spec = importlib.util.spec_from_file_location('leafy_plugin_' + pid.replace('-', '_'), os.path.join(PLUGINS, pid, p['server']))
+            mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+            ctx = plugin_ctx(pid); os.makedirs(ctx.data_dir, exist_ok=True)
+            if hasattr(mod, 'init'): mod.init(ctx)
+        except Exception:
+            print(f'argus-ui: skipped server plugin {pid}: it failed to load\n{traceback.format_exc()}', file=sys.stderr, flush=True)
+            continue
+        SERVER_PLUGINS[pid] = mod; PLUGIN_LOCKS[pid] = threading.Lock()
+        print(f'argus-ui: loaded server plugin {pid} {p["version"]}'.rstrip(), file=sys.stderr, flush=True)
 
 # Headers on every plugin file: a sandboxed, opaque origin (even when opened in its own tab) that can't
 # read Argus's state or post to its powers, plus CORS so its own module scripts and fetches still load.
@@ -173,7 +218,16 @@ def state():
                 title=THEME.get('title', 'Argus'), subtitle=THEME.get('subtitle', 'tasks'),
                 personas=[dict(key=k, name=n, domain=d) for k, n, d in PERSONAS],
                 soon=THEME.get('coming_soon', []),
-                plugins=[{k: p[k] for k in ('id', 'name', 'subtitle', 'icon', 'version')} for p in plugins()])
+                plugins=[plugin_view(p) for p in plugins()])
+
+def plugin_view(p):
+    # what the page needs about a plugin; a server plugin's script and style URLs carry their file times, so a redeploy is fetched fresh
+    v = {k: p[k] for k in ('id', 'kind', 'name', 'subtitle', 'icon', 'version')}
+    if p['kind'] == 'server':
+        for k in ('page', 'style'):
+            try: v[k] = f"plugins/{p['id']}/{p[k]}?v={int(os.path.getmtime(os.path.join(PLUGINS, p['id'], p[k])))}" if p[k] else ''
+            except OSError: v[k] = ''
+    return v
 
 def log(u):
     return run(JOURNALCTL, '--user', '-u', u, '-n', '40', '--no-pager', '-o', 'short-iso')
@@ -252,21 +306,48 @@ class H(BaseHTTPRequestHandler):
         self.send_header('Cache-Control', cache); self.end_headers(); self.wfile.write(b)
 
     def plugin_file(self, rest):
-        # plugins/<id>/<path>: files of a static plugin, inside its folder only (same guard as static/).
+        # plugins/<id>/<path>: files of a plugin, inside its folder only (same guard as static/).
+        # A server plugin's Python side is never served, only its page script, style and whatever they load.
         pid, _, sub = rest.partition('/')
         p = next((x for x in plugins() if x['id'] == pid), None)
         if not p: return self.out('not found', 'text/plain', 404)
         if '/' not in rest:                                   # plugins/<id> -> plugins/<id>/ so relative URLs resolve
             self.send_response(301); self.send_header('Location', self.path.split('?', 1)[0] + '/')
             self.send_header('Content-Length', '0'); self.end_headers(); return
-        root = os.path.realpath(os.path.join(PLUGINS, pid)); f = os.path.realpath(os.path.join(root, sub or p['entry']))
+        root = os.path.realpath(os.path.join(PLUGINS, pid)); f = os.path.realpath(os.path.join(root, sub or p.get('entry', '')))
         if os.path.isdir(f): f = os.path.join(f, 'index.html')
-        if os.path.commonpath([root, f]) != root or not os.path.isfile(f) or os.path.basename(f) == 'plugin.json':
+        hidden = os.path.basename(f) == 'plugin.json' or (p['kind'] == 'server' and (f.endswith(('.py', '.pyc')) or '__pycache__' in f))
+        if os.path.commonpath([root, f]) != root or not os.path.isfile(f) or hidden:
             return self.out('not found', 'text/plain', 404, headers=PLUGIN_HEADERS)
         ct = mimetypes.guess_type(f)[0] or 'application/octet-stream'
         if ct.startswith('text/') or ct in ('application/json',): ct += '; charset=utf-8'
         with open(f, 'rb') as fh:
             return self.out(fh.read(), ct, cache='no-cache' if f.endswith('.html') else 'max-age=300', headers=PLUGIN_HEADERS)
+
+    # Request headers a server plugin may read (ctx.headers). Behind `tailscale serve` they say who is asking; they can
+    # only be trusted when Elaia binds to 127.0.0.1, so a plugin that decides on them asks Janus (docs/leafy-plugin.md).
+    PASS_HEADERS = ('Tailscale-User-Login', 'Tailscale-User-Name', 'X-Forwarded-For')
+
+    def plugin_call(self, pid, verb, path, arg):
+        # api/<id>/<path> -> the plugin's get(path, query, ctx) or post(path, body, ctx), which answers (status, obj)
+        fn = getattr(SERVER_PLUGINS[pid], verb, None)
+        ctx = plugin_ctx(pid); ctx.headers = {k: self.headers[k] for k in self.PASS_HEADERS if self.headers.get(k)}
+        r = None
+        if callable(fn):
+            try:
+                if verb == 'post':
+                    with PLUGIN_LOCKS[pid]: code, obj = fn(path, arg, ctx)
+                else: code, obj = fn(path, arg, ctx)
+                if not isinstance(code, int) or not 100 <= code <= 599: raise ValueError(f'status {code!r} is not an HTTP status')
+                r = code, obj, json.dumps(obj)
+            except Exception:
+                print(f'argus-ui: server plugin {pid} failed on {verb.upper()} {path}\n{traceback.format_exc()}', file=sys.stderr, flush=True)
+                if path != 'status': return self.deny(500, 'plugin error')
+        if verb == 'get' and path == 'status':        # reserved: one line for the Home page, or null; never an error
+            line = r[1].get('line') if r and 200 <= r[0] < 300 and isinstance(r[1], dict) else None
+            return self.out(json.dumps({'line': str(line)[:160] if line else None}), 'application/json')
+        if not r: return self.deny(404, 'not found')
+        self.out(r[2], 'application/json', r[0])
 
     def do_GET(self):
         if not host_ok(self.headers.get('Host')): return self.out('unknown host', 'text/plain', 421)
@@ -276,6 +357,8 @@ class H(BaseHTTPRequestHandler):
     def get(self):
         p = self.path_parts()
         if p.startswith('api/mentor/'): return self.mentor_get(p[11:], parse_qs(urlsplit(self.path).query))
+        pid, _, rest = p[4:].partition('/')
+        if p.startswith('api/') and pid in SERVER_PLUGINS: return self.plugin_call(pid, 'get', rest, parse_qs(urlsplit(self.path).query))
         if p.startswith('static/'):
             root = os.path.realpath(STATIC); f = os.path.realpath(os.path.join(root, p[7:]))
             if os.path.commonpath([root, f]) != root or not os.path.isfile(f): return self.out('not found', 'text/plain', 404)
@@ -315,6 +398,8 @@ class H(BaseHTTPRequestHandler):
         if not isinstance(body, dict): return self.deny(400, 'bad json')
         p = self.path_parts()
         if p.startswith('api/mentor/'): return self.mentor_post(p[11:], body)
+        pid, _, rest = p[4:].partition('/')
+        if p.startswith('api/') and pid in SERVER_PLUGINS: return self.plugin_call(pid, 'post', rest, body)   # after every check above
         u = str(body.get('job', ''))
         actions = {'api/freeze': freeze, 'api/thaw': thaw, 'api/bolt': bolt, 'api/run': bolt}
         if p not in actions: return self.deny(404, 'not found')
@@ -358,4 +443,5 @@ class H(BaseHTTPRequestHandler):
         self.out(json.dumps({'ok': True, **r}), 'application/json')
 
 if __name__ == '__main__':
+    load_server_plugins()
     ThreadingHTTPServer((BIND, PORT), H).serve_forever()
