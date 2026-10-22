@@ -54,7 +54,7 @@ section.persona{margin-top:var(--s4)}
 .card .job{font-weight:600;font-size:var(--fs-body);word-break:break-word;line-height:1.25}
 .card .unit{color:var(--frost);font-size:var(--fs-meta);line-height:1.4}
 .pill{font-size:var(--fs-meta);font-weight:600;line-height:20px;padding:0 var(--s2);border-radius:99px;border:1px solid currentColor;white-space:nowrap}
-.pill.ok{color:var(--ok)}.pill.failed{color:var(--bad)}.pill.running{color:var(--run)}.pill.never{color:var(--frost)}.pill.frozen{color:var(--stone)}
+.pill.warn{color:var(--run)}.pill.ok{color:var(--ok)}.pill.failed{color:var(--bad)}.pill.running{color:var(--run)}.pill.never{color:var(--frost)}.pill.frozen{color:var(--stone)}
 dl{display:grid;grid-template-columns:auto 1fr auto 1fr;gap:0 var(--s2);margin:var(--s2) 0;font-size:var(--fs-sec);line-height:1.5}
 dt{color:var(--powder);font-size:var(--fs-meta);align-self:baseline}dd{margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;align-self:baseline}
 dl .wide{grid-column:2/5}
@@ -73,6 +73,11 @@ pre{white-space:pre-wrap;word-break:break-all;font-size:var(--fs-meta);line-heig
  background:radial-gradient(circle at 14% 22%,#ffffff1c 0 2px,transparent 3px),radial-gradient(circle at 70% 64%,#00000030 0 3px,transparent 4px),radial-gradient(circle at 86% 18%,#ffffff14 0 1.5px,transparent 2.5px),radial-gradient(circle at 36% 82%,#00000026 0 2.5px,transparent 3.5px),
  radial-gradient(ellipse at 30% 30%,#6e8a7a,#4d6358 55%,#3e5148);opacity:.93}
 .stone svg{position:absolute;inset:0;width:100%;height:100%}
+.card.alerted{border-color:var(--bad)}.card.warned{border-color:var(--run)}
+.alert-msg{margin:0 0 var(--s2);font-size:var(--fs-sec);line-height:1.4;color:var(--snow);max-width:70ch}
+.alert-msg b{font-weight:600}.alert-msg.alert b{color:var(--bad)}.alert-msg.warn b{color:var(--run)}
+.alert-msg small{font-size:var(--fs-meta);color:var(--frost)}
+.alert-msg a{display:inline-flex;align-items:center;min-height:var(--hit);color:var(--snow);font-weight:600}
 .card.frozen{border-color:#5f8a73}
 .card.frozen > *:not(.stone){position:relative;z-index:1}
 .card.frozen .job,.card.frozen dd,.card.frozen .notes,.card.frozen .unit{color:#eef3ef}

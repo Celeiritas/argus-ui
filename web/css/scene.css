@@ -48,6 +48,7 @@ main{padding-bottom:220px!important}   /* the end of every page opens onto the g
 .argus.glare>img{filter:drop-shadow(0 0 6px #ff3b3b88)}
 @keyframes alarm{0%,100%{opacity:.55}50%{opacity:1}}
 .alarm{position:absolute;top:6%;right:6%;display:flex;align-items:center;gap:2px;height:26px;min-width:26px;padding:0 6px;border-radius:99px;background:#C93030;color:#fff;font-size:var(--fs-meta);font-weight:600;box-shadow:0 0 0 2px var(--night),0 0 10px #ff404088;z-index:2}
+.alarm[hidden]{display:none}   /* display:flex above would otherwise keep the badge up when all is well */
 .alarm svg{width:14px;height:14px;flex:none}
 .argus.glare .alarm{animation:ring .9s ease-in-out 3}
 @keyframes ring{0%,100%{transform:rotate(0)}20%{transform:rotate(-14deg)}40%{transform:rotate(12deg)}60%{transform:rotate(-8deg)}80%{transform:rotate(5deg)}}

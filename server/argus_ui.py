@@ -119,6 +119,38 @@ PLUGIN_HEADERS = {'Content-Security-Policy': "sandbox allow-scripts allow-pointe
                   'Referrer-Policy': 'no-referrer', 'Cross-Origin-Resource-Policy': 'cross-origin'}
 GODS = re.compile(r'^(%s)-' % '|'.join(PKEYS))
 
+# ---------- Alert files (docs/alerts.md) ----------
+# Any agent can make Argus glare without a failed unit: a JSON file in ~/.local/state/argus-ui/alerts/
+# {"job", "level": "warn"|"alert", "message", "since", "link"}. Read on every refresh; the file going away calms him.
+ALERTS = os.path.expanduser(os.environ.get('ARGUS_ALERTS') or THEME.get('alerts') or '~/.local/state/argus-ui/alerts')
+ALERT_JOB = re.compile(r'^[a-z][a-z0-9-]{0,80}$')
+_told = set()                    # (file, mtime) of malformed files already logged: one line each, not one per refresh
+
+def alerts(sections):
+    """The alerts up now, oldest first. A malformed file is skipped with one log line; a link to a section that
+    isn't installed is dropped (the alert still shows)."""
+    try: names = sorted(n for n in os.listdir(ALERTS) if n.endswith('.json'))
+    except OSError: return []
+    found = []
+    for n in names:
+        f = os.path.join(ALERTS, n)
+        try:
+            with open(f, encoding='utf-8') as fh: a = json.load(fh)
+            if not isinstance(a, dict): raise ValueError('not a JSON object')
+            job, level, msg = a.get('job'), a.get('level'), a.get('message')
+            if not isinstance(job, str) or not ALERT_JOB.match(job) or not GODS.match(job): raise ValueError(f'job {job!r} is not an agent task name')
+            if level not in ('warn', 'alert'): raise ValueError(f'level {level!r} is not warn or alert')
+            if not isinstance(msg, str) or not msg.strip(): raise ValueError('no message')
+        except Exception as e:
+            try: key = (n, os.path.getmtime(f))
+            except OSError: continue                     # gone between listdir and open: nothing to say
+            if key not in _told:
+                _told.add(key); print(f'argus-ui: ignored alert file {n}: {e}', file=sys.stderr, flush=True)
+            continue
+        link = a.get('link') if isinstance(a.get('link'), str) and a.get('link') in sections else ''
+        found.append(dict(file=n, job=job, level=level, message=msg.strip()[:300], since=str(a.get('since') or '')[:40], link=link))
+    return sorted(found, key=lambda a: (a['since'], a['file']))
+
 def run(*a):
     return subprocess.run(a, capture_output=True, text=True, timeout=20).stdout
 
@@ -185,6 +217,23 @@ def save_frozen(d):
     with open(tmp, 'w') as f: json.dump(d, f, indent=2)
     os.replace(tmp, FROZEN)        # atomic: a crash mid-write can't leave a half-written file
 
+def registry(u):
+    """A task's registry entry and the name it was found under: <task>.json, else the longest prefix before a '-'
+    (zeus-deploy-20261021-090012-argus-ui-3fa9c1b -> zeus-deploy.json), stopping above the god's own prefix.
+    That way a unit with a new name every run (Zeus's deploys) still gets its card's notes."""
+    parts = u.split('-')
+    for i in range(len(parts), 1, -1):
+        name = '-'.join(parts[:i])
+        try:
+            with open(f'{REG}/{name}.json', encoding='utf-8') as f: e = json.load(f)
+        except Exception: continue
+        if isinstance(e, dict): return e, name
+    return {}, u
+
+def started(ts):
+    # "Sun 2026-10-18 09:20:44 MDT" -> "2026-10-18 09:20:44", sortable; '' when it never ran
+    return ' '.join(ts.split()[1:3]) if ts else ''
+
 def has_timer(u):
     return props(u + '.timer', 'LoadState').get('LoadState') == 'loaded'
 
@@ -198,9 +247,7 @@ def info(u, fz):
     elif p.get('ActiveState') == 'failed' or p.get('Result') not in ('success', '', None): state = 'failed'
     elif not p.get('ExecMainExitTimestamp') and not p.get('ExecMainStartTimestamp'): state = 'never'
     else: state = 'ok'
-    reg = {}
-    try: reg = json.load(open(f'{REG}/{u}.json'))
-    except Exception: pass
+    reg, base = registry(u)
     persona = u.split('-')[0]
     if u in fz: nxt = 'paused by Medusa'
     elif timer: nxt = when(t.get('NextElapseUSecRealtime', '')) or 'paused'
@@ -208,17 +255,29 @@ def info(u, fz):
     return dict(job=u, persona=persona, name=u[len(persona) + 1:], state=state,
                 last=when(p.get('ExecMainExitTimestamp') or p.get('ExecMainStartTimestamp', '')) or '—',
                 next=nxt, mem=hb(p.get('MemoryPeak')), wrote=hb(p.get('IOWriteBytes')),
-                notes=reg.get('notes', '') or p.get('Description', ''), canfreeze=u not in NEVER_FREEZE,
-                frozen_at=fz.get(u, {}).get('at', ''))
+                notes=reg.get('notes', '') or p.get('Description', ''), canfreeze=u not in NEVER_FREEZE, canrun=True,
+                frozen_at=fz.get(u, {}).get('at', ''), base=base if reg.get('transient') is True and base != u else '',
+                started=started(p.get('ExecMainStartTimestamp', '')))
+
+def collapse(jobs):
+    """Transient units (registry "transient": true, e.g. zeus-deploy-<id>): one card per base name showing the latest run
+    (a running one first), not one card per run. Its log is the latest run's; it can't be frozen or run again."""
+    out, runs = [], {}
+    for j in jobs: (runs.setdefault(j['base'], []) if j['base'] else out).append(j)
+    for base, rs in runs.items():
+        last = max(rs, key=lambda j: (j['state'] == 'running', j['started'], j['job']))
+        out.append(dict(last, name=base[len(last['persona']) + 1:], runs=len(rs), canfreeze=False, canrun=False))
+    return sorted(out, key=lambda j: (j['persona'], j['name']))
 
 def state():
     fz = frozen()
-    jobs = [info(u, fz) for u in units()]
+    jobs = collapse([info(u, fz) for u in units()])
+    ps = plugins()
     return dict(updated=datetime.now().strftime('%I:%M %p').lstrip('0'), jobs=jobs,
                 title=THEME.get('title', 'Argus'), subtitle=THEME.get('subtitle', 'tasks'),
                 personas=[dict(key=k, name=n, domain=d) for k, n, d in PERSONAS],
                 soon=THEME.get('coming_soon', []),
-                plugins=[plugin_view(p) for p in plugins()])
+                plugins=[plugin_view(p) for p in ps], alerts=alerts(set(PKEYS) | set(PAGES) | {p['id'] for p in ps}))
 
 def plugin_view(p):
     # what the page needs about a plugin; a server plugin's script and style URLs carry their file times, so a redeploy is fetched fresh

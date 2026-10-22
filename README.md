@@ -62,7 +62,7 @@ sudo tailscale serve --bg --set-path /argus http://127.0.0.1:8095
 On a phone, open that address and use **Add to Home screen** to install it as an app.
 
 ## Which jobs show up
-Any `systemd --user` service whose name starts with an agent key from the theme, followed by a dash. With the Leafy Realm theme, `hermes-sort` appears under Hermes and `mnemosyne-backup` under Mnemosyne. A JSON file per task in the registry folder (`~/.config/argus-ui/agents/<task>.json`, or the theme's `registry`) can add `notes` shown on the card.
+Any `systemd --user` service whose name starts with an agent key from the theme, followed by a dash. With the Leafy Realm theme, `hermes-sort` appears under Hermes and `mnemosyne-backup` under Mnemosyne. A JSON file per task in the registry folder (`~/.config/argus-ui/agents/<task>.json`, or the theme's `registry`) can add `notes` shown on the card. A task with no file of its own uses the longest name before a dash that has one (`zeus-deploy-20261021-090012-argus-ui-3fa9c1b` uses `zeus-deploy.json`). An entry with `"transient": true` turns all those per-run units into one card that shows the latest run. Agents can also raise their own alerts on a card: see [docs/alerts.md](docs/alerts.md).
 
 ## Themes and sounds
 - **Themes:** `python3 scripts/new-theme.py mytheme --agent "backup:Backup:Copies"` makes a theme with placeholder art in one step. Swap in your own art whenever you like. See [docs/themes.md](docs/themes.md).

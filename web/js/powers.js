@@ -9,7 +9,7 @@ function homeOf(name) { const r = TOOLS[name].home.getBoundingClientRect(); retu
 function fizzle(e) { if (!e) return; const [hx, hy] = homeOf('bolt'); flyTo(e, hx, hy, 30, 250, 'ease-in').then(() => e.remove()); }   // back into the medallion
 // what a tool can act on in the scene: bolt -> a living tree, Medusa -> a tree (stone or not), Poseidon -> debris or a charred tree
 const sceneTarget = (name, x, y) => name === 'bolt' ? scene.treeAt(x, y) : name === 'medusa' ? scene.treeAt(x, y, true) : scene.messAt(x, y);
-const usable = (tool, c) => c && tool !== 'poseidon' && (tool === 'medusa' ? c.dataset.canfreeze === 'true' : c.dataset.state !== 'frozen');
+const usable = (tool, c) => c && tool !== 'poseidon' && (tool === 'medusa' ? c.dataset.canfreeze === 'true' : c.dataset.state !== 'frozen' && c.dataset.canrun !== 'false');
 function place(el, x, y, w) { el.style.width = el.style.height = w + 'px'; el.style.left = (x - w / 2) + 'px'; el.style.top = (y - w / 2) + 'px'; }
 // move a floating tool with transform/opacity only (FLIP): jump to the end box, then animate from the old box
 function flyTo(el, x, y, w, ms = 200, easing = 'ease-out') {

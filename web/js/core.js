@@ -104,7 +104,8 @@ function render() {
     PLUGINS.map(p => pluginRealm(p, here === p.id)).join('') +
     (S.soon || []).filter(x => !PLUGINS.some(p => p.name === x.name)).map(x => `<span class="realm soon" aria-disabled="true"><svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="16" fill="#1C2127" stroke="#A7B6C4" stroke-width="1.5"/><path d="M10 26 26 10M26 26 10 10" stroke="#C9A36A" stroke-width="2" stroke-linecap="round"/><path d="M23 9h4v4M13 9H9v4" stroke="#A7B6C4" stroke-width="1.5" fill="none"/></svg><span><b>${esc(x.name)}</b><small>${esc(x.what)} · coming later</small></span></span>`).join('');
   const by = {}; S.jobs.forEach(j => (by[j.persona] ||= []).push(j));
-  const shown = S.personas.filter(p => (by[p.key] || p.key === here) && !SIDE.includes(p.key));
+  const lone = {}; loneAlerts().forEach(a => (lone[a.job.split('-')[0]] ||= []).push(a));   // alerts with no task card of their own
+  const shown = S.personas.filter(p => (by[p.key] || lone[p.key] || p.key === here) && !SIDE.includes(p.key));
   const tab = (k, label) => `<a href="${url(k)}" class="${here === k ? 'on' : ''}" ${here === k ? 'aria-current="page"' : ''}>${esc(label)}</a>`;
   $('#nav').innerHTML = `<a href="${url('')}" class="${here ? '' : 'on'}" ${here ? '' : 'aria-current="page"'}>All</a>` +
     shown.filter(p => !SIDE.includes(p.key)).map(p => tab(p.key, p.name)).join('');
@@ -113,11 +114,11 @@ function render() {
   if (onOlympus) { look.retarget(); return playground.show(); }
   const list = here ? shown.filter(p => p.key === here) : shown;
   $('#main').innerHTML = list.map(p => {
-    const js = by[p.key] || [];
-    const c = s => js.filter(j => j.state === s).length;
-    const counts = ['failed', 'running', 'frozen'].filter(s => c(s)).map(s => `<span class="${s}">${c(s)} ${s === 'frozen' ? 'stone' : s}</span>`).concat(`${js.length} task${js.length === 1 ? '' : 's'}`).join(' · ');
+    const js = by[p.key] || [], ls = lone[p.key] || [];
+    const c = s => js.filter(j => j.state === s).length, na = (S.alerts || []).filter(a => a.level === 'alert' && a.job.split('-')[0] === p.key).length;
+    const counts = (na ? [`<span class="failed">${na} alert${na === 1 ? '' : 's'}</span>`] : []).concat(['failed', 'running', 'frozen'].filter(s => c(s)).map(s => `<span class="${s}">${c(s)} ${s === 'frozen' ? 'stone' : s}</span>`)).concat(`${js.length} task${js.length === 1 ? '' : 's'}`).join(' · ');
     return `<section class="persona" aria-labelledby="h-${p.key}"><a class="ph" href="${url(p.key)}"><img src="static/icons/${p.key}.png" alt=""><div><h2 id="h-${p.key}">${esc(p.name)}</h2><div class="dom">${esc(p.domain)}</div></div><div class="counts">${counts}</div></a>
-      ${js.length ? `<div class="grid">${js.map(card).join('')}</div>` : `<div class="empty"><b>No ${esc(p.name)} tasks yet</b>Background jobs named <code>${esc(p.key)}-…</code> appear here on their own, so you can watch and run them. <a href="https://github.com/Celeiritas/argus-ui#which-jobs-show-up">Learn how to add a task</a></div>`}</section>`;
+      ${js.length || ls.length ? `<div class="grid">${ls.map(alertCard).join('')}${js.map(card).join('')}</div>` : `<div class="empty"><b>No ${esc(p.name)} tasks yet</b>Background jobs named <code>${esc(p.key)}-…</code> appear here on their own, so you can watch and run them. <a href="https://github.com/Celeiritas/argus-ui#which-jobs-show-up">Learn how to add a task</a></div>`}</section>`;
   }).join('') || `<div class="empty"><b>No tasks found</b>Argus shows systemd --user jobs whose names start with an agent's key. <a href="https://github.com/Celeiritas/argus-ui#which-jobs-show-up">Learn how to add a task</a></div>`;
   $$('.card.frozen').forEach(addStone);
   if (armed) arm(armed, true);
@@ -129,15 +130,35 @@ function pluginRealm(p, on) {
     : `<svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="16" fill="#1C2127" stroke="#A7B6C4" stroke-width="1.5"/><path d="M10 26 26 10M26 26 10 10" stroke="#C9A36A" stroke-width="2" stroke-linecap="round"/><path d="M23 9h4v4M13 9H9v4" stroke="#A7B6C4" stroke-width="1.5" fill="none"/></svg>`;
   return `<a class="realm ${on ? 'on' : ''}" href="${url(p.id)}" ${on ? 'aria-current="page"' : ''}>${mark}<span><b>${esc(p.name)}</b><small>${esc(p.subtitle || 'Plugin')}</small></span></a>`;
 }
+/* ---------- alert files (docs/alerts.md): an agent's message on its task's card, or a card of its own ---------- */
+const alertsFor = j => (S.alerts || []).filter(a => a.job === j.job || (j.base && a.job === j.base));
+const loneAlerts = () => (S.alerts || []).filter(a => !S.jobs.some(j => alertsFor(j).includes(a)));
+function sectionName(id) {
+  return (S.personas.find(p => p.key === id) || PLUGINS.find(p => p.id === id) || {name: id === 'olympus' ? 'Olympus' : id}).name;
+}
+function since(t) {
+  const d = new Date(t); if (!t || isNaN(d)) return '';
+  return d.toDateString() === new Date().toDateString() ? d.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'}) : d.toLocaleDateString([], {month: 'short', day: 'numeric'});
+}
+function alertNote(a) {
+  const s = since(a.since);
+  return `<p class="alert-msg ${a.level}"><b>${a.level === 'alert' ? 'Alert' : 'Warning'}:</b> ${esc(a.message)}${s ? ` <small>since ${esc(s)}</small>` : ''}${a.link ? ` <a href="${url(a.link)}">Open ${esc(sectionName(a.link))}</a>` : ''}</p>`;
+}
+function alertCard(a) {
+  const p = a.job.split('-')[0];
+  return `<article class="card alert-only ${a.level === 'alert' ? 'alerted' : 'warned'}" data-alert="${esc(a.file)}" data-canfreeze="false" data-canrun="false" aria-label="${esc(a.job)}, ${a.level === 'alert' ? 'alert' : 'warning'}">
+   <div class="top"><div><div class="job">${esc(a.job.slice(p.length + 1))}</div><div class="unit">${esc(a.job)}</div></div><span class="pill ${a.level === 'alert' ? 'failed' : 'warn'}">${a.level === 'alert' ? 'alert' : 'warning'}</span></div>
+   ${alertNote(a)}</article>`;
+}
 function card(j) {
-  const fz = j.state === 'frozen';
-  return `<article class="card ${fz ? 'frozen' : ''}" data-job="${esc(j.job)}" data-state="${j.state}" data-canfreeze="${j.canfreeze}" aria-label="${esc(j.job)}, ${fz ? 'stone (frozen)' : j.state}">
-   <div class="top"><div><div class="job">${esc(j.name)}</div><div class="unit">${esc(j.job)}</div></div><span class="pill ${j.state}">${fz ? 'stone' : j.state}</span></div>
+  const fz = j.state === 'frozen', al = alertsFor(j), lvl = al.some(a => a.level === 'alert') ? 'alerted' : al.length ? 'warned' : '';
+  return `<article class="card ${fz ? 'frozen' : ''} ${lvl}" data-job="${esc(j.job)}" data-state="${j.state}" data-canfreeze="${j.canfreeze}" data-canrun="${j.canrun !== false}" aria-label="${esc(j.job)}, ${fz ? 'stone (frozen)' : j.state}">
+   <div class="top"><div><div class="job">${esc(j.name)}</div><div class="unit">${esc(j.job)}${j.runs > 1 ? ` · latest of ${j.runs} runs` : ''}</div></div><span class="pill ${j.state}">${fz ? 'stone' : j.state}</span></div>
    <dl><dt>Last</dt><dd title="${esc(j.last)}">${esc(j.last)}</dd><dt>Mem</dt><dd>${j.mem}</dd><dt>Next</dt><dd title="${esc(j.next)}">${esc(j.next)}</dd><dt>Wrote</dt><dd>${j.wrote}</dd>${fz ? `<dt>Stone</dt><dd class="wide">since ${esc(j.frozen_at)}</dd>` : ''}</dl>
-   ${j.notes ? `<p class="notes">${esc(j.notes)}</p>` : ''}
+   ${j.notes ? `<p class="notes">${esc(j.notes)}</p>` : ''}${al.map(alertNote).join('')}
    <div class="actions"><details data-log="${esc(j.job)}"><summary>Show log</summary><pre>Loading…</pre></details>
     ${j.canfreeze ? `<button type="button" data-act="${fz ? 'thaw' : 'freeze'}" aria-label="${fz ? 'Thaw' : 'Freeze'} ${esc(j.job)}">${fz ? 'Thaw' : 'Freeze'}</button>` : ''}
-    <button type="button" data-act="bolt" ${fz ? 'disabled' : ''} aria-label="Run ${esc(j.job)}${fz ? ' (thaw it first)' : ''}">Run</button></div></article>`;
+    ${j.canrun === false ? '' : `<button type="button" data-act="bolt" ${fz ? 'disabled' : ''} aria-label="Run ${esc(j.job)}${fz ? ' (thaw it first)' : ''}">Run</button>`}</div></article>`;
 }
 function markStone(c) { c.dataset.state = 'frozen'; const p = $('.pill', c); if (p) { p.className = 'pill frozen'; p.textContent = 'stone'; } }
 function addStone(c) {
@@ -175,12 +196,14 @@ const look = (() => {
   }
   let lastBad = null;
   function retarget() {
-    const bad = (S?.jobs || []).filter(j => j.state === 'failed'), n = bad.length;
-    target = $('.card[data-state="failed"]');
+    // a failed task, or an agent's alert file at level "alert" (docs/alerts.md): both make him glare and count in the badge
+    const bad = (S?.jobs || []).filter(j => j.state === 'failed'), up = (S?.alerts || []).filter(a => a.level === 'alert'), n = bad.length + up.length;
+    target = $('.card[data-state="failed"]') || $('.card.alerted');
     A.classList.toggle('glare', n > 0); A.classList.toggle('calm', !n);
     $('#alarm').hidden = !n; $('#alarmN').textContent = n > 1 ? n : '';
     const dot = $('#realmDot'); if (dot) { dot.hidden = !n; dot.textContent = n; }
-    const say = n ? `${n} task${n === 1 ? '' : 's'} failed: ${bad.map(j => j.job).join(', ')}` : 'all tasks well';
+    const say = n ? [bad.length && `${bad.length} task${bad.length === 1 ? '' : 's'} failed: ${bad.map(j => j.job).join(', ')}`,
+      up.length && `${up.length} alert${up.length === 1 ? '' : 's'}: ${up.map(a => `${a.job}, ${a.message}`).join('; ')}`].filter(Boolean).join('. ') : 'all tasks well';
     A.setAttribute('aria-label', side ? `Argus: ${say}. Open the watch page` : `Argus, the watchman: ${say}`);
     if (lastBad !== null && n > lastBad) alarmChime();               // a short alarm only when something newly fails
     lastBad = n;
