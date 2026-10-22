@@ -11,7 +11,7 @@ A small, dependency-free web page that watches `systemd --user` services ("tasks
 - `docs/` – `scene.md` (weather sources, items, **layer order**), `mentor.md`, `leafy-plugin.md`, `themes.md`, `sounds.md`, `ux-audit-4.1.md`, `screenshots/`.
 
 ## Test before you say it works
-`bash tests/run.sh` (or `bash tests/run.sh olympus`) builds the package, runs it in a temp HOME against fake systemd units (`tests/fixtures/`), and drives Chromium with Playwright: Watch powers and alarm, Mentor rating flow, every Olympus item, ultrawide and 375px phone. Needs python3, node, `npm install` and `npx playwright install chromium` (Linux; on Windows use a cloud session or the host). Add a check to the matching `tests/*.test.js` when you add a feature.
+`bash tests/run.sh` (or `bash tests/run.sh olympus`) builds the package, runs it in a temp HOME against fake systemd units (`tests/fixtures/`), and drives Chromium with Playwright: Watch powers and alarm, Mentor rating flow, every Olympus item, ultrawide and 375px phone. Needs python3, node, `npm install` and `npx playwright install chromium` (Linux; on Windows use a cloud session or the host). CI runs the same `tests/run.sh` on Linux for every pull request (`.github/workflows/tests.yml`); push a `ci/<name>` branch to run it on a branch without a pull request. Add a check to the matching `tests/*.test.js` when you add a feature.
 
 ## Rules
 - Bump `VERSION` and add a `CHANGELOG.md` entry for every change that ships. Small commits, clear messages.
