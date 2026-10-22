@@ -1,6 +1,8 @@
 # LeafyPlugins
 
-A LeafyPlugin adds a section to Argus without changing Argus's code: drop a folder in, and it gets a pill in the section bar and its own page at `<base>/<id>`. Spartamelee (a browser game) is the first. Mentor will become one later.
+A LeafyPlugin adds a section to Argus without changing Argus's code: drop a folder in, and it gets a pill in the section bar and its own page at `<base>/<id>`. There are two kinds:
+- **`static`**: plain files in a sandboxed frame. Spartamelee (a browser game) is the first.
+- **`server`**: trusted code with a Python side and a page script that runs inside Elaia's page. The agents' pages use it (Hermes · Delivery, Janus · Map, Zeus · Throne), and Mentor will move to it.
 
 ## The folder
 ```
@@ -29,7 +31,7 @@ Plugins live outside the install, so upgrading Argus keeps them (like the sounds
 | `id` | yes | Must equal the folder name: `a-z`, digits, `-`, starts with a letter, up to 32 characters. Not an agent key, `olympus`, `api`, `static`, `plugins`, `all`, `argus` or `play`. |
 | `name` | yes | Shown on the pill and as the page title (40 characters max). |
 | `subtitle` | no | The pill's small line, e.g. "Play" (40 max). |
-| `kind` | no | `static` (the default; the only kind so far). See *Module plugins* below. |
+| `kind` | no | `static` (the default) or `server` (see *Server plugins* below). A folder with any other kind is skipped. |
 | `entry` | no | The page to show, relative to the folder. Default `index.html`. |
 | `icon` | no | A square PNG in the folder for the pill and the page header. Without one, the pill shows a plain laurel-and-blades mark. Icons follow the theme's art rules: drawn to match, approved by the owner. |
 | `version` | no | Shown under the frame. |
@@ -51,19 +53,70 @@ A plugin's frame and files run in a **sandbox with an opaque origin**. The ifram
   - **Touch Argus's cookies or storage, or navigate the Argus page.**
 - **Storage:** a plugin's `localStorage` is not durable inside the sandbox. Treat it as per-visit, or keep state in the URL.
 
-## Module plugins (planned, for Mentor)
-Mentor needs a server side: a SQLite database and `/api/mentor/*`. The planned `"kind": "module"` adds:
-- `"server": "plugin.py"`, a Python module loaded at startup. It exposes `get(path, query)` and `post(path, body)` and gets its own data folder, `~/.local/share/argus-ui/plugins/<id>/`.
-- Routes under `api/<id>/...`, passed through Argus's existing checks (host allowlist; JSON-only POST with same-origin `Origin`/`Sec-Fetch-Site`; a 4 KB body cap).
-- A page that runs **inside** Argus's page, not in a frame, because it is trusted code installed by the owner. That page script shows the section the way `practice.show()` does today.
+## Server plugins
+A server plugin is **trusted code**: only the owner installs plugins, so its page runs inside Elaia's page (no frame, no sandbox) and its Python side runs inside Elaia's server. Install only code you would put in Elaia itself.
+```
+~/.config/argus-ui/plugins/<id>/
+  plugin.json        "kind": "server" (never served)
+  plugin.py          the Python side (never served)
+  page.js            the page script
+  page.css           optional style sheet
+```
+Extra manifest fields: `"server"` (default `plugin.py`), `"page"` (default `page.js`), `"style"` (optional). `entry` is not used.
 
-Until that exists, Mentor stays built in: `server/mentor.py`, `web/js/mentor.js`, `/api/mentor/*`. Work on Mentor's internals doesn't need to wait for module plugins. Moving it over is a separate change that adds the module loader, then moves Mentor's files.
+**Python side.** At startup Elaia imports `plugin.py` by its path and calls `init(ctx)` once, if it has one. A plugin that fails to import or whose `init` raises is logged (`skipped server plugin <id>` and the traceback, in Elaia's journal) and gets no pill, no section and no API; the rest of Elaia starts. **A new or changed `plugin.py` needs a restart**: a deploy restarts Elaia, or run `systemctl --user restart argus-ui`; `page.js` and `page.css` are fetched fresh after a change, like static plugins.
+- `ctx.id`, `ctx.version` (Elaia's version), `ctx.config_dir` (the plugin's folder), `ctx.data_dir` (`~/.local/share/argus-ui/plugins/<id>/`, made for it: keep files here), `ctx.base_url` (`/argus/`, or `ARGUS_BASE_URL`).
+- `GET api/<id>/<path>` calls `get(path, query, ctx)`; `POST api/<id>/<path>` calls `post(path, body, ctx)`. Both return `(status, obj)`: an HTTP status and anything `json.dumps` takes. `query` is `parse_qs` output (`{'q': ['hi']}`); `body` is the JSON object.
+- Each call gets its own `ctx` with `ctx.headers`: `Tailscale-User-Login`, `Tailscale-User-Name` and `X-Forwarded-For` when the request has them. They say who is asking only behind `tailscale serve` with Elaia bound to `127.0.0.1`. **A plugin never decides on them itself**: it passes them to the agent's CLI, and Janus checks them (`janus verify-approval`).
+- POSTs pass Elaia's checks before `post()` is called: host allowlist, JSON only, same-origin `Origin`/`Sec-Fetch-Site`, 4 KB at most. They run one at a time per plugin. GETs run side by side and **must not change anything** (a GET has no cross-site check).
+- An exception, or an answer that isn't `(status, obj)`, is a `500 {"ok": false, "msg": "plugin error"}` and a traceback in the journal.
+- **`GET api/<id>/status` is reserved** for Elaia's Home page: answer `200, {"line": "1 deploy waiting · argus-ui 4.9.1 live"}`. Elaia passes on only `{"line": "…"}` (160 characters at most), or `{"line": null}` when the plugin has none or fails; it never errors.
+- **Reads are file reads; writes call the agent's CLI; the plugin itself never decides.** A plugin reads the agent's status files directly (no subprocess on a GET). A POST runs the agent's own command (`zeus approve …`, `hermes message …`) with fixed arguments, never a shell, and returns what the agent said. Decisions (who may approve, what is allowed through) stay in the agent and Janus.
+
+**Page script.** It runs as a classic script in Elaia's page and registers itself:
+```js
+leafy.register('<id>', {
+  async show(el, api) { … },   // once, when the section opens: fill el
+  refresh(el, api) { … },      // optional: every 15 s while the section is open
+});
+```
+- `el` is the section's content area. The side-page layout is Elaia's: the plugin's icon and name in the title, Argus in the corner, the pill on top.
+- `api.get(path)` and `api.post(path, body)` call the plugin's own `api/<id>/…` and resolve to `{ok, status, data}`. They never throw: no answer is `{ok: false, status: 0}`.
+- `api.esc` (escape text for HTML), `api.toast(text)`, `api.url(path)` and `api.plugin` (the manifest as the page sees it).
+- Escape anything you put into HTML with `api.esc`. Keep to Elaia's UI rules (CLAUDE.md): 44 px hit areas, verb-first button labels, a keyboard path, `prefers-reduced-motion`, no sideways scroll at 375 px.
+- If the script fails to load or doesn't register, the section says so and asks for a reload.
+
+**A minimal example** (the test fixture `tests/plugin-fixtures/demo-server/` is this, plus a style sheet):
+```python
+# plugin.py
+def get(path, query, ctx):
+    if path == 'ping': return 200, {'pong': True}
+    if path == 'status': return 200, {'line': 'all well'}
+    return 404, {'ok': False, 'msg': 'not found'}
+
+def post(path, body, ctx):
+    if path == 'echo': return 200, {'ok': True, 'echo': str(body.get('text', ''))[:100]}
+    return 404, {'ok': False, 'msg': 'not found'}
+```
+```js
+// page.js
+leafy.register('demo-server', {
+  async show(el, api) {
+    const {ok, data} = await api.get('ping');
+    el.innerHTML = `<p>${ok && data.pong ? 'pong' : 'no answer'}</p>`;
+  },
+});
+```
+A sandboxed static plugin can't read a server plugin's API: those answers carry no CORS header, and its POSTs fail the same-origin check.
+
+**Mentor** is still built in (`server/mentor.py`, `web/js/mentor.js`, `/api/mentor/*`). Moving it to a server plugin is a separate change.
 
 ## Checking a plugin
-`bash tests/run.sh plugins` installs the demo plugin from `tests/plugin-fixtures/demo/` into a throwaway HOME and checks the whole flow:
+`bash tests/run.sh plugins` installs the fixtures from `tests/plugin-fixtures/` (static `spartamelee`, server `demo-server`, and `demo-broken`, whose `plugin.py` fails on purpose) into a throwaway HOME and checks the whole flow:
 - the pill appears and replaces a matching "coming later" pill
 - the section shows the frame, and the frame loads its module script and JSON
 - the 15-second refresh keeps the frame
 - the sandbox blocks a POST to `api/freeze`
 - `..` and `plugin.json` aren't served
 - no sideways scrolling at 375 px
+- server plugins: the pill and section, the page script inside the page, its style sheet, `GET api/demo-server/ping` with `ctx.headers` and the data folder, a POST from the page, refused POSTs (cross-site, not JSON, over 4 KB), the `status` line, an exception as a 500, `plugin.py` never served, `refresh()` on the 15-second refresh, and `demo-broken` skipped while Elaia keeps answering

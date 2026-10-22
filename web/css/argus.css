@@ -144,3 +144,4 @@ dialog .confirm{border-color:var(--danger);color:var(--danger)}
 .plugin-bar p{margin:0;font-size:var(--fs-sec);color:var(--powder)}
 .plugin-bar kbd{font:inherit;font-size:var(--fs-meta);padding:0 var(--s1);border:1px solid var(--frost);border-radius:4px}
 .plugin-bar .ver{font-size:var(--fs-meta);color:var(--frost)}
+.plugin-wait{margin:0;color:var(--powder);font-size:var(--fs-sec)}

@@ -9,5 +9,7 @@ try {
 } catch (e) { /* blocked by CORS: also fine */ }
 let state = 'blocked';
 try { await (await fetch('../../api/state')).json(); state = 'read'; } catch (e) { /* expected */ }
-Object.assign(out.dataset, { freeze, state });
+let server = 'blocked';      // a server plugin's API is Elaia's, not a static plugin's
+try { await (await fetch('../../api/demo-server/ping')).json(); server = 'read'; } catch (e) { /* expected */ }
+Object.assign(out.dataset, { freeze, state, server });
 out.textContent = 'ready';
