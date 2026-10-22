@@ -35,7 +35,7 @@ FROZEN = f'{REG}/frozen.json'
 PERSONAS = [(a['key'], a['name'], a.get('domain', '')) for a in THEME.get('agents', [])] or [('argus', 'Argus', 'Watchman · monitoring')]
 NEVER_FREEZE = set(THEME.get('never_freeze', ['argus-ui']))
 PKEYS = [p[0] for p in PERSONAS]
-PAGES = ['olympus']      # sections that are not agents (the Olympus playground)
+PAGES = ['olympus', 'home']      # sections that are not agents: the Olympus playground, Home (docs/home.md)
 
 # ---------- LeafyPlugins (docs/leafy-plugin.md) ----------
 # A plugin is a folder ~/.config/argus-ui/plugins/<id>/ with a plugin.json manifest. "static" plugins

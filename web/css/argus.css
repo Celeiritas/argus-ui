@@ -150,3 +150,14 @@ dialog .confirm{border-color:var(--danger);color:var(--danger)}
 .plugin-bar kbd{font:inherit;font-size:var(--fs-meta);padding:0 var(--s1);border:1px solid var(--frost);border-radius:4px}
 .plugin-bar .ver{font-size:var(--fs-meta);color:var(--frost)}
 .plugin-wait{margin:0;color:var(--powder);font-size:var(--fs-sec)}
+/* Home (docs/home.md): one tile per section; the whole tile is the link */
+.home{position:relative;z-index:2;padding:0 var(--gutter) var(--s6)}
+.home-alerts{max-width:70ch;margin-bottom:var(--s4);padding:var(--s3);background:var(--card);border:1px solid var(--bad);border-radius:12px}
+.home-alerts .alert-msg:last-child{margin-bottom:0}
+.tiles{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,260px),1fr));gap:var(--s3)}
+.tile{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:var(--s1) var(--s3);min-height:var(--hit);padding:var(--s3);background:var(--card);border:1px solid var(--line);border-radius:12px;color:var(--powder);text-decoration:none;transition:border-color var(--t2)}
+.tile:hover{border-color:var(--powder)}.tile:focus-visible{outline:2px solid var(--powder);outline-offset:3px}
+.tile.needs{border-color:var(--bad)}
+.tile img,.tile>svg{width:44px;height:44px;grid-row:span 2}
+.tname b{display:block;color:var(--snow);font-size:var(--fs-body);font-weight:600}.tname small{font-size:var(--fs-meta)}
+.tline{grid-column:2;font-size:var(--fs-sec);color:var(--snow)}.tile.needs .tline{color:var(--bad)}

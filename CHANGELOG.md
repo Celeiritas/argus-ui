@@ -1,5 +1,10 @@
 # Changelog
 
+## 4.12.0 – 2026-10-22
+- **Home** (`<base>/home`, `docs/home.md`): one tile per section, each with the line that says whether it needs you, and every `alert`-level alert above the tiles with its link. The tiles: Watch ("1 task failed · 1 alert", or "All 6 tasks well", with a red edge while something is wrong), Mentor ("3 cards due · 2 to learn"), Olympus, each server plugin's `api/<id>/status` line, and each static plugin's version. The whole tile is the link (at least 44 px); a redraw keeps keyboard focus; one column on a phone
+- The Home pill comes first in the section bar. **Watch stays the default page** until the name test; making Home the default is a later change. The pill's four-square mark is a placeholder until the owner approves art
+- Tests: `tests/home.test.js`
+
 ## 4.11.0 – 2026-10-22
 - **Alert files** (#8, `docs/alerts.md`): any agent can make Argus glare without a failed unit by writing `~/.local/state/argus-ui/alerts/<agent>.json` (`{"job", "level": "alert"|"warn", "message", "since", "link"}`; the folder can be changed with `ARGUS_ALERTS` or the theme's `alerts`). The folder is read on every refresh, with no new process. The task's card shows the message with "Open <section>". An alert for a job with no card (Zeus's `zeus-approve`) gets a card of its own in its agent's section. `alert` makes Argus glare, counts in his badge and the section's counts, and is read out in his label; `warn` shows on the card only. Removing the file calms him. Malformed files are ignored with one log line each, and a link to a section that isn't installed is dropped
 - **Registry fallback** (#11): a task with no registry file of its own uses the longest prefix before a `-` that has one, stopping above the god's prefix (`zeus-deploy-<id>` → `zeus-deploy.json`). An entry with `"transient": true` makes per-run units one card, showing the latest run (a running one first) with "latest of N runs". That card has no Run or Freeze, and the bolt skips it. Exact-name lookups are unchanged
