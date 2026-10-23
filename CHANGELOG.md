@@ -1,5 +1,13 @@
 # Changelog
 
+## 4.18.0 – 2026-10-23
+- **Shared effects** (`web/js/fx.js`, docs/fx.md): `fx.burst`, `fx.motes` (a ribbon of glowing motes, after SoulSeed's heal swirl), `fx.glint`, `fx.pieces` and `fx.bolt`, plus the helpers Watch and Olympus already used (`particle`, `ROCK`, `boltFx`, moved out of `powers.js` unchanged). Each one handles reduced motion itself and cleans up after itself
+- **Hold to confirm** (`web/js/hold.js`): hold a button 3 s (pointer, or Space/Enter) and a ring fills while the label counts down; letting go early sends nothing and says so. A click that can't be held (a screen reader's or a switch's) arms the button and a second click within 5 s confirms. Reduced motion: no ring, the countdown words only. For Throne, Delivery and Memory next
+- Server plugins get both as `api.fx` and `api.holdConfirm` (docs/leafy-plugin.md)
+- **Mentor:** each key idea you got pops a few olive leaves from its tick (the tick alone with reduced motion)
+- **Fix:** Home's greeting now shows the weather. It used to read it once, before the weather had arrived
+- Tests: `tests/fx.test.js` (each effect plays and cleans up, the old helpers still answer, hold by pointer, sliding off, keyboard, a screen reader's two clicks, reduced motion), through a hold button in `tests/plugin-fixtures/demo-server`; `tests/mentor.test.js` checks the leaves, `tests/home.test.js` the weather in the greeting
+
 ## 4.17.0 – 2026-10-23
 - **Groundwork for a local AI in Mentor** (docs/mentor-ai.md). Off until `~/.config/argus-ui/mentor-ai.json` turns it on. With a model server on this machine (Ollama, or any OpenAI-compatible server such as llama.cpp's `llama-server`), a written answer also gets a **meaning match** (embeddings, cosine) and, optionally, two or three sentences of **feedback** from a small chat model. The rubric answers at once as always; Athena's owl brings the AI's part a moment later, labelled "Local AI · <model> · not used for the rating". Shadow mode: it is stored with the attempt (`attempts.ai`) but the rubric still suggests the rating
 - Answers stay home: a model server on another machine is refused unless `"allow_remote": true`. A broken config, a slow or stopped server: the AI's part is skipped, one log line, the Lessons view says why

@@ -92,6 +92,13 @@ pre{white-space:pre-wrap;word-break:break-all;font-size:var(--fs-meta);line-heig
 #fx{position:fixed;inset:0;pointer-events:none;z-index:49;overflow:hidden}
 #flash{position:fixed;inset:0;pointer-events:none;z-index:48;background:#fffbe0;opacity:0}
 .p{position:absolute;will-change:transform,opacity}
+/* hold to confirm (hold.js): a ring fills while held; touch must not scroll, select or open a menu */
+.hold{display:inline-flex;align-items:center;justify-content:center;gap:var(--s2);min-height:var(--hit);touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.hold-ring{width:18px;height:18px;flex:none;border-radius:50%;background:conic-gradient(var(--bolt) calc(var(--p,0) * 360deg),rgba(167,182,196,.35) 0);
+  -webkit-mask:radial-gradient(circle,transparent 5px,#000 6px);mask:radial-gradient(circle,transparent 5px,#000 6px)}
+.hold.holding{border-color:var(--bolt)}.hold.done .hold-ring{background:var(--ok)}
+.hold-label{font-variant-numeric:tabular-nums}
+@media (prefers-reduced-motion:reduce){.hold-ring{display:none}}
 .mute{margin-left:auto;align-self:center;color:var(--powder)}
 /* Mentor / Practice (pattern: 3 Form - one card at a time, stats strip above) */
 .practice{max-width:760px}

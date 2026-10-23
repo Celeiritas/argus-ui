@@ -85,6 +85,7 @@ const scene = (() => {
       liveSky = r;
       if (r.sky) { live = {sky: r.sky, night: !r.is_day, south: r.south, wind: r.wind || 5, precip: r.precip || 0};
         $('#wxText').textContent = `${r.desc} · ${r.temp}°${r.unit}`;
+        if (here === 'home') $('#sub').textContent = home.greet()[1];       // the greeting was drawn before the weather came
         $('#wxText').title = `Weather from ${r.source}, updated ${new Date(r.at * 1000).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'})}${r.stale ? ' (last reading; the weather service is not answering)' : ''}`; }
     } catch (e) {}
     apply(); if ($('#liveNote')) labNote();

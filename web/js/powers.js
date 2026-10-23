@@ -94,8 +94,6 @@ async function medusaCast(c, act, fromDrag) {
   else toast(SAY.thaw.ok(job));
   busy = false; sendHome('medusa'); refresh();
 }
-function particle(x, y, w, h, style) { const p = document.createElement('div'); p.className = 'p'; p.style.cssText = `left:${x}px;top:${y}px;width:${w}px;height:${h}px;${style}`; $('#fx').appendChild(p); return p; }
-const ROCK = ['polygon(10% 30%,45% 0,90% 15%,100% 60%,60% 100%,10% 85%)', 'polygon(0 40%,35% 5%,80% 0,100% 45%,75% 95%,20% 100%)', 'polygon(20% 0,85% 20%,100% 75%,50% 100%,0 70%)'];
 async function petrify(c, x, y) {
   const r = c.getBoundingClientRect();
   if (RM.matches) { addStone(c); c.classList.add('frozen'); $('.stone', c).animate([{opacity: 0}, {opacity: .93}], {duration: 150}); await wait(150); markStone(c); return; }
@@ -148,23 +146,6 @@ async function crumble(c, x, y) {
 }
 
 /* ---------- Zeus: hurl the bolt at a task - Run (or Restart for always-on tasks) ---------- */
-// a jagged bolt from the top of the screen down to (x, y), a flash, and sparks
-function boltFx(x, y) {
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');     // a jagged bolt from the top of the screen
-  svg.setAttribute('width', innerWidth); svg.setAttribute('height', innerHeight); svg.style.cssText = 'position:absolute;inset:0';
-  const zig = (x0, y0, x1, y1, n, jit) => { let d = `M${x0} ${y0}`; for (let i = 1; i < n; i++) { const t = i / n; d += ` L${x0 + (x1 - x0) * t + (Math.random() - .5) * jit} ${y0 + (y1 - y0) * t}`; } return d + ` L${x1} ${y1}`; };
-  const startX = x + (Math.random() - .5) * 200, main = zig(startX, -10, x, y, 12, 60);
-  const branches = [0, 1, 2].map(() => { const t = .3 + Math.random() * .4, bx = startX + (x - startX) * t, by = (y + 10) * t; return zig(bx, by, bx + (Math.random() - .5) * 160, by + 60 + Math.random() * 80, 5, 30); });
-  svg.innerHTML = `<g fill="none" stroke-linejoin="round" stroke-linecap="round"><path d="${main}" stroke="#FFF6C2" stroke-width="8" opacity=".35"/><path d="${main}" stroke="#FFF6C2" stroke-width="4"/><path d="${main}" stroke="#ffffff" stroke-width="2"/>${branches.map(b => `<path d="${b}" stroke="#FFE27A" stroke-width="2"/>`).join('')}</g>`;
-  $('#fx').appendChild(svg);
-  $('#flash').animate([{opacity: 0}, {opacity: .3, offset: .08}, {opacity: 0, offset: .3}, {opacity: .15, offset: .38}, {opacity: 0}], {duration: 700});
-  svg.animate([{opacity: 1}, {opacity: .2, offset: .25}, {opacity: 1, offset: .35}, {opacity: 0}], {duration: 650, fill: 'forwards'}).onfinish = () => svg.remove();
-  for (let i = 0; i < 40; i++) {    // sparks
-    const a = Math.random() * Math.PI * 2, d = 30 + Math.random() * 90, s = 2 + Math.random() * 3;
-    const p = particle(x, y, s, s, `background:${['#ffffff', '#FFE27A', '#FFF6C2', '#9fd3ff'][i % 4]};border-radius:50%`);
-    p.animate([{transform: 'translate(0,0)', opacity: 1}, {transform: `translate(${Math.cos(a) * d}px,${Math.sin(a) * d + 20}px)`, opacity: 0}], {duration: 500 + Math.random() * 500, easing: 'ease-out', fill: 'forwards'}).onfinish = () => p.remove();
-  }
-}
 // Zeus strikes a tree: it flashes, burns, smokes, stands charred, then grows back
 function sceneCast(name, t, fromDrag) {
   if (name === 'bolt') return strikeTree(t, fromDrag ? shot : null);

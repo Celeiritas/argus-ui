@@ -11,7 +11,9 @@ run(async b => {
   check(await p.locator('.card').count() >= 5, 'Watch is still the default page');
   await pill.click(); await p.waitForURL(/\/home$/); await p.waitForTimeout(800);
   check(await pill.getAttribute('aria-current') === 'page' && /^Good (morning|afternoon|evening|night)$/.test(await p.locator('.title h1').textContent()), 'Home greets you by the time of day');
-  check(/(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)/.test(await p.locator('#sub').textContent()), 'and gives the date (and the weather when there is some)');
+  check(/(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)/.test(await p.locator('#sub').textContent()), 'and gives the date');
+  await p.locator('#sub', {hasText: 'Light rain'}).waitFor({timeout: 3000}).catch(() => {});
+  check(/· Light rain · 48°F$/.test(await p.locator('#sub').textContent()), 'and the weather, even when it arrives after the page is drawn');
   check(await p.locator('.card').count() === 0 && await p.locator('.tile').count() === 0, 'Home is not a grid of cards: that is Watch');
   check(await p.locator('body.side').count() === 1, 'it is a side page (Argus in the corner)');
 

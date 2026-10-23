@@ -17,13 +17,14 @@ const leafy = (() => {
     main.querySelector('.plugin-full').onclick = () => (fr.requestFullscreen ? fr.requestFullscreen() : Promise.reject()).catch(() => toast('Full screen is not available here'));
   }
 
-  // What a server plugin's page gets: its own API (api/<id>/...), answers as {ok, status, data}, and Elaia's helpers.
+  // What a server plugin's page gets: its own API (api/<id>/...), answers as {ok, status, data}, and Elaia's helpers:
+  // the shared effects (fx.js) and hold-to-confirm (hold.js), so every page gives the same feedback.
   function api(p) {
     const call = async (path, init) => {
       try { const r = await fetch(url(`api/${p.id}/${path}`), init); return {ok: r.ok, status: r.status, data: await r.json().catch(() => null)}; }
       catch (e) { return {ok: false, status: 0, data: null}; }                     // no answer: the server is down or the network is
     };
-    return {plugin: p, url, esc, toast,
+    return {plugin: p, url, esc, toast, fx, holdConfirm,
       get: path => call(path, {cache: 'no-store'}),
       post: (path, body) => call(path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body || {})})};
   }
