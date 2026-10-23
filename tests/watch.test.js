@@ -21,6 +21,7 @@ run(async b => {
   units(u => Object.values(u).forEach(v => { if (v.Result !== 'success') v.Result = 'success'; }));
   await p.evaluate(() => refresh()); await p.waitForTimeout(800);
   check(!(await p.locator('#argus').evaluate(e => e.classList.contains('glare'))), 'Argus calms down when nothing has failed');
+  check(await p.locator('#alarm').isHidden(), 'and the alarm badge goes away');
   check(p.errors.length === 0, 'no page errors ' + p.errors.join(' | '));
   const ph = await page(b, 375, 760); await ph.goto(BASE); await ph.waitForTimeout(800);
   check(await noOverflow(ph), 'phone: no sideways scrolling');
