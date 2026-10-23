@@ -26,9 +26,31 @@ run(async b => {
   check(await n('.arrowstuck') === 1, "Apollo's arrow sticks where it lands");
   [x, y] = await center(p.locator('.tree').nth(1)); await drag(p, '[data-item=bolt]', x, y); await p.waitForTimeout(1200);
   check(await n('.tree.struck') === 1, 'the bolt strikes a tree');
+  // 4.15: Hermes' sandal, Athena's owl, Dionysus' cup
+  const m0 = await n('.mess'), a0 = await n('#stuck .arrowstuck'); check(m0 >= 1 && a0 + await n('.tree .arrowstuck') === 1, `before the sandal: mess on the ground (${m0}) and an arrow (${a0} in the ground)`);
+  await p.locator('[data-item=sandal]').click(); await p.mouse.click(700, S - 100); await p.waitForTimeout(3200);
+  check(await n('.mess') === 0 && await n('#stuck .arrowstuck') === 0, "Hermes' sandal skims the field and its wind carries the mess and the arrow away");
+  check(await n('.flower') === 5 && await n('.tree') >= 8, 'the wind bends flowers and rocks trees but leaves them');
+  const tr = p.locator('.tree').nth(2); [x, y] = await center(tr);
+  await drag(p, '[data-item=owl]', x, S - 320); await p.waitForTimeout(1900);
+  check(await tr.locator('.owl').count() === 1, "Athena's owl glides to the nearest tree and perches");
+  const ob = await tr.locator('.owl').boundingBox(); await p.mouse.move(ob.x + 20, ob.y + 20); await p.mouse.down(); await p.mouse.up(); await p.waitForTimeout(200);
+  check(await p.locator('.owlsay').count() === 1 && (await p.locator('.owlsay').textContent()).length > 5, 'clicking the owl: she hoots and says a maxim');
+  const pup = async () => tr.locator('.owl .pupil').first().getAttribute('cx');
+  await p.mouse.move(5, 300); await p.waitForTimeout(200); const pl = +(await pup()); await p.mouse.move(1430, 300); await p.waitForTimeout(200);
+  check(+(await pup()) > pl, 'her eyes follow the pointer');
+  await drag(p, '[data-item=bident]', 900, S - 120); await p.waitForTimeout(1500);
+  const sk = p.locator('.skel').last(); [x, y] = await center(sk); await drag(p, '[data-item=cup]', x, y); await p.waitForTimeout(600);
+  check(await p.locator('.skel.dancing').count() === 1, "Dionysus' cup makes a skeleton dance");
+  [x, y] = await center(p.locator('.tree').nth(3)); await drag(p, '[data-item=cup]', x, y); await p.waitForTimeout(600);
+  check(await p.locator('.tree').nth(3).locator('.vine .grapes circle').count() >= 6, 'on a tree it grows a grapevine with grapes');
+  await drag(p, '[data-item=cup]', 720, S - 200); await p.waitForTimeout(1600);
+  check(await n('.mess[data-kind=wine]') === 1, 'on the ground it leaves a puddle of wine');
+  [x, y] = await center(tr); await drag(p, '[data-item=bolt]', x, y); await p.waitForTimeout(1800);
+  check(await n('.owl') === 0, 'the owl flies off when her tree is struck');
   await shot(p, 'olympus-busy');
   await drag(p, '[data-item=trident]', 700, S - 200); await p.waitForTimeout(3200);
-  const left = await p.evaluate(() => ['.skel', '.flower', '.hole', '.mess', '.arrowstuck', '.tree.struck', '.tree.statue'].map(s => document.querySelectorAll(s).length).reduce((a, c) => a + c, 0));
+  const left = await p.evaluate(() => ['.skel', '.flower', '.hole', '.mess', '.arrowstuck', '.tree.struck', '.tree.statue', '.owl', '.vine'].map(s => document.querySelectorAll(s).length).reduce((a, c) => a + c, 0));
   check(left === 0, "Poseidon's tsunami resets the whole playground");
   check(p.errors.length === 0, 'no page errors ' + p.errors.join(' | '));
   // wide screen: the summit is never cropped
