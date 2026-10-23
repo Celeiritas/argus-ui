@@ -106,6 +106,7 @@ const scene = (() => {
     ash: () => `<svg width="70" height="12" viewBox="0 0 70 12"><ellipse cx="35" cy="9" rx="33" ry="4" fill="#3b3f44"/><ellipse cx="30" cy="7" rx="16" ry="3" fill="#585d63"/></svg>`,
     scorch: () => `<svg width="90" height="16" viewBox="0 0 90 16"><defs><radialGradient id="sc"><stop offset="0" stop-color="#0d0d0d" stop-opacity=".9"/><stop offset="1" stop-color="#0d0d0d" stop-opacity="0"/></radialGradient></defs><ellipse cx="45" cy="10" rx="44" ry="7" fill="url(#sc)"/></svg>`,
     bones: () => `<svg width="50" height="12" viewBox="0 0 50 12"><path d="M6 10 L20 8 M24 11 L38 8" stroke="#E8E4D8" stroke-width="2.6" stroke-linecap="round"/><circle cx="44" cy="7.5" r="4" fill="#E8E4D8"/><circle cx="42.6" cy="7" r="1" fill="#1C2127"/><circle cx="45.4" cy="7" r="1" fill="#1C2127"/></svg>`,
+    wine: () => `<svg width="64" height="10" viewBox="0 0 64 10"><ellipse cx="32" cy="6" rx="30" ry="3.6" fill="#5a1838" opacity=".85"/><ellipse cx="25" cy="5" rx="12" ry="1.6" fill="#9b2f62" opacity=".6"/></svg>`,
     rocks: () => `<svg width="56" height="16" viewBox="0 0 56 16"><path d="M4 16 L8 9 L15 8 L18 16 Z" fill="#6d7680"/><path d="M22 16 L25 6 L34 5 L37 16 Z" fill="#59626b"/><path d="M41 16 L44 11 L51 10 L53 16 Z" fill="#7d8690"/></svg>`,
   };
   function addMess(kind, x, of) { const m = document.createElement('div'); m.className = 'mess'; m.dataset.kind = kind; if (of != null) m.dataset.of = of; m.style.left = x + 'px'; m.innerHTML = MESS[kind](); $('#debris').append(m); m.animate([{opacity: 0}, {opacity: 1}], {duration: 300}); return m; }
@@ -135,7 +136,7 @@ const scene = (() => {
     labNote(); labSum();
   }
   const gh = () => $('.ground', SC).offsetHeight, surface = () => innerHeight - gh() + 4;     // y where things land
-  // everything Poseidon's tsunami sweeps away: debris, flowers, skeletons, arrows, holes; trees grow back fresh
-  function reset() { $$('.mess,.flower,.skel,.arrowstuck,.hole', SC).forEach(e => e.remove()); plant(true); }
+  // everything Poseidon's tsunami sweeps away: debris, flowers, skeletons, arrows, holes, owls; trees grow back fresh (vines go with them)
+  function reset() { $$('.mess,.flower,.skel,.arrowstuck,.hole,.owl', SC).forEach(e => e.remove()); plant(true); }
   return {treeAt, messAt, addMess, lab, reset, covered, inside, gh, surface, get season() { return season; }};
 })();
