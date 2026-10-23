@@ -1,0 +1,1 @@
+{ "id": "mentor", "kind": "server", "agent": true, "server": "plugin.py", "page": "page.js", "style": "page.css", "version": "1.0.0" }

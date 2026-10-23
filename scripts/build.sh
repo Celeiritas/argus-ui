@@ -4,7 +4,7 @@ set -e
 R=$(cd "$(dirname "$0")/.." && pwd); THEME=${1:-leafy-realm}; T=$R/themes/$THEME; V=$(cat $R/VERSION)
 [ -f $T/theme.json ] || { echo "no theme at $T"; exit 1; }
 O=$R/dist/argus-ui-$V-$THEME; rm -rf $O; mkdir -p $O/static/icons $O/static/sfx
-cp $R/server/argus_ui.py $R/server/mentor.py $R/server/sky.py $O/; cp $R/scripts/install.sh $O/; chmod +x $O/install.sh
+cp $R/server/argus_ui.py $R/server/sky.py $O/; cp $R/scripts/install.sh $O/; chmod +x $O/install.sh
 cp $R/web/manifest.webmanifest $R/web/sw.js $O/static/
 mkdir -p $O/bundled; [ -d $R/plugins ] && cp -r $R/plugins/. $O/bundled/   # bundled LeafyPlugins (docs/leafy-plugin.md)
 cp -r $R/web/css $R/web/js $O/static/

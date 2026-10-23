@@ -1,5 +1,5 @@
 // Argus UI - core: helpers, routing, sound, toasts, confirm dialog, rendering the task cards, Argus's eyes.
-// Load order matters (classic scripts share one global scope): core, scene, powers, olympus, mentor, plugins, home, main.
+// Load order matters (classic scripts share one global scope): core, scene, powers, olympus, plugins, home, main.
 let S = INIT, busy = false;
 const $ = (s, e = document) => e.querySelector(s), $$ = (s, e = document) => [...e.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -116,7 +116,6 @@ function render() {
   $('#nav').innerHTML = `<a href="${url('')}" class="${here ? '' : 'on'}" ${here ? '' : 'aria-current="page"'}>All</a>` +
     shown.filter(p => !SIDE.includes(p.key)).map(p => tab(p.key, p.name)).join('');
   if (plugin) { look.retarget(); return leafy.show(plugin); }
-  if (here === 'mentor') { look.retarget(); return practice.show(); }
   if (onOlympus) { look.retarget(); return playground.show(); }
   if (here === 'home') { look.retarget(); return home.show(); }
   const list = here ? shown.filter(p => p.key === here) : shown;

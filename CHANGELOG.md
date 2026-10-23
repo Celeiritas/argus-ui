@@ -1,5 +1,12 @@
 # Changelog
 
+## 4.14.0 – 2026-10-23
+- **Mentor is now a bundled server plugin** (`plugins/mentor/`, `"agent": true`), the first real one: `mentor.py` (unchanged), `plugin.py` (`api/mentor/...`), `page.js` and `page.css` (were `web/js/mentor.js` and `web/css/mentor.css`). Same section (`<base>/mentor`), same pill in the same place, same API, same keyboard paths. Elaia's own server no longer imports Mentor
+- **Nothing of yours moved**: the database stays `~/.local/share/argus-ui/mentor.db` (or `ARGUS_MENTOR_DB`), the inbox and your decks stay in `~/.local/share/argus-ui/`. An install sets the old built-in `mentor.py` aside with the previous version
+- Home's Mentor tile now reads `api/mentor/status`, like every server plugin, instead of computing its line in the page
+- Fix: Mentor handles one request at a time on its single SQLite connection. The page asks for decks and stats at once, and two requests could read each other's rows (seen as a `tuple index out of range` on `next`)
+- Tests: `tests/bundled.test.js` checks Mentor loads as a bundled plugin, keeps its pill right after Argus, never serves its Python files and answers `status`; `tests/mentor.test.js` runs unchanged
+
 ## 4.13.0 – 2026-10-22
 - **Bundled plugins**: plugins that ship with Elaia live in the repo's `plugins/<id>/`; the package carries them and every install puts them in `~/.local/share/argus-ui/bundled/` (the old copy is set aside with the previous version). Your own plugin with the same id wins and the bundled one is never imported. The log marks bundled ones
 - **A server plugin can take over an agent's section** with `"agent": true` and the agent's key as its id: `<base>/<key>` and `api/<key>/...` are the plugin's (ahead of the built-in Mentor routes), with the agent's name, subtitle and icon unless the plugin has its own. Its pill keeps the agent's place, and Home shows its status line. A folder named after an agent without `"agent": true` is skipped. This is the groundwork for moving Mentor into a bundled plugin

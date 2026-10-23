@@ -25,7 +25,14 @@ run(async b => {
   check((await p.request.get(BASE + 'plugins/heracles/plugin.py')).status() === 404 && (await p.request.get(BASE + 'plugins/heracles/page.js')).status() === 200,
     'bundled: plugin.py is never served, the page script is');
   check((await (await p.request.get(BASE + 'api/heracles/status')).json()).line === '2 workouts this week', 'agent plugin: api/<id>/status gives Home its line');
-  check((await p.request.get(BASE + 'api/mentor/stats')).status() === 200, 'the built-in Mentor still answers while no plugin claims it');
+  const men = st.plugins.find(x => x.id === 'mentor');
+  check(men && men.agent && men.kind === 'server', 'Mentor is a bundled server plugin that took over the agent section');
+  check(/loaded server plugin mentor [\d.]+ \(bundled\)/.test(log), 'Mentor: loaded from the bundled folder');
+  check((await p.request.get(BASE + 'plugins/mentor/mentor.py')).status() === 404 && (await p.request.get(BASE + 'plugins/mentor/plugin.py')).status() === 404, 'Mentor: its Python files are never served');
+  check(/due|to learn|waiting|Nothing due/.test((await (await p.request.get(BASE + 'api/mentor/status')).json()).line), 'Mentor: api/mentor/status gives Home its line');
+  await p.goto(BASE); await p.waitForTimeout(500);
+  const pills = await p.locator('#realms a.realm b').allTextContents();
+  check(pills.filter(t => t === 'Mentor').length === 1 && pills.indexOf('Mentor') === pills.indexOf('Argus') + 1, 'Mentor: one pill, still right after Argus');
 
   await p.goto(BASE + 'home'); await p.waitForTimeout(800);
   const tile = p.locator('.tile', {has: p.locator('.tname b', {hasText: 'Heracles'})});

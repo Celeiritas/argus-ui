@@ -16,15 +16,10 @@ STATIC = os.environ.get('ARGUS_STATIC', f'{HOME}/.local/share/argus-ui/static')
 SYSTEMCTL = os.environ.get('ARGUS_SYSTEMCTL', 'systemctl')
 JOURNALCTL = os.environ.get('ARGUS_JOURNALCTL', 'journalctl')
 
-# Mentor (the Learn section) lives in mentor.py next to this file, or in ~/.local/share/argus-ui when installed
+# sky.py lives next to this file, or in ~/.local/share/argus-ui when installed. Mentor is a bundled plugin (plugins/mentor/).
 sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)), os.path.expanduser('~/.local/share/argus-ui')]
-import mentor
 import sky          # weather for the background scene (sky.py; fetched server-side, cached 20 min)
 SHARE = os.path.expanduser('~/.local/share/argus-ui')
-MENTOR_DB = os.environ.get('ARGUS_MENTOR_DB', f'{SHARE}/mentor.db')
-DECK_DIRS = [os.path.join(STATIC, 'decks'), os.environ.get('ARGUS_DECKS', f'{SHARE}/decks')]   # built-in + your own
-MDB = mentor.connect(MENTOR_DB)
-for _d in DECK_DIRS: mentor.load_decks(MDB, _d)
 
 def load_theme():
     try: return json.load(open(os.path.join(STATIC, 'theme.json'), encoding='utf-8'))
@@ -41,7 +36,7 @@ PAGES = ['olympus', 'home']      # sections that are not agents: the Olympus pla
 # A plugin is a folder ~/.config/argus-ui/plugins/<id>/ with a plugin.json manifest. "static" plugins
 # (a browser game, a tool) are plain files shown in a sandboxed frame on their own section <base>/<id>.
 # "server" plugins are trusted code the owner installed: a Python side (plugin.py, loaded once at startup,
-# answering api/<id>/...) and a page script that runs inside Elaia's own page, like Mentor.
+# answering api/<id>/...) and a page script that runs inside Elaia's own page (Mentor is one, bundled).
 # Yours live outside the install, so upgrades keep them, like the sounds. Bundled plugins ship with Elaia (the repo's
 # plugins/ folder, installed to ~/.local/share/argus-ui/bundled/) and are replaced by each install; yours win on the same id.
 PLUGINS = os.path.expanduser(os.environ.get('ARGUS_PLUGINS', '~/.config/argus-ui/plugins'))
@@ -430,7 +425,6 @@ class H(BaseHTTPRequestHandler):
         p = self.path_parts()
         pid, _, rest = p[4:].partition('/')
         if p.startswith('api/') and pid in SERVER_PLUGINS: return self.plugin_call(pid, 'get', rest, parse_qs(urlsplit(self.path).query))
-        if p.startswith('api/mentor/'): return self.mentor_get(p[11:], parse_qs(urlsplit(self.path).query))   # until Mentor is a bundled plugin
         if p.startswith('static/'):
             root = os.path.realpath(STATIC); f = os.path.realpath(os.path.join(root, p[7:]))
             if os.path.commonpath([root, f]) != root or not os.path.isfile(f): return self.out('not found', 'text/plain', 404)
@@ -471,7 +465,6 @@ class H(BaseHTTPRequestHandler):
         p = self.path_parts()
         pid, _, rest = p[4:].partition('/')
         if p.startswith('api/') and pid in SERVER_PLUGINS: return self.plugin_call(pid, 'post', rest, body)   # after every check above
-        if p.startswith('api/mentor/'): return self.mentor_post(p[11:], body)
         u = str(body.get('job', ''))
         actions = {'api/freeze': freeze, 'api/thaw': thaw, 'api/bolt': bolt, 'api/run': bolt}
         if p not in actions: return self.deny(404, 'not found')
@@ -481,38 +474,6 @@ class H(BaseHTTPRequestHandler):
         except subprocess.TimeoutExpired: ok, msg = False, 'systemctl timed out'
         except Exception: ok, msg = False, 'server error'
         self.out(json.dumps({'ok': ok, 'msg': msg}), 'application/json')
-
-    # ---------- Mentor ----------
-    def mentor_get(self, what, q):
-        deck = (q.get('deck') or [None])[0] or None
-        if what == 'decks':
-            decks = []
-            for d in DECK_DIRS: decks += mentor.deck_list(d)
-            return self.out(json.dumps({'decks': decks}), 'application/json')
-        if what == 'next':
-            if q.get('card'):                      # one Learn card to read again (Lessons view); never a practice card
-                return self.out(json.dumps({'card': mentor.one_card(MDB, q['card'][0])}), 'application/json')
-            card, next_due = mentor.next_card(MDB, deck, (q.get('extra') or ['0'])[0] == '1')
-            return self.out(json.dumps({'card': card, 'next_due': next_due}), 'application/json')
-        if what == 'stats': return self.out(json.dumps(mentor.stats(MDB, deck)), 'application/json')
-        return self.deny(404, 'not found')
-
-    def mentor_post(self, what, body):
-        try:
-            if what == 'answer' and body.get('hint'):       # one rung of the hint ladder; no attempt is written yet
-                r = mentor.hint(MDB, str(body.get('card', '')), int(body['hint']))
-            elif what == 'answer':
-                text = str(body.get('text', ''))[:2000]
-                conf = body.get('confidence'); conf = int(conf) if conf in (1, 2, 3, 4, '1', '2', '3', '4') else None
-                ms = int(body.get('ms') or 0)
-                r = mentor.answer(MDB, str(body.get('card', '')), text, conf, max(0, min(ms, 3_600_000)),
-                                  int(body.get('hints') or 0), body.get('reflections') or [], bool(body.get('skipped')))
-            elif what == 'rate':
-                r = mentor.rate(MDB, int(body.get('attempt') or 0), int(body.get('rating') or 0), bool(body.get('grade_wrong')))
-            else: return self.deny(404, 'not found')
-        except (ValueError, TypeError): return self.deny(400, 'bad request')
-        if r is None: return self.deny(400, 'unknown card or attempt')
-        self.out(json.dumps({'ok': True, **r}), 'application/json')
 
 if __name__ == '__main__':
     load_server_plugins()
