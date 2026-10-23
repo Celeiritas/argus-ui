@@ -1,4 +1,4 @@
-/* Argus UI - Mentor's own styles (loaded by js/mentor.js). Shared pieces (.panel, .seg, .ideas, .meter, .rates) are in argus.css. */
+/* Mentor's own styles (the plugin's page.css, loaded with its page.js). Shared pieces (.panel, .seg, .ideas, .meter, .rates) are in argus.css. */
 .mentor{--mono:ui-monospace,"Cascadia Code","SF Mono",Consolas,"Liberation Mono",monospace}
 .mbar{display:flex;flex-wrap:wrap;gap:var(--s3);align-items:center;justify-content:space-between;margin:var(--s2) 0 var(--s3)}
 .views{display:flex;gap:var(--s2)}

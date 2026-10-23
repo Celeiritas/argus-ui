@@ -121,7 +121,7 @@ A server plugin whose id is one of the theme's agent keys and whose manifest say
 - The pill stays where the agent's pill was. Home gets the plugin's tile with its `api/<key>/status` line.
 - The agent's tasks, if it has any, still show on the Watch page.
 
-**Mentor** is still built in (`server/mentor.py`, `web/js/mentor.js`, `/api/mentor/*`); it moves to a bundled plugin with `"agent": true` next. A plugin that claims `mentor` already replaces the built-in one.
+**Mentor** is the first bundled plugin (`plugins/mentor/`, `"agent": true`): the worked example of a big one. Its database stays where it always was, outside `ctx.data_dir`, so the move kept everyone's history.
 
 Leaving a section loads a new page, so a plugin's timers and listeners end with it; there is no `hide()`.
 

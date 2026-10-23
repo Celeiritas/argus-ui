@@ -73,8 +73,9 @@ A **LeafyPlugin** adds a section without touching Argus's code. Put a folder wit
 
 ## Repository layout
 ```
-server/                 argus_ui.py (HTTP server), mentor.py (lessons, grading, scheduling), sky.py (weather); standard library only
-web/                    index.html, css/, js/ (core, scene, powers, olympus, mentor, plugins, main), manifest, service worker
+server/                 argus_ui.py (HTTP server), sky.py (weather); standard library only
+plugins/mentor/         Mentor, a bundled server plugin: mentor.py (lessons, grading, scheduling), plugin.py, page.js, page.css
+web/                    index.html, css/, js/ (core, scene, powers, olympus, plugins, home, main), manifest, service worker
 themes/leafy-realm/     the author's theme (art all rights reserved)
 themes/starter/         a free placeholder theme made by scripts/new-theme.py
 scripts/build.sh        builds an installable package for a theme

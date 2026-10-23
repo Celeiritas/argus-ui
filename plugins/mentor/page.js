@@ -1,10 +1,9 @@
-// Argus UI - Mentor: learn the code you build. Lessons (teach -> drills, explain cards, terms) + plain decks,
+// Mentor: learn the code you build. Lessons (teach -> drills, explain cards, terms) + plain decks,
 // spaced repetition, typed answers, a hint ladder, calibration. See docs/mentor.md.
-/* Mentor's own styles (css/mentor.css), added from here so the page's markup stays as it is */
-(() => { const s = document.currentScript; if (!s) return; const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = s.src.replace('/js/mentor.js', '/css/mentor.css'); document.head.appendChild(l); })();
-
-/* ---------- Mentor: the Learn page ---------- */
-const practice = (() => {
+// A bundled server plugin (docs/leafy-plugin.md): Elaia loads this script and page.css on the Mentor section only.
+// It is first-party code, so besides the plugin api it uses Elaia's page helpers ($, $$, esc, url, toast).
+(() => {
+  let ROOT = null;                            // the section's content area, from show(el)
   const M = {deck: null, view: 'practice', card: null, t0: 0, result: null, shown: false, decks: [], modules: [], stats: null,
              hints: 0, reflections: [], idle: null, step: 0, notes: []};
   try { M.deck = localStorage.getItem('mentor-deck') || null; M.view = localStorage.getItem('mentor-view') === 'modules' ? 'modules' : 'practice'; } catch (e) {}
@@ -37,12 +36,12 @@ const practice = (() => {
   const moduleOf = id => M.modules.find(m => m.id === id);
   const isLearn = c => LEARN.includes(c.kind);
 
-  async function show() {
-    if (M.shown) return; M.shown = true;      // refresh() re-renders agent pages; Mentor keeps its own state
+  async function show(el) {
+    ROOT = el;                                // called once; there is no refresh(), so Mentor keeps its own state
     const [{decks}, s] = await Promise.all([get('decks'), get('stats')]);
     M.decks = decks; M.stats = s; M.modules = s.modules || [];
     if (M.deck && !decks.some(d => d.id === M.deck) && !moduleOf(M.deck)) M.deck = null;
-    $('#main').innerHTML = `<section class="persona practice mentor" aria-label="Mentor">
+    ROOT.innerHTML = `<section class="persona practice mentor" aria-label="Mentor">
       <div class="mbar"><div class="views" role="group" aria-label="View">
           <button type="button" data-view="practice" aria-pressed="${M.view === 'practice'}">Study</button>
           <button type="button" data-view="modules" aria-pressed="${M.view === 'modules'}">Lessons</button></div>
@@ -399,11 +398,11 @@ const practice = (() => {
 
   addEventListener('keydown', e => {
     const a = document.activeElement;
-    if (here !== 'mentor') return;
+    if (!ROOT) return;
     if (e.altKey && (e.key === 'h' || e.key === 'H') && M.card && !M.result && !isLearn(M.card)) { e.preventDefault(); return hint(); }
     if (!M.result || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || (a.tagName === 'INPUT' && a.type === 'text')) return;
     if (/^[1-4]$/.test(e.key)) { const i = $$('input[name=rate]')[+e.key - 1]; if (i) { i.checked = true; i.dispatchEvent(new Event('change')); i.focus(); } }
     else if (e.key === 'Enter' && a.type === 'radio') { e.preventDefault(); $('#rateBtn').click(); }
   });
-  return {show};
+  leafy.register('mentor', {show});
 })();
