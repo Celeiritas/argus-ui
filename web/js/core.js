@@ -1,5 +1,5 @@
 // Argus UI - core: helpers, routing, sound, toasts, confirm dialog, rendering the task cards, Argus's eyes.
-// Load order matters (classic scripts share one global scope): core, scene, powers, olympus, mentor, main.
+// Load order matters (classic scripts share one global scope): core, scene, powers, olympus, mentor, plugins, home, main.
 let S = INIT, busy = false;
 const $ = (s, e = document) => e.querySelector(s), $$ = (s, e = document) => [...e.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -9,7 +9,7 @@ const RM = matchMedia('(prefers-reduced-motion: reduce)');      // reduced motio
 const MOUNT = /^\/argus(\/|$)/.test(location.pathname) ? '/argus/' : '/';
 const REST = location.pathname.slice(MOUNT.length - (location.pathname === '/argus' ? 1 : 0)).replace(/^\/+|\/+$/g, '');
 const AGENT_KEYS = (S?.personas || []).map(p => p.key);
-const PAGES = ['olympus'];                                    // sections that are not agents
+const PAGES = ['olympus', 'home'];                            // sections that are not agents (Home: docs/home.md)
 const PLUGINS = S?.plugins || [];                             // LeafyPlugins: each has its own section (docs/leafy-plugin.md)
 const here = [...AGENT_KEYS, ...PAGES, ...PLUGINS.map(p => p.id)].includes(REST.split('/')[0]) ? REST.split('/')[0] : null;
 const plugin = PLUGINS.find(p => p.id === here) || null;
@@ -17,7 +17,7 @@ const BASE = MOUNT;
 if (location.pathname === '/argus') history.replaceState(null, '', '/argus/');
 const url = p => BASE + p;
 // sections that are not about watching: Argus shrinks to the corner and the section's agent takes the centre
-const SIDE = ['mentor', 'olympus'];
+const SIDE = ['mentor', 'olympus', 'home'];
 const side = SIDE.includes(here) || !!plugin, onOlympus = here === 'olympus';     // Olympus: a playground where the powers act on the scene
 document.body.classList.toggle('side', side); document.body.classList.toggle('play', onOlympus);
 let gaze = null, drag = null, armed = null, justDragged = false;   // what Argus watches; drag/armed belong to the god tools (powers.js)                                                // Argus watches whatever you throw on Olympus
@@ -91,6 +91,9 @@ function render() {
   if (plugin) {
     $('.title h1').textContent = plugin.name; $('#sub').textContent = plugin.subtitle; document.title = `${plugin.name} · ${S.title || 'Argus'}`;
     $('#hero').hidden = !plugin.icon; if (plugin.icon) $('#hero').src = url(`plugins/${plugin.id}/${plugin.icon}`);
+  } else if (here === 'home') {
+    $('.title h1').textContent = 'Home'; $('#sub').textContent = 'Every section at a glance'; document.title = `Home · ${S.title || 'Argus'}`;
+    $('#hero').hidden = true;
   } else if (side && !onOlympus) {
     $('.title h1').textContent = me.name; $('#sub').textContent = me.domain; document.title = `${me.name} · ${S.title || 'Argus'}`;
     $('#hero').src = `static/icons/${here}.png`;
@@ -98,7 +101,8 @@ function render() {
     $('.title h1').textContent = 'Olympus'; $('#sub').textContent = 'Playground · powers, weather, seasons'; document.title = `Olympus · ${S.title || 'Argus'}`;
   } else { $('#sub').innerHTML = `${esc(S.subtitle)} · <b>${S.jobs.length}</b> tasks watched · updated ${esc(S.updated)}`; $('.title h1').textContent = S.title || 'Argus'; }
   const realm = (href, key, name, what, on) => `<a class="realm ${on ? 'on' : ''}" href="${href}" ${on ? 'aria-current="page"' : ''}><img src="static/icons/${key}.png" alt="">${key === 'argus' ? '<span class="dot" id="realmDot" hidden></span>' : ''}<span><b>${esc(name)}</b><small>${esc(what)}</small></span></a>`;
-  $('#realms').innerHTML = realm(url(''), 'argus', 'Argus', 'Watch', !side) +
+  $('#realms').innerHTML = `<a class="realm ${here === 'home' ? 'on' : ''}" href="${url('home')}" ${here === 'home' ? 'aria-current="page"' : ''}>${HOME_MARK}<span><b>Home</b><small>Overview</small></span></a>` +
+    realm(url(''), 'argus', 'Argus', 'Watch', !side) +
     SIDE.filter(k => AGENT_KEYS.includes(k)).map(k => { const p = S.personas.find(x => x.key === k); return realm(url(k), k, p.name, p.domain.split('·')[0].trim(), here === k); }).join('') +
     realm(url('olympus'), 'olympus', 'Olympus', 'Playground', onOlympus) +
     PLUGINS.map(p => pluginRealm(p, here === p.id)).join('') +
@@ -112,6 +116,7 @@ function render() {
   if (plugin) { look.retarget(); return leafy.show(plugin); }
   if (here === 'mentor') { look.retarget(); return practice.show(); }
   if (onOlympus) { look.retarget(); return playground.show(); }
+  if (here === 'home') { look.retarget(); return home.show(); }
   const list = here ? shown.filter(p => p.key === here) : shown;
   $('#main').innerHTML = list.map(p => {
     const js = by[p.key] || [], ls = lone[p.key] || [];
@@ -125,10 +130,12 @@ function render() {
   look.retarget();
 }
 // A plugin's pill in the section bar: its own icon, or a plain laurel-and-blades mark.
+const pluginMark = p => p.icon ? `<img src="${esc(url(`plugins/${p.id}/${p.icon}`))}" alt="">`
+  : `<svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="16" fill="#1C2127" stroke="#A7B6C4" stroke-width="1.5"/><path d="M10 26 26 10M26 26 10 10" stroke="#C9A36A" stroke-width="2" stroke-linecap="round"/><path d="M23 9h4v4M13 9H9v4" stroke="#A7B6C4" stroke-width="1.5" fill="none"/></svg>`;
+// Home's pill: a plain four-square "overview" mark in the same frame (a placeholder until the owner approves art)
+const HOME_MARK = `<svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="16" fill="#1C2127" stroke="#A7B6C4" stroke-width="1.5"/><path d="M11 11h6v6h-6zM19 11h6v6h-6zM11 19h6v6h-6zM19 19h6v6h-6z" fill="none" stroke="#C9A36A" stroke-width="1.6" stroke-linejoin="round"/></svg>`;
 function pluginRealm(p, on) {
-  const mark = p.icon ? `<img src="${esc(url(`plugins/${p.id}/${p.icon}`))}" alt="">`
-    : `<svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="16" fill="#1C2127" stroke="#A7B6C4" stroke-width="1.5"/><path d="M10 26 26 10M26 26 10 10" stroke="#C9A36A" stroke-width="2" stroke-linecap="round"/><path d="M23 9h4v4M13 9H9v4" stroke="#A7B6C4" stroke-width="1.5" fill="none"/></svg>`;
-  return `<a class="realm ${on ? 'on' : ''}" href="${url(p.id)}" ${on ? 'aria-current="page"' : ''}>${mark}<span><b>${esc(p.name)}</b><small>${esc(p.subtitle || 'Plugin')}</small></span></a>`;
+  return `<a class="realm ${on ? 'on' : ''}" href="${url(p.id)}" ${on ? 'aria-current="page"' : ''}>${pluginMark(p)}<span><b>${esc(p.name)}</b><small>${esc(p.subtitle || 'Plugin')}</small></span></a>`;
 }
 /* ---------- alert files (docs/alerts.md): an agent's message on its task's card, or a card of its own ---------- */
 const alertsFor = j => (S.alerts || []).filter(a => a.job === j.job || (j.base && a.job === j.base));
