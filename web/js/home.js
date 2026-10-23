@@ -16,20 +16,21 @@ const home = (() => {
   async function ask() {
     const jobs = PLUGINS.filter(p => p.kind === 'server').map(p =>
       fetch(url(`api/${p.id}/status`), {cache: 'no-store'}).then(r => r.json()).then(j => { lines[p.id] = j.line || null; }).catch(() => { lines[p.id] = null; }));
-    if (AGENT_KEYS.includes('mentor')) jobs.push(fetch(url('api/mentor/stats'), {cache: 'no-store'}).then(r => r.json())
+    if (AGENT_KEYS.includes('mentor') && !PLUGINS.some(p => p.id === 'mentor')) jobs.push(fetch(url('api/mentor/stats'), {cache: 'no-store'}).then(r => r.json())
       .then(s => { lines.mentor = learnLine(s); }).catch(() => { lines.mentor = null; }));
     await Promise.all(jobs);
   }
   const tile = (href, mark, name, what, line, needs) => `<li><a class="tile ${needs ? 'needs' : ''}" href="${href}">${mark}
     <span class="tname"><b>${esc(name)}</b><small>${esc(what)}</small></span>${line === '' ? '' : `<span class="tline">${line === undefined ? 'Checking…' : line === null ? 'No news' : esc(line)}</span>`}</a></li>`;
   const icon = k => `<img src="static/icons/${k}.png" alt="">`;
+  const ptile = p => tile(url(p.id), pluginMark(p), p.name, p.subtitle || 'Plugin', p.kind === 'server' ? lines[p.id] : (p.version ? `Version ${p.version}` : ''), false);
   function draw() {
     if (here !== 'home') return;
-    const w = watchLine(), up = (S.alerts || []).filter(a => a.level === 'alert'), mentor = S.personas.find(p => p.key === 'mentor');
+    const w = watchLine(), up = (S.alerts || []).filter(a => a.level === 'alert'), mentor = S.personas.find(p => p.key === 'mentor'), mp = PLUGINS.find(p => p.id === 'mentor');
     const tiles = [tile(url(''), icon('argus'), 'Argus', 'Watch', w.text, w.needs)]
-      .concat(mentor ? [tile(url('mentor'), icon('mentor'), mentor.name, mentor.domain.split('·')[0].trim(), lines.mentor, false)] : [])
+      .concat(mp ? [ptile(mp)] : mentor ? [tile(url('mentor'), icon('mentor'), mentor.name, mentor.domain.split('·')[0].trim(), lines.mentor, false)] : [])   // a Mentor plugin's line comes from api/mentor/status
       .concat([tile(url('olympus'), icon('olympus'), 'Olympus', 'Playground', 'Powers, weather, seasons', false)])
-      .concat(PLUGINS.map(p => tile(url(p.id), pluginMark(p), p.name, p.subtitle || 'Plugin', p.kind === 'server' ? lines[p.id] : (p.version ? `Version ${p.version}` : ''), false)));
+      .concat(PLUGINS.filter(p => p !== mp).map(ptile));
     const focused = document.activeElement?.closest?.('.tile')?.getAttribute('href');   // a redraw must not drop keyboard focus
     $('#main').innerHTML = `<section class="home" aria-labelledby="home-h"><h2 class="sr" id="home-h">Sections</h2>
       ${up.length ? `<div class="home-alerts" role="group" aria-label="Alerts">${up.map(alertNote).join('')}</div>` : ''}

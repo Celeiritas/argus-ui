@@ -11,7 +11,7 @@ A LeafyPlugin adds a section to Argus without changing Argus's code: drop a fold
   index.html                            the plugin's page (or whatever "entry" says)
   ...                                   anything it loads, by relative URL
 ```
-Plugins live outside the install, so upgrading Argus keeps them (like the sounds). Argus reads the folder on every request: a deploy shows up on the next page load, no restart needed.
+Plugins live outside the install, so upgrading Argus keeps them (like the sounds). Argus reads the folder on every request: a deploy shows up on the next page load, no restart needed. Plugins that ship with Elaia itself are *bundled* (see *Bundled plugins* below).
 
 ## plugin.json
 ```json
@@ -28,7 +28,7 @@ Plugins live outside the install, so upgrading Argus keeps them (like the sounds
 ```
 | Field | Required | Meaning |
 |---|---|---|
-| `id` | yes | Must equal the folder name: `a-z`, digits, `-`, starts with a letter, up to 32 characters. Not an agent key, `olympus`, `api`, `static`, `plugins`, `all`, `argus` or `play`. |
+| `id` | yes | Must equal the folder name: `a-z`, digits, `-`, starts with a letter, up to 32 characters. Not `olympus`, `home`, `api`, `static`, `plugins`, `all`, `argus`, `play` or a built-in API route. An agent key only with `"agent": true` (below). |
 | `name` | yes | Shown on the pill and as the page title (40 characters max). |
 | `subtitle` | no | The pill's small line, e.g. "Play" (40 max). |
 | `kind` | no | `static` (the default) or `server` (see *Server plugins* below). A folder with any other kind is skipped. |
@@ -36,6 +36,7 @@ Plugins live outside the install, so upgrading Argus keeps them (like the sounds
 | `icon` | no | A square PNG in the folder for the pill and the page header. Without one, the pill shows a plain laurel-and-blades mark. Icons follow the theme's art rules: drawn to match, approved by the owner. |
 | `version` | no | Shown under the frame. |
 | `order` | no | Pills sort by `order` (default 100), then name. |
+| `agent` | no | `true`: this server plugin takes over the section of the theme's agent with the same id (see *Taking over an agent's section*). |
 
 A folder with a missing or invalid manifest is skipped quietly. If a theme's `coming_soon` list has an entry with the same `name`, the "coming later" pill disappears once the plugin is installed.
 
@@ -65,7 +66,7 @@ A server plugin is **trusted code**: only the owner installs plugins, so its pag
 Extra manifest fields: `"server"` (default `plugin.py`), `"page"` (default `page.js`), `"style"` (optional). `entry` is not used.
 
 **Python side.** At startup Elaia imports `plugin.py` by its path and calls `init(ctx)` once, if it has one. A plugin that fails to import or whose `init` raises is logged (`skipped server plugin <id>` and the traceback, in Elaia's journal) and gets no pill, no section and no API; the rest of Elaia starts. **A new or changed `plugin.py` needs a restart**: a deploy restarts Elaia, or run `systemctl --user restart argus-ui`; `page.js` and `page.css` are fetched fresh after a change, like static plugins.
-- `ctx.id`, `ctx.version` (Elaia's version), `ctx.config_dir` (the plugin's folder), `ctx.data_dir` (`~/.local/share/argus-ui/plugins/<id>/`, made for it: keep files here), `ctx.base_url` (`/argus/`, or `ARGUS_BASE_URL`).
+- `ctx.id`, `ctx.version` (Elaia's version), `ctx.config_dir` (the plugin's folder, bundled or yours), `ctx.theme_dir` (the installed theme: `theme.json`, `decks/`, `icons/`), `ctx.data_dir` (`~/.local/share/argus-ui/plugins/<id>/`, made for it: keep files here), `ctx.base_url` (`/argus/`, or `ARGUS_BASE_URL`).
 - `GET api/<id>/<path>` calls `get(path, query, ctx)`; `POST api/<id>/<path>` calls `post(path, body, ctx)`. Both return `(status, obj)`: an HTTP status and anything `json.dumps` takes. `query` is `parse_qs` output (`{'q': ['hi']}`); `body` is the JSON object.
 - Each call gets its own `ctx` with `ctx.headers`: `Tailscale-User-Login`, `Tailscale-User-Name` and `X-Forwarded-For` when the request has them. They say who is asking only behind `tailscale serve` with Elaia bound to `127.0.0.1`. **A plugin never decides on them itself**: it passes them to the agent's CLI, and Janus checks them (`janus verify-approval`).
 - POSTs pass Elaia's checks before `post()` is called: host allowlist, JSON only, same-origin `Origin`/`Sec-Fetch-Site`, 4 KB at most. They run one at a time per plugin. GETs run side by side and **must not change anything** (a GET has no cross-site check).
@@ -109,9 +110,24 @@ leafy.register('demo-server', {
 ```
 A sandboxed static plugin can't read a server plugin's API: those answers carry no CORS header, and its POSTs fail the same-origin check.
 
-**Mentor** is still built in (`server/mentor.py`, `web/js/mentor.js`, `/api/mentor/*`). Moving it to a server plugin is a separate change.
+## Bundled plugins
+A plugin that ships with Elaia lives in the repo's `plugins/<id>/` folder, with the same files as above. `scripts/build.sh` puts it in the package and every install copies it to `~/.local/share/argus-ui/bundled/<id>/` (or `$ARGUS_BUNDLED`), setting the old copy aside with the rest of the previous version. So a bundled plugin is updated by a deploy, like Elaia's own code, while yours in `~/.config/argus-ui/plugins/` are left alone.
+- **Yours win.** A plugin of yours with the same id replaces the bundled one completely (its `plugin.py` is never imported), so you can try a changed copy without touching the install.
+- The log says `loaded server plugin <id> <version> (bundled)` for a bundled one.
+
+## Taking over an agent's section
+A server plugin whose id is one of the theme's agent keys and whose manifest says `"agent": true` *is* that agent's section: `<base>/<key>` shows the plugin's page, and `api/<key>/...` goes to its `plugin.py`, ahead of any built-in route of that name. Without `"agent": true`, a folder named after an agent is skipped, so a plugin can never take a section by accident.
+- `name` and `subtitle` default to the agent's name and the first part of its domain from the theme; the pill and page header use the agent's icon (`static/icons/<key>.png`) unless the plugin has its own.
+- The pill stays where the agent's pill was. Home gets the plugin's tile with its `api/<key>/status` line.
+- The agent's tasks, if it has any, still show on the Watch page.
+
+**Mentor** is still built in (`server/mentor.py`, `web/js/mentor.js`, `/api/mentor/*`); it moves to a bundled plugin with `"agent": true` next. A plugin that claims `mentor` already replaces the built-in one.
+
+Leaving a section loads a new page, so a plugin's timers and listeners end with it; there is no `hide()`.
 
 ## Checking a plugin
+`bash tests/run.sh bundled` installs `tests/bundled-fixtures/` as bundled plugins: `heracles` (`"agent": true`, checks the section, pill, icon, `ctx.theme_dir` and its Home tile) and a `demo-server` that the owner's copy must replace without importing it. A fixture `chronos` without `"agent": true` must be skipped.
+
 `bash tests/run.sh plugins` installs the fixtures from `tests/plugin-fixtures/` (static `spartamelee`, server `demo-server`, and `demo-broken`, whose `plugin.py` fails on purpose) into a throwaway HOME and checks the whole flow:
 - the pill appears and replaces a matching "coming later" pill
 - the section shows the frame, and the frame loads its module script and JSON
