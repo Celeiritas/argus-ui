@@ -217,6 +217,7 @@
       <div class="row" style="margin-bottom:var(--s3)"><button type="button" class="primary" id="rateBtn">${verb(r.suggested)}</button></div>
       <label class="check"><input type="checkbox" id="gw"> Mentor's grade was wrong (your answer was better or worse than it scored)</label></div>`;
     $('#rhead').focus();
+    if (r.ai_pending) aiLater(r.attempt);
     $('#gw').onchange = e => M.grade_wrong = e.target.checked;
     const pick = () => +($('input[name=rate]:checked')?.value || 0);
     $$('input[name=rate]').forEach(i => i.onchange = () => $('#rateBtn').textContent = verb(pick()));
@@ -365,6 +366,25 @@
   }
 
   /* ----- lessons: the CTA summaries, progress, the Learn cards to read again, how to add one ----- */
+  /* ----- the local AI's part (docs/mentor-ai.md): Athena's owl brings it when it arrives; the rubric's grade never waits ----- */
+  const OWL = '<svg viewBox="22 20 56 66" aria-hidden="true"><path d="M34 40 L35 24 L44 34 Z M66 40 L65 24 L56 34 Z" fill="#8a7a5a"/><ellipse cx="50" cy="56" rx="19" ry="23" fill="#8a7a5a"/><ellipse cx="50" cy="63" rx="11" ry="14" fill="#d9c9a3"/><circle cx="42" cy="44" r="8.5" fill="#efe3c4"/><circle cx="58" cy="44" r="8.5" fill="#efe3c4"/><circle cx="42" cy="44" r="5" fill="#E7C35A"/><circle cx="58" cy="44" r="5" fill="#E7C35A"/><circle cx="42" cy="44" r="2.4" fill="#1C2127"/><circle cx="58" cy="44" r="2.4" fill="#1C2127"/><path d="M50 48 L47 52 L50 56 L53 52 Z" fill="#C9A36A"/></svg>';
+  async function aiLater(attempt) {
+    const panel = $('#rpanel'); if (!panel) return;
+    const box = document.createElement('div'); box.className = 'aiowl'; box.setAttribute('aria-live', 'polite');
+    box.innerHTML = `${OWL}<p><small>Local AI</small>Reading your answer…</p>`; $('.coach', panel).after(box);
+    for (let i = 0; i < 40; i++) {                 // up to about a minute; give up quietly after that
+      await wait(1500); if (!box.isConnected) return;
+      let a; try { a = await get('ai?attempt=' + attempt); } catch (e) { continue; }
+      if (a.state === 'pending') continue;
+      if (a.state !== 'done') { box.remove(); return; }       // off or not answering: the rubric's grade stands alone
+      box.innerHTML = `${OWL}<p><small>Local AI · ${esc(a.chat_model || a.model)} · not used for the rating</small>
+        Meaning match: <b>${Math.round(a.similarity * 100)}%</b>${a.feedback ? `<span class="fb">${esc(a.feedback)}</span>` : ''}</p>`;
+      return;
+    }
+    box.remove();
+  }
+  const aiLine = a => !a || !a.enabled ? 'Local AI: off (docs/mentor-ai.md says how to turn it on)' : a.problem ? `Local AI: off, the config has a problem: ${a.problem}`
+    : a.answering === false ? `Local AI: on (${a.embed_model}), but its server is not answering` : `Local AI: on (${a.embed_model}${a.feedback ? `, feedback by ${a.chat_model}` : ''}), not used for ratings yet`;
   function modulesView() {
     stats().then(() => {
       const s = M.stats, mods = M.modules;
@@ -373,7 +393,7 @@
       const imp = (s.imports || []).filter(i => !i.ok || i.msg.includes('skipped'));
       const lint = m => (m.summary.lint || []).length ? `<p class="meta">The <code>/mentor</code> command noted: ${m.summary.lint.map(esc).join('; ')}</p>` : '';
       $('#mpanel').innerHTML = `<div class="panel modules">
-        <h3>Lessons</h3>
+        <h3>Lessons</h3><p class="meta" id="ailine">Local AI: checking…</p>
         <p class="coach">Each lesson breaks down real code from your projects: the big picture, the rules behind it, and cards in three tiers. You learn first (orientation, terms, a worked example, the ideas behind each bug hunt), then practise: terms, code drills, explain cards.</p>
         ${mods.length ? mods.map(m => `<article class="module" aria-labelledby="mh-${esc(m.id)}">
             <h4 id="mh-${esc(m.id)}">${esc(m.name)}</h4>
@@ -391,6 +411,7 @@
           <li>Open this page again: the lesson shows up here and in Study.</li></ol>
         ${imp.length ? `<p class="deckname">Inbox files that need a look</p><ul class="ideas">${imp.map(i => `<li class="${i.ok ? 'hit' : 'miss'}"><code>${esc(i.path)}</code>: ${esc(i.msg)}</li>`).join('')}</ul>` : ''}
       </div>`;
+      get('ai').then(a => { const p = $('#ailine'); if (p) p.textContent = aiLine(a); }).catch(() => {});   // after the panel is drawn
       $$('[data-study]').forEach(b => b.onclick = () => { M.deck = b.dataset.study; save('mentor-deck', M.deck); fillPicker(); setView('practice'); });
       $$('[data-read]').forEach(b => b.onclick = async () => { const {card} = await get('next?card=' + encodeURIComponent(b.dataset.read)); if (card) { M.card = card; M.result = null; learnCard(card, true); } });
     });

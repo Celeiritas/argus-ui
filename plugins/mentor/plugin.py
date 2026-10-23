@@ -6,12 +6,16 @@ import importlib.util, os, threading
 
 _spec = importlib.util.spec_from_file_location('leafy_mentor', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mentor.py'))
 mentor = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(mentor)    # by path: an old installed mentor.py can't shadow it
+_spec = importlib.util.spec_from_file_location('leafy_mentor_assist', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'assist.py'))
+assist = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(assist)    # the optional local AI (docs/mentor-ai.md)
 
 SHARE = os.path.expanduser('~/.local/share/argus-ui')
 DB, DECK_DIRS = None, []
 # One request at a time on Mentor's single SQLite connection: two at once (the page asks for decks and stats together)
 # could read each other's rows. Every call is a few milliseconds, so nobody waits noticeably.
 ONE = threading.Lock()
+AI = threading.Semaphore(1)           # the local model answers one attempt at a time; the rest wait their turn in their threads
+PENDING = set()                       # attempts whose AI part is still being worked out
 
 def init(ctx):
     global DB, DECK_DIRS
@@ -29,10 +33,25 @@ def line(s):
     return plural(s['new'], 'new card') + ' waiting' if s['new'] else 'Nothing due'
 
 def get(path, query, ctx):
+    if path == 'ai' and not query.get('attempt'): return 200, assist.status()     # may ask the model server: outside the lock
     with ONE: return _get(path, query)
 
 def post(path, body, ctx):
-    with ONE: return _post(path, body)
+    with ONE: code, r = _post(path, body)
+    # the rubric has answered; the local AI's part (if it is on) follows in a thread and the page asks for it (GET ai?attempt=)
+    if code == 200 and path == 'answer' and r.get('attempt') and r.get('kind') in mentor.AI_KINDS and str(body.get('text', '')).strip():
+        c = assist.config()
+        if c['enabled'] and not c['problem']:
+            r['ai_pending'] = True; PENDING.add(r['attempt'])
+            threading.Thread(target=judge, args=(r['attempt'], str(body.get('card', '')), r.get('reference') or '', str(body.get('text', ''))[:2000]), daemon=True).start()
+    return code, r
+
+def judge(attempt, card, reference, text):
+    try:
+        with ONE: prompt = mentor.card_prompt(DB, card)
+        with AI: res = assist.judge(prompt, reference, text)
+        with ONE: mentor.set_ai(DB, attempt, res)
+    finally: PENDING.discard(attempt)
 
 def _get(path, query):
     deck = (query.get('deck') or [None])[0] or None
@@ -46,6 +65,12 @@ def _get(path, query):
         card, next_due = mentor.next_card(DB, deck, (query.get('extra') or ['0'])[0] == '1')
         return 200, {'card': card, 'next_due': next_due}
     if path == 'stats': return 200, mentor.stats(DB, deck)
+    if path == 'ai':                                 # one attempt's AI part: pending, done (similarity, feedback), error, or none
+        try: aid = int(query['attempt'][0])
+        except (ValueError, TypeError): return 400, {'ok': False, 'msg': 'bad attempt'}
+        if aid in PENDING: return 200, {'state': 'pending'}
+        d = mentor.get_ai(DB, aid)
+        return 200, {'state': 'none'} if not d else {'state': 'error', 'error': d['error']} if 'error' in d else {'state': 'done', **d}
     if path == 'status': return 200, {'line': line(mentor.stats(DB))}
     return 404, {'ok': False, 'msg': 'not found'}
 

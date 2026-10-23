@@ -17,7 +17,9 @@ cp -r "$R"/tests/bundled-fixtures/. "$T/pkg/bundled/"
 python3 -c "import json,time,sys; json.dump({'sky':'rain','desc':'Light rain','is_day':True,'temp':48,'unit':'F','precip':.6,'clouds':90,'wind':14,'south':False,'at':int(time.time()),'source':'Open-Meteo'}, open(sys.argv[1],'w'))" "$T/home/.cache/argus-ui/sky.json"
 HOME="$T/home" ARGUS_DEV=1 ARGUS_WEATHER=40,-111 ARGUS_STATIC="$T/pkg/static" ARGUS_BUNDLED="$T/pkg/bundled" ARGUS_SYSTEMCTL="$T/fx/fake_systemctl.py" ARGUS_JOURNALCTL="$T/fx/fake_journal.sh" ARGUS_PORT=$PORT \
   python3 "$T/pkg/argus_ui.py" > "$T/server.log" 2>&1 & PID=$!
-trap 'kill $PID 2>/dev/null; echo "(server log and screenshots: $T)"' EXIT
+# a stand-in local model server for tests/mentor-ai.test.js (docs/mentor-ai.md); off for every other check
+MODEL_PORT=${MODEL_PORT:-8098}; python3 "$T/fx/fake_model.py" $MODEL_PORT > "$T/model.log" 2>&1 & MPID=$!; export MODEL_PORT
+trap 'kill $PID $MPID 2>/dev/null; echo "(server log and screenshots: $T)"' EXIT
 for i in $(seq 50); do curl -s -o /dev/null "http://127.0.0.1:$PORT/" && break; sleep .2; done
 fail=0
 if [ "$1" = demo ]; then   # bash tests/run.sh demo: record the README preview GIF

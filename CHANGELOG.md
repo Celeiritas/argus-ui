@@ -1,5 +1,11 @@
 # Changelog
 
+## 4.17.0 – 2026-10-23
+- **Groundwork for a local AI in Mentor** (docs/mentor-ai.md). Off until `~/.config/argus-ui/mentor-ai.json` turns it on. With a model server on this machine (Ollama, or any OpenAI-compatible server such as llama.cpp's `llama-server`), a written answer also gets a **meaning match** (embeddings, cosine) and, optionally, two or three sentences of **feedback** from a small chat model. The rubric answers at once as always; Athena's owl brings the AI's part a moment later, labelled "Local AI · <model> · not used for the rating". Shadow mode: it is stored with the attempt (`attempts.ai`) but the rubric still suggests the rating
+- Answers stay home: a model server on another machine is refused unless `"allow_remote": true`. A broken config, a slow or stopped server: the AI's part is skipped, one log line, the Lessons view says why
+- `python plugins/mentor/mentor.py export [mentor.db]` writes every rated attempt as one JSON line, the training data for a grader that learns from you (stage Bv2)
+- Tests: `tests/mentor-ai.test.js` against `tests/fixtures/fake_model.py` (a stand-in server for both APIs, started by `tests/run.sh` on `MODEL_PORT`): off by default, remote URL refused, status, pending then done, both APIs, a server that doesn't answer, the owl on the page, the Lessons line
+
 ## 4.14.0 – 2026-10-23
 - **Mentor is now a bundled server plugin** (`plugins/mentor/`, `"agent": true`), the first real one: `mentor.py` (unchanged), `plugin.py` (`api/mentor/...`), `page.js` and `page.css` (were `web/js/mentor.js` and `web/css/mentor.css`). Same section (`<base>/mentor`), same pill in the same place, same API, same keyboard paths. Elaia's own server no longer imports Mentor
 - **Nothing of yours moved**: the database stays `~/.local/share/argus-ui/mentor.db` (or `ARGUS_MENTOR_DB`), the inbox and your decks stay in `~/.local/share/argus-ui/`. An install sets the old built-in `mentor.py` aside with the previous version
