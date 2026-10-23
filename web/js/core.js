@@ -1,6 +1,6 @@
 // Argus UI - core: helpers, routing, sound, toasts, confirm dialog, rendering the task cards, Argus's eyes.
 // Load order matters (classic scripts share one global scope): core, scene, powers, olympus, plugins, home, main.
-let S = INIT, busy = false;
+let S = INIT, busy = false, realmsAt = null;   // realmsAt: the section the bar was last scrolled to
 const $ = (s, e = document) => e.querySelector(s), $$ = (s, e = document) => [...e.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const wait = ms => new Promise(z => setTimeout(z, ms));
@@ -109,6 +109,10 @@ function render() {
     realm(url('olympus'), 'olympus', 'Olympus', 'Playground', onOlympus) +
     PLUGINS.filter(p => !SIDE.includes(p.id)).map(p => pluginRealm(p, here === p.id)).join('') +
     (S.soon || []).filter(x => !PLUGINS.some(p => p.name === x.name)).map(x => `<span class="realm soon" aria-disabled="true"><svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="16" fill="#1C2127" stroke="#A7B6C4" stroke-width="1.5"/><path d="M10 26 26 10M26 26 10 10" stroke="#C9A36A" stroke-width="2" stroke-linecap="round"/><path d="M23 9h4v4M13 9H9v4" stroke="#A7B6C4" stroke-width="1.5" fill="none"/></svg><span><b>${esc(x.name)}</b><small>${esc(x.what)} · coming later</small></span></span>`).join('');
+  if (realmsAt !== here) {   // a phone scrolls the bar sideways: bring the section you are on into view, once per section
+    const bar = $('.realms'), on = bar.querySelector('.realm.on'); if (on) realmsAt = here;   // a plugin's pill may arrive a moment later
+    if (on && bar.scrollWidth > bar.clientWidth) bar.scrollLeft += on.getBoundingClientRect().left - bar.getBoundingClientRect().left - (bar.clientWidth - on.offsetWidth) / 2;
+  }
   const by = {}; S.jobs.forEach(j => (by[j.persona] ||= []).push(j));
   const lone = {}; loneAlerts().forEach(a => (lone[a.job.split('-')[0]] ||= []).push(a));   // alerts with no task card of their own
   const shown = S.personas.filter(p => (by[p.key] || lone[p.key] || p.key === here) && !SIDE.includes(p.key));

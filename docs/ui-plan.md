@@ -135,3 +135,16 @@ It stays a sandboxed frame. Home shows its version. If Spartamelee later writes 
 | Memory | jar, shelf, three vessels | proposed |
 | Olympus | crescent moon, peacock feather, war horn, dove | proposed |
 | Watch | Argus's small eyes | proposed |
+
+## 14. Screen sizes (built in 4.19.0, `tests/layout.test.js`)
+Three screens matter: a phone, a 16:9 monitor and an ultrawide. One rule for all of them: **use the width you have, and spend
+little height on chrome**, because ultrawides are short and phones are narrow.
+- **Phone** (under 768 px): one column. The sections bar scrolls sideways and starts on the section you are on. Argus is 128 px.
+  On its side (under 500 px tall), Argus is 96 px so a task shows on the first screen.
+- **16:9:** the sections bar across the top. Home puts Needs you beside Places from 1200 px. Argus is at most 22% of the height.
+- **Ultrawide** (2:1 or wider and 1800 px+): the sections bar is a 200 px rail down the left edge (weather and Mute at its foot),
+  content may run to 2400 px (`--wide`), and `--gutter` subtracts the rail (`--rail`).
+- Pages inside `main` never add `--gutter` themselves: `main` already centres and pads. (Home and plugin pages did, and that
+  squeezed them to a one-word column on ultrawides before 4.19.0.)
+- Next: plugin pages can use the width too. The Throne caps itself at 880 px (zeus `plugin/page.css`); on wide screens it could
+  put Waiting and Deploying beside Deployed now and History.

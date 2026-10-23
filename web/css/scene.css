@@ -62,7 +62,7 @@ a.realm:hover,.realm.on{border-color:var(--line);background:var(--card)}
 .realm .dot{position:absolute;left:28px;top:2px;min-width:18px;height:18px;padding:0 4px;border-radius:99px;background:#C93030;color:#fff;font-size:11px;font-weight:600;line-height:18px;text-align:center;box-shadow:0 0 0 2px var(--night)}
 .realms .mute{margin-left:auto}
 header{grid-template-areas:"title argus tools"}.title{grid-area:title}.argus{grid-area:argus}.tools{grid-area:tools}
-.hero{grid-area:hero;display:none;width:clamp(120px,10vw,240px);aspect-ratio:1;justify-self:center}
+.hero{grid-area:hero;display:none;width:clamp(96px,min(10vw,20vh),240px);aspect-ratio:1;justify-self:center}
 .side header{grid-template-areas:"title hero argus"}.side .hero{display:block}.side .tools,.side nav{display:none}
 .side .argus{width:80px;justify-self:end;cursor:pointer;border-radius:50%}.side .argus .alarm{top:-4px;right:-4px;height:22px;min-width:22px}
 .side .argus:focus-visible{outline:2px solid var(--powder);outline-offset:4px}
@@ -75,7 +75,19 @@ header{grid-template-areas:"title argus tools"}.title{grid-area:title}.argus{gri
 .tree svg{transition:filter .6s}.tree.statue svg{filter:grayscale(1) sepia(.35) hue-rotate(80deg) brightness(.85)}
 .tree.statue .leaf{display:none}.tree.statue .sway{animation-play-state:paused}
 @media (max-width:767.98px){header{grid-template-columns:1fr auto;grid-template-areas:"argus argus" "title tools";padding:var(--s2) var(--s3) 0}
- .argus{grid-area:argus;width:min(160px,44vw)}.title{grid-area:title}.tools{grid-area:tools;gap:var(--s2)}
+ .argus{grid-area:argus;width:min(128px,36vw)}.title{grid-area:title}.tools{grid-area:tools;gap:var(--s2)}
  .side header{grid-template-areas:"hero hero" "title argus"}.side .argus{width:64px}.hero{width:min(140px,40vw)}.realm small{display:none}
  .tool,#medusa,#bolt,#poseidon{width:64px;height:64px}.tool .hint,.tip{display:none}main,nav{padding-left:var(--s3);padding-right:var(--s3)}.grid{grid-template-columns:1fr}.ph .counts{display:none}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition-duration:1ms!important}}
+/* ultrawide (2:1 or wider, 1800px+): the sections bar becomes a rail down the left edge, giving the short screen its top band back
+   (docs/ui-plan.md §14) */
+@media (min-width:1800px) and (min-aspect-ratio:2/1){
+ :root{--rail:200px;--wide:2400px;--gutter:max(var(--s6),calc((100vw - var(--rail) - var(--wide)) / 2))}
+ body{padding-left:var(--rail)}
+ .realms{position:fixed;z-index:40;left:0;top:0;bottom:0;width:var(--rail);flex-direction:column;align-items:stretch;flex-wrap:nowrap;gap:var(--s1);padding:var(--s4) var(--s2);overflow-y:auto;border-bottom:0;border-right:1px solid var(--line);background:rgb(28 33 39 / .78)}
+ .realm{border-radius:12px}
+ .realms .wx{margin:auto 0 0;padding:0 var(--s2);white-space:normal}
+ .realms .mute,.realms .wx + .mute{margin:var(--s2) 0 0}
+ .home{max-width:1600px}}
+/* short screens (a phone on its side): Argus shrinks so a task shows on the first screen */
+@media (max-height:500px) and (orientation:landscape){.argus{width:96px}.side .argus{width:56px}.hero{width:96px}}
