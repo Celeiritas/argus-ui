@@ -1,5 +1,13 @@
 # Changelog
 
+## 4.19.0 – 2026-10-23
+- **Fix:** on wide screens Home and server-plugin pages (the Throne) were squeezed into a column a word or two wide. They added the page margin a second time inside a page that already had it; at 3440 px that was about 1840 px of margin. They now use the full content width (16:9 too, where they had been pushed 160 px right)
+- **Ultrawide** (2:1 or wider, 1800 px and up): the sections bar becomes a rail down the left edge, with the weather and Mute at its foot, so the short screen gets its top band back; content may run to 2400 px, so Watch fits 8–9 task cards in a row
+- **Argus is sized by height as well as width:** at most about a fifth of the screen's height, so Watch's header takes a quarter of an ultrawide instead of a third
+- **Home on wide screens** (1200 px and up): Needs you beside Places
+- **Phones:** Argus is smaller (128 px), so the first task shows sooner; the sections bar scrolls to show the section you are on; a phone on its side shrinks Argus to 96 px so a task shows on the first screen
+- Tests: `tests/layout.test.js` (3440×1440, 2560×1080, 1920×1080, 375×760, 844×390); docs/ui-plan.md §14
+
 ## 4.18.0 – 2026-10-23
 - **Shared effects** (`web/js/fx.js`, docs/fx.md): `fx.burst`, `fx.motes` (a ribbon of glowing motes, after SoulSeed's heal swirl), `fx.glint`, `fx.pieces` and `fx.bolt`, plus the helpers Watch and Olympus already used (`particle`, `ROCK`, `boltFx`, moved out of `powers.js` unchanged). Each one handles reduced motion itself and cleans up after itself
 - **Hold to confirm** (`web/js/hold.js`): hold a button 3 s (pointer, or Space/Enter) and a ring fills while the label counts down; letting go early sends nothing and says so. A click that can't be held (a screen reader's or a switch's) arms the button and a second click within 5 s confirms. Reduced motion: no ring, the countdown words only. For Throne, Delivery and Memory next
