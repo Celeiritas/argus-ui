@@ -1,5 +1,13 @@
 # Changelog
 
+## 4.15.0 – 2026-10-23
+- **Three new powers on Olympus**, filling three empty seats on the Ω (new art drawn for them, with the owner's go-ahead):
+  - **Hermes' winged sandal**: skims along the ground the way you throw it, its wings beating; the wind carries debris, spilled wine and arrows in the ground off the screen, bends the flowers, rocks the trees and makes skeletons stagger. It says how many pieces it carried away
+  - **Athena's owl**: glides to the nearest free tree (or a skeleton's skull, or the ground) and perches; her eyes follow your pointer and she blinks. Click or tap her for a hoot and a Delphic maxim ("Know thyself."). She flies off when her tree is struck or her skeleton crumbles, and turns to stone with a stone perch. Four at most
+  - **Dionysus' cup**: drips wine in flight; a skeleton it splashes dances for eight seconds to a little tune with music notes; a tree grows a grapevine with grapes for the season; the ground gets a puddle of wine that the sandal or the trident cleans up
+- Poseidon's tsunami also washes away owls and vines. Reduced motion: no flapping, no dancing, no particles; every effect still happens
+- docs/scene.md: the three items, the layer order and class names
+- Tests: `tests/olympus.test.js` checks the sandal clears the mess and the arrow but leaves flowers and trees, the owl perches, speaks, follows the pointer and flees a struck tree, and the cup's dance, vine and puddle
 ## 4.14.0 – 2026-10-23
 - **Mentor is now a bundled server plugin** (`plugins/mentor/`, `"agent": true`), the first real one: `mentor.py` (unchanged), `plugin.py` (`api/mentor/...`), `page.js` and `page.css` (were `web/js/mentor.js` and `web/css/mentor.css`). Same section (`<base>/mentor`), same pill in the same place, same API, same keyboard paths. Elaia's own server no longer imports Mentor
 - **Nothing of yours moved**: the database stays `~/.local/share/argus-ui/mentor.db` (or `ARGUS_MENTOR_DB`), the inbox and your decks stay in `~/.local/share/argus-ui/`. An install sets the old built-in `mentor.py` aside with the previous version

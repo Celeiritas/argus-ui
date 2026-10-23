@@ -4,8 +4,8 @@
    Release an item and it keeps its speed and falls (so a still release drops it straight down); over the dock it goes back. */
 const playground = (() => {
   // all twelve on the Ω, left foot to right foot, Zeus at the top: six to his left (Hera beside him), five to his right (Poseidon beside him)
-  const OMEGA = [['dionysus', 'Dionysus'], ['hermes', 'Hermes'], ['artemis', 'Artemis'], ['apollo', 'Apollo', 'bow'], ['demeter', 'Demeter', 'seeds'], ['hera', 'Hera'],
-    ['zeus', 'Zeus', 'bolt'], ['poseidon', 'Poseidon', 'trident'], ['hephaestus', 'Hephaestus', 'hammer'], ['athena', 'Athena'], ['ares', 'Ares'], ['aphrodite', 'Aphrodite']];
+  const OMEGA = [['dionysus', 'Dionysus', 'cup'], ['hermes', 'Hermes', 'sandal'], ['artemis', 'Artemis'], ['apollo', 'Apollo', 'bow'], ['demeter', 'Demeter', 'seeds'], ['hera', 'Hera'],
+    ['zeus', 'Zeus', 'bolt'], ['poseidon', 'Poseidon', 'trident'], ['hephaestus', 'Hephaestus', 'hammer'], ['athena', 'Athena', 'owl'], ['ares', 'Ares'], ['aphrodite', 'Aphrodite']];
   const ZI = 6, LEFT = 6, RIGHT = 5;
   const angleOf = i => i < ZI ? 215 - i * (125 / LEFT) : 90 - (i - ZI) * (125 / RIGHT);
   const GROUPS = [['Chthonic', [['hades', 'Hades', 'bident']]], ['Beyond Olympus', [['medusa', 'Medusa', 'snake']]]];   // the underworld, and everyone else who isn't an Olympian
@@ -18,8 +18,13 @@ const playground = (() => {
     seeds: '<path d="M33 52 Q28 80 50 82 Q72 80 67 52 Q60 46 50 48 Q40 46 33 52 Z" fill="#C9A36A" stroke="#8a6a3e" stroke-width="2"/><path d="M39 50 Q50 56 61 50" stroke="#6b4a2f" stroke-width="3" fill="none" stroke-linecap="round"/><path d="M50 48 Q47 34 38 30 Q47 31 50 40 Q53 31 62 30 Q53 34 50 48" fill="#7FBF5A"/><g fill="#E8D3A8"><ellipse cx="44" cy="66" rx="2.4" ry="1.6"/><ellipse cx="55" cy="70" rx="2.4" ry="1.6"/><ellipse cx="50" cy="61" rx="2.4" ry="1.6"/></g>',
     bow: '<path d="M40 12 Q76 50 40 88" stroke="#D9A441" stroke-width="5" fill="none" stroke-linecap="round"/><path d="M40 12 L30 50 L40 88" stroke="#E6ECF1" stroke-width="1.3" fill="none"/><path d="M30 50 L76 50" stroke="#a0703f" stroke-width="2.6"/><path d="M76 45 L88 50 L76 55 Z" fill="#C9D6E3"/><path d="M30 50 l-6 -5 M30 50 l-6 5 M34 50 l-6 -5 M34 50 l-6 5" stroke="#F1A93B" stroke-width="2" stroke-linecap="round"/>',
     hammer: '<path d="M50 40 L66 84" stroke="#8a5a3a" stroke-width="7" stroke-linecap="round"/><path d="M28 32 L60 22 L66 38 L34 48 Z" fill="#8F99A3" stroke="#5d656d" stroke-width="2" stroke-linejoin="round"/><path d="M31 34 L60 25" stroke="#c3cad1" stroke-width="2" stroke-linecap="round"/><g fill="#FFB347"><circle cx="72" cy="30" r="2"/><circle cx="78" cy="40" r="1.5"/><circle cx="70" cy="19" r="1.2"/></g>',
+    // 4.15: Hermes' winged sandal, Athena's owl on an olive sprig, Dionysus' cup of wine with grapes
+    sandal: '<path d="M33 60 Q16 50 17 32 Q25 41 33 45 Q23 33 27 21 Q35 35 41 43 Q37 31 43 23 Q47 38 47 51 Z" fill="#E6ECF1" stroke="#A7B6C4" stroke-width="1.5" stroke-linejoin="round"/><path d="M27 37 L33 45 M33 31 L40 42" stroke="#A7B6C4" stroke-width="1.2"/><path d="M22 66 Q20 74 30 74 L74 74 Q81 74 79 68 Q76 63 66 63 L30 63 Z" fill="#8a5a3a" stroke="#5e3c26" stroke-width="1.5"/><path d="M38 63 Q42 50 54 51 Q60 52 62 63 M30 63 Q32 56 40 56" stroke="#C9A36A" stroke-width="3.5" fill="none" stroke-linecap="round"/><circle cx="54" cy="51" r="2.4" fill="#E7C35A"/>',
+    owl: '<path d="M26 82 Q50 74 74 82" stroke="#6b8a3a" stroke-width="2.6" fill="none" stroke-linecap="round"/><g fill="#7FA650"><ellipse cx="32" cy="78" rx="5" ry="2" transform="rotate(-25 32 78)"/><ellipse cx="68" cy="78" rx="5" ry="2" transform="rotate(25 68 78)"/></g><path d="M34 40 L35 24 L44 34 Z M66 40 L65 24 L56 34 Z" fill="#8a7a5a"/><ellipse cx="50" cy="56" rx="19" ry="23" fill="#8a7a5a"/><ellipse cx="50" cy="63" rx="11" ry="14" fill="#d9c9a3"/><path d="M44 60 l3 3 3-3 3 3 3-3 M44 67 l3 3 3-3 3 3 3-3" stroke="#a8946a" stroke-width="1.2" fill="none"/><circle cx="42" cy="44" r="8.5" fill="#efe3c4"/><circle cx="58" cy="44" r="8.5" fill="#efe3c4"/><circle cx="42" cy="44" r="5" fill="#E7C35A"/><circle cx="58" cy="44" r="5" fill="#E7C35A"/><circle cx="42" cy="44" r="2.4" fill="#1C2127"/><circle cx="58" cy="44" r="2.4" fill="#1C2127"/><path d="M50 48 L47 52 L50 56 L53 52 Z" fill="#C9A36A"/><path d="M43 78 l-2 4 M47 78 v4 M53 78 v4 M57 78 l2 4" stroke="#C9A36A" stroke-width="1.6" stroke-linecap="round"/>',
+    cup: '<path d="M31 38 Q16 33 21 22 Q25 16 31 25" stroke="#C9A36A" stroke-width="3.5" fill="none" stroke-linecap="round"/><path d="M69 38 Q84 33 79 22 Q75 16 69 25" stroke="#C9A36A" stroke-width="3.5" fill="none" stroke-linecap="round"/><path d="M29 36 Q29 62 50 64 Q71 62 71 36 Z" fill="#C9A36A" stroke="#8a6a3e" stroke-width="2"/><ellipse cx="50" cy="36" rx="21" ry="5" fill="#7a2048"/><ellipse cx="50" cy="36" rx="21" ry="5" fill="none" stroke="#E7C35A" stroke-width="2"/><path d="M47 64 L46 74 L54 74 L53 64 Z" fill="#a8844f"/><ellipse cx="50" cy="77" rx="13" ry="3.5" fill="#C9A36A" stroke="#8a6a3e" stroke-width="1.5"/><g fill="#6b3a8a"><circle cx="41" cy="48" r="2.8"/><circle cx="46.5" cy="49" r="2.8"/><circle cx="43.5" cy="53.5" r="2.8"/><circle cx="49" cy="54" r="2.4"/><circle cx="46" cy="58" r="2.4"/></g><path d="M52 47 Q61 41 63 48 Q59 53 52 47 Z" fill="#7FBF5A"/><path d="M45 45 Q47 42 51 43" stroke="#4f7a32" stroke-width="1.4" fill="none"/>',
   };
-  const RING = {bolt: ['#E7C35A', '#33331c'], snake: ['#5E9C78', '#1d3329'], trident: ['#3B82C4', '#152c44'], bident: ['#8B6BB8', '#271d36'], seeds: ['#9BBF6A', '#24331c'], bow: ['#F1A93B', '#382a14'], hammer: ['#D9822B', '#382313']};
+  const RING = {bolt: ['#E7C35A', '#33331c'], snake: ['#5E9C78', '#1d3329'], trident: ['#3B82C4', '#152c44'], bident: ['#8B6BB8', '#271d36'], seeds: ['#9BBF6A', '#24331c'], bow: ['#F1A93B', '#382a14'], hammer: ['#D9822B', '#382313'],
+    sandal: ['#8EC9E8', '#16303d'], owl: ['#9BAA6A', '#262b18'], cup: ['#B04A8A', '#2e1424']};
   const medal = k => `<svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" fill="${RING[k][1]}" stroke="#A7B6C4" stroke-width="3.5"/><circle cx="50" cy="50" r="42" fill="url(#mhl)"/><circle cx="50" cy="50" r="42" fill="none" stroke="${RING[k][0]}" stroke-width="1.4"/>${ART[k]}</svg>`;
   // ---- what each item is, what it does, and how it flies (w×h px, aim = degrees added to its heading, lead = centre to tip)
   const ITEM = {
@@ -37,6 +42,11 @@ const playground = (() => {
       svg: '<svg viewBox="0 0 64 12"><path d="M5 6 L54 6" stroke="#a0703f" stroke-width="2.2"/><path d="M53 2 L63 6 L53 10 Z" fill="#C9D6E3"/><path d="M5 6 L0 1.5 M5 6 L0 10.5 M9 6 L4 1.5 M9 6 L4 10.5" stroke="#F1A93B" stroke-width="1.6" stroke-linecap="round"/></svg>'},
     hammer: {name: "Hephaestus' hammer", does: 'digs into the ground and smashes skeletons', w: 40, h: 64, aim: 'spin', lead: 30, g: 1600,
       svg: '<svg viewBox="0 0 40 64"><path d="M20 18 L20 60" stroke="#8a5a3a" stroke-width="6" stroke-linecap="round"/><path d="M3 4 H37 V20 H3 Z" fill="#8F99A3" stroke="#5d656d" stroke-width="2" stroke-linejoin="round"/><path d="M5 7 H35" stroke="#c3cad1" stroke-width="2" stroke-linecap="round"/></svg>'},
+    sandal: {name: "Hermes' winged sandal", does: 'skims the ground and its wind carries the mess away', w: 60, h: 40, aim: null, lead: 14, g: 300,
+      svg: '<svg viewBox="0 0 60 40"><g class="wing"><path d="M14 26 Q2 18 3 4 Q9 12 15 15 Q8 6 12 0 Q18 10 22 16 Q20 8 25 3 Q27 14 26 24 Z" fill="#E6ECF1" stroke="#A7B6C4" stroke-width="1.2" stroke-linejoin="round"/></g><path d="M6 31 Q4 38 12 38 L52 38 Q59 38 57 33 Q54 29 46 29 L12 29 Z" fill="#8a5a3a" stroke="#5e3c26" stroke-width="1.2"/><path d="M20 29 Q24 19 34 20 Q40 21 41 29 M12 29 Q14 23 21 23" stroke="#C9A36A" stroke-width="3" fill="none" stroke-linecap="round"/></svg>'},
+    owl: {name: "Athena's owl", does: 'glides to a tree, a skull or the ground and keeps watch; click her for a word of wisdom', w: 40, h: 46, aim: null, lead: 20, g: 0, svg: ''},
+    cup: {name: "Dionysus' cup", does: 'skeletons it splashes dance, trees grow grapevines, the ground gets a puddle of wine', w: 34, h: 36, aim: null, lead: 16, g: 1300,
+      svg: '<svg viewBox="0 0 34 36"><path d="M7 10 Q0 7 2 2 Q4 0 7 4 M27 10 Q34 7 32 2 Q30 0 27 4" stroke="#C9A36A" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M5 9 Q5 24 17 25 Q29 24 29 9 Z" fill="#C9A36A" stroke="#8a6a3e" stroke-width="1.4"/><ellipse cx="17" cy="9" rx="12" ry="3" fill="#7a2048"/><path d="M15 25 L14.5 31 L19.5 31 L19 25 Z" fill="#a8844f"/><ellipse cx="17" cy="33" rx="8" ry="2.4" fill="#C9A36A"/><g fill="#6b3a8a"><circle cx="12" cy="15" r="1.8"/><circle cx="15.5" cy="16" r="1.8"/><circle cx="13.5" cy="19" r="1.8"/></g></svg>'},
   };
   // ---- small sounds made in the browser (the sound files are reserved for the big moments)
   let ac = null;
@@ -52,9 +62,14 @@ const playground = (() => {
   const twang = () => playOr('bow', () => { tone(240, 120, .28, 'triangle', .12); noise(.06, 3000, 1500, .08, 'bandpass'); });
   const thunk = () => playOr('arrowhit', () => noise(.09, 500, 200, .35));
   const surge = () => { noise(1.9, 300, 2400, .4); noise(1.2, 1800, 400, .25, 'lowpass', .7); };
+  const whoosh = () => { noise(.7, 500, 2600, .16, 'bandpass'); noise(.6, 2400, 600, .1, 'bandpass', .5); };
+  const hoot = () => { tone(440, 400, .22, 'sine', .09); setTimeout(() => tone(430, 380, .32, 'sine', .09), 330); };
+  const clink = () => { tone(1900, 1800, .18, 'sine', .06); tone(2600, 2500, .12, 'sine', .04); };
+  const splash = () => noise(.35, 1800, 500, .22, 'lowpass');
+  const tune = () => [587, 740, 880, 740, 587, 659, 740, 587].forEach((f, i) => setTimeout(() => tone(f, f, .16, 'triangle', .07), i * 190));
   // ---- placing items: a thrown thing is a fixed box we move and rotate
   const SCN = $('#scene');
-  function make(key, x, y) { const I = ITEM[key], e = document.createElement('div'); e.className = 'thrown ' + key; e.innerHTML = I.svg; e.style.width = I.w + 'px'; e.style.height = I.h + 'px'; document.body.append(e); put(e, x, y, 90); return e; }
+  function make(key, x, y) { const I = ITEM[key], e = document.createElement('div'); e.className = 'thrown ' + key; e.innerHTML = key === 'owl' ? OWL : I.svg; e.style.width = I.w + 'px'; e.style.height = I.h + 'px'; document.body.append(e); put(e, x, y, 90); return e; }
   function put(e, x, y, ang) { const k = e.className.split(' ')[1], I = ITEM[k]; e.style.left = (x - I.w / 2) + 'px'; e.style.top = (y - I.h / 2) + 'px'; e._x = x; e._y = y; e._a = ang;
     e.style.rotate = I.aim === 'spin' ? ang + 'deg' : I.aim === null ? '0deg' : (ang + I.aim) + 'deg'; }
   const tipOf = (k, x, y, a) => { const I = ITEM[k]; if (I.aim === 'spin' || I.aim === null) return [x, y + I.lead]; const r = a * Math.PI / 180; return [x + Math.cos(r) * I.lead, y + Math.sin(r) * I.lead]; };
@@ -67,7 +82,8 @@ const playground = (() => {
     if (k === 'snake') return skelAt(x, y) || scene.treeAt(x, y, true);
     if (k === 'trident' || k === 'bow') return skelAt(x, y) || (k === 'bow' ? scene.treeAt(x, y, true) || $$('.tree.struck').find(t => !scene.covered(x, y) && scene.inside(t, x, y)) : scene.treeAt(x, y, true));
     if (k === 'bident' || k === 'hammer') return skelAt(x, y);
-    return null;
+    if (k === 'cup') return skelAt(x, y) || scene.treeAt(x, y);
+    return null;                                  // the sandal skims and the owl glides: they pick their own way
   }
   let tipsShown = {};
   const tipOnce = (k, text) => { if (tipsShown[k]) return; tipsShown[k] = 1; toast(text); };
@@ -81,6 +97,7 @@ const playground = (() => {
       vy += I.g * dt; x += vx * dt; y += vy * dt;
       ang = I.aim === 'spin' ? ang + 900 * dt * Math.sign(vx || 1) : Math.atan2(vy, vx) * 180 / Math.PI;
       put(e, x, y, ang); gaze = {x, y};
+      if (k === 'cup' && !RM.matches && Math.random() < .25) drip(x, y - 8);
       const [tx, ty] = tipOf(k, x, y, ang), hit = targetAt(k, tx, ty);
       if (hit) { gaze = null; return impact(k, e, hit, tx, ty, ang); }
       if (ty >= scene.surface()) { gaze = null; return impact(k, e, 'ground', tx, scene.surface(), ang); }
@@ -97,7 +114,12 @@ const playground = (() => {
         if (sy >= scene.surface() - 2) { s.remove(); if (sx > -10 && sx < innerWidth + 10) sprout(sx); return; } if (sy > innerHeight + 50) return s.remove(); requestAnimationFrame(step); })(last);
     }
   }
-  function launch(k, e, x, y, vx, vy) { if (k === 'seeds') return scatter(e, x, y, vx, vy); fly(k, e, x, y, vx, vy); }
+  function launch(k, e, x, y, vx, vy) {
+    if (k === 'seeds') return scatter(e, x, y, vx, vy);
+    if (k === 'sandal') return skim(e, x, y, vx);
+    if (k === 'owl') return glide(e, x, y, x + vx * .35);
+    fly(k, e, x, y, vx, vy);
+  }
   // ---- what happens on contact
   function impact(k, e, t, x, y, ang) {
     const ground = t === 'ground', isSkel = !ground && t.classList.contains('skel');
@@ -107,6 +129,7 @@ const playground = (() => {
     if (k === 'bident') { if (isSkel) { fade(e, 250); return crumble(t, t.classList.contains('statue') ? 'stone' : 'bone'); } stick(e, 'ground', x, y, ang, true); summon(x); return setTimeout(() => fade(e, 400), 700); }
     if (k === 'bow') return stick(e, t, x, y, ang);
     if (k === 'hammer') { if (isSkel) { fade(e, 200); return crumble(t, t.classList.contains('statue') ? 'stone' : 'bone'); } return mine(e, x); }
+    if (k === 'cup') { clink(); if (isSkel) return dance(t, e); if (!ground) return grow(t, e); return spill(e, x); }
   }
   // stick an item by its tip: arrows stay (they sway with a tree, fall with a skeleton); spears stay a moment
   function stick(e, t, x, y, ang, brief) {
@@ -220,6 +243,178 @@ const playground = (() => {
     await wv.animate([{transform: `translateX(${dir * W}px)`}, {transform: `translateX(${dir * (W + innerWidth + 80)}px)`}], {duration: 750, easing: 'ease-in', fill: 'forwards'}).finished;
     wv.remove(); tipOnce('trident', "Poseidon's tsunami washed the playground clean.");
   }
+
+  // ---- Hermes: the winged sandal skims along the ground; its wind carries debris and arrows off, bends flowers, rocks trees and skeletons
+  function skim(e, x, y, vx) {
+    const dir = Math.sign(vx) || (x < innerWidth / 2 ? 1 : -1), sp = Math.min(1500, Math.max(650, Math.abs(vx) || 900)), done = new Set();
+    e.style.scale = dir < 0 ? '-1 1' : ''; whoosh();
+    let last = performance.now(), carried = 0;
+    (function step(t) {
+      if (!e.isConnected) return;
+      const dt = Math.min(.033, (t - last) / 1000); last = t;
+      y += (scene.surface() - 26 - y) * Math.min(1, dt * 5); x += dir * sp * dt;    // glides down to just above the grass
+      put(e, x, y, 90); gaze = {x, y};
+      carried += gust(x, dir, done);
+      if (!RM.matches && Math.random() < .45) streak(x - dir * 24, y - 12 + Math.random() * 30, dir);
+      if (x < -90 || x > innerWidth + 90) { gaze = null; e.remove(); return tipOnce('sandal', carried ? `Hermes carried ${carried} piece${carried === 1 ? '' : 's'} of mess away.` : "Hermes' wind: throw the sandal along the ground to carry the mess away."); }
+      requestAnimationFrame(step);
+    })(last);
+  }
+  function gust(x, dir, done) {
+    const near = el => { if (done.has(el)) return false; const r = el.getBoundingClientRect(); return Math.abs(r.left + r.width / 2 - x) < 34; };
+    const swing = (el, deg, ms) => { if (!RM.matches) el.animate([{rotate: '0deg'}, {rotate: dir * deg + 'deg'}, {rotate: -dir * deg * .35 + 'deg'}, {rotate: '0deg'}], {duration: ms, easing: 'ease-out'}); };
+    let n = 0;
+    $$('.mess', SCN).filter(near).forEach(m => { done.add(m); blowAway(m, dir); n++; });
+    $$('#stuck .arrowstuck').filter(near).forEach(a => { done.add(a); blowAway(a, dir); n++; });
+    $$('.flower', SCN).filter(near).forEach(f => { done.add(f); swing(f, 30, 900); });
+    $$('.tree', SCN).filter(near).forEach(tr => { done.add(tr); if (!tr.classList.contains('statue')) swing(tr, 6, 1400); });
+    $$('.skel.up:not(.dying):not(.statue)').filter(near).forEach(s => { done.add(s); s.style.transformOrigin = '50% 100%'; swing(s, 16, 900); });
+    return n;
+  }
+  function blowAway(el, dir) {
+    const r = Math.random();
+    el.animate([{translate: '0 0', rotate: '0deg', opacity: 1}, {translate: `${dir * (200 + r * 180)}px ${-40 - r * 60}px`, rotate: `${dir * (180 + r * 360)}deg`, opacity: 0}],
+      {duration: RM.matches ? 1 : 900, easing: 'ease-out', fill: 'forwards'}).finished.then(() => el.remove());
+  }
+  function streak(x, y, dir) {
+    const p = particle(x, y, 22 + Math.random() * 20, 2, 'background:#E6ECF1;border-radius:2px;opacity:.6');
+    p.animate([{translate: '0 0', opacity: .6}, {translate: `${-dir * 70}px 0`, opacity: 0}], {duration: 420, easing: 'ease-out', fill: 'forwards'}).onfinish = () => p.remove();
+  }
+  // ---- Athena: an owl glides to a perch (a tree's crown, a skeleton's skull, or the ground) and keeps watch; her eyes follow you
+  const OWL = `<svg viewBox="0 0 40 46" aria-hidden="true"><g class="wing l"><path d="M9 22 Q-5 25 2 40 Q8 35 12 31 Z" fill="#6f6247"/></g><g class="wing r"><path d="M31 22 Q45 25 38 40 Q32 35 28 31 Z" fill="#6f6247"/></g>
+    <path d="M8 17 L9 3 L16 11 Z M32 17 L31 3 L24 11 Z" fill="#8a7a5a"/><ellipse cx="20" cy="28" rx="13" ry="16" fill="#8a7a5a"/><ellipse cx="20" cy="33" rx="8" ry="10" fill="#d9c9a3"/>
+    <path d="M15 30 l2.5 2.5 2.5-2.5 2.5 2.5 2.5-2.5 M15 36 l2.5 2.5 2.5-2.5 2.5 2.5 2.5-2.5" stroke="#a8946a" stroke-width="1" fill="none"/>
+    <circle cx="13.5" cy="18" r="6" fill="#efe3c4"/><circle cx="26.5" cy="18" r="6" fill="#efe3c4"/>
+    <circle cx="13.5" cy="18" r="3.7" fill="#E7C35A"/><circle cx="26.5" cy="18" r="3.7" fill="#E7C35A"/>
+    <circle class="pupil" cx="13.5" cy="18" r="1.9" fill="#1C2127"/><circle class="pupil" cx="26.5" cy="18" r="1.9" fill="#1C2127"/>
+    <g class="lids"><ellipse cx="13.5" cy="18" rx="4.4" ry="4.4" fill="#8a7a5a"/><ellipse cx="26.5" cy="18" rx="4.4" ry="4.4" fill="#8a7a5a"/></g>
+    <path d="M20 21 L18 24 L20 27 L22 24 Z" fill="#C9A36A"/><path d="M14 43 l-1 3 M18 43 v3 M22 43 v3 M26 43 l1 3" stroke="#C9A36A" stroke-width="1.5" stroke-linecap="round"/></svg>`;
+  // Delphic maxims, carved at Apollo's temple: what a wise owl would say
+  const WISDOM = ['Know thyself.', 'Nothing in excess.', 'Measure is best.', 'Know the right moment.', 'Practice makes perfect.', 'Think before you act.', 'Be a seeker of wisdom.', 'Finish the race without flinching.'];
+  const owls = [];
+  function perchFor(x) {
+    const free = el => !owls.some(o => o.host === el);
+    const trees = $$('.tree:not(.struck):not(.statue)', SCN).filter(free).map(t => [t, Math.abs(t.getBoundingClientRect().left + t.getBoundingClientRect().width / 2 - x)]).filter(([, d]) => d < 170).sort((a, b) => a[1] - b[1]);
+    if (trees.length) return trees[0][0];
+    const sk = $$('.skel.up:not(.dying):not(.statue)').filter(free).find(s => Math.abs(s.getBoundingClientRect().left + 23 - x) < 70);
+    return sk || null;
+  }
+  // where an owl sits in its host's own box (trees are 120×162 in their SVG; the crown's top is near y 20, a bare winter tree's top branch near y 52)
+  function seatIn(host, x) {
+    const r = host.getBoundingClientRect();
+    if (!host) return null;
+    if (host.classList.contains('tree')) return [r.width / 2 - 20, r.height * (scene.season === 'winter' ? 52 : 22) / 162 - 42];
+    return [3, -40];                               // a skeleton: on top of the skull
+  }
+  function glide(e, x, y, aimX) {
+    aimX = Math.max(30, Math.min(innerWidth - 30, aimX));
+    if (owls.length >= 4) flee(owls[0]);
+    const host = perchFor(aimX), wing = !RM.matches;
+    let tx, ty, local;
+    if (host) { const hr = host.getBoundingClientRect(); local = seatIn(host); tx = hr.left + local[0] + 20; ty = hr.top + local[1] + 23; }
+    else { tx = aimX; ty = scene.surface() - 23 - 6; }
+    e.classList.add('flying');
+    const dur = RM.matches ? 1 : Math.min(1300, 500 + Math.hypot(tx - x, ty - y) * .9), x0 = x, y0 = y, t0 = performance.now(), lift = Math.min(120, Math.abs(tx - x0) * .25);
+    (function step(t) {
+      if (!e.isConnected) return;
+      const k = Math.min(1, (t - t0) / dur), ease = k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+      const cx = x0 + (tx - x0) * ease, cy = y0 + (ty - y0) * ease - Math.sin(Math.PI * k) * lift;
+      put(e, cx, cy, 90); e.style.scale = tx < x0 ? '-1 1' : ''; gaze = {x: cx, y: cy};
+      if (k < 1) return requestAnimationFrame(step);
+      gaze = null; e.classList.remove('flying'); e.style.scale = '';
+      const into = host || $('#stuck'), hr = into.getBoundingClientRect();
+      e.className = 'owl'; e.style.rotate = ''; e.style.position = 'absolute';
+      if (host) { e.style.left = local[0] + 'px'; e.style.top = local[1] + 'px'; (host.classList.contains('tree') ? $('.sway', host) : host).append(e); }
+      else { e.style.left = (tx - hr.left - 20) + 'px'; e.style.top = (-46 + 4) + 'px'; into.append(e); }
+      if (!RM.matches) e.animate([{translate: '0 -4px'}, {translate: '0 1px'}, {translate: '0 0'}], {duration: 260, easing: 'ease-out'});
+      owls.push({e, host}); watch(); hoot();
+      tipOnce('owl', host ? (host.classList.contains('tree') ? "Athena's owl keeps watch from the tree. Click her for a word of wisdom." : 'An owl on a skull. Click her for a word of wisdom.') : "Athena's owl landed on the ground. Click her for a word of wisdom.");
+    })(t0);
+    if (wing) e.classList.add('flap');
+  }
+  // an owl leaves when her perch burns, crumbles or the playground is washed: up and away, off the screen
+  function flee(o) {
+    const i = owls.indexOf(o); if (i >= 0) owls.splice(i, 1);
+    const e = o.e; if (!e.isConnected) return;
+    const r = e.getBoundingClientRect(); e.remove(); const f = make('owl', r.left + 20, r.top + 23); f.classList.add('flying', 'flap');
+    const dir = r.left < innerWidth / 2 ? -1 : 1;
+    f.animate([{translate: '0 0', opacity: 1}, {translate: `${dir * 420}px -520px`, opacity: .9}], {duration: RM.matches ? 1 : 1500, easing: 'ease-in', fill: 'forwards'}).finished.then(() => f.remove());
+  }
+  // one loop for every owl: pupils follow the pointer (or whatever is in flight), blink now and then, flee a ruined perch
+  let ptr = null, watching = false;
+  addEventListener('pointermove', ev => { ptr = [ev.clientX, ev.clientY]; }, {passive: true});
+  function watch() {
+    if (watching) return; watching = true;
+    (function tick(t) {
+      for (const o of [...owls]) {
+        if (!o.e.isConnected) { owls.splice(owls.indexOf(o), 1); continue; }
+        const h = o.host;
+        if (h && (h.classList.contains('struck') || h.classList.contains('dying') || !h.isConnected)) { flee(o); continue; }
+        if (h && h.classList.contains('statue')) continue;            // a stone owl on a stone perch: her eyes stop too
+        const to = gaze ? [gaze.x, gaze.y] : ptr; if (!to) continue;
+        const r = o.e.getBoundingClientRect(), dx = to[0] - (r.left + 20), dy = to[1] - (r.top + 18), d = Math.hypot(dx, dy) || 1, m = Math.min(1.7, d / 60);
+        $$('.pupil', o.e).forEach((p, i) => { p.setAttribute('cx', (i ? 26.5 : 13.5) + dx / d * m); p.setAttribute('cy', 18 + dy / d * m); });
+        if (!RM.matches && Math.random() < .004) { o.e.classList.add('blink'); setTimeout(() => o.e.classList.remove('blink'), 140); }
+      }
+      if (owls.length) requestAnimationFrame(tick); else watching = false;
+    })(performance.now());
+  }
+  // click (or tap) an owl: she hoots and says one maxim. The scene is behind the page, so this finds her by her box.
+  document.addEventListener('pointerdown', ev => {
+    if (!onOlympus || armedK || held || ev.target.closest('.dock,.lab,.realms,header,.toast,dialog,button,a')) return;
+    const o = owls.find(o => scene.inside(o.e, ev.clientX, ev.clientY, 6)); if (!o) return;
+    hoot(); if (!RM.matches) o.e.animate([{rotate: '0deg'}, {rotate: '-14deg'}, {rotate: '8deg'}, {rotate: '0deg'}], {duration: 600, easing: 'ease-out'});
+    $$('.owlsay').forEach(b => b.remove());
+    const r = o.e.getBoundingClientRect(), b = document.createElement('div'); b.className = 'owlsay'; b.setAttribute('role', 'status'); b.textContent = pick(WISDOM);
+    b.style.left = Math.max(8, Math.min(innerWidth - 200, r.left + 20 - 90)) + 'px'; b.style.top = Math.max(8, r.top - 54) + 'px'; document.body.append(b);
+    setTimeout(() => fade(b, 400), 2800);
+  });
+  // ---- Dionysus: the cup's wine makes skeletons dance, grows a grapevine up a tree, or leaves a puddle on the ground
+  function drip(x, y) {
+    const p = particle(x + (Math.random() - .5) * 10, y, 4, 5, 'background:#7a2048;border-radius:50% 50% 50% 50%/60% 60% 40% 40%');
+    p.animate([{translate: '0 0', opacity: .9}, {translate: `0 ${30 + Math.random() * 30}px`, opacity: 0}], {duration: 500, easing: 'ease-in', fill: 'forwards'}).onfinish = () => p.remove();
+  }
+  function droplets(x, y, n = 14) {
+    if (RM.matches) return;
+    for (let i = 0; i < n; i++) { const a = -Math.PI * (.1 + Math.random() * .8), d = 20 + Math.random() * 45, sz = 3 + Math.random() * 3;
+      const p = particle(x, y, sz, sz, `background:${['#7a2048', '#9b2f62', '#5a1838'][i % 3]};border-radius:50%`);
+      p.animate([{translate: '0 0', opacity: 1}, {translate: `${Math.cos(a) * d}px ${Math.sin(a) * d + 24}px`, opacity: 0}], {duration: 600, easing: 'ease-out', fill: 'forwards'}).onfinish = () => p.remove(); }
+  }
+  function dance(s, e) {
+    const r = s.getBoundingClientRect(); fade(e, 200); splash(); droplets(r.left + r.width / 2, r.top + 14, 10);
+    if (s.classList.contains('statue') || s.classList.contains('charred')) return tipOnce('cupstone', 'Stone can\'t dance. Bring it back with the snake first.');
+    s.classList.add('dancing'); tune(); clearTimeout(s._dance); s._dance = setTimeout(() => s.classList.remove('dancing'), 8000);
+    if (!RM.matches) { let n = 0; const iv = setInterval(() => { if (!s.isConnected || !s.classList.contains('dancing') || ++n > 14) return clearInterval(iv); note(s); }, 520); }
+    tipOnce('cup', 'The skeleton dances. Splash another and they dance together.');
+  }
+  function note(s) {
+    const r = s.getBoundingClientRect(), p = document.createElement('div'); p.className = 'note'; p.setAttribute('aria-hidden', 'true');
+    p.textContent = pick(['♪', '♫', '♩']); p.style.left = (r.left + 10 + Math.random() * 26) + 'px'; p.style.top = (r.top - 4) + 'px'; $('#fx').append(p);
+    p.animate([{translate: '0 0', opacity: 0}, {translate: `${(Math.random() - .5) * 20}px -16px`, opacity: 1, offset: .3}, {translate: `${(Math.random() - .5) * 40}px -60px`, opacity: 0}], {duration: 1600, easing: 'ease-out', fill: 'forwards'}).onfinish = () => p.remove();
+  }
+  // a grapevine curls up the trunk and grape clusters hang from the branches (green in spring, purple in summer and fall, a few dry ones in winter)
+  function grow(t, e) {
+    fade(e, 200); splash(); const tr = t.getBoundingClientRect(); droplets(tr.left + tr.width / 2, tr.bottom - tr.height * .4, 8);
+    const svg = $('.sway svg', t); if (!svg || $('.vine', svg)) return tipOnce('vine2', 'This tree already has a vine.');
+    const col = {spring: ['#a7c46a', '#bcd67f'], summer: ['#5b2a6e', '#7a3a8a'], fall: ['#4a1f5c', '#6b2f7d'], winter: ['#3d2440', '#523356']}[scene.season];
+    const bunch = (x, y, n) => Array.from({length: n}, (_, i) => { const row = i < 3 ? 0 : i < 5 ? 1 : 2, k = i < 3 ? i : i < 5 ? i - 3 : 0;
+      return `<circle cx="${x - (row === 0 ? 4 : row === 1 ? 2 : 0) + k * 4}" cy="${y + row * 3.6}" r="2.2" fill="${col[i % 2]}"/>`; }).join('');
+    const leaf = (x, y, a) => scene.season === 'winter' ? '' : `<path d="M${x} ${y} q4 -5 8 0 q-4 4 -8 0 Z" fill="#5d9a4c" transform="rotate(${a} ${x} ${y})"/>`;
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g'); g.setAttribute('class', 'vine');
+    g.innerHTML = `<path class="tendril" pathLength="1" d="M55 160 Q67 150 56 140 Q45 130 62 120 Q71 111 57 101 Q47 92 61 84 Q68 77 58 68" stroke="#4f7a32" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+      ${leaf(62, 150, -20)}${leaf(48, 132, 160)}${leaf(65, 116, -30)}${leaf(52, 96, 150)}${leaf(63, 80, -10)}
+      <g class="grapes">${bunch(36, 88, scene.season === 'winter' ? 3 : 6)}${bunch(84, 80, scene.season === 'winter' ? 2 : 6)}${scene.season === 'winter' ? '' : bunch(48, 62, 6)}</g>`;
+    svg.append(g);
+    if (!RM.matches) { $('.tendril', g).animate([{strokeDashoffset: 1}, {strokeDashoffset: 0}], {duration: 1200, easing: 'ease-out', fill: 'backwards'}).ready.then(() => {});
+      $('.grapes', g).animate([{opacity: 0, scale: .4}, {opacity: 1, scale: 1}], {duration: 500, delay: 1000, easing: 'ease-out', fill: 'backwards'}); }
+    tipOnce('vine', {spring: 'A grapevine, green grapes still ripening.', summer: 'A grapevine heavy with grapes.', fall: 'Ripe grapes for the harvest.', winter: 'A winter vine, a few dry grapes left.'}[scene.season]);
+  }
+  function spill(e, x) {
+    const gy = scene.surface(); e.style.top = (gy - ITEM.cup.h / 2 - 2) + 'px'; splash(); droplets(x, gy - 4);
+    if (!RM.matches) e.animate([{rotate: '0deg'}, {rotate: (Math.random() < .5 ? -1 : 1) * 95 + 'deg'}], {duration: 300, easing: 'ease-in', fill: 'forwards'});
+    scene.addMess('wine', x); setTimeout(() => fade(e, 500), 900);
+    tipOnce('cupground', 'Spilled wine. Hermes\' sandal or Poseidon\'s trident will clean it up.');
+  }
   // ---- dragging an item out of the dock
   let held = null, armedK = null;
   function velocity(tr) { const now = performance.now(), last = tr[tr.length - 1]; if (!last || now - last[0] > 80) return [0, 0];     // paused before letting go = a drop, not a throw
@@ -263,6 +458,8 @@ const playground = (() => {
     if (k === 'bolt') { const e = make(k, x, -40); return t ? impact(k, e, t, x, y, 90) : fly(k, e, x, -40, 0, 2200); }
     if (k === 'bow') { const seat = $('.seat[data-item=bow]'), [sx, sy] = seatCenter(seat), dx = x - sx, dy = y - sy, d = Math.hypot(dx, dy) || 1, sp = 1700, T = d / sp, e = make(k, sx, sy); twang();
       return fly(k, e, sx, sy, dx / d * sp, dy / d * sp - ITEM.bow.g * T / 2); }
+    if (k === 'sandal') { const from = x < innerWidth / 2 ? -40 : innerWidth + 40, e = make(k, from, scene.surface() - 60); return skim(e, from, scene.surface() - 60, x < innerWidth / 2 ? 1 : -1); }
+    if (k === 'owl') { const e = make(k, x, Math.max(80, y - 160)); return glide(e, x, Math.max(80, y - 160), x); }
     const sy = Math.min(y, scene.surface() - 120), e = make(k, x, sy);
     if (t) return impact(k, e, t, x, y, 90);
     launch(k, e, x, sy, 0, 150);
