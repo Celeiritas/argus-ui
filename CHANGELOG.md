@@ -1,5 +1,10 @@
 # Changelog
 
+## 4.16.0 – 2026-10-23
+- **Home is about you now, and looks it** (docs/home.md, docs/ui-plan.md §3). The header greets you by the time of day with the date and weather; then **Needs you**, one list, most urgent first, each row with a verb-first button that goes there (an alert → "Open Throne", failed tasks → "Look at 1 failed task", Mentor → "Study 5 due cards"); then **Places**, a row of medallions with each section's one line. No more grid of tiles: Watch keeps the cards, so the two pages no longer look alike. "Nothing needs you. The realm is quiet." when it's all done
+- **Status v2** for server plugins: `api/<id>/status` may add `needs` and `action` (32 characters, verb-first); old `{line}` answers keep working and never enter the list. Mentor says it needs you when cards are due
+- Tests: `tests/home.test.js` rewritten for the new Home (greeting, the list and its order, buttons and their targets, places in the section bar's order, focus across redraws, phone); `tests/bundled.test.js` checks status v2 and a needs row from a plugin
+
 ## 4.15.0 – 2026-10-23
 - **Three new powers on Olympus**, filling three empty seats on the Ω (new art drawn for them, with the owner's go-ahead):
   - **Hermes' winged sandal**: skims along the ground the way you throw it, its wings beating; the wind carries debris, spilled wine and arrows in the ground off the screen, bends the flowers, rocks the trees and makes skeletons stagger. It says how many pieces it carried away
