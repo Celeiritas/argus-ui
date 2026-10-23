@@ -10,11 +10,13 @@ if [ -e ~/.local/bin/argus-ui ] || [ -d $S/static ]; then
   B=$S/.set-aside-$(date +%F-%H%M); mkdir -p $B
   [ -e ~/.local/bin/argus-ui ] && cp -a ~/.local/bin/argus-ui $B/argus-ui.py
   [ -d $S/static ] && mv $S/static $B/static
+  [ -d $S/bundled ] && mv $S/bundled $B/bundled
   echo "== previous version kept in $B"
 fi
 cp "$D/argus_ui.py" ~/.local/bin/argus-ui; chmod +x ~/.local/bin/argus-ui
 cp "$D/mentor.py" $S/mentor.py; cp "$D/sky.py" $S/sky.py; mkdir -p $S/decks   # your own decks go in ~/.local/share/argus-ui/decks
 cp -r "$D/static" $S/static
+mkdir -p $S/bundled; cp -r "$D/bundled/." $S/bundled/ 2>/dev/null || true   # plugins that ship with Elaia; yours in ~/.config/argus-ui/plugins win on the same id
 # your own sounds live in ~/.config/argus-ui/sfx/ and are added on every install, so a package built from git
 # (which carries no sound files) keeps them. The first time, it is filled from the sounds already installed.
 X=~/.config/argus-ui/sfx; mkdir -p $X

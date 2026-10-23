@@ -1,5 +1,12 @@
 # Changelog
 
+## 4.13.0 – 2026-10-22
+- **Bundled plugins**: plugins that ship with Elaia live in the repo's `plugins/<id>/`; the package carries them and every install puts them in `~/.local/share/argus-ui/bundled/` (the old copy is set aside with the previous version). Your own plugin with the same id wins and the bundled one is never imported. The log marks bundled ones
+- **A server plugin can take over an agent's section** with `"agent": true` and the agent's key as its id: `<base>/<key>` and `api/<key>/...` are the plugin's (ahead of the built-in Mentor routes), with the agent's name, subtitle and icon unless the plugin has its own. Its pill keeps the agent's place, and Home shows its status line. A folder named after an agent without `"agent": true` is skipped. This is the groundwork for moving Mentor into a bundled plugin
+- `ctx.theme_dir`: a server plugin can read the installed theme (`theme.json`, `decks/`)
+- No `hide()` hook: leaving a section loads a new page, so a plugin's timers end with it (`docs/leafy-plugin.md`)
+- Tests: `tests/bundled.test.js` with `tests/bundled-fixtures/` (`heracles`, a bundled `demo-server`), and the `chronos` fixture
+
 ## 4.12.0 – 2026-10-22
 - **Home** (`<base>/home`, `docs/home.md`): one tile per section, each with the line that says whether it needs you, and every `alert`-level alert above the tiles with its link. The tiles: Watch ("1 task failed · 1 alert", or "All 6 tasks well", with a red edge while something is wrong), Mentor ("3 cards due · 2 to learn"), Olympus, each server plugin's `api/<id>/status` line, and each static plugin's version. The whole tile is the link (at least 44 px); a redraw keeps keyboard focus; one column on a phone
 - The Home pill comes first in the section bar. **Watch stays the default page** until the name test; making Home the default is a later change. The pill's four-square mark is a placeholder until the owner approves art

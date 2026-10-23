@@ -90,7 +90,8 @@ function render() {
   const me = S.personas.find(p => p.key === here);
   if (plugin) {
     $('.title h1').textContent = plugin.name; $('#sub').textContent = plugin.subtitle; document.title = `${plugin.name} · ${S.title || 'Argus'}`;
-    $('#hero').hidden = !plugin.icon; if (plugin.icon) $('#hero').src = url(`plugins/${plugin.id}/${plugin.icon}`);
+    $('#hero').hidden = !plugin.icon && !plugin.agent;                 // a plugin that took over an agent's section keeps the agent's icon
+    if (plugin.icon || plugin.agent) $('#hero').src = plugin.icon ? url(`plugins/${plugin.id}/${plugin.icon}`) : `static/icons/${plugin.id}.png`;
   } else if (here === 'home') {
     $('.title h1').textContent = 'Home'; $('#sub').textContent = 'Every section at a glance'; document.title = `Home · ${S.title || 'Argus'}`;
     $('#hero').hidden = true;
@@ -103,9 +104,10 @@ function render() {
   const realm = (href, key, name, what, on) => `<a class="realm ${on ? 'on' : ''}" href="${href}" ${on ? 'aria-current="page"' : ''}><img src="static/icons/${key}.png" alt="">${key === 'argus' ? '<span class="dot" id="realmDot" hidden></span>' : ''}<span><b>${esc(name)}</b><small>${esc(what)}</small></span></a>`;
   $('#realms').innerHTML = `<a class="realm ${here === 'home' ? 'on' : ''}" href="${url('home')}" ${here === 'home' ? 'aria-current="page"' : ''}>${HOME_MARK}<span><b>Home</b><small>Overview</small></span></a>` +
     realm(url(''), 'argus', 'Argus', 'Watch', !side) +
-    SIDE.filter(k => AGENT_KEYS.includes(k)).map(k => { const p = S.personas.find(x => x.key === k); return realm(url(k), k, p.name, p.domain.split('·')[0].trim(), here === k); }).join('') +
+    SIDE.filter(k => AGENT_KEYS.includes(k)).map(k => { const pl = PLUGINS.find(x => x.id === k), p = S.personas.find(x => x.key === k);
+      return pl ? pluginRealm(pl, here === k) : realm(url(k), k, p.name, p.domain.split('·')[0].trim(), here === k); }).join('') +
     realm(url('olympus'), 'olympus', 'Olympus', 'Playground', onOlympus) +
-    PLUGINS.map(p => pluginRealm(p, here === p.id)).join('') +
+    PLUGINS.filter(p => !SIDE.includes(p.id)).map(p => pluginRealm(p, here === p.id)).join('') +
     (S.soon || []).filter(x => !PLUGINS.some(p => p.name === x.name)).map(x => `<span class="realm soon" aria-disabled="true"><svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="16" fill="#1C2127" stroke="#A7B6C4" stroke-width="1.5"/><path d="M10 26 26 10M26 26 10 10" stroke="#C9A36A" stroke-width="2" stroke-linecap="round"/><path d="M23 9h4v4M13 9H9v4" stroke="#A7B6C4" stroke-width="1.5" fill="none"/></svg><span><b>${esc(x.name)}</b><small>${esc(x.what)} · coming later</small></span></span>`).join('');
   const by = {}; S.jobs.forEach(j => (by[j.persona] ||= []).push(j));
   const lone = {}; loneAlerts().forEach(a => (lone[a.job.split('-')[0]] ||= []).push(a));   // alerts with no task card of their own
@@ -129,8 +131,8 @@ function render() {
   if (armed) arm(armed, true);
   look.retarget();
 }
-// A plugin's pill in the section bar: its own icon, or a plain laurel-and-blades mark.
-const pluginMark = p => p.icon ? `<img src="${esc(url(`plugins/${p.id}/${p.icon}`))}" alt="">`
+// A plugin's pill in the section bar: its own icon, the agent's icon when it took over an agent's section, or a plain laurel-and-blades mark.
+const pluginMark = p => p.icon ? `<img src="${esc(url(`plugins/${p.id}/${p.icon}`))}" alt="">` : p.agent ? `<img src="static/icons/${esc(p.id)}.png" alt="">`
   : `<svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="16" fill="#1C2127" stroke="#A7B6C4" stroke-width="1.5"/><path d="M10 26 26 10M26 26 10 10" stroke="#C9A36A" stroke-width="2" stroke-linecap="round"/><path d="M23 9h4v4M13 9H9v4" stroke="#A7B6C4" stroke-width="1.5" fill="none"/></svg>`;
 // Home's pill: a plain four-square "overview" mark in the same frame (a placeholder until the owner approves art)
 const HOME_MARK = `<svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="16" fill="#1C2127" stroke="#A7B6C4" stroke-width="1.5"/><path d="M11 11h6v6h-6zM19 11h6v6h-6zM11 19h6v6h-6zM19 19h6v6h-6z" fill="none" stroke="#C9A36A" stroke-width="1.6" stroke-linejoin="round"/></svg>`;
