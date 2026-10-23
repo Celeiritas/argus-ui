@@ -93,7 +93,7 @@ function render() {
     $('#hero').hidden = !plugin.icon && !plugin.agent;                 // a plugin that took over an agent's section keeps the agent's icon
     if (plugin.icon || plugin.agent) $('#hero').src = plugin.icon ? url(`plugins/${plugin.id}/${plugin.icon}`) : `static/icons/${plugin.id}.png`;
   } else if (here === 'home') {
-    $('.title h1').textContent = 'Home'; $('#sub').textContent = 'Every section at a glance'; document.title = `Home · ${S.title || 'Argus'}`;
+    const [hi, today] = home.greet(); $('.title h1').textContent = hi; $('#sub').textContent = today; document.title = `Home · ${S.title || 'Argus'}`;
     $('#hero').hidden = true;
   } else if (side && !onOlympus) {
     $('.title h1').textContent = me.name; $('#sub').textContent = me.domain; document.title = `${me.name} · ${S.title || 'Argus'}`;

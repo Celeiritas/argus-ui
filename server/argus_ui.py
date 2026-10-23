@@ -410,9 +410,11 @@ class H(BaseHTTPRequestHandler):
             except Exception:
                 print(f'argus-ui: server plugin {pid} failed on {verb.upper()} {path}\n{traceback.format_exc()}', file=sys.stderr, flush=True)
                 if path != 'status': return self.deny(500, 'plugin error')
-        if verb == 'get' and path == 'status':        # reserved: one line for the Home page, or null; never an error
-            line = r[1].get('line') if r and 200 <= r[0] < 300 and isinstance(r[1], dict) else None
-            return self.out(json.dumps({'line': str(line)[:160] if line else None}), 'application/json')
+        if verb == 'get' and path == 'status':        # reserved: Home's line (+ needs, a verb-first action), or null; never an error
+            d = r[1] if r and 200 <= r[0] < 300 and isinstance(r[1], dict) else {}
+            line, act = d.get('line'), d.get('action')
+            return self.out(json.dumps({'line': str(line)[:160] if line else None, 'needs': bool(line) and d.get('needs') is True,
+                                        'action': str(act)[:32] if line and act else ''}), 'application/json')
         if not r: return self.deny(404, 'not found')
         self.out(r[2], 'application/json', r[0])
 

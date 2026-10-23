@@ -1,5 +1,10 @@
 # Changelog
 
+## 4.16.0 – 2026-10-23
+- **Home is about you now, and looks it** (docs/home.md, docs/ui-plan.md §3). The header greets you by the time of day with the date and weather; then **Needs you**, one list, most urgent first, each row with a verb-first button that goes there (an alert → "Open Throne", failed tasks → "Look at 1 failed task", Mentor → "Study 5 due cards"); then **Places**, a row of medallions with each section's one line. No more grid of tiles: Watch keeps the cards, so the two pages no longer look alike. "Nothing needs you. The realm is quiet." when it's all done
+- **Status v2** for server plugins: `api/<id>/status` may add `needs` and `action` (32 characters, verb-first); old `{line}` answers keep working and never enter the list. Mentor says it needs you when cards are due
+- Tests: `tests/home.test.js` rewritten for the new Home (greeting, the list and its order, buttons and their targets, places in the section bar's order, focus across redraws, phone); `tests/bundled.test.js` checks status v2 and a needs row from a plugin
+
 ## 4.14.0 – 2026-10-23
 - **Mentor is now a bundled server plugin** (`plugins/mentor/`, `"agent": true`), the first real one: `mentor.py` (unchanged), `plugin.py` (`api/mentor/...`), `page.js` and `page.css` (were `web/js/mentor.js` and `web/css/mentor.css`). Same section (`<base>/mentor`), same pill in the same place, same API, same keyboard paths. Elaia's own server no longer imports Mentor
 - **Nothing of yours moved**: the database stays `~/.local/share/argus-ui/mentor.db` (or `ARGUS_MENTOR_DB`), the inbox and your decks stay in `~/.local/share/argus-ui/`. An install sets the old built-in `mentor.py` aside with the previous version

@@ -46,7 +46,9 @@ def _get(path, query):
         card, next_due = mentor.next_card(DB, deck, (query.get('extra') or ['0'])[0] == '1')
         return 200, {'card': card, 'next_due': next_due}
     if path == 'stats': return 200, mentor.stats(DB, deck)
-    if path == 'status': return 200, {'line': line(mentor.stats(DB))}
+    if path == 'status':                         # Home: the line, and "needs you" with a verb-first action when cards are due
+        s = mentor.stats(DB)
+        return 200, {'line': line(s), 'needs': bool(s['due']), 'action': f"Study {plural(s['due'], 'due card')}" if s['due'] else ''}
     return 404, {'ok': False, 'msg': 'not found'}
 
 def _post(path, body):
