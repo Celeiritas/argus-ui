@@ -148,3 +148,22 @@ little height on chrome**, because ultrawides are short and phones are narrow.
   squeezed them to a one-word column on ultrawides before 4.19.0.)
 - Next: plugin pages can use the width too. The Throne caps itself at 880 px (zeus `plugin/page.css`); on wide screens it could
   put Waiting and Deploying beside Deployed now and History.
+
+## 15. Characters and motion for interactions (4.20.0 built the first part)
+Built, with the art there is (moving it, not redrawing it): Argus watches a held button with wide eyes, then nods or winces;
+the section's medallion nods with him; Medusa and Zeus results nod or wince; Mentor nods when you get every key idea; each
+section arrives with a short rise (300 ms, once per page load); section icons lift on hover. All of it is skipped under
+reduced motion except the eyes. docs/fx.md "Argus reacts".
+
+Proposed next, no new art needed:
+- **Throne:** Argus watches the deploy stages; the stage chip that just finished gives a small glint (`fx.glint`); the Throne
+  nods on a finished deploy and winces on a failed one (zeus `plugin/page.js`, return `r.ok` from the holds).
+- **Home:** when Needs you empties, Argus gives a slow, contented blink (a longer `blink`, 400 ms).
+- **Mentor:** a streak of three right answers sends motes (`fx.motes`) round Mentor's medallion.
+- **Idle:** after a minute with no input Argus's eyes wander more slowly and half-close; any input wakes him with a blink.
+
+Needs the owner's approval first (new drawings, §13):
+- Separate layers for the god medallions (an arm, a head) so Zeus can raise his bolt, Medusa's snakes can stir and Mentor's
+  owl can turn its head. Today each medallion is one flat image, so it can only move as a whole.
+- Argus's staff tapping the ground on a nod (needs the staff as its own path in `argus.png`'s source).
+

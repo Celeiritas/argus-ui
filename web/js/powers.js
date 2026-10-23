@@ -89,6 +89,7 @@ async function medusaCast(c, act, fromDrag) {
   const req = post(act, job).catch(() => ({ok: false, msg: 'no answer'}));
   if (act === 'freeze') await petrify(c, x, y); else await crumble(c, x, y);
   const res = await req;
+  look.react(res.ok ? 'nod' : 'wince');
   if (!res.ok) toast(failText(act, job, res.msg));
   else if (act === 'freeze') toast(SAY.freeze.ok(job), {label: 'Undo', fn: () => { const cc = $(`.card[data-job="${CSS.escape(job)}"]`); if (cc) medusaCast(cc, 'thaw'); }});
   else toast(SAY.thaw.ok(job));
@@ -248,6 +249,6 @@ async function zeusStrike(c, fromDrag) {
     zap.animate([{opacity: 0}, {opacity: .45, offset: .15}, {opacity: 0}], {duration: 900, easing: 'ease-out'}).onfinish = () => zap.remove();
   }
   const res = await req; await wait(RM.matches ? 0 : 900);
-  toast(res.ok ? SAY.bolt.ok(job, res.msg) : failText('bolt', job, res.msg));
+  look.react(res.ok ? 'nod' : 'wince'); toast(res.ok ? SAY.bolt.ok(job, res.msg) : failText('bolt', job, res.msg));
   B.remove(); busy = false; setTimeout(refresh, 1200);
 }

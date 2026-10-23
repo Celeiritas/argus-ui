@@ -38,6 +38,7 @@ main{padding-bottom:220px!important}   /* the end of every page opens onto the g
 /* argus eyes: each eye covers the one painted on the medallion, so a blink never shows a second eye behind */
 .argus .ball{transform-box:fill-box;transform-origin:center;transition:transform var(--t2) ease-out,opacity var(--t1)}
 .argus.glare .ball{transform:scaleY(.72)}
+.argus.wide .ball{transform:scaleY(1.22)}   /* holding a button: eyes wide (look.react) */
 .argus.blink .ball{transform:scaleY(.06);opacity:0}
 .argus .shut{opacity:0;transition:opacity var(--t1)}.argus.blink .shut{opacity:1}
 .argus .ir,.argus .pu{transition:fill var(--t4)}
@@ -58,6 +59,7 @@ main{padding-bottom:220px!important}   /* the end of every page opens onto the g
 .realm img,.realm>svg{width:36px;height:36px;flex:none}
 .realm b{display:block;font-size:var(--fs-sec);font-weight:600;line-height:1.2;color:var(--snow)}.realm small{display:block;font-size:var(--fs-meta);line-height:1.3}
 a.realm:hover,.realm.on{border-color:var(--line);background:var(--card)}
+.realm img,.realm>svg{transition:transform var(--t2)}a.realm:hover img,a.realm:hover>svg{transform:translateY(-2px)}
 .realm.soon{opacity:.6;cursor:default}
 .realm .dot{position:absolute;left:28px;top:2px;min-width:18px;height:18px;padding:0 4px;border-radius:99px;background:#C93030;color:#fff;font-size:11px;font-weight:600;line-height:18px;text-align:center;box-shadow:0 0 0 2px var(--night)}
 .realms .mute{margin-left:auto}

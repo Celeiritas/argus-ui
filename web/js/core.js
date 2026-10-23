@@ -194,7 +194,7 @@ document.addEventListener('click', e => {
 /* ---------- Argus eyes: follow the pointer, glare at a failed task, calm when all is well ---------- */
 const look = (() => {
   const A = $('#argus'), svg = $('svg[viewBox="0 0 234 234"]', A), eyes = $$('.eye', svg).map(g => ({iris: $('.iris', g), max: +g.dataset.max, cx: +g.dataset.cx, cy: +g.dataset.cy}));
-  let pointer = null, lastMove = 0, target = null, wander = {x: 0, y: 0, t: 0}, cur = eyes.map(() => [0, 0]);
+  let pointer = null, lastMove = 0, target = null, wander = {x: 0, y: 0, t: 0}, cur = eyes.map(() => [0, 0]), watched = null;   // watched: kept in view ahead of the pointer
   function aim(px, py) {
     const m = svg.getScreenCTM(); if (!m) return;
     eyes.forEach((e, i) => {
@@ -231,6 +231,7 @@ const look = (() => {
   setTimeout(blink, 4000);
   function tick(t) {
     if (drag) aim(drag.x, drag.y);                                   // he watches whatever you carry
+    else if (watched?.isConnected) { const r = watched.getBoundingClientRect(); aim(r.left + r.width / 2, r.top + r.height / 2); }   // a button being held
     else if (gaze) aim(gaze.x, gaze.y);
     else if (pointer && t - lastMove < 2500) aim(...pointer);
     else if (target) { const r = target.getBoundingClientRect(); aim(r.left + r.width / 2, r.top + r.height / 2); }
@@ -238,5 +239,16 @@ const look = (() => {
     requestAnimationFrame(tick);
   }
   requestAnimationFrame(tick);
-  return {retarget};
+  // He reacts to what you do (docs/fx.md "Argus reacts"): 'wide' while something is about to happen (a hold), 'rest' after it,
+  // 'nod' when it worked, 'wince' when it didn't. On a side page the section's own medallion (#hero) nods or winces with him.
+  // Only moves the art that is there (no new drawings); reduced motion keeps the eyes and drops the movement.
+  const MOVES = {nod: [{transform: 'none'}, {transform: 'translateY(7%) rotate(-2deg)'}, {transform: 'none'}, {transform: 'translateY(4%)'}, {transform: 'none'}],
+    wince: [{transform: 'none'}, {transform: 'translateX(-4%) rotate(-4deg)'}, {transform: 'translateX(3%) rotate(3deg)'}, {transform: 'translateX(-1%)'}, {transform: 'none'}]};
+  function react(kind) {
+    A.classList.toggle('wide', kind === 'wide'); if (!MOVES[kind]) return;
+    if (kind === 'wince') { A.classList.add('blink'); setTimeout(() => A.classList.remove('blink'), 220); }
+    if (RM.matches) return;
+    [A, side && $('#hero')].filter(e => e && !e.hidden && e.offsetWidth).forEach(e => e.animate(MOVES[kind], {duration: kind === 'nod' ? 700 : 420, easing: 'ease-in-out'}));
+  }
+  return {retarget, react, watch: el => { watched = el || null; }};
 })();

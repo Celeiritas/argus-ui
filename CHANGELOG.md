@@ -1,5 +1,14 @@
 # Changelog
 
+## 4.20.0 – 2026-10-23
+- **Argus reacts to what you do** (docs/fx.md "Argus reacts"). While you hold a button he keeps his eyes on it, wide open; when it worked he nods, when it failed he winces (a blink and a small shake). On a side page the section's medallion nods or winces with him. Only the art that is there moves; nothing is redrawn
+- Used by holds (`holdConfirm`: return `false` from `onDone` to get the wince), Medusa and Zeus on Watch, and Mentor (nods when you got every key idea; nothing for a miss)
+- Server plugins get `api.argus.react(kind)` and `api.argus.watch(el)` (docs/leafy-plugin.md)
+- Each section arrives with a short rise (300 ms, once per page load); section icons lift a little on hover
+- Reduced motion: the eyes still follow and widen; nothing nods, shakes or rises
+- docs/ui-plan.md §15: what comes next for characters, and which of it needs new art (waits for approval)
+- Tests: `tests/fx.test.js` checks the wide eyes while held, the nod after, and no nod with reduced motion
+
 ## 4.19.0 – 2026-10-23
 - **Fix:** on wide screens Home and server-plugin pages (the Throne) were squeezed into a column a word or two wide. They added the page margin a second time inside a page that already had it; at 3440 px that was about 1840 px of margin. They now use the full content width (16:9 too, where they had been pushed 160 px right)
 - **Ultrawide** (2:1 or wider, 1800 px and up): the sections bar becomes a rail down the left edge, with the weather and Mute at its foot, so the short screen gets its top band back; content may run to 2400 px, so Watch fits 8–9 task cards in a row
