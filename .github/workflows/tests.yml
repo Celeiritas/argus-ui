@@ -1,0 +1,22 @@
+# The browser checks (tests/run.sh: build, fake systemd units, Playwright + Chromium) on Linux, for every pull request
+# and push to main. Pushing a ci/<anything> branch runs them too, to check a branch without opening a pull request.
+name: tests
+on:
+  pull_request:
+  push:
+    branches: [main, 'ci/**']
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Playwright and Chromium
+        run: npm install --no-audit --no-fund && npx playwright install --with-deps chromium
+      - name: tests/run.sh
+        run: bash tests/run.sh
