@@ -71,7 +71,9 @@ def _get(path, query):
         if aid in PENDING: return 200, {'state': 'pending'}
         d = mentor.get_ai(DB, aid)
         return 200, {'state': 'none'} if not d else {'state': 'error', 'error': d['error']} if 'error' in d else {'state': 'done', **d}
-    if path == 'status': return 200, {'line': line(mentor.stats(DB))}
+    if path == 'status':                         # Home: the line, and "needs you" with a verb-first action when cards are due
+        s = mentor.stats(DB)
+        return 200, {'line': line(s), 'needs': bool(s['due']), 'action': f"Study {plural(s['due'], 'due card')}" if s['due'] else ''}
     return 404, {'ok': False, 'msg': 'not found'}
 
 def _post(path, body):

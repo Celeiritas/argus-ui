@@ -28,7 +28,7 @@ Why Open-Meteo:
 
 ## The Olympus playground (`<base>/olympus`)
 
-The twelve Olympians sit on an **Ω**, left foot to right foot: Dionysus, Hermes, Artemis, Apollo, Demeter, Hera, **Zeus at the top**, Poseidon, Hephaestus, Athena, Ares, Aphrodite. Twelve seats can't split evenly around a top seat, so the left side has six and the right five. Gods who aren't Olympians have their own spots below: **Chthonic** (Hades) and **Beyond Olympus** (Medusa). Seats show the god's *item*, not the god; seats without a power yet are dashed initials.
+The twelve Olympians sit on an **Ω**, left foot to right foot: Dionysus, Hermes, Artemis, Apollo, Demeter, Hera, **Zeus at the top**, Poseidon, Hephaestus, Athena, Ares, Aphrodite. Twelve seats can't split evenly around a top seat, so the left side has six and the right five. Gods who aren't Olympians have their own spots below: **Chthonic** (Hades) and **Beyond Olympus** (Medusa). Seats show the god's *item*, not the god; seats without a power yet are dashed initials (Artemis, Hera, Ares and Aphrodite, for now).
 
 **Using an item:** drag it out of its seat and let go. It keeps the speed you gave it and falls, so a still release drops it straight down and a quick flick throws it. Pausing before you let go counts as a drop. Letting go over the dock puts it back. Without a mouse: click or press Enter on an item, then click the field (Enter again uses it in the middle of the field). Esc cancels.
 
@@ -41,6 +41,9 @@ The twelve Olympians sit on an **Ω**, left foot to right foot: Dionysus, Hermes
 | Demeter's seeds | scatter and sprout flowers for the season: pastel blue or pink in spring, dandelions in summer, mushrooms in fall, poinsettias in winter |
 | Apollo's bow | draws an arrow that flies and sticks where it lands: ground, tree (it sways with it) or skeleton |
 | Hephaestus' hammer | digs a hole that deepens with every blow on the same spot, down to bedrock; smashes skeletons |
+| Hermes' winged sandal | skims along the ground in the direction it was thrown (from the nearer edge when placed by click or keyboard); its wind carries debris, wine and arrows in the ground off the screen, bends flowers, rocks trees and makes skeletons stagger |
+| Athena's owl | glides to the nearest free tree within reach, else a skeleton's skull, else the ground, and perches (four at most). Her eyes follow the pointer or whatever is in flight, and she blinks. Click or tap her: she hoots and says one Delphic maxim. She flies off when her tree is struck or her skeleton crumbles; on a stone perch she is stone too |
+| Dionysus' cup | spills wine as it flies. A skeleton it splashes dances for eight seconds with music notes and a little tune; a tree grows a grapevine with grapes for the season (green in spring, purple in summer and fall, a few dry ones in winter); the ground gets a puddle of wine. Stone can't dance |
 
 On the **Watch** page, Zeus's medallion also hands out bolts (drop one on a task to run it; flung bolts only hit trees and the ground, never tasks), and Medusa freezes and thaws tasks. A tree struck there tidies itself up after 30 seconds. With reduced motion turned on, the weather is a still picture, particles are skipped and the tsunami is a fade.
 
@@ -54,15 +57,15 @@ Keep this order whenever you add art or effects, so nothing is covered by mistak
    2. `.skyflash`: the storm flash, a full-sky layer centred on the summit (never clipped to the mountain's box)
    3. Olympus (`.olympus` SVG: ranges that run far past the sides, massif, snow, temple glow, clouds, summit bolt). Script sets `meet` on wide screens and `slice` on narrow ones, so the full height, summit included, is always shown
    4. `.ground` (height `--gh`: turf, topsoil, clay, bedrock), with Hephaestus' `.hole`s inside it
-   5. `.debris` (ash, sticks, scorch, rubble, bones), `.trees`, `.flora` (flowers), `.skels` (skeletons), `.stuck` (arrows and spears in the ground). All are anchored to the ground's surface
+   5. `.debris` (ash, sticks, scorch, rubble, bones, wine), `.trees` (a grapevine is drawn inside a tree's SVG, an owl sits in its `.sway`), `.flora` (flowers), `.skels` (skeletons; an owl on a skull is inside the skeleton), `.stuck` (arrows, spears and owls on the ground). All are anchored to the ground's surface
    6. weather canvas (rain and snow fall in front of everything above), then fog
 3. Page content: section bar, header (title, Argus, tools), agent tabs, `main` (cards, Mentor, the Olympus dock). Cards are opaque, so the scene shows around them and at the end of each page
 4. Things in hand or in flight: `.floating`, `.shot`, `.thrown`, `.seed` (z 50)
-5. `#flash` (48) and `#fx` effects (49): lightning, sparks, flames, smoke, dirt, bone pieces
-6. The tsunami (55), then the toast (60), then dialogs (the browser's top layer)
+5. `#flash` (48) and `#fx` effects (49): lightning, sparks, flames, smoke, dirt, bone pieces, wind streaks, wine drops, music notes
+6. The tsunami (55), then the toast and an owl's speech bubble `.owlsay` (60), then dialogs (the browser's top layer)
 
 **Inside a medallion:** background → figure → rim → anything that belongs *outside* the rim (Medusa's sleeping Zs, effect particles). Draw those last and outside the rim's radius, with a dark outline so they read on the pale rim, and keep `overflow: visible` on the SVG.
 
 **Hit-testing the scene:** the scene sits behind the page, so items find trees, skeletons and debris by their boxes, and only where nothing else (a card, a panel, the dock, a button) is on top. Thrown items test at their tip every frame and land when the tip reaches the ground's surface.
 
-**Class names:** scene states are `.struck` and `.statue` (trees), `.up`, `.burning`, `.charred`, `.statue`, `.dying` (skeletons). Don't reuse `.stone`, which is the overlay on frozen task cards and is positioned absolutely.
+**Class names:** scene states are `.struck` and `.statue` (trees), `.up`, `.burning`, `.charred`, `.statue`, `.dying`, `.dancing` (skeletons), `.owl` (with `.blink`; `.flying` and `.flap` while in the air). Don't reuse `.stone`, which is the overlay on frozen task cards and is positioned absolutely.

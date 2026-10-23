@@ -6,6 +6,19 @@
 - `python plugins/mentor/mentor.py export [mentor.db]` writes every rated attempt as one JSON line, the training data for a grader that learns from you (stage Bv2)
 - Tests: `tests/mentor-ai.test.js` against `tests/fixtures/fake_model.py` (a stand-in server for both APIs, started by `tests/run.sh` on `MODEL_PORT`): off by default, remote URL refused, status, pending then done, both APIs, a server that doesn't answer, the owl on the page, the Lessons line
 
+## 4.16.0 – 2026-10-23
+- **Home is about you now, and looks it** (docs/home.md, docs/ui-plan.md §3). The header greets you by the time of day with the date and weather; then **Needs you**, one list, most urgent first, each row with a verb-first button that goes there (an alert → "Open Throne", failed tasks → "Look at 1 failed task", Mentor → "Study 5 due cards"); then **Places**, a row of medallions with each section's one line. No more grid of tiles: Watch keeps the cards, so the two pages no longer look alike. "Nothing needs you. The realm is quiet." when it's all done
+- **Status v2** for server plugins: `api/<id>/status` may add `needs` and `action` (32 characters, verb-first); old `{line}` answers keep working and never enter the list. Mentor says it needs you when cards are due
+- Tests: `tests/home.test.js` rewritten for the new Home (greeting, the list and its order, buttons and their targets, places in the section bar's order, focus across redraws, phone); `tests/bundled.test.js` checks status v2 and a needs row from a plugin
+
+## 4.15.0 – 2026-10-23
+- **Three new powers on Olympus**, filling three empty seats on the Ω (new art drawn for them, with the owner's go-ahead):
+  - **Hermes' winged sandal**: skims along the ground the way you throw it, its wings beating; the wind carries debris, spilled wine and arrows in the ground off the screen, bends the flowers, rocks the trees and makes skeletons stagger. It says how many pieces it carried away
+  - **Athena's owl**: glides to the nearest free tree (or a skeleton's skull, or the ground) and perches; her eyes follow your pointer and she blinks. Click or tap her for a hoot and a Delphic maxim ("Know thyself."). She flies off when her tree is struck or her skeleton crumbles, and turns to stone with a stone perch. Four at most
+  - **Dionysus' cup**: drips wine in flight; a skeleton it splashes dances for eight seconds to a little tune with music notes; a tree grows a grapevine with grapes for the season; the ground gets a puddle of wine that the sandal or the trident cleans up
+- Poseidon's tsunami also washes away owls and vines. Reduced motion: no flapping, no dancing, no particles; every effect still happens
+- docs/scene.md: the three items, the layer order and class names
+- Tests: `tests/olympus.test.js` checks the sandal clears the mess and the arrow but leaves flowers and trees, the owl perches, speaks, follows the pointer and flees a struck tree, and the cup's dance, vine and puddle
 ## 4.14.0 – 2026-10-23
 - **Mentor is now a bundled server plugin** (`plugins/mentor/`, `"agent": true`), the first real one: `mentor.py` (unchanged), `plugin.py` (`api/mentor/...`), `page.js` and `page.css` (were `web/js/mentor.js` and `web/css/mentor.css`). Same section (`<base>/mentor`), same pill in the same place, same API, same keyboard paths. Elaia's own server no longer imports Mentor
 - **Nothing of yours moved**: the database stays `~/.local/share/argus-ui/mentor.db` (or `ARGUS_MENTOR_DB`), the inbox and your decks stay in `~/.local/share/argus-ui/`. An install sets the old built-in `mentor.py` aside with the previous version

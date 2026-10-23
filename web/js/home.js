@@ -1,35 +1,53 @@
-// Home (docs/home.md): one tile per section with the line that says whether it needs you, and the alerts first.
-// Watch's line comes from the page state; a server plugin's (Mentor's too) from its api/<id>/status.
+// Home (docs/home.md): what needs *you* across the realm, and where to go. Watch is about the machines; Home is about you.
+// The header greets you (core.js render), then one "Needs you" list built from alert files, failed tasks and each server
+// plugin's status (Mentor's too), then a row of places with their one line. Status v2: {line, needs, action} from api/<id>/status.
 const home = (() => {
-  const lines = {};                        // section id -> its last line (undefined: still asking, null: none)
+  const lines = {};                        // section id -> its last status (undefined: still asking, null: none)
   const plural = (n, one, many = one + 's') => `${n} ${n === 1 ? one : many}`;
-  function watchLine() {
-    const c = s => S.jobs.filter(j => j.state === s).length, up = (S.alerts || []).filter(a => a.level === 'alert').length;
-    const bad = [c('failed') && `${plural(c('failed'), 'task')} failed`, up && plural(up, 'alert'), c('frozen') && `${c('frozen')} stone`].filter(Boolean);
-    return {text: bad.length ? bad.join(' · ') : `All ${plural(S.jobs.length, 'task')} well`, needs: !!(c('failed') || up)};
-  }
   async function ask() {
-    const jobs = PLUGINS.filter(p => p.kind === 'server').map(p =>
-      fetch(url(`api/${p.id}/status`), {cache: 'no-store'}).then(r => r.json()).then(j => { lines[p.id] = j.line || null; }).catch(() => { lines[p.id] = null; }));
-    await Promise.all(jobs);
+    await Promise.all(PLUGINS.filter(p => p.kind === 'server').map(p =>
+      fetch(url(`api/${p.id}/status`), {cache: 'no-store'}).then(r => r.json()).then(j => { lines[p.id] = j && j.line ? j : null; }).catch(() => { lines[p.id] = null; })));
   }
-  const tile = (href, mark, name, what, line, needs) => `<li><a class="tile ${needs ? 'needs' : ''}" href="${href}">${mark}
-    <span class="tname"><b>${esc(name)}</b><small>${esc(what)}</small></span>${line === '' ? '' : `<span class="tline">${line === undefined ? 'Checking…' : line === null ? 'No news' : esc(line)}</span>`}</a></li>`;
-  const icon = k => `<img src="static/icons/${k}.png" alt="">`;
-  const ptile = p => tile(url(p.id), pluginMark(p), p.name, p.subtitle || 'Plugin', p.kind === 'server' ? lines[p.id] : (p.version ? `Version ${p.version}` : ''), false);
+  // the things to do, most urgent first: alerts, then failed tasks, then each section that says it needs you
+  function needs() {
+    const out = [], icon = k => `<img src="static/icons/${esc(k)}.png" alt="">`;
+    (S.alerts || []).filter(a => a.level === 'alert').forEach(a => out.push({mark: icon(a.job.split('-')[0]), text: a.message, who: a.job,
+      label: a.link ? `Open ${sectionName(a.link)}` : 'Look at the alert', href: url(a.link || ''), level: 'alert'}));
+    const failed = S.jobs.filter(j => j.state === 'failed');
+    if (failed.length) out.push({mark: icon('argus'), text: `${plural(failed.length, 'task')} failed: ${failed.map(j => j.job).join(', ')}`, who: 'Argus · Watch',
+      label: `Look at ${plural(failed.length, 'failed task')}`, href: url(''), level: 'alert'});
+    PLUGINS.forEach(p => { const s = lines[p.id]; if (s && s.needs) out.push({mark: pluginMark(p), text: s.line, who: p.name, label: s.action || `Open ${p.name}`, href: url(p.id), level: 'needs'}); });
+    return out;
+  }
+  const row = n => `<li class="need ${n.level}"><span class="nmark">${n.mark}</span><p><small>${esc(n.who)}</small>${esc(n.text)}</p><a class="go" href="${n.href}">${esc(n.label)}</a></li>`;
+  // the places: Watch, then every section in the section bar's order, each with its one line
+  function places() {
+    const st = s => s === undefined ? 'Checking…' : s === null ? 'No news' : s.line;
+    const fails = S.jobs.filter(j => j.state === 'failed').length, mp = PLUGINS.find(p => p.id === 'mentor');
+    const place = (href, mark, name, line, bad) => `<li><a class="place ${bad ? 'bad' : ''}" href="${href}">${mark}<b>${esc(name)}</b><small>${esc(line)}</small></a></li>`;
+    return [place(url(''), '<img src="static/icons/argus.png" alt="">', 'Watch', fails ? `${plural(fails, 'task')} failed` : `All ${plural(S.jobs.length, 'task')} well`, fails > 0)]
+      .concat(mp ? [place(url('mentor'), pluginMark(mp), mp.name, st(lines.mentor))] : [])
+      .concat([place(url('olympus'), '<img src="static/icons/olympus.png" alt="">', 'Olympus', 'Powers, weather, seasons')])
+      .concat(PLUGINS.filter(p => p !== mp).map(p => place(url(p.id), pluginMark(p), p.name, p.kind === 'server' ? st(lines[p.id]) : p.version ? `Version ${p.version}` : 'Open it')))
+      .join('');
+  }
   function draw() {
     if (here !== 'home') return;
-    const w = watchLine(), up = (S.alerts || []).filter(a => a.level === 'alert'), mp = PLUGINS.find(p => p.id === 'mentor');
-    const tiles = [tile(url(''), icon('argus'), 'Argus', 'Watch', w.text, w.needs)]
-      .concat(mp ? [ptile(mp)] : [])                // Mentor (a bundled plugin) right after Watch, as in the section bar
-      .concat([tile(url('olympus'), icon('olympus'), 'Olympus', 'Playground', 'Powers, weather, seasons', false)])
-      .concat(PLUGINS.filter(p => p !== mp).map(ptile));
-    const focused = document.activeElement?.closest?.('.tile')?.getAttribute('href');   // a redraw must not drop keyboard focus
-    $('#main').innerHTML = `<section class="home" aria-labelledby="home-h"><h2 class="sr" id="home-h">Sections</h2>
-      ${up.length ? `<div class="home-alerts" role="group" aria-label="Alerts">${up.map(alertNote).join('')}</div>` : ''}
-      <ul class="tiles">${tiles.join('')}</ul></section>`;
-    if (focused) $(`.tile[href="${CSS.escape(focused)}"]`)?.focus();
+    const list = needs(), focused = document.activeElement?.closest?.('#main a')?.getAttribute('href');   // a redraw must not drop keyboard focus
+    const asking = PLUGINS.some(p => p.kind === 'server' && lines[p.id] === undefined);
+    $('#main').innerHTML = `<section class="home" aria-label="Home">
+      <section class="needs" aria-labelledby="needs-h"><h2 id="needs-h">Needs you${list.length ? ` <span class="count">${list.length}</span>` : ''}</h2>
+        ${list.length ? `<ul class="needlist">${list.map(row).join('')}</ul>`
+          : `<p class="quiet">${asking ? 'Asking every section…' : 'Nothing needs you. The realm is quiet.'}</p>`}</section>
+      <section class="places" aria-labelledby="places-h"><h2 id="places-h">Places</h2><ul class="placelist">${places()}</ul></section></section>`;
+    if (focused) $$('#main a').find(a => a.getAttribute('href') === focused)?.focus();
   }
   function show() { draw(); ask().then(draw); }      // the 15 s refresh calls this too: draw from what we know, then ask again
-  return {show};
+  // the header: a greeting by the viewer's clock, then the date and the weather (core.js render() calls this)
+  function greet() {
+    const h = new Date().getHours(), wx = ($('#wxText')?.textContent || '').trim();
+    return [h < 5 ? 'Good night' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening',
+      new Date().toLocaleDateString([], {weekday: 'long', month: 'long', day: 'numeric'}) + (wx ? ` · ${wx}` : '')];
+  }
+  return {show, greet};
 })();

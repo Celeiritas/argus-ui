@@ -24,7 +24,10 @@ run(async b => {
   check(await p.locator('body.side').count() === 1, 'agent plugin: a side page (Argus in the corner)');
   check((await p.request.get(BASE + 'plugins/heracles/plugin.py')).status() === 404 && (await p.request.get(BASE + 'plugins/heracles/page.js')).status() === 200,
     'bundled: plugin.py is never served, the page script is');
-  check((await (await p.request.get(BASE + 'api/heracles/status')).json()).line === '2 workouts this week', 'agent plugin: api/<id>/status gives Home its line');
+  const hs = await (await p.request.get(BASE + 'api/heracles/status')).json();
+  check(hs.line === '2 workouts this week · 1 skipped' && hs.needs === true && hs.action === 'Log a workout and more words than'.slice(0, 32), 'status v2: line, needs, and the action cut to 32 characters');
+  const ds = await (await p.request.get(BASE + 'api/demo-server/status')).json();
+  check(ds.needs === false && ds.action === '', 'status v2: a plugin that only gives a line never needs you');
   const men = st.plugins.find(x => x.id === 'mentor');
   check(men && men.agent && men.kind === 'server', 'Mentor is a bundled server plugin that took over the agent section');
   check(/loaded server plugin mentor [\d.]+ \(bundled\)/.test(log), 'Mentor: loaded from the bundled folder');
@@ -35,8 +38,10 @@ run(async b => {
   check(pills.filter(t => t === 'Mentor').length === 1 && pills.indexOf('Mentor') === pills.indexOf('Argus') + 1, 'Mentor: one pill, still right after Argus');
 
   await p.goto(BASE + 'home'); await p.waitForTimeout(800);
-  const tile = p.locator('.tile', {has: p.locator('.tname b', {hasText: 'Heracles'})});
-  check(await tile.count() === 1 && /2 workouts this week/.test(await tile.textContent()), 'Home: one tile for the agent plugin, with its status line');
+  const need = p.locator('.need', {hasText: 'Heracles'});
+  check(await need.count() === 1 && /2 workouts this week/.test(await need.textContent()) && (await need.locator('a.go').textContent()) === 'Log a workout and more words than'.slice(0, 32),
+    'Home: a plugin that needs you gets a row in "Needs you" with its action as the button');
+  check(await p.locator('.place', {hasText: 'Heracles'}).count() === 1, 'Home: and a place with its line');
   check(p.errors.length === 0, 'no page errors ' + p.errors.join(' | '));
 
   const ph = await page(b, 375, 760); await ph.goto(BASE + 'heracles'); await ph.locator('#her-where').waitFor({timeout: 5000});
