@@ -67,3 +67,7 @@
 @keyframes mentor-pulse{0%,100%{box-shadow:0 0 0 0 rgba(176,196,222,.6)}50%{box-shadow:0 0 0 6px rgba(176,196,222,0)}}
 .mentor #hintBtn.pulse{animation:mentor-pulse 1.2s ease-out 2;border-color:var(--powder)}
 @media (prefers-reduced-motion:reduce){.mentor #hintBtn.pulse{animation:none;border-color:var(--powder)}}
+/* 4.17: the local AI's part, brought by Athena's owl (docs/mentor-ai.md) */
+.mentor .aiowl{display:grid;grid-template-columns:44px 1fr;gap:var(--s3);align-items:start;margin:0 0 var(--s3);padding:var(--s2) var(--s3);border:1px solid #9BAA6A;border-radius:12px;background:#1f241a}
+.mentor .aiowl svg{width:44px;height:52px}.mentor .aiowl p{margin:0;color:var(--snow);font-size:var(--fs-sec)}
+.mentor .aiowl small{display:block;color:#C9D3A3;font-size:var(--fs-meta)}.mentor .aiowl .fb{display:block;margin-top:var(--s1);color:var(--powder)}

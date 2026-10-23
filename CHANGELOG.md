@@ -1,5 +1,11 @@
 # Changelog
 
+## 4.17.0 – 2026-10-23
+- **Groundwork for a local AI in Mentor** (docs/mentor-ai.md). Off until `~/.config/argus-ui/mentor-ai.json` turns it on. With a model server on this machine (Ollama, or any OpenAI-compatible server such as llama.cpp's `llama-server`), a written answer also gets a **meaning match** (embeddings, cosine) and, optionally, two or three sentences of **feedback** from a small chat model. The rubric answers at once as always; Athena's owl brings the AI's part a moment later, labelled "Local AI · <model> · not used for the rating". Shadow mode: it is stored with the attempt (`attempts.ai`) but the rubric still suggests the rating
+- Answers stay home: a model server on another machine is refused unless `"allow_remote": true`. A broken config, a slow or stopped server: the AI's part is skipped, one log line, the Lessons view says why
+- `python plugins/mentor/mentor.py export [mentor.db]` writes every rated attempt as one JSON line, the training data for a grader that learns from you (stage Bv2)
+- Tests: `tests/mentor-ai.test.js` against `tests/fixtures/fake_model.py` (a stand-in server for both APIs, started by `tests/run.sh` on `MODEL_PORT`): off by default, remote URL refused, status, pending then done, both APIs, a server that doesn't answer, the owl on the page, the Lessons line
+
 ## 4.16.0 – 2026-10-23
 - **Home is about you now, and looks it** (docs/home.md, docs/ui-plan.md §3). The header greets you by the time of day with the date and weather; then **Needs you**, one list, most urgent first, each row with a verb-first button that goes there (an alert → "Open Throne", failed tasks → "Look at 1 failed task", Mentor → "Study 5 due cards"); then **Places**, a row of medallions with each section's one line. No more grid of tiles: Watch keeps the cards, so the two pages no longer look alike. "Nothing needs you. The realm is quiet." when it's all done
 - **Status v2** for server plugins: `api/<id>/status` may add `needs` and `action` (32 characters, verb-first); old `{line}` answers keep working and never enter the list. Mentor says it needs you when cards are due

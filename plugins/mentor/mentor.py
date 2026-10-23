@@ -106,7 +106,9 @@ ADDED = [('cards', 'data', "TEXT DEFAULT '{}'"), ('cards', 'ord', 'INTEGER DEFAU
          # 4.8: Learn cards and the hint ladder
          ('cards', 'learn_of', 'TEXT'), ('sched', 'refresh', 'INTEGER DEFAULT 0'),
          ('attempts', 'hints', 'INTEGER DEFAULT 0'), ('attempts', 'reflections', 'TEXT'), ('attempts', 'stuck', 'TEXT'),
-         ('attempts', 'skipped', 'INTEGER DEFAULT 0')]
+         ('attempts', 'skipped', 'INTEGER DEFAULT 0'),
+         # 4.17: the local AI's part of an attempt (docs/mentor-ai.md), JSON; empty when it was off
+         ('attempts', 'ai', 'TEXT')]
 
 def connect(path):
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -845,3 +847,36 @@ def stats(db, deck=None):
             'sent_back': sum(1 for a in att if a['stuck'] in ('held', 'repeat', 'skipped') and a['at'] >= day0),
             'modules': modules(db), 'imports': imports,
             'inbox': INBOX.replace(os.path.expanduser('~'), '~', 1)}
+
+# ---------- the local AI's part (docs/mentor-ai.md): stored with the attempt, shown labelled, not used for the rating ----------
+AI_KINDS = ('explain', 'define')          # written answers; drills and terms are graded exactly already
+
+def card_prompt(db, card_id):
+    c = db.execute("SELECT prompt FROM cards WHERE id=?", (card_id,)).fetchone()
+    return fill(c['prompt']) if c else ''
+
+def set_ai(db, attempt_id, d):
+    with DB_LOCK:
+        db.execute("UPDATE attempts SET ai=? WHERE id=?", (json.dumps(d), attempt_id)); db.commit()
+
+def get_ai(db, attempt_id):
+    r = db.execute("SELECT ai FROM attempts WHERE id=?", (attempt_id,)).fetchone()
+    return json.loads(r['ai']) if r and r['ai'] else None
+
+def export(db, out):
+    """Every rated attempt as one JSON line: the training data for a grader that learns from you (stage Bv2).
+    Placeholders stay as {{...}}; answers are yours, so the file stays on your machine."""
+    n = 0
+    for a in db.execute("SELECT a.*, c.prompt, c.answer AS reference FROM attempts a LEFT JOIN cards c ON c.id=a.card_id WHERE a.rating IS NOT NULL ORDER BY a.id"):
+        d = {k: a[k] for k in ('id', 'card_id', 'kind', 'at', 'prompt', 'reference', 'answer', 'confidence', 'ms', 'coverage', 'suggested', 'rating', 'grade_wrong', 'hints', 'grader')}
+        d['features'] = json.loads(a['features'] or '{}'); d['ai'] = json.loads(a['ai']) if a['ai'] else None
+        out.write(json.dumps(d) + '\n'); n += 1
+    return n
+
+if __name__ == '__main__':
+    import sys
+    if len(sys.argv) < 2 or sys.argv[1] != 'export':
+        sys.exit('usage: python mentor.py export [path/to/mentor.db] > attempts.jsonl')
+    path = sys.argv[2] if len(sys.argv) > 2 else os.path.expanduser(os.environ.get('ARGUS_MENTOR_DB', '~/.local/share/argus-ui/mentor.db'))
+    n = export(connect(path), sys.stdout)
+    print(f'{n} rated attempts exported', file=sys.stderr)
