@@ -84,7 +84,7 @@ leafy.register('<id>', {
 - `el` is the section's content area. The side-page layout is Elaia's: the plugin's icon and name in the title, Argus in the corner, the pill on top.
 - `api.get(path)` and `api.post(path, body)` call the plugin's own `api/<id>/…` and resolve to `{ok, status, data}`. They never throw: no answer is `{ok: false, status: 0}`.
 - `api.esc` (escape text for HTML), `api.toast(text)`, `api.url(path)` and `api.plugin` (the manifest as the page sees it).
-- `api.fx` (the shared effects: `burst`, `motes`, `glint`, `pieces`, `bolt`) and `api.holdConfirm(button, onDone)` for anything that changes what runs (docs/fx.md, Elaia 4.18 and later). Both handle reduced motion themselves.
+- `api.fx` (the shared effects: `burst`, `motes`, `glint`, `pieces`, `bolt`) and `api.holdConfirm(button, onDone)` for anything that changes what runs (docs/fx.md, Elaia 4.18 and later). Both handle reduced motion themselves. From Elaia 4.20, `api.argus.react('nod' | 'wince')` and `api.argus.watch(el)` let the characters answer the user (docs/fx.md); check `api.argus` exists before using it.
 - Escape anything you put into HTML with `api.esc`. Keep to Elaia's UI rules (CLAUDE.md): 44 px hit areas, verb-first button labels, a keyboard path, `prefers-reduced-motion`, no sideways scroll at 375 px.
 - If the script fails to load or doesn't register, the section says so and asks for a reload.
 

@@ -30,15 +30,21 @@ run(async b => {
   check(Math.abs((await btn.boundingBox()).width - wide) < 1, 'while held the button keeps its width (it must not shrink out from under the finger)');
   check(/^Hold… [12]$/.test(await btn.locator('.hold-label').textContent()) && await btn.evaluate(e => +getComputedStyle(e).getPropertyValue('--p') > .2), 'while held: the ring fills and the label counts down');
   if (process.env.SHOTS) await btn.screenshot({path: require('path').join(process.env.SHOTS, 'hold.png')});
+  check(await p.locator('#argus').evaluate(e => e.classList.contains('wide')), 'while held: Argus opens his eyes wide');
   await p.mouse.up(); await p.waitForTimeout(300);
   check(await held.textContent() === '' && /Let go early: nothing was sent/.test(await p.locator('#toastText').textContent()), 'let go early: nothing is sent, and the page says so');
   check(await btn.locator('.hold-label').textContent() === 'Send held echo', 'the label comes back');
+  check(!await p.locator('#argus').evaluate(e => e.classList.contains('wide')), 'let go: his eyes go back to normal');
 
   await p.mouse.down(); await p.mouse.move(x, y - 200); await p.waitForTimeout(3300); await p.mouse.up();
   check(await held.textContent() === '', 'sliding off the button cancels the hold');
+  await p.evaluate(() => { window.moved = []; const a = Element.prototype.animate; Element.prototype.animate = function (k, o) { if (this.id) moved.push(this.id); return a.call(this, k, o); }; });
   await p.mouse.move(x, y); await p.mouse.down(); await p.waitForTimeout(3300); await p.mouse.up();
   await held.filter({hasText: 'held echo 1: held'}).waitFor({timeout: 3000});
   check(true, 'held for 3 seconds: it sends, once');
+  const moved = await p.evaluate(() => moved);
+  const hero = await p.locator('#hero').evaluate(e => !e.hidden && e.offsetWidth > 0);   // a plugin with an icon shows its medallion
+  check(moved.includes('argus') && moved.includes('hero') === hero && await p.locator('.plugin-body').evaluate(e => e.dataset.argus) === 'function', `it worked: Argus nods, with the section's medallion if it has one (moved: ${moved.join(', ')}); plugins get api.argus`);
 
   await btn.focus(); await p.keyboard.down('Enter'); await p.waitForTimeout(600); await p.keyboard.up('Enter'); await p.waitForTimeout(200);
   check(await held.textContent() === 'held echo 1: held', 'keyboard: a short Enter sends nothing');
@@ -66,5 +72,6 @@ run(async b => {
   await q.waitForTimeout(2100); await q.mouse.up();
   await q.locator('#demo-held', {hasText: 'held echo 1'}).waitFor({timeout: 3000});
   check(true, 'reduced motion: holding still sends');
+  check(!await q.evaluate(() => document.getElementById('argus').getAnimations().length), 'reduced motion: Argus does not nod');
   check(q.errors.length === 0, 'no page errors ' + q.errors.join(' | '));
 });

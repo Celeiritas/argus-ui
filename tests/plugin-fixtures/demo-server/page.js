@@ -9,6 +9,7 @@ leafy.register('demo-server', {
       const r = await api.post('echo', {text: 'held'}); held++;
       el.querySelector('#demo-held').textContent = r.ok ? `held echo ${held}: ${r.data.echo}` : `refused (${r.status})`;
     });
+    el.dataset.argus = typeof (api.argus || {}).react;
     el.dataset.fx = ['burst', 'motes', 'glint', 'pieces', 'bolt'].filter(k => typeof (api.fx || {})[k] === 'function').join(' ');
     const {ok, data} = await api.get('ping');
     el.querySelector('#demo-ping').textContent = ok && data.pong ? `pong from ${data.id}` : 'no answer';

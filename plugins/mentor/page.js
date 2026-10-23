@@ -5,6 +5,7 @@
 (() => {
   let ROOT = null;                            // the section's content area, from show(el)
   let FX = null;                              // Elaia's shared effects (api.fx); null on an Elaia older than 4.18
+  let ARGUS = null;                           // Argus's reactions (api.argus); null on an Elaia older than 4.20
   const M = {deck: null, view: 'practice', card: null, t0: 0, result: null, shown: false, decks: [], modules: [], stats: null,
              hints: 0, reflections: [], idle: null, step: 0, notes: []};
   try { M.deck = localStorage.getItem('mentor-deck') || null; M.view = localStorage.getItem('mentor-view') === 'modules' ? 'modules' : 'practice'; } catch (e) {}
@@ -39,7 +40,7 @@
   const LEAVES = {colors: ['#9BAA6A', '#B7C47E', '#7E8C52'], shape: 'leaf', n: 9, spread: 34, size: [4, 7], fall: 12, ms: 650};   // Athena's olive
 
   async function show(el, api) {
-    ROOT = el; FX = api && api.fx || null;                                // called once; there is no refresh(), so Mentor keeps its own state
+    ROOT = el; FX = api && api.fx || null; ARGUS = api && api.argus || null;                                // called once; there is no refresh(), so Mentor keeps its own state
     const [{decks}, s] = await Promise.all([get('decks'), get('stats')]);
     M.decks = decks; M.stats = s; M.modules = s.modules || [];
     if (M.deck && !decks.some(d => d.id === M.deck) && !moduleOf(M.deck)) M.deck = null;
@@ -222,6 +223,8 @@
     if (r.ai_pending) aiLater(r.attempt);
     // each key idea you got: a few olive leaves from its tick (reduced motion: the tick alone)
     if (FX) $$('#rpanel .ideas .hit').forEach((li, i) => setTimeout(() => { const b = li.getBoundingClientRect(); if (li.isConnected) FX.burst([b.left + 8, b.top + b.height / 2], LEAVES); }, 120 * i));
+    // every key idea there: Mentor nods. Nothing for a miss: a wrong answer is part of learning, not something to flinch at
+    const ideas = $$('#rpanel .ideas li'); if (ARGUS && ideas.length && ideas.every(li => li.classList.contains('hit'))) ARGUS.react('nod');
     $('#gw').onchange = e => M.grade_wrong = e.target.checked;
     const pick = () => +($('input[name=rate]:checked')?.value || 0);
     $$('input[name=rate]').forEach(i => i.onchange = () => $('#rateBtn').textContent = verb(pick()));

@@ -37,13 +37,25 @@ For anything that changes what runs: approve a deploy, roll back, release a held
 - **Keyboard:** hold Space or Enter. A short press sends nothing.
 - **Screen readers and switches** send a single click that can't be held. Such a click (one with no press behind it) arms the button ("Click again to …") and a second click within 5 seconds confirms. That keeps a deliberate second step without shutting anyone out.
 - **Reduced motion:** no ring; the countdown words still show.
+- **Argus watches** the button while it is held, eyes wide, then nods when `onDone()` finishes, or winces if it returns `false` or throws. Return `false` when the server said no, so the character agrees with the toast.
 - The button keeps its label (verb-first, like "Approve argus-ui 4.18.0") and gets an `aria-label` that adds "hold 3 seconds to confirm". Touch can't scroll, select text or open a menu on it.
 
 ```js
 api.holdConfirm(el.querySelector('#approve'), async () => {
   const r = await api.post('approve', {id});
   api.toast(r.ok ? 'Approved. Zeus deploys it now.' : "Couldn't approve it. Nothing was changed.");
+  return r.ok;                       // false: Argus winces instead of nodding
 });
 ```
+
+## Argus reacts: `api.argus.react(kind)`, `api.argus.watch(el)`
+The characters answer what you do, using only the art that is already there (they move; nothing is redrawn).
+- `react('nod')`: it worked. Argus dips twice; on a side page the section's own medallion (`#hero`) nods with him.
+- `react('wince')`: it didn't. A blink and a small shake, Argus and the medallion.
+- `react('wide')` / `react('rest')`: eyes wide while something is about to happen, back to normal after.
+- `watch(el)` keeps his eyes on `el` ahead of the pointer; `watch(null)` lets go.
+- Where they are used: holds (above), Medusa and Zeus on Watch (nod when the task froze, thawed or ran; wince when it failed), Mentor (nods when you got every key idea; nothing for a miss, because a wrong answer is part of learning).
+- Reduced motion: the eyes still follow and widen; nothing nods or shakes.
+- Use them for results of the user's own actions, not for background events: Argus already glares at failed tasks on his own.
 
 Tested in `tests/fx.test.js`, through `tests/plugin-fixtures/demo-server`.

@@ -24,7 +24,7 @@ const leafy = (() => {
       try { const r = await fetch(url(`api/${p.id}/${path}`), init); return {ok: r.ok, status: r.status, data: await r.json().catch(() => null)}; }
       catch (e) { return {ok: false, status: 0, data: null}; }                     // no answer: the server is down or the network is
     };
-    return {plugin: p, url, esc, toast, fx, holdConfirm,
+    return {plugin: p, url, esc, toast, fx, holdConfirm, argus: {react: look.react, watch: look.watch},
       get: path => call(path, {cache: 'no-store'}),
       post: (path, body) => call(path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body || {})})};
   }
