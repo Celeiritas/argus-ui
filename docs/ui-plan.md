@@ -22,8 +22,8 @@ Each section below reuses these, so they come first and keep every page consiste
 
 | Piece | What it is | Why first |
 |---|---|---|
-| **`fx.js` + `api.fx`** | Move the Olympus helpers out of `olympus.js`/`powers.js` into one shared file: `particle`, `burst`, `crumble`, `boltFx`, `streak`, `motes` (a ribbon of glowing motes, after SoulSeed's heal swirl), `medal(key)`. Server plugins get them as `api.fx`. All honour reduced motion inside, so a plugin can't forget. | Every page wants the same feedback; copying it into four repos would drift. |
-| **`holdConfirm(button, ms, onDone)`** | The 3-second hold with a ring that fills and the words "Hold… 3 · 2 · 1"; Space/Enter held works the same; reduced motion shows the countdown words only. | Throne's Approve and Roll back, Delivery's Release. One implementation, one test. |
+| **`fx.js` + `api.fx`** (built in 4.18: docs/fx.md; `medal(key)` stays in Olympus until another page needs it) | Move the Olympus helpers out of `olympus.js`/`powers.js` into one shared file: `particle`, `burst`, `crumble`, `boltFx`, `streak`, `motes` (a ribbon of glowing motes, after SoulSeed's heal swirl), `medal(key)`. Server plugins get them as `api.fx`. All honour reduced motion inside, so a plugin can't forget. | Every page wants the same feedback; copying it into four repos would drift. |
+| **`holdConfirm(button, onDone)`** (built in 4.18) | The 3-second hold with a ring that fills and the words "Hold… 3 · 2 · 1"; Space/Enter held works the same; reduced motion shows the countdown words only. | Throne's Approve and Roll back, Delivery's Release. One implementation, one test. |
 | **Status v2** | `GET api/<id>/status` may add `needs` (true when the owner should act), `action` (a verb-first label, 32 characters at most, e.g. "Approve argus-ui 4.15.0") and `count`. Old plugins keep working: `{line}` alone still shows. | Home's "Needs you" list is built from it. |
 | **Events** | `GET api/<id>/events?since=<iso>` → `[{t, kind, text, link}]`, at most 50, newest last, read from the agent's own logs. | Home's "Today" strip and each page's history use it. |
 | **`ctx.jobs()`** | A server plugin can read the task information Elaia already collects (last run, next run, state) without its own subprocess. | Mnemosyne has no status file; her page needs the timer's last and next run. |
@@ -118,7 +118,7 @@ It stays a sandboxed frame. Home shows its version. If Spartamelee later writes 
 
 ## 12. Order of work
 1. **Home v2 + status v2** (this repo). Home is the first page you see, and the change you asked for. Building it is half done (on a branch waiting for #17).
-2. **`fx.js` / `api.fx` / `holdConfirm`** (this repo), with tests, before any agent page.
+2. **`fx.js` / `api.fx` / `holdConfirm`** (this repo), with tests, before any agent page. Done in 4.18.
 3. **Mentor's local-AI groundwork** (docs/mentor-ai.md), then the garden once its art is approved.
 4. **Zeus · Throne** (zeus#11), because it replaces typing `yes` over ssh. Then **Hermes · Delivery** (hermes#11), **Janus · Map** (janus#12) and **Mnemosyne · Memory**.
 5. **Olympus** proposals as art is approved; **Watch** additions alongside.
