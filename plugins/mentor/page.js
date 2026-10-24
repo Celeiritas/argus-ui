@@ -10,6 +10,7 @@
              hints: 0, reflections: [], idle: null, step: 0, notes: []};
   try { M.deck = localStorage.getItem('mentor-deck') || null; M.view = localStorage.getItem('mentor-view') === 'modules' ? 'modules' : 'practice'; } catch (e) {}
   const save = (k, v) => { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch (e) {} };
+  const stored = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
   const get = async p => (await fetch(url('api/mentor/' + p), {cache: 'no-store'})).json();
   const send = async (p, body) => (await fetch(url('api/mentor/' + p), {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)})).json();
   // shown best to worst; value = FSRS rating (4 Easy ... 1 Again)
@@ -224,7 +225,15 @@
     // each key idea you got: a few olive leaves from its tick (reduced motion: the tick alone)
     if (FX) $$('#rpanel .ideas .hit').forEach((li, i) => setTimeout(() => { const b = li.getBoundingClientRect(); if (li.isConnected) FX.burst([b.left + 8, b.top + b.height / 2], LEAVES); }, 120 * i));
     // every key idea there: Mentor nods. Nothing for a miss: a wrong answer is part of learning, not something to flinch at
-    const ideas = $$('#rpanel .ideas li'); if (ARGUS && ideas.length && ideas.every(li => li.classList.contains('hit'))) ARGUS.react('nod');
+    const ideas = $$('#rpanel .ideas li'), all = ideas.length > 0 && ideas.every(li => li.classList.contains('hit'));
+    if (ARGUS && all) ARGUS.react('nod');
+    // a streak: cards in a row with every key idea (kept in this browser; a miss ends it). Every third one sends a ribbon of
+    // motes from the result up to Mentor's medallion, and the panel says how many in a row
+    if (ideas.length) {
+      const streak = all ? (+stored('mentor-streak') || 0) + 1 : 0; save('mentor-streak', streak ? String(streak) : null); ROOT.firstElementChild.dataset.streak = streak;
+      if (streak >= 3) $('#rpanel .deckname').append(` · ${streak} in a row`);
+      const hero = $('#hero'); if (FX && streak && streak % 3 === 0 && hero && !hero.hidden && hero.offsetWidth) FX.motes($('#rhead'), hero, {color: '#B7C47E', n: 26, ms: 1100, lift: 90});
+    }
     $('#gw').onchange = e => M.grade_wrong = e.target.checked;
     const pick = () => +($('input[name=rate]:checked')?.value || 0);
     $$('input[name=rate]').forEach(i => i.onchange = () => $('#rateBtn').textContent = verb(pick()));

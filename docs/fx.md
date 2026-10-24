@@ -55,7 +55,18 @@ The characters answer what you do, using only the art that is already there (the
 - `react('wide')` / `react('rest')`: eyes wide while something is about to happen, back to normal after.
 - `watch(el)` keeps his eyes on `el` ahead of the pointer; `watch(null)` lets go.
 - Where they are used: holds (above), Medusa and Zeus on Watch (nod when the task froze, thawed or ran; wince when it failed), Mentor (nods when you got every key idea; nothing for a miss, because a wrong answer is part of learning).
-- Reduced motion: the eyes still follow and widen; nothing nods or shakes.
+- `react('content')`: a slow, contented blink (400 ms). Home uses it when Needs you empties.
+- Reduced motion: the eyes still follow and widen; nothing nods or shakes, and there is no slow blink.
 - Use them for results of the user's own actions, not for background events: Argus already glares at failed tasks on his own.
 
 Tested in `tests/fx.test.js`, through `tests/plugin-fixtures/demo-server`.
+
+## At rest
+After a minute with no input (pointer, key, wheel, touch or focus) and nothing wrong, Argus dozes: his eyes half-close and drift
+slowly, and his blinks slow down. Any input wakes him with a blink. He never dozes while a task has failed or an alert is up (he
+glares instead), while a button is held, or while something is being carried on Olympus. Reduced motion: he does not doze.
+`look.doze(ms)` sets the wait (tests shorten it).
+
+Mentor keeps a streak of cards answered with every key idea (`localStorage` `mentor-streak`; a miss ends it; cards without a key-idea
+list leave it as it is). Every third one sends a ribbon of motes (`fx.motes`) from the result up to Mentor's medallion, and the
+result line says how many in a row.
