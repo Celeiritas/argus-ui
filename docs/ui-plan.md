@@ -155,12 +155,13 @@ the section's medallion nods with him; Medusa and Zeus results nod or wince; Men
 section arrives with a short rise (300 ms, once per page load); section icons lift on hover. All of it is skipped under
 reduced motion except the eyes. docs/fx.md "Argus reacts".
 
+Built in 4.21.0 (docs/fx.md "At rest"): Home's slow, contented blink when Needs you empties; Mentor's streak (every third card
+in a row with every key idea sends motes up to the medallion, and the result line says how many in a row); after a minute with no
+input Argus dozes (eyes half-closed, drifting slowly, slower blinks) and any input wakes him with a blink; he never dozes while
+something has failed. zeus 0.4.1 built the Throne's nod and wince on a finished or failed deploy.
+
 Proposed next, no new art needed:
-- **Throne:** Argus watches the deploy stages; the stage chip that just finished gives a small glint (`fx.glint`); the Throne
-  nods on a finished deploy and winces on a failed one (zeus `plugin/page.js`, return `r.ok` from the holds).
-- **Home:** when Needs you empties, Argus gives a slow, contented blink (a longer `blink`, 400 ms).
-- **Mentor:** a streak of three right answers sends motes (`fx.motes`) round Mentor's medallion.
-- **Idle:** after a minute with no input Argus's eyes wander more slowly and half-close; any input wakes him with a blink.
+- **Throne:** Argus watches the deploy stages; the stage chip that just finished gives a small glint (`fx.glint`) (zeus `plugin/page.js`).
 
 Needs the owner's approval first (new drawings, §13):
 - Separate layers for the god medallions (an arm, a head) so Zeus can raise his bolt, Medusa's snakes can stir and Mentor's

@@ -161,12 +161,15 @@ run(async b => {
   // explain cards come after the pre-reads; fenced code in the prompt is shown as code
   await p.selectOption('#mdeck', ''); await p.selectOption('#mdeck', 'argus-code'); await p.waitForTimeout(600);
   check(await p.locator('.kind').textContent() === 'Find the bug' && await p.locator('.prompt pre.code').count() === 1, 'a pre-mortem card shows its code');
+  await p.evaluate(() => { localStorage.setItem('mentor-streak', '2'); window.moteCalls = 0; const m = fx.motes; fx.motes = (...a) => { moteCalls++; return m(...a); }; });   // two right in a row already
   await p.locator('#ans').fill('A crash leaves a truncated file, so json load fails next start. Write a temp file then os.replace, which is atomic.');
   await p.keyboard.press('Control+Enter');
   const leaves = await p.waitForFunction(() => document.querySelectorAll('#fx > .p').length > 0, null, {timeout: 1500}).then(() => true, () => false);
   await p.waitForTimeout(600);
   check(/3 of 3 key ideas/.test(await p.locator('#rhead').textContent()), 'the explanation covers all three key ideas');
   check(leaves, 'each key idea you got pops a few olive leaves (api.fx.burst)');
+  check(await p.locator('.mentor').getAttribute('data-streak') === '3' && /· 3 in a row$/.test(await p.locator('#rpanel .deckname').first().textContent()) && await p.evaluate(() => moteCalls) === 1,
+    "three cards in a row with every key idea: the panel says so and motes rise to Mentor's medallion (api.fx.motes)");
   await p.locator('#rateBtn').click(); await p.waitForTimeout(500);
 
   // level 3: write the whole body (auto-indent); Python reads it, never runs it

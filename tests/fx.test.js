@@ -31,6 +31,7 @@ run(async b => {
   check(/^Hold… [12]$/.test(await btn.locator('.hold-label').textContent()) && await btn.evaluate(e => +getComputedStyle(e).getPropertyValue('--p') > .2), 'while held: the ring fills and the label counts down');
   if (process.env.SHOTS) await btn.screenshot({path: require('path').join(process.env.SHOTS, 'hold.png')});
   check(await p.locator('#argus').evaluate(e => e.classList.contains('wide')), 'while held: Argus opens his eyes wide');
+  check(!await p.locator('#argus').evaluate(e => e.classList.contains('drowsy')), 'held: he does not doze while something is about to happen');
   await p.mouse.up(); await p.waitForTimeout(300);
   check(await held.textContent() === '' && /Let go early: nothing was sent/.test(await p.locator('#toastText').textContent()), 'let go early: nothing is sent, and the page says so');
   check(await btn.locator('.hold-label').textContent() === 'Send held echo', 'the label comes back');
@@ -59,6 +60,24 @@ run(async b => {
   check(true, 'a second click within 5 seconds confirms');
   check(p.errors.length === 0, 'no page errors ' + p.errors.join(' | '));
 
+  // ---- at rest: a while with no input and nothing wrong, and he dozes; any input wakes him with a blink
+  await p.evaluate(() => look.doze(400)); await p.waitForTimeout(900);
+  check(!await p.locator('#argus').evaluate(e => e.classList.contains('drowsy')), 'a failed task keeps him awake (he glares instead)');
+  await p.evaluate(() => { S.jobs.forEach(j => { if (j.state === 'failed') j.state = 'running'; }); look.retarget(); });
+  await p.waitForFunction(() => document.getElementById('argus').classList.contains('drowsy'), null, {timeout: 2000}).catch(() => {});
+  check(await p.locator('#argus').evaluate(e => e.classList.contains('drowsy') && !e.classList.contains('glare')), 'all well and no input: his eyes half-close');
+  await p.keyboard.press('Shift');
+  check(await p.locator('#argus').evaluate(e => !e.classList.contains('drowsy') && e.classList.contains('blink')), 'a key press wakes him with a blink');
+  await p.waitForTimeout(900);
+  check(await p.locator('#argus').evaluate(e => e.classList.contains('drowsy')), 'left alone again, he dozes again');
+  await p.mouse.move(x + 40, y + 40);
+  check(!await p.locator('#argus').evaluate(e => e.classList.contains('drowsy')), 'and the pointer wakes him too');
+  await p.evaluate(() => look.react('content'));
+  check(await p.locator('#argus').evaluate(e => e.classList.contains('content') && e.classList.contains('blink')), "react('content'): a slow, contented blink");
+  await p.waitForTimeout(900);
+  check(!await p.locator('#argus').evaluate(e => e.classList.contains('content')), 'and his eyes open again');
+  check(p.errors.length === 0, 'no page errors ' + p.errors.join(' | '));
+
   // ---- reduced motion: no particles, no ring; the hold still works by its words
   const q = await page(b); await q.emulateMedia({reducedMotion: 'reduce'});
   await q.goto(BASE); await q.waitForTimeout(800);
@@ -73,5 +92,7 @@ run(async b => {
   await q.locator('#demo-held', {hasText: 'held echo 1'}).waitFor({timeout: 3000});
   check(true, 'reduced motion: holding still sends');
   check(!await q.evaluate(() => document.getElementById('argus').getAnimations().length), 'reduced motion: Argus does not nod');
+  await q.evaluate(() => { S.jobs.forEach(j => { if (j.state === 'failed') j.state = 'running'; }); look.retarget(); look.doze(300); look.react('content'); }); await q.waitForTimeout(800);
+  check(await q.locator('#argus').evaluate(e => !e.classList.contains('drowsy') && !e.classList.contains('content')), 'reduced motion: no dozing and no slow blink');
   check(q.errors.length === 0, 'no page errors ' + q.errors.join(' | '));
 });

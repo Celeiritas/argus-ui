@@ -1,5 +1,12 @@
 # Changelog
 
+## 4.21.0 – 2026-10-23
+- **Argus at rest** (docs/fx.md "At rest"). After a minute with no input and nothing wrong he dozes: eyes half-closed, drifting slowly, slower blinks. Any input (pointer, key, wheel, touch, focus) wakes him with a blink. He stays awake while a task has failed or an alert is up, while a button is held, and while something is carried on Olympus
+- **Home:** when Needs you empties, Argus gives a slow, contented blink (`look.react('content')`)
+- **Mentor:** a streak of cards answered with every key idea; every third one sends a ribbon of motes from the result up to Mentor's medallion, and the result line says how many in a row. A miss ends the streak; it is kept in the browser
+- Reduced motion: no dozing, no slow blink (the eyes still follow and widen)
+- Tests: `tests/fx.test.js` (dozes only when all is well and nothing is held, wakes on a key and on the pointer, the contented blink, reduced motion), `tests/home.test.js` (the blink when the list empties, once), `tests/mentor.test.js` (the third right card in a row)
+
 ## 4.20.0 – 2026-10-23
 - **Argus reacts to what you do** (docs/fx.md "Argus reacts"). While you hold a button he keeps his eyes on it, wide open; when it worked he nods, when it failed he winces (a blink and a small shake). On a side page the section's medallion nods or winces with him. Only the art that is there moves; nothing is redrawn
 - Used by holds (`holdConfirm`: return `false` from `onDone` to get the wince), Medusa and Zeus on Watch, and Mentor (nods when you got every key idea; nothing for a miss)

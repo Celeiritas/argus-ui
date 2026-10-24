@@ -3,6 +3,7 @@
 // plugin's status (Mentor's too), then a row of places with their one line. Status v2: {line, needs, action} from api/<id>/status.
 const home = (() => {
   const lines = {};                        // section id -> its last status (undefined: still asking, null: none)
+  let had = null;                          // how many things needed you at the last draw (null: not drawn yet)
   const plural = (n, one, many = one + 's') => `${n} ${n === 1 ? one : many}`;
   async function ask() {
     await Promise.all(PLUGINS.filter(p => p.kind === 'server').map(p =>
@@ -41,6 +42,8 @@ const home = (() => {
           : `<p class="quiet">${asking ? 'Asking every section…' : 'Nothing needs you. The realm is quiet.'}</p>`}</section>
       <section class="places" aria-labelledby="places-h"><h2 id="places-h">Places</h2><ul class="placelist">${places()}</ul></section></section>`;
     if (focused) $$('#main a').find(a => a.getAttribute('href') === focused)?.focus();
+    if (had > 0 && !list.length) look.react('content');       // Needs you just emptied: Argus gives a slow, contented blink
+    had = list.length;
   }
   function show() { draw(); ask().then(draw); }      // the 15 s refresh calls this too: draw from what we know, then ask again
   // the header: a greeting by the viewer's clock, then the date and the weather (core.js render() calls this)

@@ -40,6 +40,17 @@ run(async b => {
   await shot(p, 'home');
   fs.rmSync(path.join(AL, 'zeus.json'), {force: true});
 
+  // when Needs you empties, Argus gives a slow, contented blink (look.react('content'))
+  await p.route('**/api/*/status', r => r.fulfill({json: {line: 'All quiet', needs: false, action: ''}}));   // every section (Heracles and Mentor say "needs" in the fixtures)
+  await p.evaluate(() => { S.alerts = []; S.jobs.forEach(j => { if (j.state === 'failed') j.state = 'running'; }); home.show(); });
+  const content = await p.waitForFunction(() => document.getElementById('argus').classList.contains('content'), null, {timeout: 2000}).then(() => true, () => false);
+  await p.locator('.quiet', {hasText: 'Nothing needs you'}).waitFor({timeout: 2000});
+  check(content, 'Needs you emptied: the realm is quiet, and Argus gives a slow, contented blink');
+  await p.waitForTimeout(900); await p.evaluate(() => home.show()); await p.waitForTimeout(300);
+  check(!await p.locator('#argus').evaluate(e => e.classList.contains('content')), 'a redraw while it stays empty does not blink again');
+  await p.unroute('**/api/*/status'); await p.evaluate(() => refresh()); await p.waitForTimeout(700);
+  check(await need('task failed').count() === 1, 'the next refresh shows the failed task again');
+
   await place('Olympus').focus(); await p.evaluate(() => refresh()); await p.waitForTimeout(500);
   check(await p.evaluate(() => document.activeElement?.getAttribute('href')?.endsWith('olympus')), 'the refresh keeps keyboard focus');
   await p.keyboard.press('Enter'); await p.waitForURL(/\/olympus$/);

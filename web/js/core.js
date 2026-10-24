@@ -195,13 +195,14 @@ document.addEventListener('click', e => {
 const look = (() => {
   const A = $('#argus'), svg = $('svg[viewBox="0 0 234 234"]', A), eyes = $$('.eye', svg).map(g => ({iris: $('.iris', g), max: +g.dataset.max, cx: +g.dataset.cx, cy: +g.dataset.cy}));
   let pointer = null, lastMove = 0, target = null, wander = {x: 0, y: 0, t: 0}, cur = eyes.map(() => [0, 0]), watched = null;   // watched: kept in view ahead of the pointer
+  let lastInput = performance.now(), dozeAfter = 60000, drowsy = false, alarmed = false;   // a minute with no input and nothing wrong: he dozes (docs/fx.md "At rest")
   function aim(px, py) {
     const m = svg.getScreenCTM(); if (!m) return;
     eyes.forEach((e, i) => {
       const sx = m.a * e.cx + m.e, sy = m.d * e.cy + m.f;
       const dx = px - sx, dy = py - sy, d = Math.hypot(dx, dy) || 1, k = Math.min(1, d / 220);
       const tx = dx / d * e.max * k, ty = dy / d * e.max * .55 * k;
-      const ease = RM.matches ? 1 : .25;
+      const ease = RM.matches ? 1 : drowsy ? .06 : .25;                // drowsy: the eyes drift slowly
       cur[i][0] += (tx - cur[i][0]) * ease; cur[i][1] += (ty - cur[i][1]) * ease;
       e.iris.setAttribute('transform', `translate(${cur[i][0].toFixed(2)} ${cur[i][1].toFixed(2)})`);
     });
@@ -211,7 +212,7 @@ const look = (() => {
     // a failed task, or an agent's alert file at level "alert" (docs/alerts.md): both make him glare and count in the badge
     const bad = (S?.jobs || []).filter(j => j.state === 'failed'), up = (S?.alerts || []).filter(a => a.level === 'alert'), n = bad.length + up.length;
     target = $('.card[data-state="failed"]') || $('.card.alerted');
-    A.classList.toggle('glare', n > 0); A.classList.toggle('calm', !n);
+    alarmed = n > 0; A.classList.toggle('glare', alarmed); A.classList.toggle('calm', !n);
     $('#alarm').hidden = !n; $('#alarmN').textContent = n > 1 ? n : '';
     const dot = $('#realmDot'); if (dot) { dot.hidden = !n; dot.textContent = n; }
     const say = n ? [bad.length && `${bad.length} task${bad.length === 1 ? '' : 's'} failed: ${bad.map(j => j.job).join(', ')}`,
@@ -227,28 +228,36 @@ const look = (() => {
   }
   addEventListener('pointermove', e => { pointer = [e.clientX, e.clientY]; lastMove = performance.now(); }, {passive: true});
   addEventListener('focusin', e => { const r = e.target.getBoundingClientRect?.(); if (r && r.width) { pointer = [r.left + r.width / 2, r.top + r.height / 2]; lastMove = performance.now(); } });  // keyboard users get watched too
-  function blink() { if (!RM.matches) { A.classList.add('blink'); setTimeout(() => A.classList.remove('blink'), 150); } setTimeout(blink, 3500 + Math.random() * 5000); }
+  function shut(ms) { A.classList.add('blink'); setTimeout(() => A.classList.remove('blink'), ms); }
+  function blink() { if (!RM.matches) shut(drowsy ? 350 : 150); setTimeout(blink, 3500 + Math.random() * 5000); }   // drowsy: slower blinks
   setTimeout(blink, 4000);
+  // any input wakes him with a blink; keyboard and touch count as much as the pointer
+  function wake() { lastInput = performance.now(); if (drowsy) { drowsy = false; A.classList.remove('drowsy'); shut(150); } }
+  ['pointermove', 'pointerdown', 'keydown', 'wheel', 'touchstart', 'focusin'].forEach(ev => addEventListener(ev, wake, {passive: true}));
   function tick(t) {
+    if (!drowsy && !RM.matches && !alarmed && !drag && !watched && !gaze && t - lastInput > dozeAfter) { drowsy = true; A.classList.add('drowsy'); }   // never while something failed or is held
     if (drag) aim(drag.x, drag.y);                                   // he watches whatever you carry
     else if (watched?.isConnected) { const r = watched.getBoundingClientRect(); aim(r.left + r.width / 2, r.top + r.height / 2); }   // a button being held
     else if (gaze) aim(gaze.x, gaze.y);
     else if (pointer && t - lastMove < 2500) aim(...pointer);
     else if (target) { const r = target.getBoundingClientRect(); aim(r.left + r.width / 2, r.top + r.height / 2); }
-    else if (!RM.matches) { if (t - wander.t > 2600) { const r = A.getBoundingClientRect(); wander = {x: r.left + r.width / 2 + (Math.random() - .5) * 700, y: r.top + r.height / 2 + Math.random() * 400, t}; } aim(wander.x, wander.y); }
+    else if (!RM.matches) { if (t - wander.t > (drowsy ? 6000 : 2600)) { const r = A.getBoundingClientRect(); wander = {x: r.left + r.width / 2 + (Math.random() - .5) * (drowsy ? 300 : 700), y: r.top + r.height / 2 + Math.random() * (drowsy ? 160 : 400), t}; } aim(wander.x, wander.y); }
     requestAnimationFrame(tick);
   }
   requestAnimationFrame(tick);
   // He reacts to what you do (docs/fx.md "Argus reacts"): 'wide' while something is about to happen (a hold), 'rest' after it,
-  // 'nod' when it worked, 'wince' when it didn't. On a side page the section's own medallion (#hero) nods or winces with him.
+  // 'nod' when it worked, 'wince' when it didn't, 'content' for a slow, contented blink (Needs you emptied). On a side page the
+  // section's own medallion (#hero) nods or winces with him.
   // Only moves the art that is there (no new drawings); reduced motion keeps the eyes and drops the movement.
   const MOVES = {nod: [{transform: 'none'}, {transform: 'translateY(7%) rotate(-2deg)'}, {transform: 'none'}, {transform: 'translateY(4%)'}, {transform: 'none'}],
     wince: [{transform: 'none'}, {transform: 'translateX(-4%) rotate(-4deg)'}, {transform: 'translateX(3%) rotate(3deg)'}, {transform: 'translateX(-1%)'}, {transform: 'none'}]};
   function react(kind) {
-    A.classList.toggle('wide', kind === 'wide'); if (!MOVES[kind]) return;
-    if (kind === 'wince') { A.classList.add('blink'); setTimeout(() => A.classList.remove('blink'), 220); }
+    A.classList.toggle('wide', kind === 'wide');
+    if (kind === 'content') { if (!RM.matches) { A.classList.add('content'); shut(400); setTimeout(() => A.classList.remove('content'), 800); } return; }
+    if (!MOVES[kind]) return;
+    if (kind === 'wince') shut(220);
     if (RM.matches) return;
     [A, side && $('#hero')].filter(e => e && !e.hidden && e.offsetWidth).forEach(e => e.animate(MOVES[kind], {duration: kind === 'nod' ? 700 : 420, easing: 'ease-in-out'}));
   }
-  return {retarget, react, watch: el => { watched = el || null; }};
+  return {retarget, react, watch: el => { watched = el || null; }, doze: ms => { dozeAfter = ms; }};   // doze: how long before he dozes (tests shorten it)
 })();

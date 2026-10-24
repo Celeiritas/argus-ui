@@ -39,6 +39,8 @@ main{padding-bottom:220px!important}   /* the end of every page opens onto the g
 .argus .ball{transform-box:fill-box;transform-origin:center;transition:transform var(--t2) ease-out,opacity var(--t1)}
 .argus.glare .ball{transform:scaleY(.72)}
 .argus.wide .ball{transform:scaleY(1.22)}   /* holding a button: eyes wide (look.react) */
+.argus.drowsy .ball{transform:scaleY(.5);transition-duration:.8s}   /* a minute with no input: eyes half-closed, drifting slowly (look) */
+.argus.content .ball{transition-duration:.35s}   /* a slow, contented blink: Needs you emptied (look.react) */
 .argus.blink .ball{transform:scaleY(.06);opacity:0}
 .argus .shut{opacity:0;transition:opacity var(--t1)}.argus.blink .shut{opacity:1}
 .argus .ir,.argus .pu{transition:fill var(--t4)}
