@@ -25,6 +25,9 @@ Grading roadmap (each stage keeps the data the next one learns from):
 Every attempt is stored with its features and your labels in the `attempts` table, from day one. Code you type is
 only parsed, never run.
 
+Courses (4.26, docs/mentor.md): course -> modules -> lessons -> notes -> cards with learning objectives; a course lesson is a
+lesson in this format plus LO / note / role / check fields (import_course). Older lessons form the Loose lessons course.
+
 Code modules arrive in the inbox folder (~/.local/share/argus-ui/inbox, or ARGUS_MENTOR_INBOX). It is checked every
 time the page asks for a card, so a copied-in file shows up without a restart. Files are read, never moved or deleted.
 

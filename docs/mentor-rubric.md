@@ -30,6 +30,23 @@ Novices learn a procedure from a fully worked example before they write it thems
 ## R5 – Plain words, every term defined once
 Use everyday words; a technical term appears only after its term card has defined it. Each term has exactly one term card with a `concise_definition`, and no term is defined twice (two definitions compete). ERROR.
 
+## Courses: checker v2 (4.26.0)
+A course file (`"format": "mentor-course/1"`, [docs/mentor.md](mentor.md#courses-4260)) gets R1–R5 on every lesson, plus:
+
+| Rule | Refuses |
+|---|---|
+| C1 | a missing `format`, `id`, `name`, `los` or `modules`; a module without `name` / `lessons`, a lesson without `los`; an id used twice (LOs in the course; modules; lessons in a module; notes and cards in a lesson) |
+| C2 | an LO missing any of `id, text, verb, bloom, mode, knowledge, condition, standard, parent`; a `bloom`, `mode` or `knowledge` outside its list; more than one verb; *know*, *understand* or *learn about* as the verb; text that doesn't start with its verb. An unusual verb is a warning |
+| C3 | a module LO whose parent isn't a course LO, a lesson LO whose parent isn't an LO of its own module. A course or module LO nothing serves is a warning |
+| C4 | a card without an LO of its lesson, a role that doesn't fit its list (term, recall · drill · explain, find-bug, choose-design), a role phase 4 adds (predict, trace, parsons, write, make), a `note` the lesson doesn't have; an LO with fewer than 2 practice cards or no check item |
+| C5 | `requires` naming a module the course doesn't have, or modules that require each other in a circle |
+| C6 | a citation not written **Author(s) (year). Title. Venue.** |
+| C7 | a Python drill whose canonical code or level-3 answer doesn't parse (`ast`, never run; other languages are reported as not checked) |
+| C8 | with `--repo NAME=PATH`: a code reference whose file isn't in the repository at its commit, or doesn't define its symbol. Without it: a note that it wasn't checked |
+| C9 | with `--online`: a link that answers 404 or not at all, a DOI doi.org doesn't know. A site that refuses robots (401, 403, 429) is a warning: open it yourself |
+
+`python3 scripts/check-deck.py --repo argus-ui=. --online course.json`. The tests run it on `tests/deck-fixtures/good-course.json` (clean) and `bad-course.json` (each rule broken once).
+
 ## Not checked by the script (read it yourself)
 - Every term used in the orientation or a prompt has a term card, or is replaced by plain words.
 - Feedback and hints say where to look, never judge the person (Hattie & Timperley, 2007).

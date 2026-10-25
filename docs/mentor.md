@@ -37,6 +37,31 @@ Argus ships one lesson, **Argus: caching, locks and the Mentor scheduler** (`the
 - **End of a session:** "This session: 12 cards answered, 9 right", and **Replay your 3 mistakes** asks those cards again (`next?replay=<card id>` serves a practice card without its answer).
 - **Lessons** is a course map: one *Continue where you left off*, the reviews due, then each project's lessons as one framed list. A row has the name, one line, how much is practised and one action (Start, Continue, Review); *About this lesson* and *Read the lesson again* open under it; each project's sources are one list behind *Where these lessons come from*. Calibration, the local AI line and how to add a lesson are under *About Mentor and adding a lesson*.
 
+## Courses (4.26.0)
+A **course** turns one project into something you can rebuild alone (the plan: [`docs/plans/2026-10-25-mentor-courses-spec.md`](plans/2026-10-25-mentor-courses-spec.md)). It has levels: **course** → **modules** (one slice of the project, `requires` other modules) → **lessons** (one sitting) → **notes** (one source item: a term, a concept, a snippet, a claim, each with a `source_ref`) → **cards**. Each level has **learning objectives** (LOs): `{id, text, verb, bloom, mode, knowledge, condition, standard, parent}`, one observable verb each, every lesson LO serving a module LO and every module LO a course LO.
+
+A course is one JSON file in the inbox (or a decks folder), `"format": "mentor-course/1"`. A course lesson is a lesson in the format above with `id`, `los` and `notes` added, and four fields on each card: `lo` (one of the lesson's LOs), `note`, `role` and `check`:
+```json
+{"format": "mentor-course/1", "id": "demo-server", "name": "Rebuild a small web server", "summary": "…", "requires": [], "retention": 0.9,
+ "sources": [{"cite": "Rosenshine, B. (2012). Principles of instruction. American Educator.", "url": "https://…"}],
+ "los": [{"id": "T1", "text": "Build request checks that refuse unsafe POSTs", "verb": "build", "bloom": "create", "mode": "write",
+          "knowledge": "procedural", "condition": "docs allowed", "standard": "all tests pass", "parent": null}],
+ "modules": [{"id": "requests", "name": "Requests", "requires": [], "los": [{"id": "M1", "parent": "T1", "…": "…"}],
+   "lessons": [{"id": "origin", "name": "Why a cross-site POST is refused", "los": [{"id": "L2", "parent": "M1", "…": "…"}],
+     "notes": [{"id": "n-host", "kind": "snippet", "source_ref": {"repo": "argus-ui", "path": "server/argus_ui.py", "symbol": "do_POST", "commit": "beab7ba"}}],
+     "cta_summary": {"orientation": "…"},
+     "tier_2_self_explanation_cards": [{"id": "c-why", "lo": "L2", "note": "n-host", "role": "explain", "front_prompt": "…", "…": "…"},
+                                       {"id": "k-origin", "lo": "L2", "note": "n-host", "role": "explain", "check": true, "…": "…"}]}]}]}
+```
+A full example is `tests/deck-fixtures/good-course.json`; `python3 scripts/check-deck.py` checks a course before it goes in the inbox (the C rules in the [deck rubric](mentor-rubric.md)).
+- **Roles** today: `term`, `recall`, `explain`, `find-bug`, `choose-design`, `drill`. `predict`, `trace`, `parsons`, `write` and `make` come with the new card types; until then such a card is skipped and named in Lessons.
+- **Check items** (`"check": true`) are kept for module checks: they're never served as practice, never hold back a lesson's other cards, and never count as waiting. Every LO needs at least 2 practice cards and 1 check item.
+- **Source references:** `{repo, path, symbol, commit, lines}` for code, `{cite, url, doi}` for a paper, `{note, path}` for your own notes. Cards show the symbol, never the path.
+- **Loose lessons:** every lesson in the older format belongs to the built-in course *Loose lessons*, one module per project. Nothing moves in Lessons: a course's lessons show as one group under the course's name, in course order.
+- **Re-importing** a changed course keeps your history; a lesson, note or LO the file no longer has goes (its attempts and schedule rows stay).
+
+**Review log.** Every rating also stores what it was, as Anki's review log does: `review` (*learn* until the card is first passed with Hard or better, *review*, *relearn* after an Again, *manual* when practising ahead), `ivl_before` and `ivl_after` (days), and `took` (time, capped at 60 s; the raw `ms` stays for the grader). This is what fitting FSRS to you will read later.
+
 ## Menus and submenus (4.22.0)
 A lesson's `metadata.project` names where it sits in the Study picker. A plain project (`Sound-Haptics-Lab`) puts the lesson under **Lessons** as "project: name". A project with the separator ` › ` (space, U+203A, space), such as `GAME_RESEARCH › Topics`, puts it in its own submenu; the picker offers **Study all** for that submenu and **Study all of GAME_RESEARCH** for the whole menu. Group choices travel as `group:<project>` (`next?deck=group:GAME_RESEARCH`) and take every lesson whose project is that name or lies under it.
 
