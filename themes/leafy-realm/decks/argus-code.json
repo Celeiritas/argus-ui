@@ -30,7 +30,7 @@
   {
    "id": "drill_01",
    "file_breadcrumb": "server -> sky.py -> current()",
-   "context_comment": "Serve the weather from memory while it is younger than TTL; otherwise fetch it once, under a lock, and keep the old reading if the fetch fails.",
+   "context_comment": "Serve the weather from memory while it is under 20 minutes old (its time-to-live, `TTL`); otherwise fetch it once, under a lock, and keep the old reading if the fetch fails.",
    "full_canonical_code": "def current(loc):\n    \"\"\"Return the weather, from the cache while it is fresh. Never raises.\"\"\"\n    with _lock:\n        if _mem.get('at', 0) > time.time() - TTL:\n            return _mem\n        try:\n            data = fetch(loc)\n            _mem.clear()\n            _mem.update(data)\n        except Exception:\n            _mem['stale'] = True\n        return _mem",
    "level_1_fade": "def current(loc):\n    \"\"\"Return the weather, from the cache while it is fresh. Never raises.\"\"\"\n    with _lock:\n        if _mem.get('at', 0) > time.time() - TTL:\n            return {{BLANK_1}}\n        try:\n            data = fetch(loc)\n            _mem.clear()\n            _mem.update({{BLANK_2}})\n        except Exception:\n            _mem['stale'] = True\n        return _mem",
    "level_2_fade": "def current(loc):\n    \"\"\"Return the weather, from the cache while it is fresh. Never raises.\"\"\"\n    {{BLANK_1}}:\n        if {{BLANK_2}}:\n            return _mem\n        try:\n            data = fetch(loc)\n            _mem.clear()\n            _mem.update(data)\n        except Exception:\n            _mem['stale'] = True\n        return _mem",
@@ -393,15 +393,14 @@
    "preread": {
     "key_ideas": [
      "A file is written in pieces; the process can die between pieces.",
-     "A half-written JSON file does not parse, so the next start has nothing.",
-     "Write to a temporary file, then `os.replace()` it over the real one: the replace is one step, so the real file is always whole."
+     "`json.load` can only read back a complete JSON text."
     ],
     "near_example": {
      "code": "f = open(LOG, 'w')\nf.write(big)   # power cut here",
      "ask": "What does the next start find in LOG?",
      "answer": "A truncated LOG: only the bytes written so far, which may stop mid-line."
     },
-    "try_first": "How could a file on disk end up only partly written?"
+    "try_first": "When a program starts up again, what does it need from the file it saved last time?"
    },
    "hints": [
     "Where could the process stop between opening and closing the file?",
@@ -600,11 +599,11 @@
     }
    ],
    "preread": {
-    "try_first": "When you study one topic at a time, which decision do you never have to make?",
+    "try_first": "Why might a tennis coach mix forehands and backhands in one drill instead of an hour of each?",
     "key_ideas": [
      "Blocked practice: all the cards of one kind, then the next kind.",
-     "Interleaved practice: kinds mixed, so each card first asks which rule fits.",
-     "In real code, nobody tells you which rule a problem needs."
+     "Interleaved practice: different kinds of cards mixed in one session.",
+     "Mentor picks your next card from all your lessons, not just one."
     ]
    }
   }
@@ -619,7 +618,7 @@
    "contrast_anchor": "Unlike a hand-written try/finally, the cleanup lives in the object, so you can't forget it.",
    "cloze_prompt": "`with _lock:` uses the lock as a {{BLANK}}, so it is released even if fetch() raises.",
    "teach_order": 1,
-   "expert_move": "Look for `with …:`; whatever follows `with` is a context manager.",
+   "expert_move": "Look for a line that starts with `with`: whatever comes after `with` is a context manager.",
    "spot_it": {
     "snippet": "def current(loc):\n    with _lock:\n        if _mem.get('at', 0) > time.time() - TTL:\n            return _mem",
     "line": 2,
@@ -675,7 +674,7 @@
    "id": "term_05",
    "term": "race condition",
    "category": "Software Architecture",
-   "concise_definition": "A bug whose outcome depends on the timing of two threads touching the same data.",
+   "concise_definition": "A bug whose result depends on which of two things running at the same moment gets there first.",
    "project_anchor": "`current()`: `_lock` guards `_mem`",
    "contrast_anchor": "Unlike a deadlock (threads stuck waiting forever), a race runs on and quietly produces wrong results.",
    "cloze_prompt": "Without the lock, two requests could both refetch and clear _mem at once: a {{BLANK}}.",
@@ -716,7 +715,7 @@
    "term": "interleaved practice",
    "category": "HCI & Human Factors",
    "concise_definition": "Mixing different kinds of problems in one session instead of finishing one kind before the next.",
-   "project_anchor": "`next_card()`: `_last['deck']`",
+   "project_anchor": "`next_card()`: remembers which lesson the last card came from, and picks the next one from another",
    "contrast_anchor": "Unlike blocked practice (AAA BBB), it feels harder in the moment but sticks better.",
    "cloze_prompt": "Showing a card from a different lesson after each answer is {{BLANK}}.",
    "try_first": "Practising one kind of problem at a time feels smooth. Which decision does it never make you take?"

@@ -86,6 +86,7 @@ run(async b => {
   check(/skipped the lesson card/.test(await p.locator('.coach.back').textContent()), 'failing a term whose teach card was skipped says so');
   await p.locator('#rateBtn').click(); await p.waitForTimeout(600);
   check(/^Teach/.test(await p.locator('.kind').textContent()) && /back to the lesson/.test(await p.locator('.deckname').first().textContent()), 'the skipped teach card comes back before anything else');
+  check(await p.locator('#guess').count() === 0 && await p.locator('.defs').count() === 1, 'back to the lesson: no second guess, the explanation straight away');
   await skip(p, 'argus-code', 'teach', 1);
 
   // worked example (level 0) before the first drill: one annotation at a time, the why after three typed words, then a self-explanation
@@ -162,8 +163,9 @@ run(async b => {
   for (const k of ['term', 'level0', 'drill']) await skip(p, 'argus-code', k, 8);
   await p.selectOption('#mdeck', 'argus-code'); await p.waitForTimeout(600);
   check(/^Before the bug hunt/.test(await p.locator('.kind').textContent()) && await p.locator('#guess').count() === 1 && await p.locator('.ideas.keys').count() === 0, 'a pre-read asks its try-first question first');
+  check(await p.locator('#tryBtn').textContent() === 'Show the ideas', "a pre-read's button says the ideas come next");
   await p.locator('#guess').fill('the file is half there'); await p.locator('#tryBtn').click(); await p.waitForTimeout(400);
-  check(await p.locator('.ideas.keys li').count() === 3, 'then lists the ideas the bug hunt rests on');
+  check(await p.locator('.ideas.keys li').count() === 2, 'then lists the ideas the bug hunt rests on');
   await p.locator('#ans').fill('a half written file'); await p.keyboard.press('Enter'); await p.waitForTimeout(600);
   check(/truncated LOG/.test(await p.locator('.model').last().textContent()), 'the near example reveals its answer after a typed guess');
   await p.locator('#rateBtn').click(); await p.waitForTimeout(500);

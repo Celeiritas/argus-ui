@@ -14,12 +14,17 @@ SKIP = {'full_canonical_code', 'level_1_fade', 'level_2_fade', 'level_3_fade', '
 SHORT = {'concise_definition', 'contrast_anchor', 'project_anchor', 'note', 'idea'}      # one sentence each
 LONG_WORDS, SHORT_WORDS, MAX_IDEAS = 80, 30, 3
 EXT = r'(?:py|js|mjs|css|json|sh|md|html|ts|yml|yaml|toml|txt|db|ini|cfg)'
-FILE = re.compile(rf'(?<![\w.])(?!node\.js\b)[\w-]+(?:\.[\w-]+)*\.{EXT}\b|~/|\{{\{{HOME_\w+\}}\}}|(?<![\w:/])(?:[\w.-]+/)+[\w.-]+\.\w{{1,5}}\b', re.I)
-JARGON = re.compile(r"\b(?:repo|PR\s*#?\d*|pull request|handoff|CLAUDE\.md|worktree|TODO)\b")
+# a file name ends in a known extension and is not followed by a call or attribute (`r.json()` is code, not a file);
+# library names that end in .js are names, not files
+NOT_FILE = r'(?!(?:node|vue|next|nuxt|three|d3|express|chart)\.js\b)'
+FILE = re.compile(rf'(?<![\w.$]){NOT_FILE}[\w-]+(?:\.[\w-]+)*\.{EXT}\b(?!\(|\.\w|\w)|~/|\{{\{{HOME_\w+\}}\}}'
+                  rf'|(?<![\w:/])(?:[\w.-]+/)+[\w.-]+\.{EXT}\b(?!\(|\.\w|\w)', re.I)
+JARGON = re.compile(r"\b(?:(?i:repos?|pull requests?|handoffs?|worktrees?)|PRs?(?:\s*#\d+)?|TODO)\b|(?i:\bCLAUDE\.md\b)")
 FENCE = re.compile(r'```.*?```', re.S)
 URL = re.compile(r'https?://\S+')
 
 def words(s): return len(re.findall(r"[A-Za-z0-9_']+", s))
+def lst(x): return x if isinstance(x, list) else []
 
 def prose(obj, key=''):
     """Yield (key, text) for every learner-facing string under obj."""
@@ -63,7 +68,7 @@ def check(doc):
     meta = doc.get('metadata') if isinstance(doc.get('metadata'), dict) else {}
     r = []; text_rules({'module_name': meta.get('module_name'), 'cta_summary': doc.get('cta_summary')}, r); add('lesson', r)
     seen = set()
-    for i, t in enumerate(doc.get('tier_3_terminology_cards') or []):
+    for i, t in enumerate(lst(doc.get('tier_3_terminology_cards'))):
         if not isinstance(t, dict): continue
         cid, r = t.get('id') or f'term {i + 1}', []
         text_rules(t, r)
@@ -73,7 +78,7 @@ def check(doc):
         if not str(t.get('concise_definition') or '').strip(): r.append(('ERROR', 'R5', f'"{t.get("term")}" has no concise_definition'))
         if not str(t.get('try_first') or '').strip(): r.append(('WARN', 'R3', 'teach card has no try_first question'))
         add(cid, r)
-    for i, d in enumerate(doc.get('tier_1_faded_code_drills') or doc.get('faded_code_drills') or []):
+    for i, d in enumerate(lst(doc.get('tier_1_faded_code_drills') or doc.get('faded_code_drills'))):
         if not isinstance(d, dict): continue
         cid, r = d.get('id') or f'drill {i + 1}', []
         text_rules(d, r); crumb_rule(d, r)
@@ -81,12 +86,13 @@ def check(doc):
         if not w.get('annotations'): r.append(('ERROR', 'R4', 'no level_0_worked annotations: show the worked example first'))
         if not d.get('level_1_fade'): r.append(('ERROR', 'R4', 'no level_1_fade: fade one step at a time'))
         add(cid, r)
-    for i, c in enumerate(doc.get('tier_2_self_explanation_cards') or doc.get('self_explanation_flashcards') or []):
+    for i, c in enumerate(lst(doc.get('tier_2_self_explanation_cards') or doc.get('self_explanation_flashcards'))):
         if not isinstance(c, dict): continue
         cid, r = c.get('id') or f'explain {i + 1}', []
         text_rules(c, r); crumb_rule(c, r)
         pre = c.get('preread') if isinstance(c.get('preread'), dict) else {}
-        if len(pre.get('key_ideas') or []) > MAX_IDEAS: r.append(('WARN', 'R2', f'pre-read has {len(pre["key_ideas"])} key ideas (at most {MAX_IDEAS})'))
+        ideas = lst(pre.get('key_ideas'))
+        if len(ideas) > MAX_IDEAS: r.append(('WARN', 'R2', f'pre-read has {len(ideas)} key ideas (at most {MAX_IDEAS})'))
         if not str(pre.get('try_first') or '').strip(): r.append(('WARN', 'R3', 'pre-read has no try_first question'))
         add(cid, r)
     return found
