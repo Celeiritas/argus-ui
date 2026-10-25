@@ -71,7 +71,7 @@ LO ids are unique within a course. `note` kinds: term | concept | snippet | clai
 
 **Interfaces:**
 - Produces columns `attempts.review TEXT`, `attempts.ivl_before REAL` (days), `attempts.ivl_after REAL` (days), `attempts.took INTEGER` (ms, ≤ 60000). Written by `rate()` for practice cards only (Learn cards stay `NULL`).
-- `review_kind(srow, prev_rating: int | None, now: float) -> str`: `learn` when `srow` is None or `reps` is 0; `manual` when `srow['due'] > now` (practise ahead); `relearn` when the card's previous rated attempt was 1; else `review`.
+- `review_kind(srow, ratings: list[int], now: float) -> str` (ratings: the card's earlier ratings, newest first): `learn` until the card has been rated Hard or better once (Anki's learning phase); then `manual` when `srow['due'] > now` (practise ahead); `relearn` when the latest earlier rating was 1; else `review`.
 - `ivl_before` = `(due - last) / DAY` of the sched row before this rating, `None` for a new card; `ivl_after` = `(new due - now) / DAY`.
 
 - [ ] **Step 1: Failing tests** — `test_review_log_new_then_review`: answer+rate a new card 3 → `review='learn'`, `ivl_before IS NULL`, `ivl_after > 0`; move its `due` to the past, rate 1 → `review='review'`; rate again → `relearn`. `test_review_log_manual`: rate a card whose due is tomorrow → `manual`. `test_took_capped`: answer with `ms=95000` → `took == 60000`, `ms == 95000` (the grader keeps the raw time). `test_learn_card_no_log`: rate a teach card → all four columns NULL.

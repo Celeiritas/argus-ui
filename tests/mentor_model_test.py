@@ -61,5 +61,43 @@ class Upgrade(Base):
         self.assertTrue(mods)
         self.assertTrue(all(r['course'] == m.LOOSE and r['cmodule'].startswith('loose/') for r in mods))
 
+class ReviewLog(Base):
+    def setUp(self):
+        super().setUp(); self.db = m.connect(self.path)
+        with m.DB_LOCK: m.upsert_card(self.db, 'd:fitts', 'd', 'define', 'Define: Fitts\'s law', 'time to point grows with distance',
+                                      [{'idea': 'distance', 'any': ['distance']}], {}, [], 0); self.db.commit()
+    def go(self, rating, ms=4000, card='d:fitts'):
+        a = m.answer(self.db, card, 'it grows with distance', 3, ms)
+        m.rate(self.db, a['attempt'], rating, False)
+        return self.db.execute("SELECT * FROM attempts WHERE id=?", (a['attempt'],)).fetchone()
+    def overdue(self, days_ago=3):
+        now = time.time(); self.db.execute("UPDATE sched SET due=?, last=? WHERE card_id='d:fitts'", (now - 60, now - days_ago * m.DAY)); self.db.commit()
+
+    def test_review_log_new_then_review(self):
+        a = self.go(3)
+        self.assertEqual(a['review'], 'learn'); self.assertIsNone(a['ivl_before']); self.assertGreater(a['ivl_after'], 0)
+        self.overdue(3); a = self.go(1)
+        self.assertEqual(a['review'], 'review'); self.assertAlmostEqual(a['ivl_before'], 3, delta=0.01)
+        self.overdue(0); a = self.go(3)
+        self.assertEqual(a['review'], 'relearn')
+
+    def test_again_on_a_new_card_is_still_learning(self):
+        self.go(1); self.overdue(0)
+        self.assertEqual(self.go(3)['review'], 'learn')
+
+    def test_review_log_manual(self):
+        self.go(3)          # due in days: rating it again now is practising ahead
+        self.assertEqual(self.go(3)['review'], 'manual')
+
+    def test_took_capped(self):
+        a = self.go(3, ms=95000)
+        self.assertEqual((a['took'], a['ms']), (60000, 95000))
+
+    def test_learn_card_no_log(self):
+        with m.DB_LOCK: m.upsert_card(self.db, 'd:teach-x', 'd', 'teach', 'x', '', [], {}, [], 0); self.db.commit()
+        a = m.answer(self.db, 'd:teach-x', '', None, 1000); m.rate(self.db, a['attempt'], 0, False)
+        r = self.db.execute("SELECT review, ivl_before, ivl_after, took FROM attempts WHERE id=?", (a['attempt'],)).fetchone()
+        self.assertEqual(tuple(r), (None, None, None, None))
+
 if __name__ == '__main__':
     unittest.main()

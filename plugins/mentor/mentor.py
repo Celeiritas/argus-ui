@@ -122,7 +122,9 @@ ADDED = [('cards', 'data', "TEXT DEFAULT '{}'"), ('cards', 'ord', 'INTEGER DEFAU
          ('attempts', 'ai', 'TEXT'),
          # 4.26: courses; a lesson's place in one, a card's LO, note, role and whether it is a check item
          ('modules', 'course', 'TEXT'), ('modules', 'cmodule', 'TEXT'), ('modules', 'ord', 'INTEGER DEFAULT 0'),
-         ('cards', 'lo', 'TEXT'), ('cards', 'note', 'TEXT'), ('cards', 'role', 'TEXT'), ('cards', 'is_check', 'INTEGER DEFAULT 0')]
+         ('cards', 'lo', 'TEXT'), ('cards', 'note', 'TEXT'), ('cards', 'role', 'TEXT'), ('cards', 'is_check', 'INTEGER DEFAULT 0'),
+         # 4.26: the review log (Anki's revlog): learn/review/relearn/manual, interval before and after (days), time capped at 60 s
+         ('attempts', 'review', 'TEXT'), ('attempts', 'ivl_before', 'REAL'), ('attempts', 'ivl_after', 'REAL'), ('attempts', 'took', 'INTEGER')]
 LOOSE = 'loose'          # the course every lesson in the old format belongs to, one module per project
 
 def connect(path):
@@ -820,6 +822,13 @@ def coach_line(kind, cov, conf, n, extra):
     if cov == 0: return f"None of the key ideas yet{rough}. {move}"
     return f"{k} of {n} key ideas{rough}. {move}"
 
+def review_kind(srow, ratings, now):
+    """What this rating is, for the review log. ratings: the card's earlier ratings, newest first. Learning lasts until
+    the card has been passed (Hard or better) once; rating a card before it is due is practising ahead (manual)."""
+    if not srow or not any(r >= 2 for r in ratings): return 'learn'
+    if srow['due'] is not None and srow['due'] > now: return 'manual'
+    return 'relearn' if ratings[0] == 1 else 'review'
+
 def rate(db, attempt_id, rating, grade_wrong):
     a = db.execute("SELECT * FROM attempts WHERE id=?", (attempt_id,)).fetchone()
     if not a: return None
@@ -849,8 +858,12 @@ def rate(db, attempt_id, rating, grade_wrong):
                    "ON CONFLICT(card_id) DO UPDATE SET stability=excluded.stability,difficulty=excluded.difficulty,"
                    "due=excluded.due,last=excluded.last,reps=excluded.reps,lapses=excluded.lapses,level=excluded.level",
                    (a['card_id'], s, d, due, now, reps, lapses, level))
-        db.execute("UPDATE attempts SET rating=?, grade_wrong=?, stuck=COALESCE(stuck, ?) WHERE id=?",
-                   (rating, 1 if grade_wrong else 0, 'held' if held else None, attempt_id))
+        ratings = [r[0] for r in db.execute("SELECT rating FROM attempts WHERE card_id=? AND id<? AND rating>0 ORDER BY id DESC",
+                                            (a['card_id'], attempt_id))]
+        before = (srow['due'] - srow['last']) / DAY if srow and srow['due'] is not None and srow['last'] else None
+        db.execute("UPDATE attempts SET rating=?, grade_wrong=?, stuck=COALESCE(stuck, ?), review=?, ivl_before=?, ivl_after=?, took=? WHERE id=?",
+                   (rating, 1 if grade_wrong else 0, 'held' if held else None, review_kind(srow, ratings, now), before,
+                    (due - now) / DAY, min(a['ms'] or 0, 60_000), attempt_id))
         db.commit()
     old = a['level']
     return {'due': due, 'days': round((due - now) / DAY, 1), 'level': level if c and c['kind'] == 'drill' else None,
