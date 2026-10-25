@@ -31,6 +31,22 @@ run(async b => {
   check((await box(d, '.argus')).w <= 1080 * 0.22 + 1, '16:9: Argus is at most about a fifth of the height');
   await shot(d, 'layout-1920-home');
 
+  // laptops: the bar wrapped Mute sounds with 8 sections at 1280; the fixtures have fewer, so 1024 is where it must squeeze
+  for (const w of [1280, 1024]) {
+    const lp = await page(b, w, 720); await lp.goto(BASE + 'home'); await lp.locator('.home .places').waitFor(); await lp.waitForTimeout(500);
+    const bar = await lp.locator('.realms').evaluate(bar => { const f = bar.querySelector('.realm').getBoundingClientRect();
+      return {row: [...bar.querySelectorAll('.realm,.mute')].every(e => e.getBoundingClientRect().top < f.bottom), compact: bar.classList.contains('compact'), bare: bar.classList.contains('bare')}; });
+    check(bar.row, `${w}: the sections bar stays one row, Mute sounds included (${await lp.locator('#realms .realm').count()} sections${bar.compact ? ', second lines hidden' : ''}${bar.bare ? ', weather hidden' : ''})`);
+    if (w === 1024) {
+      check(bar.compact, '1024: the pills dropped their second line to fit');
+      check(await lp.getByRole('link', {name: /Home\s*Overview/}).count() === 1, '1024: a pill whose second line is hidden still reads it out');
+      await lp.setViewportSize({width: 1920, height: 1080}); await lp.waitForTimeout(300);
+      check(!(await lp.locator('.realms').evaluate(e => e.classList.contains('compact'))), 'widening the window brings the second lines back');
+    }
+    await shot(lp, `layout-${w}-home`);
+    check(lp.errors.length === 0, `${w}: no page errors ` + lp.errors.join(' | '));
+  }
+
   const ph = await page(b, 375, 760); await ph.goto(BASE + 'olympus'); await ph.waitForTimeout(800);
   const on = await box(ph, '.realm.on');
   check(on.x >= 0 && on.x + on.w <= 375, 'phone: the bar scrolls to show the section you are on (Olympus is past the edge otherwise)');

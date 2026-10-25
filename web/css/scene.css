@@ -65,6 +65,9 @@ a.realm:hover,.realm.on{border-color:var(--line);background:var(--card)}
 .realm.soon{opacity:.6;cursor:default}
 .realm .dot{position:absolute;left:28px;top:2px;min-width:18px;height:18px;padding:0 4px;border-radius:99px;background:#C93030;color:#fff;font-size:11px;font-weight:600;line-height:18px;text-align:center;box-shadow:0 0 0 2px var(--night)}
 .realms .mute{margin-left:auto}
+/* too many sections for one row (fitRealms in core.js): second lines hidden but still read out, then the weather */
+.realms.compact .realm small{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.realms.bare .wx{display:none}.realms.bare .wx + .mute{margin-left:auto}
 header{grid-template-areas:"title argus tools"}.title{grid-area:title}.argus{grid-area:argus}.tools{grid-area:tools}
 .hero{grid-area:hero;display:none;width:clamp(96px,min(10vw,20vh),240px);aspect-ratio:1;justify-self:center}
 .side header{grid-template-areas:"title hero argus"}.side .hero{display:block}.side .tools,.side nav{display:none}

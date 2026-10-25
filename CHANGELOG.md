@@ -9,6 +9,10 @@
 - The approved spec arrives on `main` with this release: `docs/plans/2026-10-25-mentor-courses-spec.md`, and this phase's plan `docs/plans/2026-10-25-mentor-courses-phase1.md`.
 - Tests: `tests/mentor_model_test.py` (new, no browser: upgrading a 4.25.0 database twice, the review log, importing, re-importing and broken courses, check items never served or counted, courses in stats, placeholders filled), `tests/mentor.test.js` (a course in the inbox shows as one group in course order; Study all serves it), `tests/run.sh` (good and bad course fixtures, each C rule caught)
 
+## 4.25.1 – 2026-10-25
+- **The section bar stays one row on a laptop.** With 8 sections it wrapped *Mute sounds* onto a second line at 1280 px. Now, when it would wrap, the pills drop their second line (screen readers still hear it), then the weather goes (Home keeps its own). Phones and the ultrawide rail are unchanged.
+- Tests: `tests/layout.test.js` (1280 and 1024 px: one row with Mute sounds; at 1024 the second lines are hidden but still read out, and come back when the window widens)
+
 ## 4.25.0 – 2026-10-25
 - **Mentor's study screen, from the approved mockup.** One verdict band under the question: Correct (green, tick), Partly right (amber), Not quite (red, cross) or Answer shown, always with an icon and a word, with the reason or the place to look. Key ideas marked "✓ Got it / ✕ Missing"; a spot-it result marks your line and the right one. Long model answers show their first paragraph, the rest behind *Show the full answer and sources*. Ratings in Anki's order, **1 Again · 2 Hard · 3 Good · 4 Easy**, each with when it returns; *Report a grading problem* replaces the always-visible checkbox.
 - **No greyed-out buttons**: a missing guess, line or *why* gets a line under the field instead. The orientation is plainer (what the lesson covers, the terms as one line, why it matters, *Start the lesson*; no summary box). Code and spot-it lines wrap instead of scrolling sideways. `**bold**` in lesson text shows as bold.
