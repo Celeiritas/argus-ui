@@ -31,7 +31,8 @@
   const inline = s => s.replace(/`([^`\n]+)`/g, '<code>$1</code>');
   const rich = t => esc(t).split(/```[\w-]*\n?([\s\S]*?)```/).map((part, i) => i % 2 ? `<pre class="code"><code>${part.replace(/\n$/, '')}</code></pre>`
     : part.split(/\n{2,}/).filter(p => p.trim()).map(p => `<p>${inline(p.trim()).replace(/\n/g, '<br>')}</p>`).join('')).join('');
-  const crumb = s => s ? `<p class="crumb"><span class="sr">Where in the code: </span>${s.split(/\s*(?:->|→|›)\s*/).map(x => `<span>${inline(esc(x))}</span>`).join('<span aria-hidden="true"> › </span>')}</p>` : '';
+  // where the code is: only its last part (the function), never folders or file names; the Lessons view lists the files
+  const crumb = s => { const x = (s || '').split(/\s*(?:->|→|›)\s*/).filter(Boolean).pop(); return x && !/\.(?:py|js|mjs|ts|css|json|sh|md|html|ya?ml|toml|txt)$/i.test(x) ? `<p class="crumb"><span class="sr">Where in the code: </span><span>${inline(esc(x))}</span></p>` : ''; };
   const kindLabel = c => c.kind === 'drill' ? `Code drill · level ${c.level} of 3: ${c.level_name.toLowerCase()}` : c.kind === 'explain' ? (TYPES[(c.type || '').toLowerCase()] || 'Explain it')
     : c.kind === 'term' ? `Term${c.category ? ' · ' + c.category : ''}` : c.kind === 'teach' ? `Teach${c.category ? ' · ' + c.category : ''}` : c.kind === 'level0' ? 'Worked example · read it line by line'
     : c.kind === 'preread' ? `Before ${(TYPES[(c.type || '').toLowerCase()] || 'the explain card').toLowerCase().replace('find the bug', 'the bug hunt')}` : c.kind === 'orientation' ? 'Orientation · one screen before the cards' : '';
@@ -223,7 +224,7 @@
       <h3 tabindex="-1" id="rhead">${head}</h3>
       <div class="meter" role="img" aria-label="${pct}% right"><span style="transform:scaleX(${r.coverage})"></span></div>
       ${detail}${note}
-      <p class="coach"><b>Mentor:</b> ${esc(r.coach)}</p>${stuck}
+      <p class="coach"><b>Mentor:</b> ${inline(esc(r.coach))}</p>${stuck}
       <fieldset><legend>How well did you know it?</legend>
         <div class="seg rates">${RATES.map(([v, nm, d], i) => `<label><input type="radio" name="rate" value="${v}" ${v === r.suggested ? 'checked' : ''}><span><b>${i + 1}. ${nm}</b><small>${d}</small><small class="when">Back in ${back(r.previews[v])}${lvl(v)}</small>${v === r.suggested ? '<em class="tag">Mentor suggests</em>' : ''}</span></label>`).join('')}</div>
         <p class="help">Mentor's suggestion comes from what you got right${M.hints ? ' and the hints you used' : ''}; pick what feels true. Keys <kbd>1</kbd>–<kbd>4</kbd> choose, <kbd>Enter</kbd> confirms.</p></fieldset>
@@ -260,24 +261,27 @@
 
   /* ----- Learn cards: orientation, teach (+ spot it), level 0 worked example, pre-read ----- */
   function learnCard(c, readOnly) {
+    const g = M.guess && M.guess.id === c.id ? M.guess : null; M.guess = null;
     const head = `<p class="deckname">${esc(sourceName(c))}${c.refresh ? ' · back to the lesson' : readOnly ? ' · reading again' : ' · learn'}</p><p class="kind">${esc(kindLabel(c))}</p>${crumb(c.breadcrumb)}`;
     const skip = !readOnly && (c.kind === 'teach' || c.kind === 'level0') ? `<button type="button" id="skipBtn">I know this, test me</button>` : '';
     const done = readOnly ? `<button type="button" class="primary" id="doneBtn">Back to lessons</button>` : '';
+    if (c.try && !readOnly && !g && !c.refresh) return tryFirst(c, head, skip);
+    // the try-first question stays above the explanation: with the guess beside it, or as plain text when reading again
+    const tried = c.try ? `<div class="callout tried"><b>Try first: ${inline(esc(c.try))}</b>${g ? `<p>Your guess: ${esc(g.text)}</p>` : ''}</div>` : '';
     let body, go;
     if (c.kind === 'orientation') {
       body = `<h3>${esc(c.module || 'This lesson')}</h3><div class="prompt">${rich(c.prompt)}</div>
-        ${c.files && c.files.length ? `<p class="meta">Files: ${c.files.map(f => `<code>${esc(f)}</code>`).join(', ')}</p>` : ''}
         ${c.terms && c.terms.length ? `<p class="deckname">Terms you'll meet</p><ul class="tags" aria-label="Terms">${c.terms.map(t => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}
         ${c.bridge ? `<p class="deckname">Why this lesson</p><div class="model">${rich(c.bridge)}</div>` : ''}
         ${readOnly ? '' : `<div class="field"><label for="ans">In my words, this code…</label><textarea id="ans" rows="2" aria-describedby="anshelp"></textarea><p class="help" id="anshelp">Five words or more, then <kbd>Ctrl</kbd>+<kbd>Enter</kbd>.</p></div>`}`;
       go = readOnly ? done : `<button type="submit" class="primary" id="goBtn" disabled>Start learning</button>`;
     } else if (c.kind === 'teach') {
       const lines = c.spot ? c.spot.snippet.split('\n') : [];
-      body = `<h3>${esc(c.prompt)}</h3>
+      body = `<h3>${esc(c.prompt)}</h3>${tried}
         <dl class="defs">${c.definition ? `<dt>What it does</dt><dd>${inline(esc(c.definition))}</dd>` : ''}${c.anchor ? `<dt>In your code</dt><dd>${inline(esc(c.anchor))}</dd>` : ''}${c.contrast ? `<dt>Not to be confused with</dt><dd>${inline(esc(c.contrast))}</dd>` : ''}${c.move ? `<dt>What an expert looks for</dt><dd>${inline(esc(c.move))}</dd>` : ''}</dl>
         ${c.spot ? `<p class="deckname" id="spotq">Spot it: ${readOnly ? `line ${c.spot.line}` : 'pick the line that uses it'}</p>
           <ol class="lines" aria-labelledby="spotq">${lines.map((l, i) => `<li><button type="button" class="line${readOnly && i + 1 === c.spot.line ? ' is' : ''}" data-line="${i + 1}" ${readOnly ? 'disabled' : ''}><span class="n">${i + 1}</span><code>${esc(l) || ' '}</code></button></li>`).join('')}</ol>
-          ${readOnly ? `<p class="coach">${esc(c.spot.why)}</p>` : `<p class="help"><kbd>↑</kbd>/<kbd>↓</kbd> move, <kbd>Enter</kbd> picks; or type the line number: <input class="blank" id="lineNo" inputmode="numeric" aria-label="Line number" style="width:4ch"></p>`}` : ''}`;
+          ${readOnly ? `<p class="coach">${inline(esc(c.spot.why))}</p>` : `<p class="help"><kbd>↑</kbd>/<kbd>↓</kbd> move, <kbd>Enter</kbd> picks; or type the line number: <input class="blank" id="lineNo" inputmode="numeric" aria-label="Line number" style="width:4ch"></p>`}` : ''}`;
       go = readOnly ? done : c.spot ? `<button type="submit" class="primary" id="goBtn" disabled>That's the line</button>${skip}` : `<button type="submit" class="primary" id="goBtn">Got it, next</button>${skip}`;
     } else if (c.kind === 'level0') {
       const lines = c.code.split('\n'), ann = c.annotations || [];
@@ -287,10 +291,10 @@
         <p class="help" id="annhelp">${readOnly ? 'Every note is shown.' : `Annotation <span id="step">1</span> of ${ann.length}. Say why the line is there (three words or more), then <kbd>Enter</kbd> shows the note.`}</p>`;
       go = readOnly ? done : `<button type="button" class="primary" id="goBtn" disabled>Reveal</button>${skip}`;
     } else {          // preread
-      body = `<h3>Before you hunt the bug: the ideas it rests on</h3>
+      body = `<h3>Before you hunt the bug: the ideas it rests on</h3>${tried}
         <ol class="ideas keys">${(c.ideas || []).map(i => `<li>${inline(esc(i))}</li>`).join('')}</ol>
         ${c.near ? `<p class="deckname">A near example</p><pre class="code"><code>${esc(c.near.code)}</code></pre>
-          ${readOnly ? `<p class="coach"><b>${esc(c.near.ask)}</b> ${esc(c.near.answer || '')}</p>`
+          ${readOnly ? `<p class="coach"><b>${inline(esc(c.near.ask))}</b> ${inline(esc(c.near.answer || ''))}</p>`
           : `<div class="field"><label for="ans">${esc(c.near.ask)}</label><input id="ans" class="blank wide" autocomplete="off"><p class="help"><kbd>Enter</kbd> reveals the answer.</p></div>`}` : ''}`;
       go = readOnly ? done : `<button type="submit" class="primary" id="goBtn">${c.near ? 'Reveal' : 'Got it, next'}</button>`;
     }
@@ -299,6 +303,27 @@
     if (readOnly) { $('#doneBtn').onclick = () => setView('modules'); if (c.kind === 'level0') revealAll(c); return; }
     wireLearn(c);
   }
+  // a question to answer before the explanation (pretesting): typed, never graded or sent, then the card itself
+  function tryFirst(c, head, skip) {
+    $('#mpanel').innerHTML = `<form class="panel learn" id="qform" novalidate>${head}${c.kind === 'teach' ? `<h3>${esc(c.prompt)}</h3>` : ''}
+      <div class="field"><label for="guess">Try first: ${inline(esc(c.try))}</label><textarea id="guess" rows="2" aria-describedby="guesshelp"></textarea>
+      <p class="help" id="guesshelp">A guess is fine: it isn't graded. <kbd>Ctrl</kbd>+<kbd>Enter</kbd> shows the ${c.kind === 'teach' ? 'explanation' : 'ideas'}.</p></div>
+      <div class="row"><button type="submit" class="primary" id="tryBtn" disabled>${c.kind === 'teach' ? 'Show the explanation' : 'Show the ideas'}</button>${skip}</div></form>`;
+    M.t0 = performance.now();
+    const form = $('#qform'), ta = $('#guess'), go = $('#tryBtn'), sk = $('#skipBtn');
+    ta.oninput = () => go.disabled = words(ta.value) < 1; ta.focus();
+    form.onsubmit = e => { e.preventDefault(); if (go.disabled) return; M.guess = {id: c.id, text: ta.value.trim()}; learnCard(c); };
+    form.onkeydown = e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); form.requestSubmit(); } };
+    if (sk) sk.onclick = async () => { if (await learnSend(c, '', true, go)) rate(0); };
+  }
+  // tell Mentor a Learn card was read (or skipped); null if the server couldn't be reached
+  async function learnSend(c, text, skipped, go) {
+    go.disabled = true;
+    let r; try { r = await send('answer', {card: c.id, text, ms: Math.round(performance.now() - M.t0), skipped: !!skipped}); } catch (e) { r = {ok: false}; }
+    if (!r.ok) { go.disabled = false; toast("Couldn't reach Mentor. Check that the server is on, then try again."); return null; }
+    M.result = {...r, skipped: !!skipped};
+    return r;
+  }
   function revealAll(c) {
     $('#annot').innerHTML = (c.annotations || []).map((a, i) => `<div class="callout"><b>${i + 1}. Line ${a.line}${a.note ? ': ' + inline(esc(a.note)) : ''}</b><p>${inline(esc(a.why))}</p></div>`).join('');
     $$('#worked .ln').forEach(l => l.classList.toggle('hi', (c.annotations || []).some(a => a.line === +l.dataset.line)));
@@ -306,10 +331,8 @@
   function wireLearn(c) {
     const form = $('#qform'), go = $('#goBtn'), skip = $('#skipBtn');
     const finish = async (text, skipped) => {
-      go.disabled = true;
-      let r; try { r = await send('answer', {card: c.id, text, ms: Math.round(performance.now() - M.t0), skipped: !!skipped}); } catch (e) { r = {ok: false}; }
-      if (!r.ok) { go.disabled = false; return toast("Couldn't reach Mentor. Check that the server is on, then try again."); }
-      M.result = {...r, skipped: !!skipped};
+      const r = await learnSend(c, text, skipped, go);
+      if (!r) return;
       if (skipped || c.kind === 'orientation' || (c.kind === 'teach' && !c.spot) || (c.kind === 'preread' && !c.near)) return rate(0);
       learnFeedback(c, r, text);
     };
@@ -385,7 +408,7 @@
       detail = `${text ? `<p class="deckname">You wrote</p><p class="model mine">${esc(text)}</p>` : ''}${r.answer ? `<p class="deckname">Answer</p><div class="model">${rich(r.answer)}</div>` : ''}`;
     }
     $('#mpanel').innerHTML = `<div class="panel learn" id="rpanel"><p class="deckname">${esc(sourceName(c))} · ${esc(kindLabel(c))}</p>
-      <h3 tabindex="-1" id="rhead">${esc(head)}</h3>${detail}<p class="coach"><b>Mentor:</b> ${esc(r.coach)}</p>
+      <h3 tabindex="-1" id="rhead">${esc(head)}</h3>${detail}<p class="coach"><b>Mentor:</b> ${inline(esc(r.coach))}</p>
       <div class="row"><button type="button" class="primary" id="rateBtn">Next card</button></div></div>`;
     $('#rhead').focus(); $('#rateBtn').onclick = () => rate(0);
   }

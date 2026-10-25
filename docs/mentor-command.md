@@ -24,10 +24,10 @@ Decompile the target code using Cognitive Task Analysis (Clark et al., 2008) and
    - `HCI-Bridge`: Connect the code mechanic to Human Factors / HCI engineering (e.g., latency perception, error prevention, mode confusion, developer cognitive ergonomics, state visibility).
 3. **Tier 3: Declarative Pre-Training (Terminology Chunks):** Extract key Python, Software Architecture, and Human Factors vocabulary used in the code to support pre-training chunking (Mayer & Pilegard, 2014). Define terms functionally in under 20 words, anchor them to the exact variable/line in our codebase, and contrast them with a commonly confused sibling term.
 4. **Tier 0: Learn-first material (teach before test).** Mentor shows these once, before the practice cards, so write them as the lesson, not as tests:
-   - `cta_summary.orientation`: 3 sentences in plain words — what the code does, in which files, and what I will be able to do after. `cta_summary.expert_move`: the first thing an expert looks at in this code, one sentence, no answer tokens.
-   - For every term: `spot_it` = a 2-6 line snippet from the same code with `line` (1-based) = where the term's instance is and `why` (one sentence); `teach_order` so no term's anchor uses a term taught later; `expert_move` (how to recognise it); `hints` = [a question that points at the principle without naming it, a 2-4 line near example with different names].
+   - `cta_summary.orientation`: 3 sentences in plain words — what the code does and what I will be able to do after (no file names: say what the code does, not where it lives). `cta_summary.expert_move`: the first thing an expert looks at in this code, one sentence, no answer tokens.
+   - For every term: `try_first` = one question I try to answer before the teach card explains (about the idea, not the code; not graded); `spot_it` = a 2-6 line snippet from the same code with `line` (1-based) = where the term's instance is and `why` (one sentence); `teach_order` so no term's anchor uses a term taught later; `expert_move` (how to recognise it); `hints` = [a question that points at the principle without naming it, a 2-4 line near example with different names].
    - For every drill: `level_0_worked` = `annotations` (3-6, each `line`, `note` ≤ 8 words, `why` ≤ 25 words, in reading order, saying *why* the line exists, not what it does) and `self_explain` (`prompt` asking why, `rubric` of 1-3 `{idea, any}` ideas); `expert_move`; `look_at` = per level, 1-2 places to look when a blank is wrong; `hints` = per level, [nudge question, near example in different code].
-   - For every explain card: `preread` = `key_ideas` (2-4 statements the rubric assumes) and `near_example` (`code`, `ask`, `answer`: the same principle in different code); `expert_move`; `hints` as above.
+   - For every explain card: `preread` = `try_first` (one question before the ideas), `key_ideas` (2-3 statements the rubric assumes) and `near_example` (`code`, `ask`, `answer`: the same principle in different code); `expert_move`; `hints` as above.
 
 ## 4. FILE SYSTEM EXECUTION & JSON SCHEMA
 1. Ensure the directory `./mentor_inbox/` exists (create it if it does not).
@@ -49,13 +49,13 @@ Decompile the target code using Cognitive Task Analysis (Clark et al., 2008) and
     "design_rules_heuristics": "Why this specific design pattern/idiom was chosen over naive alternatives.",
     "hard_rules_invariants": "Strict system constraints that must never be violated (mutability, frame-timing, state safety, Big-O).",
     "hci_human_factors_bridge": "How this backend/UI architecture affects human-in-the-loop performance, error tolerance, or cognitive load.",
-    "orientation": "3 sentences, plain words: what this code does, in which files, and what I will be able to do after.",
+    "orientation": "3 sentences, plain words: what this code does and what I will be able to do after (no file names).",
     "expert_move": "Lesson-level default: the first thing an expert looks at in this code."
   },
   "tier_1_faded_code_drills": [
     {
       "id": "drill_01",
-      "file_breadcrumb": "Folder -> File.py -> Class/Function",
+      "file_breadcrumb": "Folder -> File.py -> Class/Function (cards show only the last part)",
       "context_comment": "Brief explanation of what this isolated 5-15 line Minimal Viable Snippet accomplishes and its inputs/outputs.",
       "full_canonical_code": "Clean, idiomatic Python snippet.",
       "level_1_fade": "Code with 1-2 terminal syntax elements or return bindings replaced with {{BLANK_1}}, {{BLANK_2}}.",
@@ -90,21 +90,25 @@ Decompile the target code using Cognitive Task Analysis (Clark et al., 2008) and
       ],
       "expert_move": "The question an expert asks first about this failure mode.",
       "preread": {
-        "key_ideas": ["2-4 statements the rubric assumes, taught once before the card"],
+        "try_first": "One question I answer before the ideas appear (not graded)",
+        "key_ideas": ["2-3 statements the rubric assumes, taught once before the card"],
         "near_example": {"code": "the same principle in different code", "ask": "What would break here?", "answer": "one line"}
       },
       "hints": ["nudge question", "near example in different code"]
+    }
+  ],
   "tier_3_terminology_cards": [
     {
       "id": "term_01",
       "teach_order": 1,
+      "try_first": "One question I answer before the teach card explains (not graded)",
       "expert_move": "How an expert recognises it, one sentence (no answer tokens).",
       "spot_it": {"snippet": "2-6 lines from our code", "line": 2, "why": "one sentence: what makes that line the instance"},
       "hints": ["A question that points at the principle without naming it", "A 2-4 line near example with different names"],
       "term": "Exact Python, Architecture, or HCI/Human Factors term",
       "category": "Python Syntax | Software Architecture | HCI & Human Factors",
       "concise_definition": "Functional mechanical definition in under 20 words.",
-      "project_anchor": "Exact function, class, or variable in our codebase where this concept is implemented.",
+      "project_anchor": "The exact function, class or variable where this concept is used, by name and line of code, never a file name (e.g. `current()`: `with _lock:`).",
       "contrast_anchor": "1-line distinction against a commonly confused sibling term (e.g., 'Unlike X, which does Y...').",
       "cloze_prompt": "A single contextual sentence testing the term, with the term itself replaced by {{BLANK}}."
     }
@@ -135,5 +139,6 @@ Once the file is written to disk, output ONLY this single line in the chat and n
 - Self-explanation prompts ask *why*, not *what*.
 - A Pre-Mortem card always has a `preread`, and its code has a drill with a `level_0_worked` (the correct example before the broken one).
 - Hints never contain the answer token for that blank; a near example uses different names.
+- Follow the deck rubric (`docs/mentor-rubric.md`): no file paths or repo words (repo, PR, handoff, CLAUDE.md) in anything I read, one idea per card, a `try_first` question before each explanation, a worked example before the fades, plain words with every term defined once. Run `python3 scripts/check-deck.py <file>` when the argus-ui repo is at hand and fix every ERROR.
 - All Tier 0 fields are optional: without them Mentor derives plainer Learn cards from the fields above, so an older file still works.
 

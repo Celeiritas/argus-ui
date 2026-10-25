@@ -52,6 +52,7 @@
 .mentor pre.code.worked .ln.hi{background:#2b333c;box-shadow:inset 3px 0 0 var(--powder)}
 .mentor .callout{border:1px solid var(--line);border-left:3px solid var(--powder);border-radius:8px;padding:var(--s3);margin:0 0 var(--s3);background:var(--card)}
 .mentor .callout b{display:block;font-weight:600;font-size:var(--fs-sec);margin:0 0 var(--s2)}
+.mentor .callout.tried b:last-child{margin:0}
 .mentor .callout label{display:block;font-size:var(--fs-sec);font-weight:600;margin:var(--s2) 0 var(--s1)}
 .mentor .callout p{margin:var(--s2) 0 0;line-height:1.5}
 .mentor .callout.ask textarea{width:100%}

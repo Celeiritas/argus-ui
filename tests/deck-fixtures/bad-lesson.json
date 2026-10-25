@@ -1,0 +1,22 @@
+{
+  "metadata": {"module_name": "Bad lesson: one of each rubric problem", "project": "fixtures", "source_files": ["server/sky.py"]},
+  "cta_summary": {"orientation": "The weather code in server/sky.py keeps a copy in memory. See the handoff for why."},
+  "tier_3_terminology_cards": [
+    {"id": "term_01", "term": "cache", "concise_definition": "A copy kept close so the next read is fast.", "try_first": "Why keep a copy?",
+     "cloze_prompt": "A {{BLANK}} keeps a copy."},
+    {"id": "term_02", "term": "Cache", "concise_definition": "Defined again, which the rubric does not allow.", "try_first": "Again?",
+     "cloze_prompt": "A {{BLANK}} again."},
+    {"id": "term_03", "term": "lock", "try_first": "What stops two writers?", "cloze_prompt": "A {{BLANK}} lets one in at a time."},
+    {"id": "term_04", "term": "time to live", "concise_definition": "How long a cached copy counts as fresh before it is fetched again from the source, which is a definition that goes on far too long for one card and keeps adding words.",
+     "cloze_prompt": "The {{BLANK}} says how long."}
+  ],
+  "tier_1_faded_code_drills": [
+    {"id": "drill_01", "file_breadcrumb": "server -> sky.py", "context_comment": "Serve from memory while fresh.",
+     "full_canonical_code": "CACHE = 'server/sky.py.json'\ndef current():\n    return _mem",
+     "level_1_fade": "CACHE = 'server/sky.py.json'\ndef current():\n    return {{BLANK_1}}", "answers": {"level_1": ["_mem"]}}
+  ],
+  "tier_2_self_explanation_cards": [
+    {"id": "card_01", "front_prompt": "What breaks if two requests fetch at once?", "back_explanation": "Both write the cache; one overwrites the other.",
+     "eval_rubric": ["both write"], "preread": {"key_ideas": ["one", "two", "three", "four"]}}
+  ]
+}

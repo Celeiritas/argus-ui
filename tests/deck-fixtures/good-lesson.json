@@ -1,0 +1,18 @@
+{
+  "metadata": {"module_name": "Good lesson: passes the rubric", "project": "fixtures", "source_files": ["server/sky.py"]},
+  "cta_summary": {"orientation": "The weather code keeps a copy in memory, so the page stays fast when the network is slow."},
+  "tier_3_terminology_cards": [
+    {"id": "term_01", "term": "cache", "concise_definition": "A copy kept close so the next read is fast.", "try_first": "Why would a program keep a copy of something it could fetch again?",
+     "contrast_anchor": "Unlike a backup, a cache can be thrown away.", "hints": ["Like `r.json()` keeping the parsed body, or a Vue.js store keeping state: a copy close at hand.", "Three of 4.5 reads, or 3/4.5, come from the copy."], "cloze_prompt": "A {{BLANK}} keeps a copy close."}
+  ],
+  "tier_1_faded_code_drills": [
+    {"id": "drill_01", "file_breadcrumb": "server -> sky.py -> current()", "context_comment": "Serve from memory while fresh.",
+     "full_canonical_code": "CACHE = 'sky.json'\ndef current():\n    return _mem",
+     "level_1_fade": "CACHE = 'sky.json'\ndef current():\n    return {{BLANK_1}}", "answers": {"level_1": ["_mem"]},
+     "level_0_worked": {"annotations": [{"line": 3, "note": "Returns the copy", "why": "Every caller gets the same dict."}]}}
+  ],
+  "tier_2_self_explanation_cards": [
+    {"id": "card_01", "front_prompt": "What breaks if two requests fetch at once?", "back_explanation": "Both write the copy; one overwrites the other.",
+     "eval_rubric": ["both write"], "preread": {"key_ideas": ["Two requests can run at the same moment."], "try_first": "What happens when two people edit one note at once?"}}
+  ]
+}
