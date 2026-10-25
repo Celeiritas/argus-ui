@@ -31,6 +31,13 @@ run(async b => {
   check((await box(d, '.argus')).w <= 1080 * 0.22 + 1, '16:9: Argus is at most about a fifth of the height');
   await shot(d, 'layout-1920-home');
 
+  const lp = await page(b, 1280, 720); await lp.goto(BASE + 'home'); await lp.locator('.home .places').waitFor(); await lp.waitForTimeout(500);
+  const row = await lp.locator('.realms').evaluate(bar => { const f = bar.querySelector('.realm').getBoundingClientRect(); return [...bar.querySelectorAll('.realm,.mute')].every(e => e.getBoundingClientRect().top < f.bottom); });
+  check(row, `1280: the sections bar stays one row, Mute sounds included (${await lp.locator('#realms .realm').count()} sections; it wrapped with 8)`);
+  check(await lp.getByRole('link', {name: /Home\s*Overview/}).count() === 1, '1280: a pill whose second line is hidden still reads it out');
+  await shot(lp, 'layout-1280-home');
+  check(lp.errors.length === 0, '1280: no page errors ' + lp.errors.join(' | '));
+
   const ph = await page(b, 375, 760); await ph.goto(BASE + 'olympus'); await ph.waitForTimeout(800);
   const on = await box(ph, '.realm.on');
   check(on.x >= 0 && on.x + on.w <= 375, 'phone: the bar scrolls to show the section you are on (Olympus is past the edge otherwise)');

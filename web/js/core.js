@@ -31,7 +31,16 @@ function play(k) { if (!soundOn) return; try { const a = audio[k]; a.currentTime
 // overlapping copies (five seeds landing at once), or a sound made in the browser when the file isn't installed
 function playOr(k, fallback) { if (!soundOn) return; const a = audio[k]; if (!a || a.error || a.networkState === 3) return fallback && fallback();
   try { const n = a.cloneNode(); n.volume = a.volume; n.play().catch(() => fallback && fallback()); } catch (e) {} }
-function muteLabel() { $('#mute').textContent = soundOn ? 'Mute sounds' : 'Unmute sounds'; }
+function muteLabel() { $('#mute').textContent = soundOn ? 'Mute sounds' : 'Unmute sounds'; fitRealms(); }
+// many sections on a laptop: before the bar wraps, the pills drop their second line (still read out), then the weather goes
+function fitRealms() {
+  const bar = $('.realms'), first = bar.querySelector('.realm'), last = $('#mute');
+  const wraps = () => last.getBoundingClientRect().top >= first.getBoundingClientRect().bottom;
+  bar.classList.remove('compact', 'bare');
+  if (!first || getComputedStyle(bar).flexDirection === 'column' || !wraps()) return;   // the ultrawide rail is a column
+  bar.classList.add('compact'); if (wraps()) bar.classList.add('bare');
+}
+let fitAt; addEventListener('resize', () => { cancelAnimationFrame(fitAt); fitAt = requestAnimationFrame(fitRealms); });
 $('#mute').onclick = () => { soundOn = !soundOn; try { localStorage.setItem('argus-sound', soundOn ? 'on' : 'off'); } catch (e) {} muteLabel(); };
 muteLabel();
 let actx = null;
@@ -110,6 +119,7 @@ function render() {
     PLUGINS.filter(p => !SIDE.includes(p.id)).map(p => pluginRealm(p, here === p.id)).join('') +
     (S.links || []).map(x => `<a class="realm link" href="${esc(x.href)}" aria-label="${esc(x.name)}, ${esc(x.what || 'opens another page')}"><svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="16" fill="#1C2127" stroke="#2A9D8F" stroke-width="1.5"/><path d="M20 11h5v5M25 11l-8 8M23 20v4a1 1 0 0 1-1 1H12a1 1 0 0 1-1-1V14a1 1 0 0 1 1-1h4" fill="none" stroke="#A7B6C4" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span><b>${esc(x.name)}</b><small>${esc(x.what || 'Opens another page')}</small></span></a>`).join('') +
     (S.soon || []).filter(x => !PLUGINS.some(p => p.name === x.name)).map(x => `<span class="realm soon" aria-disabled="true"><svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="16" fill="#1C2127" stroke="#A7B6C4" stroke-width="1.5"/><path d="M10 26 26 10M26 26 10 10" stroke="#C9A36A" stroke-width="2" stroke-linecap="round"/><path d="M23 9h4v4M13 9H9v4" stroke="#A7B6C4" stroke-width="1.5" fill="none"/></svg><span><b>${esc(x.name)}</b><small>${esc(x.what)} · coming later</small></span></span>`).join('');
+  fitRealms();
   if (realmsAt !== here) {   // a phone scrolls the bar sideways: bring the section you are on into view, once per section
     const bar = $('.realms'), on = bar.querySelector('.realm.on'); if (on) realmsAt = here;   // a plugin's pill may arrive a moment later
     if (on && bar.scrollWidth > bar.clientWidth) bar.scrollLeft += on.getBoundingClientRect().left - bar.getBoundingClientRect().left - (bar.clientWidth - on.offsetWidth) / 2;
