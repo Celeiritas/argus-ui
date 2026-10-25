@@ -602,11 +602,28 @@ def one_card(db, card_id):
     if not c or c['kind'] not in LEARN: return None
     return card_payload(db, c, read_only=True)
 
+GROUP_SEP = ' › '   # " › ": a lesson whose project is "A › B" sits in submenu B of menu A (4.22.0)
+
+def group_ids(db, deck):
+    """The lesson ids a "group:<project>" choice stands for: lessons whose project is that name or lies under it
+    ("group:GAME_RESEARCH" takes "GAME_RESEARCH › Topics" and "GAME_RESEARCH › Games"). None for a plain deck id."""
+    if not deck or not deck.startswith('group:'): return None
+    name = deck[6:]
+    return [r[0] for r in db.execute("SELECT id FROM modules WHERE project=? OR project LIKE ?", (name, name + GROUP_SEP + '%'))]
+
+def deck_where(db, deck):
+    """SQL filter and arguments for the cards of one deck, one lesson, or a whole group of lessons."""
+    ids = group_ids(db, deck)
+    if ids is None: return ("c.deck=?", [deck]) if deck else ("", [])
+    if not ids: return "0", []
+    return "c.deck IN (" + ",".join("?" * len(ids)) + ")", ids
+
 def next_card(db, deck=None, extra=False):
     scan_inbox(db)
     now = time.time()
     q, args = CARD_Q, []
-    if deck: q += " WHERE c.deck=?"; args.append(deck)
+    w, wargs = deck_where(db, deck)
+    if w: q += " WHERE " + w; args += wargs
     rows = db.execute(q, args).fetchall()
     # a Learn card sent back by stuck detection comes first, before any review
     back = [r for r in rows if r['refresh'] and r['kind'] in LEARN]
@@ -824,10 +841,13 @@ def modules(db):
 def stats(db, deck=None):
     scan_inbox(db)
     now = time.time(); day0 = now - (now % DAY)
-    w, args = ("WHERE c.deck=?", [deck]) if deck else ("", [])
+    cw, args = deck_where(db, deck)
+    w = "WHERE " + cw if cw else ""
     cards = db.execute(f"SELECT c.id, c.kind, s.due, s.reps FROM cards c LEFT JOIN sched s ON s.card_id=c.id {w}", args).fetchall()
-    aw = "WHERE a.card_id LIKE ?" if deck else ""
-    att = db.execute(f"SELECT a.* FROM attempts a {aw} ORDER BY a.id DESC LIMIT 500", [deck + ':%'] if deck else []).fetchall()
+    ids = group_ids(db, deck)
+    pats = [i + ':%' for i in ids] if ids is not None else ([deck + ':%'] if deck else [])
+    aw = ("WHERE " + " OR ".join("a.card_id LIKE ?" for _ in pats)) if pats else ("WHERE 0" if ids is not None else "")
+    att = db.execute(f"SELECT a.* FROM attempts a {aw} ORDER BY a.id DESC LIMIT 500", pats).fetchall()
     rated = [a for a in att if a['rating']]
     conf = [a for a in rated if a['confidence']]
     # calibration: confidence (1-4 -> 0..1) minus coverage; positive = overconfident

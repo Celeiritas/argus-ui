@@ -232,4 +232,21 @@ run(async b => {
   await p.locator('[data-view=modules]').click(); await p.waitForTimeout(600);
   check(await p.locator('.module', {hasText: 'realm test'}).locator('[data-read]', {hasText: 'TestHost'}).count() === 1, 'the Lessons view shows the filled-in name too');
   fs.unlinkSync(REALM);
+
+  // submenus (4.22.0): a lesson whose project reads "MENU › Sub" sits in its own group, with Study all choices for
+  // the submenu and for the whole menu; a group choice studies every lesson in it, and its stats count them together
+  const sub = JSON.parse(JSON.stringify(mod));
+  sub.metadata.module_name = 'submenu lesson'; sub.metadata.project = 'GAME_RESEARCH › Topics';
+  fs.writeFileSync(path.join(INBOX, '20261020_120400_submenu.json'), JSON.stringify(sub));
+  await p.locator('[data-view=modules]').click(); await p.waitForTimeout(700);
+  check(await p.locator('#mdeck optgroup[label="GAME_RESEARCH › Topics"] option[value="20261020_120400_submenu"]').count() === 1, 'a "MENU › Sub" lesson sits in its submenu');
+  check(await p.locator('#mdeck option[value="group:GAME_RESEARCH"]').count() === 1 && await p.locator('#mdeck option[value="group:GAME_RESEARCH › Topics"]').count() === 1, 'the menu and the submenu each offer Study all');
+  check(await p.locator('#mdeck optgroup[label="Lessons"] option[value="20261020_120400_submenu"]').count() === 0, 'a submenu lesson is not repeated under Lessons');
+  const g = (await api(p, 'next?deck=' + encodeURIComponent('group:GAME_RESEARCH'))).card;
+  check(g && g.id.startsWith('20261020_120400_submenu:'), 'Study all of a menu serves a card from a lesson under it');
+  const gs = await api(p, 'stats?deck=' + encodeURIComponent('group:GAME_RESEARCH › Topics'));
+  const one = await api(p, 'stats?deck=20261020_120400_submenu');
+  check(gs.cards === one.cards && gs.cards > 0, 'a group\'s stats count the cards of its lessons');
+  const none = await api(p, 'stats?deck=' + encodeURIComponent('group:NO_SUCH_MENU'));
+  check(none.cards === 0, 'an unknown group has no cards (and no error)');
 });

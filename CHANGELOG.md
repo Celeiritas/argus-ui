@@ -1,5 +1,10 @@
 # Changelog
 
+## 4.22.0 – 2026-10-25
+- **Mentor submenus.** A lesson whose project reads `MENU › Sub` (for example `GAME_RESEARCH › Topics`) gets its own group in the Study picker. Each submenu starts with **Study all**, and each menu gets one **Study all of MENU** that takes every submenu under it. Lessons without a submenu stay under Lessons as before.
+- Group study goes through the same routes: `next?deck=group:<project>` and `stats?deck=group:<project>` take every lesson whose project is that name or lies under it, interleaved as when studying everything.
+- Tests: `tests/mentor.test.js` (the submenu, both Study all choices, no repeat under Lessons, a group serves its lessons' cards, group stats add up, an unknown group is empty)
+
 ## 4.21.0 – 2026-10-23
 - **Argus at rest** (docs/fx.md "At rest"). After a minute with no input and nothing wrong he dozes: eyes half-closed, drifting slowly, slower blinks. Any input (pointer, key, wheel, touch, focus) wakes him with a blink. He stays awake while a task has failed or an alert is up, while a button is held, and while something is carried on Olympus
 - **Home:** when Needs you empties, Argus gives a slow, contented blink (`look.react('content')`)

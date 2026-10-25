@@ -59,8 +59,17 @@
   function fillPicker() {
     const opt = (id, n) => `<option value="${esc(id)}" ${(M.deck || '') === id ? 'selected' : ''}>${esc(n)}</option>`;
     const learning = m => m.to_learn ? ` (learning ${m.learn.length - m.to_learn}/${m.learn.length})` : '';
+    // Submenus (4.22.0): a lesson whose project reads "MENU › Sub" goes in its own group, which starts with "Study all of
+    // it" (and the menu gets one "Study all" for every submenu under it); other lessons stay in Lessons, as before.
+    const SEP = ' \u203a ';
+    const plain = M.modules.filter(m => !(m.project || '').includes(SEP));
+    const subs = [...new Set(M.modules.map(m => m.project || '').filter(p => p.includes(SEP)))].sort();
+    const roots = [...new Set(subs.map(p => p.split(SEP)[0]))];
     $('#mdeck').innerHTML = opt('', 'Everything, mixed') +
-      (M.modules.length ? `<optgroup label="Lessons">${M.modules.map(m => opt(m.id, (m.project ? m.project + ': ' : '') + m.name + learning(m))).join('')}</optgroup>` : '') +
+      roots.map(r => `<optgroup label="${esc(r)}">${opt('group:' + r, 'Study all of ' + r)}</optgroup>` +
+        subs.filter(p => p.split(SEP)[0] === r).map(p => `<optgroup label="${esc(p)}">${opt('group:' + p, 'Study all: ' + p.split(SEP).slice(1).join(SEP))}` +
+          M.modules.filter(m => m.project === p).map(m => opt(m.id, m.name + learning(m))).join('') + '</optgroup>').join('')).join('') +
+      (plain.length ? `<optgroup label="Lessons">${plain.map(m => opt(m.id, (m.project ? m.project + ': ' : '') + m.name + learning(m))).join('')}</optgroup>` : '') +
       (M.decks.length ? `<optgroup label="Decks">${M.decks.map(d => opt(d.id, d.name)).join('')}</optgroup>` : '');
   }
   function setView(v) {
