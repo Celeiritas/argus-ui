@@ -99,6 +99,17 @@ CREATE TABLE IF NOT EXISTS modules(
   id TEXT PRIMARY KEY, name TEXT, project TEXT, built_in INTEGER, at REAL, summary TEXT, concepts TEXT, files TEXT, source TEXT);
 CREATE TABLE IF NOT EXISTS imports(
   path TEXT PRIMARY KEY, mtime REAL, size INTEGER, ok INTEGER, msg TEXT, module TEXT, at REAL);
+-- 4.26: courses (docs/plans/2026-10-25-mentor-courses-spec.md). The modules table above holds lessons; a course's
+-- modules are cmodules. LO ids are course/LOid, note ids lesson:note.
+CREATE TABLE IF NOT EXISTS courses(
+  id TEXT PRIMARY KEY, name TEXT, summary TEXT, requires TEXT, retention REAL, data TEXT, source TEXT, at REAL);
+CREATE TABLE IF NOT EXISTS cmodules(
+  id TEXT PRIMARY KEY, course TEXT, name TEXT, ord INTEGER, requires TEXT);
+CREATE TABLE IF NOT EXISTS los(
+  id TEXT PRIMARY KEY, course TEXT, owner TEXT, scope TEXT, text TEXT, verb TEXT, bloom TEXT, mode TEXT, knowledge TEXT,
+  condition TEXT, standard TEXT, parent TEXT);
+CREATE TABLE IF NOT EXISTS notes(
+  id TEXT PRIMARY KEY, lesson TEXT, kind TEXT, source_ref TEXT);
 """
 # columns added after 4.5 (older databases get them on start; nothing is lost)
 ADDED = [('cards', 'data', "TEXT DEFAULT '{}'"), ('cards', 'ord', 'INTEGER DEFAULT 0'),
@@ -108,7 +119,11 @@ ADDED = [('cards', 'data', "TEXT DEFAULT '{}'"), ('cards', 'ord', 'INTEGER DEFAU
          ('attempts', 'hints', 'INTEGER DEFAULT 0'), ('attempts', 'reflections', 'TEXT'), ('attempts', 'stuck', 'TEXT'),
          ('attempts', 'skipped', 'INTEGER DEFAULT 0'),
          # 4.17: the local AI's part of an attempt (docs/mentor-ai.md), JSON; empty when it was off
-         ('attempts', 'ai', 'TEXT')]
+         ('attempts', 'ai', 'TEXT'),
+         # 4.26: courses; a lesson's place in one, a card's LO, note, role and whether it is a check item
+         ('modules', 'course', 'TEXT'), ('modules', 'cmodule', 'TEXT'), ('modules', 'ord', 'INTEGER DEFAULT 0'),
+         ('cards', 'lo', 'TEXT'), ('cards', 'note', 'TEXT'), ('cards', 'role', 'TEXT'), ('cards', 'is_check', 'INTEGER DEFAULT 0')]
+LOOSE = 'loose'          # the course every lesson in the old format belongs to, one module per project
 
 def connect(path):
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -118,10 +133,26 @@ def connect(path):
     for table, col, decl in ADDED:
         if col not in {r[1] for r in db.execute(f"PRAGMA table_info({table})")}:
             db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
+    ensure_loose(db)
     db.commit()
     try: os.makedirs(INBOX, exist_ok=True)
     except OSError: pass
     return db
+
+def loose_module(project):
+    return f'{LOOSE}/{slug(project or "lessons")}'
+
+def ensure_loose(db):
+    """The Loose lessons course: every lesson not in a course, one module per project (named as the project). Idempotent."""
+    db.execute("INSERT INTO courses(id,name,summary,requires,retention,data,source,at) VALUES(?,?,?,'[]',0.9,'{}','',0) "
+               "ON CONFLICT(id) DO NOTHING", (LOOSE, 'Loose lessons', 'Lessons made before courses, one module per project.'))
+    for r in db.execute("SELECT id, project FROM modules WHERE course IS NULL OR course=?", (LOOSE,)).fetchall():
+        db.execute("UPDATE modules SET course=?, cmodule=? WHERE id=?", (LOOSE, loose_module(r['project']), r['id']))
+    projects = {r['cmodule']: r['project'] or 'Lessons' for r in db.execute("SELECT cmodule, project FROM modules WHERE course=?", (LOOSE,))}
+    db.execute(f"DELETE FROM cmodules WHERE course=? AND id NOT IN ({','.join('?' * len(projects))})", (LOOSE, *projects))
+    for i, (cm, name) in enumerate(sorted(projects.items(), key=lambda x: x[1].lower())):
+        db.execute("INSERT INTO cmodules(id,course,name,ord,requires) VALUES(?,?,?,?,'[]') ON CONFLICT(id) DO UPDATE SET "
+                   "name=excluded.name, ord=excluded.ord", (cm, LOOSE, name, i))
 
 def load_decks(db, folder):
     """Upsert every deck JSON file in folder (plain decks and built-in code modules). History stays."""
@@ -196,8 +227,9 @@ def worked(d):
     prompt = str(se.get('prompt') or 'In your words: what does this code do, and why is it written this way?')
     return ann, prompt, rubric_points(as_list(se.get('rubric'))), bool(w)
 
-def import_module(db, doc, mid, source, built_in):
+def import_module(db, doc, mid, source, built_in, course=None, cmodule=None, ord_=0):
     """Turn one lesson JSON into cards: the practice cards, and a Learn card in front of each (and one orientation).
+    course/cmodule: where it sits in a course (import_course); without them it is a Loose lesson.
     Returns (cards added, notes about anything skipped). Caller holds DB_LOCK."""
     meta = doc.get('metadata') if isinstance(doc.get('metadata'), dict) else {}
     name = str(meta.get('module_name') or doc.get('module_name') or mid).replace('_', ' ')
@@ -279,14 +311,16 @@ def import_module(db, doc, mid, source, built_in):
     for (old,) in db.execute("SELECT id FROM cards WHERE deck=?", (mid,)).fetchall():
         if old not in keep: db.execute("DELETE FROM cards WHERE id=?", (old,))     # attempts and schedule rows are kept
     lint = [str(x) for x in as_list(meta.get('lint'))]
-    db.execute("INSERT INTO modules(id,name,project,built_in,at,summary,concepts,files,source) VALUES(?,?,?,?,?,?,?,?,?) "
+    db.execute("INSERT INTO modules(id,name,project,built_in,at,summary,concepts,files,source,course,cmodule,ord) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) "
                "ON CONFLICT(id) DO UPDATE SET name=excluded.name,project=excluded.project,built_in=excluded.built_in,"
-               "summary=excluded.summary,concepts=excluded.concepts,files=excluded.files,source=excluded.source",
+               "summary=excluded.summary,concepts=excluded.concepts,files=excluded.files,source=excluded.source,"
+               "course=excluded.course,cmodule=excluded.cmodule,ord=excluded.ord",
                (mid, name, str(meta.get('project') or ''), 1 if built_in else 0, stamp(meta.get('timestamp'), mid),
                 json.dumps({**{k: str(summary.get(k) or '') for k in ('schematic_mental_model', 'design_rules_heuristics',
                             'hard_rules_invariants', 'hci_human_factors_bridge')}, 'lint': lint}),
                 json.dumps([str(x) for x in as_list(meta.get('concepts_covered'))]),
-                json.dumps([str(x) for x in as_list(meta.get('source_files'))]), os.path.basename(source)))
+                json.dumps([str(x) for x in as_list(meta.get('source_files'))]), os.path.basename(source), course, cmodule, ord_))
+    if course is None: ensure_loose(db)
     db.commit()
     return sum(1 for c in cards if c[1] not in LEARN), notes
 

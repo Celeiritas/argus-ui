@@ -30,6 +30,8 @@ if [ -z "$1" ] || [ "$1" = mentor ]; then
   out=$(python3 "$R/scripts/check-deck.py" "$R/tests/deck-fixtures/bad-lesson.json") && { echo "FAIL the bad fixture passed"; fail=1; }
   for r in 'ERROR R1 file' 'WARN R1 repo' 'R2 ' 'R3 ' 'R4 ' 'R5 '; do grep -q "$r" <<<"$out" || { echo "FAIL the checker missed: $r"; fail=1; }; done
   grep -q 'drill_01: ERROR R1 file' <<<"$out" && { echo "FAIL a file name inside code was reported"; fail=1; }
+  echo "== mentor model"   # courses, Loose lessons, the review log: no browser (tests/mentor_model_test.py)
+  python3 "$R/tests/mentor_model_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1
 fi
 if [ "$1" = demo ]; then   # bash tests/run.sh demo: record the README preview GIF
   BASE="http://127.0.0.1:$PORT/argus/" FIXTURES="$T/fx" SHOTS="$T" node "$R/tests/demo.js" || exit 1
