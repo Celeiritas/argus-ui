@@ -5,7 +5,7 @@
 
 Prints one line per finding, `file: card: LEVEL Rn message`, and exits 1 if any is an ERROR.
 Only what the learner reads is checked: code (snippets, canonical code, fades, answers) may name files."""
-import json, os, re, sys
+import ast, json, os, re, sys, textwrap
 
 # keys whose text is code, ids or bookkeeping, never prose the learner reads
 SKIP = {'full_canonical_code', 'level_1_fade', 'level_2_fade', 'level_3_fade', 'answers', 'snippet', 'code', 'any',
@@ -97,6 +97,140 @@ def check(doc):
         add(cid, r)
     return found
 
+# ---------- courses (checker v2; docs/plans/2026-10-25-mentor-courses-spec.md sections 4, 5, 10) ----------
+LO_FIELDS = ('id', 'text', 'verb', 'bloom', 'mode', 'knowledge', 'condition', 'standard', 'parent')
+ENUMS = {'bloom': ('remember', 'understand', 'apply', 'analyse', 'evaluate', 'create'), 'mode': ('read', 'write'),
+         'knowledge': ('factual', 'conceptual', 'procedural', 'metacognitive')}
+VERBS = set('trace predict explain write fix choose build name define order find modify compare rebuild describe'.split())
+VAGUE = re.compile(r'^(?:know|understand|learn(?:\s+about)?)\b', re.I)       # not observable (Mager)
+LATER_ROLES = ('predict', 'trace', 'parsons', 'write', 'make')                  # card roles phase 4 adds
+TIERS = (('tier_3_terminology_cards', ('term', 'recall')), ('tier_1_faded_code_drills', ('drill',)),
+         ('tier_2_self_explanation_cards', ('explain', 'find-bug', 'choose-design')))
+CITE = re.compile(r'^.+ \(\d{4}[a-z]?\)\. .+\. .+\.$')                          # Author(s) (year). Title. Venue.
+
+def is_course(doc):
+    return str(doc.get('format') or '').startswith('mentor-course/')
+
+def check_course(doc):
+    """Return [(where, level, rule, message)] for one course: C1 schema, C2 LO form, C3 alignment, C4 cards,
+    C5 requires, C6 citations, C7 answers parse, and each lesson's R1-R5."""
+    out, los, mods = [], {}, {}       # los: LO id -> (scope, owner id, lo)
+    add = lambda where, level, rule, msg: out.append((where, level, rule, msg))
+    for k in ('format', 'id', 'name', 'los', 'modules'):
+        if k not in doc: add('course', 'ERROR', 'C1', f'no "{k}"')
+    r = []; text_rules({'name': doc.get('name'), 'summary': doc.get('summary')}, r); out.extend(('course', *x) for x in r)
+
+    def take_los(items, scope, owner):
+        ids = []
+        for lo in lst(items):
+            if not isinstance(lo, dict) or not lo.get('id'): add(owner, 'ERROR', 'C1', 'an LO without an id'); continue
+            w = f"{owner}: LO {lo['id']}"
+            if lo['id'] in los: add(w, 'ERROR', 'C1', 'LO id used twice in the course')
+            los[lo['id']] = (scope, owner, lo); ids.append(lo['id'])
+            missing = [f for f in LO_FIELDS if f not in lo]
+            if missing: add(w, 'ERROR', 'C2', f'missing {", ".join(missing)}')
+            if scope != 'course' and not lo.get('parent'): add(w, 'ERROR', 'C2', 'no parent (only a course LO has none)')
+            for f, ok in ENUMS.items():
+                if f in lo and lo[f] not in ok: add(w, 'ERROR', 'C2', f'{f} "{lo[f]}" is not one of {", ".join(ok)}')
+            verb, text = str(lo.get('verb') or '').strip(), str(lo.get('text') or '').strip()
+            if len(verb.split()) != 1: add(w, 'ERROR', 'C2', f'verb "{verb}": one verb, one word')
+            elif VAGUE.match(verb) or VAGUE.match(text): add(w, 'ERROR', 'C2', f'"{verb}" can\'t be seen: use trace, explain, write, choose...')
+            elif not text.lower().startswith(verb.lower()): add(w, 'ERROR', 'C2', f'text should start with its verb "{verb}"')
+            elif verb.lower() not in VERBS: add(w, 'WARN', 'C2', f'verb "{verb}" is not one of the usual ones ({", ".join(sorted(VERBS))})')
+            r = []; text_rules({'text': text}, r); out.extend((w, *x) for x in r)
+        return ids
+
+    def cite(where, ref):
+        if isinstance(ref, dict) and 'cite' in ref and not CITE.match(str(ref['cite']).strip()):
+            add(where, 'ERROR', 'C6', f'citation "{ref["cite"]}" is not "Author(s) (year). Title. Venue."')
+
+    take_los(doc.get('los'), 'course', 'course')
+    for i, s in enumerate(lst(doc.get('sources'))): cite(f'source {i + 1}', s)
+    for i, mod in enumerate(lst(doc.get('modules'))):
+        if not isinstance(mod, dict) or not mod.get('id'): add(f'module {i + 1}', 'ERROR', 'C1', 'a module needs an id'); continue
+        if mod['id'] in mods: add(mod['id'], 'ERROR', 'C1', 'module id used twice')
+        mods[mod['id']] = mod
+        for k in ('name', 'lessons'):
+            if k not in mod: add(mod['id'], 'ERROR', 'C1', f'no "{k}"')
+        r = []; text_rules({'name': mod.get('name')}, r); out.extend((mod['id'], *x) for x in r)
+        for lid in take_los(mod.get('los'), 'module', mod['id']):
+            p = los[lid][2].get('parent')
+            if p and (p not in los or los[p][0] != 'course'): add(f"{mod['id']}: LO {lid}", 'ERROR', 'C3', f'parent "{p}" is not a course LO')
+        seen_lessons = set()
+        for j, les in enumerate(lst(mod.get('lessons'))):
+            if not isinstance(les, dict) or not les.get('id'): add(f"{mod['id']} lesson {j + 1}", 'ERROR', 'C1', 'a lesson needs an id'); continue
+            where = f"{mod['id']}/{les['id']}"
+            if les['id'] in seen_lessons: add(where, 'ERROR', 'C1', 'lesson id used twice in the module')
+            seen_lessons.add(les['id'])
+            if 'los' not in les: add(where, 'ERROR', 'C1', 'no "los": a lesson teaches 1-3 LOs')
+            llos = take_los(les.get('los'), 'lesson', where)
+            for lid in llos:
+                p = los[lid][2].get('parent')
+                if p and (p not in los or los[p][0] != 'module' or los[p][1] != mod['id']):
+                    add(f'{where}: LO {lid}', 'ERROR', 'C3', f'parent "{p}" is not an LO of module {mod["id"]}')
+            notes = {}
+            for nt in lst(les.get('notes')):
+                if not isinstance(nt, dict) or not nt.get('id'): add(where, 'ERROR', 'C1', 'a note without an id'); continue
+                if nt['id'] in notes: add(f"{where}: note {nt['id']}", 'ERROR', 'C1', 'note id used twice')
+                notes[nt['id']] = nt; cite(f"{where}: note {nt['id']}", nt.get('source_ref'))
+            counts, items = {lid: [0, 0] for lid in llos}, set()
+            for key, roles in TIERS:
+                for item in lst(les.get(key)):
+                    if not isinstance(item, dict): continue
+                    iid = item.get('id') or '?'; w = f'{where}: {iid}'
+                    if iid in items: add(w, 'ERROR', 'C1', 'card id used twice in the lesson')
+                    items.add(iid)
+                    role = item.get('role')
+                    if role in LATER_ROLES: add(w, 'ERROR', 'C4', f'role {role} arrives in phase 4'); continue
+                    if role not in roles: add(w, 'ERROR', 'C4', f'role "{role}" is not one of {", ".join(roles)} for this list')
+                    if item.get('lo') not in counts: add(w, 'ERROR', 'C4', f'lo "{item.get("lo")}" is not one of this lesson\'s LOs')
+                    else: counts[item['lo']][1 if item.get('check') is True else 0] += 1
+                    if not item.get('note'): add(w, 'WARN', 'C4', 'no note: where does this card come from?')
+                    elif item['note'] not in notes: add(w, 'ERROR', 'C4', f'note "{item["note"]}" is not one of this lesson\'s')
+                    if key == 'tier_1_faded_code_drills': parses(item, notes.get(item.get('note')), w, add)
+            for lid, (practice, checks) in counts.items():
+                if practice < 2: add(f'{where}: LO {lid}', 'ERROR', 'C4', f'{practice} practice card{"s" * (practice != 1)} (at least 2)')
+                if checks < 1: add(f'{where}: LO {lid}', 'ERROR', 'C4', 'no check item ("check": true)')
+            out.extend((f'{where}: {cid}', *x) for cid, *x in check(les))          # today's rubric, R1-R5
+    for lid, (scope, owner, lo) in los.items():
+        kids = [k for k, v in los.items() if v[2].get('parent') == lid]
+        if scope in ('course', 'module') and not kids:
+            add(f'{owner}: LO {lid}', 'WARN', 'C3', f'no {"module" if scope == "course" else "lesson"} LO serves it')
+    for mid_, mod in mods.items():
+        for r_ in lst(mod.get('requires')):
+            if r_ not in mods: add(mid_, 'ERROR', 'C5', f'requires "{r_}", which is not a module of this course')
+    loop = cycle({k: [r_ for r_ in lst(v.get('requires')) if r_ in mods] for k, v in mods.items()})
+    if loop: add('modules', 'ERROR', 'C5', 'requires go in a circle: ' + ' → '.join(loop))
+    return out
+
+def cycle(graph):
+    """One cycle in {node: [nodes it requires]} as a list of nodes (first repeated at the end), or None."""
+    state, path = {}, []
+    def visit(n):
+        state[n] = 1; path.append(n)
+        for nxt in graph.get(n, []):
+            if state.get(nxt) == 1: return path[path.index(nxt):] + [nxt]
+            if not state.get(nxt):
+                found = visit(nxt)
+                if found: return found
+        state[n] = 2; path.pop()
+    for n in graph:
+        if not state.get(n):
+            found = visit(n)
+            if found: return found
+    return None
+
+def parses(item, note, where, add):
+    """C7: a Python drill's canonical code and level-3 answer must parse (never run)."""
+    path = str(((note or {}).get('source_ref') or {}).get('path') or '')
+    if item.get('lang', 'python' if path.endswith('.py') else None) != 'python':
+        add(where, 'INFO', 'C7', f'not parsed ({item.get("lang") or "language unknown"}): only Python is checked'); return
+    blobs = [('full_canonical_code', item.get('full_canonical_code'))]
+    blobs += [('level 3 answer', a) for a in lst((item.get('answers') or {}).get('level_3'))[:1] if isinstance(a, str)]
+    for name, src in blobs:
+        try: ast.parse(textwrap.dedent(str(src or '')))
+        except SyntaxError as e: add(where, 'ERROR', 'C7', f'{name} is not valid Python (line {e.lineno}: {e.msg})')
+
 def files(paths):
     for p in paths:
         if os.path.isdir(p):
@@ -117,7 +251,7 @@ def main(argv):
             print(f'{f}: -: ERROR R0 cannot read: {e}'); errors += 1; continue
         if not isinstance(doc, dict):
             print(f'{f}: -: ERROR R0 not a lesson or deck'); errors += 1; continue
-        for cid, level, rule, msg in check(doc):
+        for cid, level, rule, msg in (check_course(doc) if is_course(doc) else check(doc)):
             print(f'{f}: {cid}: {level} {rule} {msg}')
             errors += level == 'ERROR'; warns += level == 'WARN'
     print(f'check-deck: {errors} error{"s" * (errors != 1)}, {warns} warning{"s" * (warns != 1)}')

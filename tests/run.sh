@@ -25,11 +25,14 @@ fail=0
 # the deck rubric (docs/mentor-rubric.md): the shipped decks pass, and the checker still catches each rule
 if [ -z "$1" ] || [ "$1" = mentor ]; then
   echo "== deck rubric"
-  res=$(python3 "$R/scripts/check-deck.py" "$R"/themes/*/decks "$R/tests/deck-fixtures/good-lesson.json") || { echo "$res"; fail=1; }
+  res=$(python3 "$R/scripts/check-deck.py" "$R"/themes/*/decks "$R/tests/deck-fixtures/good-lesson.json" "$R/tests/deck-fixtures/good-course.json") || { echo "$res"; fail=1; }
   tail -1 <<<"$res"
   out=$(python3 "$R/scripts/check-deck.py" "$R/tests/deck-fixtures/bad-lesson.json") && { echo "FAIL the bad fixture passed"; fail=1; }
   for r in 'ERROR R1 file' 'WARN R1 repo' 'R2 ' 'R3 ' 'R4 ' 'R5 '; do grep -q "$r" <<<"$out" || { echo "FAIL the checker missed: $r"; fail=1; }; done
   grep -q 'drill_01: ERROR R1 file' <<<"$out" && { echo "FAIL a file name inside code was reported"; fail=1; }
+  # checker v2 (courses): the bad course breaks each rule once
+  out=$(python3 "$R/scripts/check-deck.py" "$R/tests/deck-fixtures/bad-course.json") && { echo "FAIL the bad course passed"; fail=1; }
+  for r in C1 C2 C3 C4 C5 C6 C7; do grep -q "ERROR $r " <<<"$out" || { echo "FAIL the course checker missed: $r"; echo "$out"; fail=1; }; done
   echo "== mentor model"   # courses, Loose lessons, the review log: no browser (tests/mentor_model_test.py)
   python3 "$R/tests/mentor_model_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1
 fi
