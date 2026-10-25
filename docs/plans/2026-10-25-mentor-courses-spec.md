@@ -1,6 +1,6 @@
 # Mentor courses – spec (draft for the owner's approval)
 
-**Status:** proposed 2026-10-25. Nothing here is built. The UI it builds on is the approved mockup (study flow, Lessons, phone, Sound Lab link).
+**Status:** approved by the owner 2026-10-25 (section 15). Nothing here is built yet. The UI it builds on is the approved mockup (study flow, Lessons, phone, Sound Lab link).
 
 ## 1. Goal
 Mentor becomes a personal course platform: each of the owner's projects is dissected into a **course** with tiered learning objectives (LOs), so that by the end of it the learner can rebuild that project alone, understanding its terms, its language (Python, C#, JS), and its tools (git, GitHub, Linux).
@@ -120,11 +120,11 @@ Terminal LOs (create): build a stdlib HTTP server that serves a static page and 
 6. **Tutor** on the local model (hint-only), logged.
 7. **First course:** "Rebuild Elaia's server", studied by the owner; adjust from the review log.
 
-## 15. Decisions for the owner
-1. Approve the levels, LO format and unlock rules (sections 3, 4, 8).
-2. Authoring by Claude Code sessions with a Drafts review step, local model as tutor only (section 9)?
-3. Defaults: 1 new lesson a day, desired retention 0.90, module pass 80%.
-4. Phase order (section 14), and whether phase 2 (the new study screen) should ship first on the existing lessons.
+## 15. Decisions (owner, 2026-10-25)
+1. Levels, LO format and unlock rules (sections 3, 4, 8): approved as written.
+2. Authoring: Claude Code `/course` sessions + checker + a Drafts review in Mentor; the local model is a hint-only tutor and keeps scoring written answers, never writes course material.
+3. Defaults: 1 new lesson a day, 200 reviews a day, desired retention 0.90, bury siblings on, leech at 8 lapses, module pass 80%.
+4. Order: UI first: phases 2 and 3 (study screen, course map, Sound Lab link) ship on the existing lessons, then phase 1 and on.
 
 ## Sources
 Anderson & Krathwohl (2001) revised Bloom – bu.edu/provost/files/2013/10/Anderson-Krathwohl-Revision-to-Blooms-Taxonomy-of-Educational-Objectives.pdf · Fuller et al. (2007) CS learning taxonomy – cs.kent.ac.uk/pubs/2007/2798 · Biggs, constructive alignment – biologie.uzh.ch (ConstructiveAlignment_Biggs.pdf) · Wiggins & McTighe, backward design – cft.vanderbilt.edu/?p=984 · Khan Academy mastery – support.khanacademy.org/hc/en-us/articles/360007253831 · Exercism syllabus – exercism.org/docs/building/tracks/syllabus · Rosenshine (2012) – aft.org/sites/default/files/periodicals/Rosenshine.pdf · Brunmair & Richter (2019) interleaving · Ericson, Parsons problems – hg.gatech.edu/node/603172 · Sentance et al., PRIMM – eprints.gla.ac.uk/229013 · Xie et al. (2019) – faculty.washington.edu/ajko/papers/Xie2019IntroCSTheoryOfInstruction.pdf · Linn & Clancy (1992) case studies – people.eecs.berkeley.edu/~clancy/web/case.studies.html · Van der Kleij et al. (2015) feedback – acuresearchbank.acu.edu.au/item/86y84 · Matuschak, How to write good prompts – andymatuschak.org/prompts · Anki manual – docs.ankiweb.net · Bastani et al. (2025) – papers.ssrn.com/abstract=4895486 · Kestin et al. (2025) – pmc.ncbi.nlm.nih.gov/articles/PMC12179260 · Walters & Wilder (2023) fabricated citations – doaj.org/article/fc88ea07ec994a7c8a144f8516c48cbf
