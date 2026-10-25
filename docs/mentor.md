@@ -55,10 +55,10 @@ A course is one JSON file in the inbox (or a decks folder), `"format": "mentor-c
 ```
 A full example is `tests/deck-fixtures/good-course.json`; `python3 scripts/check-deck.py` checks a course before it goes in the inbox (the C rules in the [deck rubric](mentor-rubric.md)).
 - **Roles** today: `term`, `recall`, `explain`, `find-bug`, `choose-design`, `drill`. `predict`, `trace`, `parsons`, `write` and `make` come with the new card types; until then such a card is skipped and named in Lessons.
-- **Check items** (`"check": true`) are kept for module checks: they're never served as practice, never hold back a lesson's other cards, and never count as waiting. Every LO needs at least 2 practice cards and 1 check item.
-- **Source references:** `{repo, path, symbol, commit, lines}` for code, `{cite, url, doi}` for a paper, `{note, path}` for your own notes. Cards show the symbol, never the path.
+- **Check items** (`"check": true`) are kept for module checks: they're never served as practice, never hold back a lesson's other cards, and never count as waiting. Their Learn cards wait with them (a teach card or pre-read would show the answer). Every LO needs at least 2 practice cards and 1 check item.
+- **Source references:** `{repo, path, symbol, commit, lines}` for code, `{cite, url, doi}` for a paper, `{note, path}` for your own notes. A symbol is the bare name (`host_ok`); `host_ok()` and `H.do_GET` are read as `host_ok` and `do_GET`. `commit` is a commit id. Cards show the symbol, never the path.
 - **Loose lessons:** every lesson in the older format belongs to the built-in course *Loose lessons*, one module per project. Nothing moves in Lessons: a course's lessons show as one group under the course's name, in course order.
-- **Re-importing** a changed course keeps your history; a lesson, note or LO the file no longer has goes (its attempts and schedule rows stay).
+- **Re-importing** a changed course keeps your history; a lesson, note or LO the file no longer has goes (its attempts and schedule rows stay). Lesson ids are unique within a course; a file whose course `id` changes replaces its old course instead of adding a second one.
 
 **Review log.** Every rating also stores what it was, as Anki's review log does: `review` (*learn* until the card is first passed with Hard or better, *review*, *relearn* after an Again, *manual* when practising ahead), `ivl_before` and `ivl_after` (days), and `took` (time, capped at 60 s; the raw `ms` stays for the grader). This is what fitting FSRS to you will read later.
 

@@ -7,7 +7,7 @@ Prints one line per finding, `file: card: LEVEL Rn message`, and exits 1 if any 
 Only what the learner reads is checked: code (snippets, canonical code, fades, answers) may name files.
 Courses (`"format": "mentor-course/1"`) also get C1-C9. --repo NAME=PATH: a clone of the repository a course's code
 references name, so each file and symbol is looked up at its commit (C8). --online: paper links and DOIs must answer (C9)."""
-import ast, json, os, re, subprocess, sys, textwrap, urllib.error, urllib.parse, urllib.request
+import ast, http.client, json, os, re, subprocess, sys, textwrap, urllib.error, urllib.parse, urllib.request
 
 # keys whose text is code, ids or bookkeeping, never prose the learner reads
 SKIP = {'full_canonical_code', 'level_1_fade', 'level_2_fade', 'level_3_fade', 'answers', 'snippet', 'code', 'any',
@@ -113,10 +113,17 @@ CITE = re.compile(r'^.+ \(\d{4}[a-z]?\)\. .+\. .+\.$')                          
 def is_course(doc):
     return str(doc.get('format') or '').startswith('mentor-course/')
 
+def ident(x):
+    """An id as text, or None when it isn't one (a list, an object, empty): odd values become findings, not crashes."""
+    return str(x).strip() if isinstance(x, (str, int)) and not isinstance(x, bool) and str(x).strip() else None
+
+def slug(s):        # as Mentor makes lesson ids (plugins/mentor/mentor.py slug()): "Words" and "words" are the same lesson
+    return re.sub(r'[^a-z0-9_-]+', '-', str(s).lower()).strip('-')[:80] or 'module'
+
 def check_course(doc):
     """Return [(where, level, rule, message)] for one course: C1 schema, C2 LO form, C3 alignment, C4 cards,
     C5 requires, C6 citations, C7 answers parse, and each lesson's R1-R5."""
-    out, los, mods = [], {}, {}       # los: LO id -> (scope, owner id, lo)
+    out, los, mods, lessons = [], {}, {}, {}     # los: LO id -> (scope, owner id, lo); lessons: slug -> "module/lesson"
     add = lambda where, level, rule, msg: out.append((where, level, rule, msg))
     for k in ('format', 'id', 'name', 'los', 'modules'):
         if k not in doc: add('course', 'ERROR', 'C1', f'no "{k}"')
@@ -125,10 +132,11 @@ def check_course(doc):
     def take_los(items, scope, owner):
         ids = []
         for lo in lst(items):
-            if not isinstance(lo, dict) or not lo.get('id'): add(owner, 'ERROR', 'C1', 'an LO without an id'); continue
-            w = f"{owner}: LO {lo['id']}"
-            if lo['id'] in los: add(w, 'ERROR', 'C1', 'LO id used twice in the course')
-            los[lo['id']] = (scope, owner, lo); ids.append(lo['id'])
+            lid = ident(lo.get('id')) if isinstance(lo, dict) else None
+            if not lid: add(owner, 'ERROR', 'C1', 'an LO without an id (a word, not a list or an object)'); continue
+            w = f"{owner}: LO {lid}"
+            if lid in los: add(w, 'ERROR', 'C1', 'LO id used twice in the course')
+            los[lid] = (scope, owner, lo); ids.append(lid)
             missing = [f for f in LO_FIELDS if f not in lo]
             if missing: add(w, 'ERROR', 'C2', f'missing {", ".join(missing)}')
             if scope != 'course' and not lo.get('parent'): add(w, 'ERROR', 'C2', 'no parent (only a course LO has none)')
@@ -151,60 +159,64 @@ def check_course(doc):
         cite(f'source {i + 1}', s)
         for x in resolve_ref(s) if isinstance(s, dict) else []: add(f'source {i + 1}', *x)
     for i, mod in enumerate(lst(doc.get('modules'))):
-        if not isinstance(mod, dict) or not mod.get('id'): add(f'module {i + 1}', 'ERROR', 'C1', 'a module needs an id'); continue
-        if mod['id'] in mods: add(mod['id'], 'ERROR', 'C1', 'module id used twice')
-        mods[mod['id']] = mod
+        mid = ident(mod.get('id')) if isinstance(mod, dict) else None
+        if not mid: add(f'module {i + 1}', 'ERROR', 'C1', 'a module needs an id (a word)'); continue
+        if mid in mods: add(mid, 'ERROR', 'C1', 'module id used twice')
+        mods[mid] = mod
         for k in ('name', 'lessons'):
-            if k not in mod: add(mod['id'], 'ERROR', 'C1', f'no "{k}"')
-        r = []; text_rules({'name': mod.get('name')}, r); out.extend((mod['id'], *x) for x in r)
-        for lid in take_los(mod.get('los'), 'module', mod['id']):
-            p = los[lid][2].get('parent')
-            if p and (p not in los or los[p][0] != 'course'): add(f"{mod['id']}: LO {lid}", 'ERROR', 'C3', f'parent "{p}" is not a course LO')
-        seen_lessons = set()
+            if k not in mod: add(mid, 'ERROR', 'C1', f'no "{k}"')
+        r = []; text_rules({'name': mod.get('name')}, r); out.extend((mid, *x) for x in r)
+        for lid in take_los(mod.get('los'), 'module', mid):
+            p = ident(los[lid][2].get('parent'))
+            if p and (p not in los or los[p][0] != 'course'): add(f"{mid}: LO {lid}", 'ERROR', 'C3', f'parent "{p}" is not a course LO')
         for j, les in enumerate(lst(mod.get('lessons'))):
-            if not isinstance(les, dict) or not les.get('id'): add(f"{mod['id']} lesson {j + 1}", 'ERROR', 'C1', 'a lesson needs an id'); continue
-            where = f"{mod['id']}/{les['id']}"
-            if les['id'] in seen_lessons: add(where, 'ERROR', 'C1', 'lesson id used twice in the module')
-            seen_lessons.add(les['id'])
+            lesid = ident(les.get('id')) if isinstance(les, dict) else None
+            if not lesid: add(f"{mid} lesson {j + 1}", 'ERROR', 'C1', 'a lesson needs an id (a word)'); continue
+            where = f"{mid}/{lesid}"
+            if slug(lesid) in lessons:                  # Mentor stores lessons as course--lesson: the second would replace the first
+                add(where, 'ERROR', 'C1', f'lesson id "{lesid}" used twice in the course (also {lessons[slug(lesid)]})')
+            lessons.setdefault(slug(lesid), where)
             if 'los' not in les: add(where, 'ERROR', 'C1', 'no "los": a lesson teaches 1-3 LOs')
             llos = take_los(les.get('los'), 'lesson', where)
             for lid in llos:
-                p = los[lid][2].get('parent')
-                if p and (p not in los or los[p][0] != 'module' or los[p][1] != mod['id']):
-                    add(f'{where}: LO {lid}', 'ERROR', 'C3', f'parent "{p}" is not an LO of module {mod["id"]}')
+                p = ident(los[lid][2].get('parent'))
+                if p and (p not in los or los[p][0] != 'module' or los[p][1] != mid):
+                    add(f'{where}: LO {lid}', 'ERROR', 'C3', f'parent "{p}" is not an LO of module {mid}')
             notes = {}
             for nt in lst(les.get('notes')):
-                if not isinstance(nt, dict) or not nt.get('id'): add(where, 'ERROR', 'C1', 'a note without an id'); continue
-                if nt['id'] in notes: add(f"{where}: note {nt['id']}", 'ERROR', 'C1', 'note id used twice')
-                notes[nt['id']] = nt; cite(f"{where}: note {nt['id']}", nt.get('source_ref'))
-                for x in resolve_ref(nt.get('source_ref')): add(f"{where}: note {nt['id']}", *x)
+                nid = ident(nt.get('id')) if isinstance(nt, dict) else None
+                if not nid: add(where, 'ERROR', 'C1', 'a note without an id (a word)'); continue
+                if nid in notes: add(f"{where}: note {nid}", 'ERROR', 'C1', 'note id used twice')
+                notes[nid] = nt; cite(f"{where}: note {nid}", nt.get('source_ref'))
+                for x in resolve_ref(nt.get('source_ref')): add(f"{where}: note {nid}", *x)
             counts, items = {lid: [0, 0] for lid in llos}, set()
             for key, roles in TIERS:
                 for item in lst(les.get(key)):
                     if not isinstance(item, dict): continue
-                    iid = item.get('id') or '?'; w = f'{where}: {iid}'
+                    iid = ident(item.get('id')) or '?'; w = f'{where}: {iid}'
                     if iid in items: add(w, 'ERROR', 'C1', 'card id used twice in the lesson')
                     items.add(iid)
-                    role = item.get('role')
+                    role = ident(item.get('role'))
                     if role in LATER_ROLES: add(w, 'ERROR', 'C4', f'role {role} arrives in phase 4'); continue
                     if role not in roles: add(w, 'ERROR', 'C4', f'role "{role}" is not one of {", ".join(roles)} for this list')
-                    if item.get('lo') not in counts: add(w, 'ERROR', 'C4', f'lo "{item.get("lo")}" is not one of this lesson\'s LOs')
-                    else: counts[item['lo']][1 if item.get('check') is True else 0] += 1
-                    if not item.get('note'): add(w, 'WARN', 'C4', 'no note: where does this card come from?')
-                    elif item['note'] not in notes: add(w, 'ERROR', 'C4', f'note "{item["note"]}" is not one of this lesson\'s')
-                    if key == 'tier_1_faded_code_drills': parses(item, notes.get(item.get('note')), w, add)
+                    lo, note = ident(item.get('lo')), ident(item.get('note'))
+                    if lo not in counts: add(w, 'ERROR', 'C4', f'lo {json.dumps(item.get("lo"))} is not one of this lesson\'s LOs')
+                    else: counts[lo][1 if item.get('check') is True else 0] += 1
+                    if item.get('note') is None: add(w, 'WARN', 'C4', 'no note: where does this card come from?')
+                    elif note not in notes: add(w, 'ERROR', 'C4', f'note {json.dumps(item.get("note"))} is not one of this lesson\'s')
+                    if key == 'tier_1_faded_code_drills': parses(item, notes.get(note), w, add)
             for lid, (practice, checks) in counts.items():
                 if practice < 2: add(f'{where}: LO {lid}', 'ERROR', 'C4', f'{practice} practice card{"s" * (practice != 1)} (at least 2)')
                 if checks < 1: add(f'{where}: LO {lid}', 'ERROR', 'C4', 'no check item ("check": true)')
             out.extend((f'{where}: {cid}', *x) for cid, *x in check(les))          # today's rubric, R1-R5
     for lid, (scope, owner, lo) in los.items():
-        kids = [k for k, v in los.items() if v[2].get('parent') == lid]
+        kids = [k for k, v in los.items() if ident(v[2].get('parent')) == lid]
         if scope in ('course', 'module') and not kids:
             add(f'{owner}: LO {lid}', 'WARN', 'C3', f'no {"module" if scope == "course" else "lesson"} LO serves it')
     for mid_, mod in mods.items():
         for r_ in lst(mod.get('requires')):
-            if r_ not in mods: add(mid_, 'ERROR', 'C5', f'requires "{r_}", which is not a module of this course')
-    loop = cycle({k: [r_ for r_ in lst(v.get('requires')) if r_ in mods] for k, v in mods.items()})
+            if ident(r_) not in mods: add(mid_, 'ERROR', 'C5', f'requires {json.dumps(r_)}, which is not a module of this course')
+    loop = cycle({k: [ident(r_) for r_ in lst(v.get('requires')) if ident(r_) in mods] for k, v in mods.items()})
     if loop: add('modules', 'ERROR', 'C5', 'requires go in a circle: ' + ' → '.join(loop))
     return out
 
@@ -218,15 +230,17 @@ def resolve_ref(ref):
     if 'repo' in ref or 'symbol' in ref:
         missing = [k for k in ('repo', 'path', 'symbol', 'commit') if not ref.get(k)]
         if missing: return [('ERROR', 'C8', f'code reference without {", ".join(missing)}')]
-        root = OPTS['repos'].get(ref['repo'])
+        commit, path = str(ref['commit']), str(ref['path'])
+        if not re.fullmatch(r'[0-9a-fA-F]{4,40}', commit): return [('ERROR', 'C8', f'commit "{commit}" is not a commit id (4-40 hex digits)')]
+        if path.startswith('-') or '\n' in path: return [('ERROR', 'C8', f'path "{path}" is not a file path')]
+        root = OPTS['repos'].get(str(ref['repo']))
         if not root: return [('INFO', 'C8', f'not checked: pass --repo {ref["repo"]}=PATH')]
-        try: got = subprocess.run(['git', '-C', root, 'show', f"{ref['commit']}:{ref['path']}"], capture_output=True,
+        try: got = subprocess.run(['git', '-C', root, 'show', f'{commit}:{path}'], capture_output=True,
                                   text=True, encoding='utf-8', errors='replace', timeout=30)
         except (OSError, subprocess.SubprocessError) as e: return [('ERROR', 'C8', f'cannot run git: {e}')]
-        if got.returncode: return [('ERROR', 'C8', f'{ref["path"]} is not in {ref["repo"]} at {ref["commit"]}')]
-        sym = re.escape(str(ref['symbol']))
-        if not re.search(rf'\b(?:def|class|function)\s+{sym}\b|^\s*(?:const |let |var )?{sym}\s*=', got.stdout, re.M):
-            return [('ERROR', 'C8', f'{ref["symbol"]} is not defined in {ref["path"]} at {ref["commit"]}')]
+        if got.returncode: return [('ERROR', 'C8', f'{path} is not in {ref["repo"]} at {commit}')]
+        sym = re.sub(r'\(\)$', '', str(ref['symbol']).strip()).split('.')[-1]     # the spec writes host_ok(), H.do_GET
+        if not defines(got.stdout, sym): return [('ERROR', 'C8', f'{ref["symbol"]} is not defined in {path} at {commit}')]
         return []
     found = []
     if 'note' in ref and ref.get('path') and not os.path.exists(ref['path']):
@@ -241,10 +255,24 @@ def resolve_ref(ref):
         elif not ok: found.append(('ERROR', 'C9', f'DOI {ref["doi"]} is not registered'))
     return found
 
+MODIFIERS = r'(?:public|private|protected|internal|static|async|override|virtual|abstract|sealed|readonly|export|get|set)'
+
+def defines(src, sym):
+    """Whether src defines sym: def / class / function (Python, JS), an assignment, or a JS or C# method (the name and its
+    parameters, then a body on that line or the next, never a ';' as a call has)."""
+    s = re.escape(sym)
+    return bool(re.search(rf'\b(?:def|class|function|interface|struct|enum)\s+{s}\b'
+                          rf'|^\s*(?:export\s+)?(?:const |let |var )?{s}\s*=(?!=)'
+                          rf'|^\s*(?:{MODIFIERS}\s+|[\w<>\[\],.?]+\s+)*{s}\s*\([^;]*$', src, re.M))
+
 BOT_WALL = (401, 403, 429)        # the site refuses automated checks: say so, don't call the link broken
 
 def link_problem(url):
-    """None when the link answers (status < 400), else (level, 'C9', message). HEAD first; some sites only answer GET."""
+    """None when the link answers (status < 400), else (level, 'C9', message). HEAD first; some sites only answer GET.
+    Only http(s) links are fetched: a course never makes the checker read a local file."""
+    try: scheme = urllib.parse.urlsplit(url).scheme.lower()
+    except ValueError: scheme = ''
+    if scheme not in ('http', 'https'): return ('ERROR', 'C9', f'{url}: not an http(s) link')
     for method in ('HEAD', 'GET'):
         try:
             req = urllib.request.Request(url, method=method, headers={'User-Agent': 'check-deck/2 (Mentor course checker)'})
@@ -254,15 +282,19 @@ def link_problem(url):
             if method == 'GET':
                 return ('WARN', 'C9', f'{url}: refuses automated checks ({e.code}); open it yourself') if e.code in BOT_WALL \
                     else ('ERROR', 'C9', f'{url}: answers {e.code}')
-        except (urllib.error.URLError, OSError, ValueError) as e:
+        except (urllib.error.URLError, OSError, ValueError, http.client.HTTPException) as e:
             if method == 'GET': return ('ERROR', 'C9', f'{url}: no answer ({getattr(e, "reason", e)})')
     return ('ERROR', 'C9', f'{url}: no answer')
+
+def doi_id(doi):
+    """10.x/y from a DOI however it is written: bare, doi:10.x/y, or as a doi.org link."""
+    return re.sub(r'^(?:https?://(?:dx\.)?doi\.org/|doi:)\s*', '', doi.strip(), flags=re.I)
 
 def doi_exists(doi):
     """Asks doi.org's handle service (not the publisher, which may refuse robots) whether the DOI is registered:
     True, False (doi.org says no such DOI: 404), or None (doi.org could not be reached)."""
     try:
-        with urllib.request.urlopen(f'https://doi.org/api/handles/{urllib.parse.quote(doi)}', timeout=10) as r:
+        with urllib.request.urlopen(f'https://doi.org/api/handles/{urllib.parse.quote(doi_id(doi))}', timeout=10) as r:
             return json.load(r).get('responseCode') == 1
     except urllib.error.HTTPError as e: return False if e.code == 404 else None
     except (urllib.error.URLError, OSError, ValueError): return None

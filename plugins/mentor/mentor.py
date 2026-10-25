@@ -130,7 +130,8 @@ ADDED = [('cards', 'data', "TEXT DEFAULT '{}'"), ('cards', 'ord', 'INTEGER DEFAU
          ('attempts', 'review', 'TEXT'), ('attempts', 'ivl_before', 'REAL'), ('attempts', 'ivl_after', 'REAL'), ('attempts', 'took', 'INTEGER')]
 LOOSE = 'loose'          # the course every lesson in the old format belongs to, one module per project
 # card roles (spec section 5) and the card kind that runs each today; phase 4 adds the rest
-ROLE_KIND = {'term': 'term', 'recall': 'define', 'explain': 'explain', 'find-bug': 'explain', 'choose-design': 'explain', 'drill': 'drill'}
+ROLE_KIND = {'term': ('term',), 'recall': ('define', 'term'), 'explain': ('explain',), 'find-bug': ('explain',),
+             'choose-design': ('explain',), 'drill': ('drill',)}
 DEFAULT_ROLE = {'term': 'term', 'drill': 'drill', 'explain': 'explain', 'define': 'recall'}
 LATER_ROLES = ('predict', 'trace', 'parsons', 'write', 'make')
 
@@ -257,12 +258,13 @@ def import_module(db, doc, mid, source, built_in, course=None, cmodule=None, ord
     def tag(item, kind, iid, learn_id):
         role = str(item.get('role') or DEFAULT_ROLE[kind])
         if role in LATER_ROLES: notes.append(f'{iid}: role {role} arrives in phase 4'); return False
-        if ROLE_KIND.get(role) != kind: notes.append(f'{iid}: role {role} is not a {kind} card'); role = DEFAULT_ROLE[kind]
+        if kind not in ROLE_KIND.get(role, ()): notes.append(f'{iid}: role {role} is not a {kind} card'); role = DEFAULT_ROLE[kind]
         lo, note = str(item.get('lo') or '') or None, str(item.get('note') or '') or None
         if lo and los is not None and lo not in los: notes.append(f"{iid}: LO {lo} is not one of this lesson's"); lo = None
         if note and note_ids is not None and note not in note_ids: notes.append(f"{iid}: note {note} is not one of this lesson's"); note = None
         lo, note = (f'{course}/{lo}' if lo and course else lo), (f'{mid}:{note}' if note else None)
-        tags[iid] = (lo, note, role, 1 if item.get('check') is True else 0); tags[learn_id] = (lo, note, None, 0)
+        chk = 1 if item.get('check') is True else 0
+        tags[iid] = (lo, note, role, chk); tags[learn_id] = (lo, note, None, chk)    # a check item's Learn card would show its answer
         return True
     orient = str(summary.get('orientation') or summary.get('schematic_mental_model') or '')
     terms = as_list(doc.get('tier_3_terminology_cards'))
@@ -365,12 +367,14 @@ def import_course(db, doc, source, built_in):
     cid = slug(doc.get('id') or os.path.basename(source).rsplit('.', 1)[0])
     if cid == LOOSE: raise ValueError(f'the course id "{LOOSE}" is kept for lessons outside courses')
     name, notes, n = str(doc.get('name') or cid), [], 0
+    for (old,) in db.execute("SELECT id FROM courses WHERE source=? AND id NOT IN (?,?)", (os.path.abspath(source), cid, LOOSE)).fetchall():
+        drop_course(db, old)                     # the same file under a new id: one course, not two
     db.execute("INSERT INTO courses(id,name,summary,requires,retention,data,source,at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET "
                "name=excluded.name,summary=excluded.summary,requires=excluded.requires,retention=excluded.retention,"
                "data=excluded.data,source=excluded.source,at=excluded.at",
                (cid, name, str(doc.get('summary') or ''), json.dumps([slug(r) for r in as_list(doc.get('requires'))]),
                 float(doc['retention']) if isinstance(doc.get('retention'), (int, float)) else 0.9,
-                json.dumps({'capstone': doc.get('capstone'), 'sources': as_list(doc.get('sources'))}), os.path.basename(source), time.time()))
+                json.dumps({'capstone': doc.get('capstone'), 'sources': as_list(doc.get('sources'))}), os.path.abspath(source), time.time()))
     keep = {'cmodules': set(), 'modules': set(), 'los': set(), 'notes': set()}
     def put_los(items, scope, owner):
         ids = set()
@@ -391,7 +395,9 @@ def import_course(db, doc, source, built_in):
         put_los(mod.get('los'), 'module', cm)
         for j, les in enumerate(as_list(mod.get('lessons'))):
             if not isinstance(les, dict) or not les.get('id'): notes.append(f"{mod['id']} lesson {j + 1}: not a lesson with an id"); continue
-            lid = slug(f"{cid}--{les['id']}"); keep['modules'].add(lid)
+            lid = slug(f"{cid}--{les['id']}")
+            if lid in keep['modules']: notes.append(f"lesson id {les['id']} is used twice in the course: the second one (in {mod['id']}) is skipped"); continue
+            keep['modules'].add(lid)
             los, nids = put_los(les.get('los'), 'lesson', lid), set()
             for nt in as_list(les.get('notes')):
                 if not isinstance(nt, dict) or not nt.get('id'): notes.append(f"{les['id']}: a note without an id"); continue
@@ -413,6 +419,14 @@ def import_course(db, doc, source, built_in):
     db.execute("UPDATE modules SET at=? WHERE course=?", (time.time(), cid))     # one course, one time: Lessons orders them by ord
     db.commit()
     return n, notes
+
+def drop_course(db, cid):
+    """A course and everything it imported, except attempts and schedule rows (your history stays)."""
+    lessons = [r[0] for r in db.execute("SELECT id FROM modules WHERE course=?", (cid,))]
+    for les in lessons:
+        db.execute("DELETE FROM cards WHERE deck=?", (les,)); db.execute("DELETE FROM notes WHERE lesson=?", (les,))
+    for table, col in (('modules', 'course'), ('los', 'course'), ('cmodules', 'course'), ('courses', 'id')):
+        db.execute(f"DELETE FROM {table} WHERE {col}=?", (cid,))
 
 def stamp(iso, mid):
     """When the module was written: its ISO timestamp, else the YYYYMMDD_HHMMSS file name, else now."""
@@ -731,13 +745,13 @@ CARD_Q = ("SELECT c.*, s.due, s.reps, s.level, s.refresh, m.at AS mat FROM cards
 def one_card(db, card_id):
     """A card to read again (Lessons view): a Learn card with its answers, never a practice card's answer."""
     c = db.execute(CARD_Q + " WHERE c.id=?", (card_id,)).fetchone()
-    if not c or c['kind'] not in LEARN: return None
+    if not c or c['kind'] not in LEARN or c['is_check']: return None
     return card_payload(db, c, read_only=True)
 
 def practice_card(db, card_id):
     """One practice card asked again (the end-of-session replay of today's mistakes): the question, never its answer."""
     c = db.execute(CARD_Q + " WHERE c.id=?", (card_id,)).fetchone()
-    if not c or c['kind'] in LEARN: return None
+    if not c or c['kind'] in LEARN or c['is_check']: return None
     return card_payload(db, c)
 
 GROUP_SEP = ' › '   # " › ": a lesson whose project is "A › B" sits in submenu B of menu A (4.22.0)
@@ -974,7 +988,7 @@ def modules(db):
     for r in counts: by.setdefault(r['deck'], {})[r['kind']] = {'n': r['n'], 'seen': r['seen'] or 0, 'top': r['top'] or 0}
     learn = {}
     for r in db.execute("SELECT c.id, c.deck, c.kind, c.prompt, c.answer, c.data, s.reps FROM cards c LEFT JOIN sched s ON s.card_id=c.id "
-                        "WHERE c.kind IN (?,?,?,?) ORDER BY c.ord, c.id", LEARN).fetchall():
+                        "WHERE c.kind IN (?,?,?,?) AND COALESCE(c.is_check, 0)=0 ORDER BY c.ord, c.id", LEARN).fetchall():
         d = json.loads(r['data'] or '{}')
         title = {'orientation': 'Orientation', 'teach': f"Teach: {r['prompt']}", 'level0': f"Worked example: {(d.get('breadcrumb') or '').split('->')[-1].strip() or r['prompt'][:40]}",
                  'preread': f"Before {(d.get('type') or 'the explain card').lower().replace('pre-mortem', 'the bug hunt')}: {(d.get('breadcrumb') or '').split('->')[-1].strip()}"}[r['kind']]

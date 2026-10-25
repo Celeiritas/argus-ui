@@ -129,7 +129,7 @@ class Course(Base):
         practice = self.db.execute("SELECT * FROM cards WHERE kind IN ('term','explain','drill','define')").fetchall()
         self.assertEqual(len(practice), 9)
         self.assertTrue(all(c['lo'].startswith('demo-server/L') and c['role'] and c['note'] for c in practice))
-        self.assertEqual(self.count("SELECT COUNT(*) FROM cards WHERE is_check=1"), 3)
+        self.assertEqual(self.count("SELECT COUNT(*) FROM cards WHERE is_check=1 AND kind NOT IN ('teach','preread','level0')"), 3)
         self.assertEqual(self.db.execute("SELECT role FROM cards WHERE id LIKE '%:c-bug'").fetchone()[0], 'find-bug')
         les = self.db.execute("SELECT * FROM modules WHERE id=?", (m.slug('demo-server--origin'),)).fetchone()
         self.assertEqual((les['course'], les['cmodule'], les['project']), ('demo-server', 'demo-server/requests', 'Rebuild a small web server'))
@@ -167,6 +167,42 @@ class Course(Base):
         practice = {r[0] for r in self.db.execute("SELECT id FROM cards WHERE is_check=0 AND kind IN ('term','explain')")}
         self.assertEqual(practice - set(served), set(), 'a check item held back the rest of its lesson')
 
+    def test_check_items_learn_cards_hidden(self):
+        # a check item's teach card or pre-read would show its answer: it waits with the check item
+        self.load()
+        served = set(self.study())
+        hidden = {r[0] for r in self.db.execute("SELECT id FROM cards WHERE is_check=1")}
+        self.assertEqual(hidden, {m.slug('demo-server--words') + ':' + x for x in ('t-json', 'teach-t-json')} |
+                         {m.slug('demo-server--origin') + ':' + x for x in ('k-origin', 'preread-k-origin')} |
+                         {m.slug('demo-server--cache') + ':' + x for x in ('k-cache', 'preread-k-cache')})
+        self.assertFalse(hidden & served)
+        listed = {l['id'] for x in m.stats(self.db)['modules'] for l in x['learn']}
+        self.assertFalse(hidden & listed, 'Lessons lists a check item\'s Learn card to read again')
+
+    def test_same_lesson_id_in_two_modules(self):
+        doc = json.loads(json.dumps(self.doc)); dup = json.loads(json.dumps(doc['modules'][0]['lessons'][0]))
+        doc['modules'][1]['lessons'].append(dup)                 # "words" again, in module weather
+        n, notes = self.load(doc)
+        self.assertIn('lesson id words is used twice in the course', ' | '.join(notes))
+        les = self.db.execute("SELECT cmodule FROM modules WHERE id=?", (m.slug('demo-server--words'),)).fetchone()
+        self.assertEqual(les['cmodule'], 'demo-server/requests', 'the first lesson keeps its place and its cards')
+        self.assertEqual(self.count("SELECT COUNT(*) FROM cards WHERE deck=?", m.slug('demo-server--words')), 7)   # orientation, 3 teach cards, 3 terms
+
+    def test_course_renamed_in_its_file(self):
+        self.load()
+        doc = json.loads(json.dumps(self.doc)); doc['id'] = 'small-server'
+        self.load(doc)                                           # the same file, a new id: one course, not two
+        self.assertEqual([r[0] for r in self.db.execute("SELECT id FROM courses WHERE id<>'loose'")], ['small-server'])
+        self.assertEqual(self.count("SELECT COUNT(*) FROM modules WHERE course='demo-server'"), 0)
+        self.assertEqual(self.count("SELECT COUNT(*) FROM cards WHERE deck LIKE 'demo-server--%'"), 0)
+        self.assertEqual(self.count("SELECT COUNT(*) FROM los WHERE course='demo-server'"), 0)
+
+    def test_recall_role_on_a_term(self):
+        doc = json.loads(json.dumps(self.doc)); doc['modules'][0]['lessons'][0]['tier_3_terminology_cards'][0]['role'] = 'recall'
+        n, notes = self.load(doc)
+        self.assertEqual(notes, [])
+        self.assertEqual(self.db.execute("SELECT role FROM cards WHERE id LIKE '%:t-origin'").fetchone()[0], 'recall')
+
     def test_checks_not_counted_as_waiting(self):
         self.load()
         self.study()
@@ -198,6 +234,61 @@ class Course(Base):
         m.scan_inbox(self.db)
         r = self.db.execute("SELECT ok, msg, module FROM imports").fetchone()
         self.assertEqual((r['ok'], r['module']), (1, 'demo-server')); self.assertIn('in 3 lessons', r['msg'])
+
+_spec = importlib.util.spec_from_file_location('check_deck', os.path.join(R, 'scripts', 'check-deck.py'))
+cd = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(cd)
+
+class Checker(unittest.TestCase):
+    """check-deck.py v2 on inputs the fixtures don't cover: odd values never crash it, and spec notation is understood."""
+    def setUp(self):
+        with open(FIXTURE, encoding='utf-8') as fh: self.doc = json.load(fh)
+        cd.OPTS.update(repos={'argus-ui': R}, online=False, links_skipped=0)
+    def rules(self, doc):
+        return {(lvl, rule) for _w, lvl, rule, _m in cd.check_course(doc)}
+    def msgs(self, doc):
+        return ' | '.join(f'{lvl} {rule} {msg}' for _w, lvl, rule, msg in cd.check_course(doc))
+
+    def test_lesson_id_twice_in_a_course(self):
+        doc = json.loads(json.dumps(self.doc)); doc['modules'][1]['lessons'].append(json.loads(json.dumps(doc['modules'][0]['lessons'][0])))
+        self.assertIn('lesson id "words" used twice in the course', self.msgs(doc))
+        doc = json.loads(json.dumps(self.doc)); doc['modules'][1]['lessons'][0]['id'] = 'Words'      # the same once made into an id
+        self.assertIn('used twice in the course', self.msgs(doc))
+
+    def test_odd_values_dont_crash(self):
+        doc = json.loads(json.dumps(self.doc))
+        doc['modules'][0]['lessons'][0]['tier_3_terminology_cards'][0]['lo'] = ['L1']
+        doc['modules'][0]['lessons'][0]['tier_3_terminology_cards'][1]['note'] = {'id': 'n-words'}
+        doc['modules'][1]['id'] = {'weather': 1}
+        doc['modules'][0]['lessons'][1]['los'][0]['id'] = ['L2']
+        doc['modules'][0]['lessons'][1]['notes'][0]['id'] = 7
+        found = self.rules(doc)                                  # no exception
+        self.assertIn(('ERROR', 'C1'), found); self.assertIn(('ERROR', 'C4'), found)
+
+    def test_links_that_arent_http(self):
+        for url in ('http://example.com:abc/', 'file:///etc/passwd', 'ftp://example.com/x'):
+            level, rule, _ = cd.link_problem(url)
+            self.assertEqual((level, rule), ('ERROR', 'C9'), url)
+
+    def test_symbol_notation_from_the_spec(self):
+        for sym in ('host_ok()', 'H.do_POST', 'do_POST()'):
+            ref = {'repo': 'argus-ui', 'path': 'server/argus_ui.py', 'symbol': sym, 'commit': 'beab7ba'}
+            self.assertEqual(cd.resolve_ref(ref), [], sym)
+
+    def test_defines_in_other_languages(self):
+        self.assertTrue(cd.defines('class Box {\n  fitInside(w, h) {\n    return w < h;\n  }\n}', 'fitInside'))       # JS method
+        self.assertTrue(cd.defines('public static int Clamp(int v, int lo)\n{', 'Clamp'))                           # C#
+        self.assertTrue(cd.defines('const fade = (x) => x * 2;', 'fade'))
+        self.assertFalse(cd.defines('  return fitInside(w, h);', 'fitInside'), 'a call is not a definition')
+
+    def test_doi_written_as_a_link(self):
+        for doi in ('https://doi.org/10.1145/1455770.1455782', 'doi:10.1145/1455770.1455782', 'http://dx.doi.org/10.1145/1455770.1455782'):
+            self.assertEqual(cd.doi_id(doi), '10.1145/1455770.1455782')
+
+    def test_commit_must_be_a_commit(self):
+        ref = {'repo': 'argus-ui', 'path': 'server/argus_ui.py', 'symbol': 'host_ok', 'commit': '--output=x'}
+        [(level, rule, msg)] = cd.resolve_ref(ref)
+        self.assertEqual((level, rule), ('ERROR', 'C8')); self.assertIn('commit', msg)
+        self.assertFalse(os.path.exists(os.path.join(R, 'x')))
 
 if __name__ == '__main__':
     unittest.main()
