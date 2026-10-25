@@ -1,1 +1,1 @@
-{ "id": "demo-server", "name": "Demo Server", "subtitle": "Test", "kind": "server", "server": "plugin.py", "page": "page.js", "style": "page.css", "version": "0.0.1-test", "order": 20 }
+{ "id": "demo-server", "name": "Demo Server", "subtitle": "Test", "kind": "server", "server": "plugin.py", "page": "page.js", "style": "page.css", "version": "0.0.1-test", "order": 20, "max_body": 8192 }

@@ -1,5 +1,10 @@
 # Changelog
 
+## 4.23.0 – 2026-10-24
+- **Server plugins can accept larger POSTs.** A server plugin's `plugin.json` may set `"max_body"` (bytes, 4096 to 64 MB) for its own `api/<id>/...`; every other POST check is unchanged and Elaia's own routes keep the 4 KB limit. For Ariad-Node (Dax's design pages: the Bestiary saves whole records and concept art). docs/leafy-plugin.md
+- **Nested section paths load.** Elaia's page sets a `<base href>` for its mount (from the address bar, before any file is fetched), so `<base>/<section>/<sub>` works as a direct link or a reload; before, its relative `static/` URLs pointed one level too deep and the page came up blank. Ariad-Node uses it for `/ariad-node/bestiary`.
+- Tests: `tests/plugins.test.js` (a 5 KB POST passes with `"max_body": 8192`, 9 KB is refused, Elaia's own POST keeps 4 KB; a nested path under a plugin section loads its styles and registers)
+
 ## 4.22.0 – 2026-10-25
 - **Mentor submenus.** A lesson whose project reads `MENU › Sub` (for example `GAME_RESEARCH › Topics`) gets its own group in the Study picker. Each submenu starts with **Study all**, and each menu gets one **Study all of MENU** that takes every submenu under it. Lessons without a submenu stay under Lessons as before.
 - Group study goes through the same routes: `next?deck=group:<project>` and `stats?deck=group:<project>` take every lesson whose project is that name or lies under it, interleaved as when studying everything.

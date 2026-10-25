@@ -1,5 +1,9 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
+<!-- Relative URLs resolve from Elaia's mount, so a nested section path (/argus/ariad-node/bestiary) loads the same files
+     as /argus/ariad-node. Set from the address bar (Tailscale may strip /argus before the server sees it), before any
+     stylesheet or script below is fetched; the same rule core.js uses for MOUNT. -->
+<script>(function () { var b = document.createElement('base'); b.href = /^\/argus(\/|$)/.test(location.pathname) ? '/argus/' : '/'; document.head.appendChild(b); })();</script>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#1C2127">
 <title>Argus</title>
