@@ -68,6 +68,12 @@ run(async b => {
   await s.evaluate(() => refresh()); await s.waitForTimeout(400);
   check(await body.getAttribute('data-shows') === '1' && await body.getAttribute('data-refreshes') === '1', 'server plugin: the 15 s refresh calls refresh(), not show() again');
   check(s.errors.length === 0, 'server plugin: no page errors ' + s.errors.join(' | '));
+  // a nested path under a section (4.23.0): a direct load of <base>/demo-server/sub/page runs the same section, with
+  // Elaia's own styles (the page sets <base href> for its mount, so static/ does not resolve one level too deep)
+  await s.goto(BASE + 'demo-server/sub/page');
+  await s.locator('#demo-ping', {hasText: 'pong from demo-server'}).waitFor({timeout: 5000});
+  check(await s.locator('#demo-ping').evaluate(e => getComputedStyle(e).letterSpacing) === '3px' && await s.locator('body.side').count() === 1,
+    'server plugin: a nested path loads the section with its styles and page script');
   await shot(s, 'plugin-server');
 
   const api = BASE + 'api/demo-server/';

@@ -81,7 +81,8 @@ leafy.register('<id>', {
   refresh(el, api) { … },      // optional: every 15 s while the section is open
 });
 ```
-- `el` is the section's content area. The side-page layout is Elaia's: the plugin's icon and name in the title, Argus in the corner, the pill on top.
+- `el` is the section's content area. Nested paths work (4.23.0): `<base>/<id>/<anything>` opens the same section, so a plugin can read `location.pathname` and show a sub-page (Ariad-Node: `/ariad-node/bestiary`); the page sets a `<base href>` so Elaia's own files still load.
+- (continued) `el` The side-page layout is Elaia's: the plugin's icon and name in the title, Argus in the corner, the pill on top.
 - `api.get(path)` and `api.post(path, body)` call the plugin's own `api/<id>/…` and resolve to `{ok, status, data}`. They never throw: no answer is `{ok: false, status: 0}`.
 - `api.esc` (escape text for HTML), `api.toast(text)`, `api.url(path)` and `api.plugin` (the manifest as the page sees it).
 - `api.fx` (the shared effects: `burst`, `motes`, `glint`, `pieces`, `bolt`) and `api.holdConfirm(button, onDone)` for anything that changes what runs (docs/fx.md, Elaia 4.18 and later). Both handle reduced motion themselves. From Elaia 4.20, `api.argus.react('nod' | 'wince')` and `api.argus.watch(el)` let the characters answer the user (docs/fx.md); check `api.argus` exists before using it.
