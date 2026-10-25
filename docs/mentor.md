@@ -28,6 +28,9 @@ Code an AI writes for you skips the part where you build the mental model (the *
 
 Argus ships one lesson, **Argus: caching, locks and the Mentor scheduler** (`themes/leafy-realm/decks/argus-code.json`), made from this project's own `sky.py` and `mentor.py`. It doubles as an example of the format, Learn fields included. A lesson needs no drills: terms and explain cards alone import and run, and a spot-it snippet can be a terminal transcript rather than code. Anything that names your machines, paths or hosts belongs in your private inbox or decks folder, not in a theme: themes ship with the repository.
 
+## Menus and submenus (4.22.0)
+A lesson's `metadata.project` names where it sits in the Study picker. A plain project (`Sound-Haptics-Lab`) puts the lesson under **Lessons** as "project: name". A project with the separator ` › ` (space, U+203A, space), such as `GAME_RESEARCH › Topics`, puts it in its own submenu; the picker offers **Study all** for that submenu and **Study all of GAME_RESEARCH** for the whole menu. Group choices travel as `group:<project>` (`next?deck=group:GAME_RESEARCH`) and take every lesson whose project is that name or lies under it.
+
 ## Placeholders: your machines, never in a lesson
 A lesson is meant to move between people (and to sit in a public repository), so it never names a real machine, path or account. It says `{{SERVER}}` instead, and Mentor fills that in every time it shows a card, from `~/.config/leafy/realm.json` on the machine that runs it (yours alone; never commit it). Every field a card shows is filled: prompts, answers, hints, snippets, the Lessons view. Grading compares your answer against the filled-in text, so you type your server's real name. The database keeps the `{{…}}` form, so editing `realm.json` takes effect on the next card, with no restart and no re-import.
 
