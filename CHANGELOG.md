@@ -1,5 +1,11 @@
 # Changelog
 
+## 4.26.1 – 2026-10-25
+- **Mentor's cards read in order of importance.** Every text on a card now has one look for its job, all on the type scale (18/16/14/12, weights 400/600): the title, then **what you do now** (16px, bold: *Spot it: pick the line that uses it*, *Why is this line here?*, the try-first question, *How well did you know it?*), then the content (16px), section labels (14px, bold), your own answer and the coach (14px), and one details line (12px). *Spot it* was the smallest text on its card (12px, faint). Measured on every card type: 26 different text styles became 20, and the off-scale sizes (12.6, 14.4, 16.2px from `.9em` code) are gone.
+- The lesson name and the card type share one details line (were two or three stacked lines). A worked example or drill whose description is a sentence gets a short title with the sentence under it (no two-line headings). Section labels (*You wrote*, *Model answer*, *What it means*) are readable (14px instead of 12px, faint). Code lines to pick from are no longer bold. Model answers are 16px like the rest of the content.
+- A drill's result says the count once (the verdict) and marks blanks ✓ Right / ✕ Wrong like key ideas (was a hollow circle); the coach line says where to look.
+- Tests: `tests/mentor.test.js` (*Spot it* is 16px/600; every text on a teach card is on the scale; the code lines aren't bold)
+
 ## 4.26.0 – 2026-10-25
 - **Mentor courses, phase 1: the data underneath.** A course file (`"format": "mentor-course/1"`) holds modules, lessons, notes and cards, with learning objectives at every level (one observable verb each, every lesson objective serving a module one). A course lesson is today's lesson format plus four fields per card (`lo`, `note`, `role`, `check`), so every Learn card still comes for free. A course's lessons show in Lessons as one group, in course order; `stats` lists `courses` (docs/mentor.md, *Courses*).
 - **Your lessons, unchanged.** Every lesson in the older format joins the built-in *Loose lessons* course, one module per project. Checked on copies of the owner's 13 research lessons (same 1,419 cards as 4.25.0) and of the live database (every row kept, the same numbers on Home and in Lessons).

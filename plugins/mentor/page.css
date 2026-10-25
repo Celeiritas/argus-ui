@@ -126,3 +126,16 @@
 .modules .mprog .lpbar{flex:none;display:block;height:8px}
 .modules .mmore{display:flex;flex-wrap:wrap;gap:0 var(--s4)}.modules .mmore details{margin:0}.modules .mmore details[open]{flex-basis:100%}
 .modules .module{padding-bottom:var(--s1)}
+/* type roles on a card (4.26.1): one look per job, all on the 18/16/14/12 scale, weights 400/600 (docs/ux-audit-4.1.md).
+   title 18/600 · task (what you do now) 16/600 · content 16/400 · label 14/600 · secondary 14/400 · details 12/400 · code 14/400 */
+.mentor .task,.mentor .field label,.mentor .panel legend,.mentor .callout label,.mentor .hint label{font-size:var(--fs-body);font-weight:600;color:var(--snow);line-height:1.4}
+.mentor .task{margin:var(--s6) 0 var(--s2)}.mentor .callout .task{margin:0}
+.mentor .label,.mentor .defs dt,.mentor .callout b{font-size:var(--fs-sec);font-weight:600;color:var(--powder);margin:var(--s4) 0 var(--s1)}
+.mentor .callout .label,.mentor .callout b{margin:0 0 var(--s1)}
+.mentor .panel .deckname{color:var(--powder);margin:0 0 var(--s2)}.mentor .deckname .kind{display:inline;font:inherit;color:inherit;margin:0}
+.mentor .model{font-size:var(--fs-body);line-height:1.5}.mentor .model.mine,.mentor .mine{font-size:var(--fs-sec);color:var(--powder)}
+.mentor .ideas li{font-size:var(--fs-body)}
+.mentor .line,.mentor .line .n{font-weight:400}
+.mentor code{font-size:var(--fs-sec)}
+.mentor h3 code,.mentor .task code,.mentor .field label code{font-size:var(--fs-body)}
+.mentor .coach code,.mentor .help code,.mentor .mine code,.mentor .crumb code,.mentor .deckname code,.mentor .label code,.mentor .callout b code,.mentor .verdict code{font-size:inherit}

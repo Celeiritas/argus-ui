@@ -33,6 +33,8 @@
     : part.split(/\n{2,}/).filter(p => p.trim()).map(p => `<p>${inline(p.trim()).replace(/\n/g, '<br>')}</p>`).join('')).join('');
   // where the code is: only its last part (the function), never folders or file names; the Lessons view lists the files
   const crumb = s => { const x = (s || '').split(/\s*(?:->|→|›)\s*/).filter(Boolean).pop(); return x && !/\.(?:py|js|mjs|ts|css|json|sh|md|html|ya?ml|toml|txt)$/i.test(x) ? `<p class="crumb"><span class="sr">Where in the code: </span><span>${inline(esc(x))}</span></p>` : ''; };
+  // a card's title: short text is the heading; a sentence goes under a short heading as text, so no heading runs two lines
+  const title = (t, short) => t.length <= 60 ? `<h3 id="qprompt">${inline(esc(t))}</h3>` : `<h3>${esc(short)}</h3><div class="prompt" id="qprompt">${rich(t)}</div>`;
   const kindLabel = c => c.kind === 'drill' ? `Code drill · level ${c.level} of 3: ${c.level_name.toLowerCase()}` : c.kind === 'explain' ? (TYPES[(c.type || '').toLowerCase()] || 'Explain it')
     : c.kind === 'term' ? `Term${c.category ? ' · ' + c.category : ''}` : c.kind === 'teach' ? `Teach${c.category ? ' · ' + c.category : ''}` : c.kind === 'level0' ? 'Worked example · read it line by line'
     : c.kind === 'preread' ? `Before ${(TYPES[(c.type || '').toLowerCase()] || 'the explain card').toLowerCase().replace('find the bug', 'the bug hunt')}` : c.kind === 'orientation' ? 'Orientation · one screen before the cards' : '';
@@ -123,8 +125,7 @@
     const c = M.card;
     if (isLearn(c)) return learnCard(c);
     const mod = moduleOf(c.deck), big = mod && mod.summary && mod.summary.schematic_mental_model;
-    const head = `<p class="deckname">${esc(sourceName(c))}${c.reps ? '' : ' · new card'}</p>
-      <p class="kind">${esc(kindLabel(c))}</p>${crumb(c.breadcrumb)}
+    const head = `<p class="deckname">${esc(sourceName(c))} · <span class="kind">${esc(kindLabel(c))}</span>${c.reps ? '' : ' · new card'}</p>${crumb(c.breadcrumb)}
       ${big && c.kind !== 'term' ? `<details class="big"><summary>Show the big picture of this lesson</summary>${rich(big)}</details>` : ''}`;
     const conf = `<fieldset><legend>How sure are you?</legend><div class="seg">${CONF.map(([v, n]) => `<label><input type="radio" name="conf" value="${v}">${n}</label>`).join('')}</div></fieldset>`;
     const go = `<div class="row"><button type="submit" class="primary" id="checkBtn">Check answer</button><button type="button" id="hintBtn" aria-describedby="hinthelp">Show a hint</button></div>
@@ -134,12 +135,12 @@
       const nums = [...new Set([...c.code.matchAll(BLANK)].map(m => +(m[1] || 1)))].sort((a, b) => a - b), done = new Set();
       const code = esc(c.code).replace(BLANK, (m, n) => { n = +(n || 1); if (done.has(n)) return `<span class="ghost">blank ${n}</span>`; done.add(n);
         const w = c.widths[nums.indexOf(n)] || 6; return `<input class="blank" data-n="${n}" aria-label="Blank ${n} of ${nums.length}" style="width:${Math.min(w, 60) + 2}ch" autocomplete="off" autocapitalize="off" spellcheck="false">`; });
-      body = `<h3 id="qprompt">${inline(esc(c.context || c.prompt))}</h3>
+      body = `${title(c.context || c.prompt, 'Fill in the missing code')}
         <pre class="code fill"><code>${code}</code></pre>
         <p class="help">Type the missing code in each box. <kbd>Enter</kbd> moves to the next box; <kbd>Ctrl</kbd>+<kbd>Enter</kbd> checks.</p>`;
     } else if (c.kind === 'drill') {
       const code = esc(c.code).replace(BLANK, '<span class="slot">your code goes here</span>');
-      body = `<h3 id="qprompt">${inline(esc(c.context || c.prompt))}</h3>
+      body = `${title(c.context || c.prompt, 'Write the body')}
         <pre class="code"><code>${code}</code></pre>
         <div class="field"><label for="ans">Function body</label>
           <textarea id="ans" class="codein" aria-describedby="anshelp" autocomplete="off" autocapitalize="off" spellcheck="false" wrap="off"></textarea>
@@ -196,7 +197,7 @@
     M.hints = r.rung; $('#hintBtn').classList.remove('pulse'); clearIdle();
     $$('#hints .hint textarea').forEach(t => t.disabled = true);
     const last = r.rung === 4;
-    $('#hints').insertAdjacentHTML('beforeend', `<div class="hint" id="rung${r.rung}"><p class="deckname">Hint ${r.rung} of 4 · ${esc(r.name)}</p><div class="model">${rich(r.text)}</div>
+    $('#hints').insertAdjacentHTML('beforeend', `<div class="hint" id="rung${r.rung}"><p class="label">Hint ${r.rung} of 4 · ${esc(r.name)}</p><div class="model">${rich(r.text)}</div>
       ${last ? '' : `<label for="refl${r.rung}">What did that tell you?</label><textarea id="refl${r.rung}" rows="2" maxlength="300" placeholder="Three words or more"></textarea>`}</div>`);
     const hb = $('#hintBtn'), cb = $('#checkBtn');
     if (last) { hb.hidden = true; cb.textContent = 'Rate it'; $$('#qform input.blank, #qform textarea#ans').forEach(i => i.disabled = true); cb.focus(); }
@@ -220,15 +221,15 @@
     let kind = tone(r.coverage, shown), head, detail;
     if (c.kind === 'drill' && c.level < 3) {
       head = shown ? 'The answer was shown' : `${r.hits.length} of ${plural(n, 'blank')} right`;
-      detail = `<ul class="ideas">${r.blanks.map(b => b.ok ? `<li class="hit">Blank ${b.n}: <code>${esc(b.expected)}</code></li>`
-          : `<li class="miss">Blank ${b.n}: ${b.typed && b.typed.trim() ? `you wrote <code>${esc(b.typed)}</code>, ` : ''}the code has <code>${esc(b.expected)}</code></li>`).join('')}</ul>
-        <p class="deckname">The full code</p><pre class="code"><code>${esc(r.canonical)}</code></pre>`;
+      detail = `<ul class="ideas marked">${r.blanks.map(b => b.ok ? `<li class="hit"><b>✓ Right</b><span>Blank ${b.n}: <code>${esc(b.expected)}</code></span></li>`
+          : `<li class="miss"><b>✕ Wrong</b><span>Blank ${b.n}: ${b.typed && b.typed.trim() ? `you wrote <code>${esc(b.typed)}</code>, ` : ''}the code has <code>${esc(b.expected)}</code></span></li>`).join('')}</ul>
+        <p class="label">The full code</p><pre class="code"><code>${esc(r.canonical)}</code></pre>`;
     } else if (c.kind === 'drill') {
       head = shown ? 'The answer was shown' : r.same_structure ? 'Same structure as the model answer' : r.problem ? "Python can't read your version yet" : `${pct}% like the model answer`;
       if (!shown) kind = r.same_structure ? 'ok' : r.problem ? 'bad' : 'part';
       detail = `${r.problem ? `<p class="coach">Python says: <code>${esc(r.problem)}</code></p>` : ''}
-        <div class="pair"><div><p class="deckname">Your version</p><pre class="code"><code>${esc(r.yours)}</code></pre></div>
-        <div><p class="deckname">Model answer</p><pre class="code"><code>${esc(r.canonical)}</code></pre></div></div>`;
+        <div class="pair"><div><p class="label">Your version</p><pre class="code"><code>${esc(r.yours)}</code></pre></div>
+        <div><p class="label">Model answer</p><pre class="code"><code>${esc(r.canonical)}</code></pre></div></div>`;
     } else if (c.kind === 'term') {
       const typed = text;
       head = shown ? `The answer was shown: “${esc(r.reference)}”` : r.coverage >= .99 ? esc(r.reference) : `the answer is “${esc(r.reference)}”`;
@@ -236,11 +237,11 @@
         <dl class="defs">${r.definition ? `<dt>What it means</dt><dd>${inline(esc(r.definition))}</dd>` : ''}${r.anchor ? `<dt>Where it's used</dt><dd>${inline(esc(r.anchor))}</dd>` : ''}${r.contrast ? `<dt>Not to be confused with</dt><dd>${inline(esc(r.contrast))}</dd>` : ''}</dl>`;
     } else {
       head = shown ? 'The answer was shown' : `${r.hits.length} of ${plural(n, 'key idea')}`;
-      detail = `${text ? `<p class="deckname">You wrote</p><p class="model mine">${esc(text)}</p>` : ''}
+      detail = `${text ? `<p class="label">You wrote</p><p class="model mine">${esc(text)}</p>` : ''}
         ${keyIdeas(r)}
-        <p class="deckname">Model answer</p>${answerBlock(r.reference)}`;
+        <p class="label">Model answer</p>${answerBlock(r.reference)}`;
     }
-    const note = r.note ? `<p class="deckname">Why it's written this way</p>${answerBlock(r.note)}` : '';
+    const note = r.note ? `<p class="label">Why it's written this way</p>${answerBlock(r.note)}` : '';
     const stuck = r.stuck === 'repeat' ? `<p class="coach back"><b>Twice in a row.</b> ${esc(r.move)} The lesson's card for this comes back before the next try.</p>`
       : r.stuck === 'skipped' ? `<p class="coach back"><b>You skipped the lesson card for this one.</b> It comes back before the next try.</p>` : '';
     const lvl = v => r.level_after && r.level_after[v] !== r.level ? ` · level ${r.level_after[v]}` : '';
@@ -287,12 +288,12 @@
   /* ----- Learn cards: orientation, teach (+ spot it), level 0 worked example, pre-read ----- */
   function learnCard(c, readOnly) {
     const g = M.guess && M.guess.id === c.id ? M.guess : null; M.guess = null;
-    const head = `<p class="deckname">${esc(sourceName(c))}${c.refresh ? ' · back to the lesson' : readOnly ? ' · reading again' : ' · learn'}</p><p class="kind">${esc(kindLabel(c))}</p>${crumb(c.breadcrumb)}`;
+    const head = `<p class="deckname">${esc(sourceName(c))} · <span class="kind">${esc(kindLabel(c))}</span>${c.refresh ? ' · back to the lesson' : readOnly ? ' · reading again' : ''}</p>${crumb(c.breadcrumb)}`;
     const skip = !readOnly && (c.kind === 'teach' || c.kind === 'level0') ? `<button type="button" id="skipBtn">I know this, test me</button>` : '';
     const done = readOnly ? `<button type="button" class="primary" id="doneBtn">Back to lessons</button>` : '';
     if (c.try && !readOnly && !g && !c.refresh) return tryFirst(c, head, skip);
     // the try-first question stays above the explanation: with the guess beside it, or as plain text when reading again
-    const tried = c.try ? `<div class="callout tried"><b>Try first: ${inline(esc(c.try))}</b>${g ? `<p>Your guess: ${esc(g.text)}</p>` : ''}</div>` : '';
+    const tried = c.try ? `<div class="callout tried"><p class="label">Try first</p><p class="task">${inline(esc(c.try))}</p>${g ? `<p class="mine">Your guess: ${esc(g.text)}</p>` : ''}</div>` : '';
     let body, go;
     if (c.kind === 'orientation') {
       body = `<h2 class="lesson-title">${esc(c.module || 'This lesson')}</h2>
@@ -304,13 +305,13 @@
       const lines = c.spot ? c.spot.snippet.split('\n') : [];
       body = `<h3>${esc(c.prompt)}</h3>${tried}
         <dl class="defs">${c.definition ? `<dt>What it means</dt><dd>${inline(esc(c.definition))}</dd>` : ''}${c.anchor ? `<dt>Where it's used</dt><dd>${inline(esc(c.anchor))}</dd>` : ''}${c.contrast ? `<dt>Not to be confused with</dt><dd>${inline(esc(c.contrast))}</dd>` : ''}${c.move ? `<dt>What an expert looks for</dt><dd>${inline(esc(c.move))}</dd>` : ''}</dl>
-        ${c.spot ? `<p class="deckname" id="spotq">Spot it: ${readOnly ? `line ${c.spot.line}` : 'pick the line that uses it'}</p>
+        ${c.spot ? `<p class="task" id="spotq">Spot it: ${readOnly ? `line ${c.spot.line}` : 'pick the line that uses it'}</p>
           <ol class="lines" aria-labelledby="spotq">${lines.map((l, i) => `<li><button type="button" class="line${readOnly && i + 1 === c.spot.line ? ' is' : ''}" data-line="${i + 1}" ${readOnly ? 'disabled' : ''}><span class="n">${i + 1}</span><code>${esc(l) || ' '}</code></button></li>`).join('')}</ol>
           ${readOnly ? `<p class="coach">${inline(esc(c.spot.why))}</p>` : `<p class="help"><kbd>↑</kbd>/<kbd>↓</kbd> move, <kbd>Enter</kbd> picks; or type the line number: <input class="blank" id="lineNo" inputmode="numeric" aria-label="Line number" style="width:4ch"></p>`}` : ''}`;
       go = readOnly ? done : c.spot ? `<button type="submit" class="primary" id="goBtn">Check this line</button>${skip}` : `<button type="submit" class="primary" id="goBtn">Go to the next card</button>${skip}`;
     } else if (c.kind === 'level0') {
       const lines = c.code.split('\n'), ann = c.annotations || [];
-      body = `<h3 id="qprompt">${inline(esc(c.context || 'Read the code, one line at a time'))}</h3>
+      body = `${title(c.context || 'Read the code, one line at a time', 'Read the code, one line at a time')}
         <pre class="code worked" id="worked"><code>${lines.map((l, i) => `<span class="ln" data-line="${i + 1}">${esc(l) || ' '}</span>`).join('\n')}</code></pre>
         <div id="annot"></div>
         <p class="help" id="annhelp">${readOnly ? 'Every note is shown.' : `Annotation <span id="step">1</span> of ${ann.length}. Say why the line is there (three words or more), then <kbd>Enter</kbd> shows the note.`}</p>`;
@@ -318,7 +319,7 @@
     } else {          // preread
       body = `<h3>Before you hunt the bug: the ideas it rests on</h3>${tried}
         <ol class="ideas keys">${(c.ideas || []).map(i => `<li>${inline(esc(i))}</li>`).join('')}</ol>
-        ${c.near ? `<p class="deckname">A near example</p><pre class="code"><code>${esc(c.near.code)}</code></pre>
+        ${c.near ? `<p class="label">A near example</p><pre class="code"><code>${esc(c.near.code)}</code></pre>
           ${readOnly ? `<p class="coach"><b>${inline(esc(c.near.ask))}</b> ${inline(esc(c.near.answer || ''))}</p>`
           : `<div class="field"><label for="ans">${esc(c.near.ask)}</label><input id="ans" class="blank wide" autocomplete="off"><p class="help"><kbd>Enter</kbd> reveals the answer.</p></div>`}` : ''}`;
       go = readOnly ? done : `<button type="submit" class="primary" id="goBtn">${c.near ? 'Show the answer' : 'Go to the next card'}</button>`;
@@ -427,9 +428,9 @@
     } else if (c.kind === 'level0') {
       const n = r.hits.length + r.missed.length;
       band = verdict(n ? tone(r.coverage) : 'ok', n ? (r.coverage >= .99 ? `All ${plural(n, 'key idea')}` : `${r.hits.length} of ${plural(n, 'key idea')}`) : 'Explained', `<p class="coach">${inline(esc(r.coach))}</p>`)
-        + `${text ? `<p class="deckname">You wrote</p><p class="model mine">${esc(text)}</p>` : ''}${keyIdeas(r)}`;
+        + `${text ? `<p class="label">You wrote</p><p class="model mine">${esc(text)}</p>` : ''}${keyIdeas(r)}`;
     } else {
-      band = `<h3 tabindex="-1" id="rhead">${inline(esc(c.near ? c.near.ask : 'Read'))}</h3>${text ? `<p class="deckname">You wrote</p><p class="model mine">${esc(text)}</p>` : ''}${r.answer ? `<p class="deckname">Answer</p>${answerBlock(r.answer)}` : ''}<p class="coach">${inline(esc(r.coach))}</p>`;
+      band = `<h3 tabindex="-1" id="rhead">${inline(esc(c.near ? c.near.ask : 'Read'))}</h3>${text ? `<p class="label">You wrote</p><p class="model mine">${esc(text)}</p>` : ''}${r.answer ? `<p class="deckname">Answer</p>${answerBlock(r.answer)}` : ''}<p class="coach">${inline(esc(r.coach))}</p>`;
     }
     $('#mpanel').innerHTML = `<div class="panel learn" id="rpanel"><p class="deckname">${esc(sourceName(c))} · ${esc(kindLabel(c))}</p>
       ${band}<div class="row"><button type="button" class="primary" id="rateBtn">Next card</button></div></div>`;
@@ -483,7 +484,7 @@
             <ul class="course-list">${ms.map(row).join('')}</ul>
             ${files.length ? `<details class="srcs"><summary>Where these lessons come from (${files.length})</summary><ul>${files.map(f => `<li>${esc(f)}</li>`).join('')}</ul></details>` : ''}</section>`; }).join('')
           : `<div class="empty"><b>No lessons yet</b>Add one with the steps under "Add a lesson".</div>`}
-        ${imp.length ? `<p class="deckname">Inbox files that need a look</p><ul class="ideas">${imp.map(i => `<li class="${i.ok ? 'hit' : 'miss'}"><code>${esc(i.path)}</code>: ${esc(i.msg)}</li>`).join('')}</ul>` : ''}
+        ${imp.length ? `<p class="label">Inbox files that need a look</p><ul class="ideas">${imp.map(i => `<li class="${i.ok ? 'hit' : 'miss'}"><code>${esc(i.path)}</code>: ${esc(i.msg)}</li>`).join('')}</ul>` : ''}
         <details class="about"><summary>About Mentor and adding a lesson</summary>
           <p class="coach">Each lesson breaks down real work from your projects. You learn first (an overview, the terms, worked examples, the ideas behind each bug hunt), then practise, and reviews come back when you're about to forget.</p>
           <p class="meta">Calibration: ${calText(s.calibration)}${s.labels ? ` · ${plural(s.labels, 'graded answer')} saved for the learning grader` : ''}</p><p class="meta" id="ailine">Local AI: checking…</p>

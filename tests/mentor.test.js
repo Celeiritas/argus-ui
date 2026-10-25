@@ -52,6 +52,13 @@ run(async b => {
   await p.locator('#guess').fill('it unlocks the lock for you'); await p.keyboard.press('Control+Enter'); await p.waitForTimeout(400);
   check(/Your guess: it unlocks the lock for you/.test(await p.locator('.callout.tried').textContent()), 'the explanation shows under the question, next to the guess');
   check(/^Teach/.test(await p.locator('.kind').textContent()) && await p.locator('.lines .line').count() === 4, 'a teach card shows the term, its anchor and a snippet to spot it in');
+  // type roles (4.26.1): what you do now reads as a task, not as fine print; every size on the card is on the scale
+  const spotq = await p.locator('#spotq').evaluate(e => { const s = getComputedStyle(e); return [s.fontSize, s.fontWeight]; });
+  check(spotq[0] === '16px' && spotq[1] === '600', `"Spot it" is a task: 16px, weight 600 (was 12px; is ${spotq.join(' ')})`);
+  const sizes = await p.evaluate(() => { const w = document.createTreeWalker(document.querySelector('#mpanel'), NodeFilter.SHOW_TEXT), out = new Set();
+    while (w.nextNode()) if (w.currentNode.textContent.trim()) { const s = getComputedStyle(w.currentNode.parentElement); out.add(s.fontSize + '/' + s.fontWeight); } return [...out]; });
+  check(sizes.every(x => /^(12|14|16|18|24)px\/(400|600)$/.test(x)), 'every text on the card is on the type scale, weight 400 or 600: ' + sizes.join(' '));
+  check((await p.locator('.lines .line').first().evaluate(e => getComputedStyle(e).fontWeight)) === '400', 'the code lines to pick from are not bold');
   await shot(p, 'mentor-teach');
   await p.locator('.lines .line').nth(2).click(); await p.locator('#goBtn').click(); await p.waitForTimeout(600);
   check(/line 2/.test(await p.locator('#rhead').textContent()) && /released on exit/.test(await p.locator('.coach').textContent()), 'the wrong line shows the right one and why');
