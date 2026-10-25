@@ -25,6 +25,9 @@ Grading roadmap (each stage keeps the data the next one learns from):
 Every attempt is stored with its features and your labels in the `attempts` table, from day one. Code you type is
 only parsed, never run.
 
+Courses (4.26, docs/mentor.md): course -> modules -> lessons -> notes -> cards with learning objectives; a course lesson is a
+lesson in this format plus LO / note / role / check fields (import_course). Older lessons form the Loose lessons course.
+
 Code modules arrive in the inbox folder (~/.local/share/argus-ui/inbox, or ARGUS_MENTOR_INBOX). It is checked every
 time the page asks for a card, so a copied-in file shows up without a restart. Files are read, never moved or deleted.
 
@@ -99,6 +102,17 @@ CREATE TABLE IF NOT EXISTS modules(
   id TEXT PRIMARY KEY, name TEXT, project TEXT, built_in INTEGER, at REAL, summary TEXT, concepts TEXT, files TEXT, source TEXT);
 CREATE TABLE IF NOT EXISTS imports(
   path TEXT PRIMARY KEY, mtime REAL, size INTEGER, ok INTEGER, msg TEXT, module TEXT, at REAL);
+-- 4.26: courses (docs/plans/2026-10-25-mentor-courses-spec.md). The modules table above holds lessons; a course's
+-- modules are cmodules. LO ids are course/LOid, note ids lesson:note.
+CREATE TABLE IF NOT EXISTS courses(
+  id TEXT PRIMARY KEY, name TEXT, summary TEXT, requires TEXT, retention REAL, data TEXT, source TEXT, at REAL);
+CREATE TABLE IF NOT EXISTS cmodules(
+  id TEXT PRIMARY KEY, course TEXT, name TEXT, ord INTEGER, requires TEXT);
+CREATE TABLE IF NOT EXISTS los(
+  id TEXT PRIMARY KEY, course TEXT, owner TEXT, scope TEXT, text TEXT, verb TEXT, bloom TEXT, mode TEXT, knowledge TEXT,
+  condition TEXT, standard TEXT, parent TEXT);
+CREATE TABLE IF NOT EXISTS notes(
+  id TEXT PRIMARY KEY, lesson TEXT, kind TEXT, source_ref TEXT);
 """
 # columns added after 4.5 (older databases get them on start; nothing is lost)
 ADDED = [('cards', 'data', "TEXT DEFAULT '{}'"), ('cards', 'ord', 'INTEGER DEFAULT 0'),
@@ -108,7 +122,18 @@ ADDED = [('cards', 'data', "TEXT DEFAULT '{}'"), ('cards', 'ord', 'INTEGER DEFAU
          ('attempts', 'hints', 'INTEGER DEFAULT 0'), ('attempts', 'reflections', 'TEXT'), ('attempts', 'stuck', 'TEXT'),
          ('attempts', 'skipped', 'INTEGER DEFAULT 0'),
          # 4.17: the local AI's part of an attempt (docs/mentor-ai.md), JSON; empty when it was off
-         ('attempts', 'ai', 'TEXT')]
+         ('attempts', 'ai', 'TEXT'),
+         # 4.26: courses; a lesson's place in one, a card's LO, note, role and whether it is a check item
+         ('modules', 'course', 'TEXT'), ('modules', 'cmodule', 'TEXT'), ('modules', 'ord', 'INTEGER DEFAULT 0'),
+         ('cards', 'lo', 'TEXT'), ('cards', 'note', 'TEXT'), ('cards', 'role', 'TEXT'), ('cards', 'is_check', 'INTEGER DEFAULT 0'),
+         # 4.26: the review log (Anki's revlog): learn/review/relearn/manual, interval before and after (days), time capped at 60 s
+         ('attempts', 'review', 'TEXT'), ('attempts', 'ivl_before', 'REAL'), ('attempts', 'ivl_after', 'REAL'), ('attempts', 'took', 'INTEGER')]
+LOOSE = 'loose'          # the course every lesson in the old format belongs to, one module per project
+# card roles (spec section 5) and the card kind that runs each today; phase 4 adds the rest
+ROLE_KIND = {'term': ('term',), 'recall': ('define', 'term'), 'explain': ('explain',), 'find-bug': ('explain',),
+             'choose-design': ('explain',), 'drill': ('drill',)}
+DEFAULT_ROLE = {'term': 'term', 'drill': 'drill', 'explain': 'explain', 'define': 'recall'}
+LATER_ROLES = ('predict', 'trace', 'parsons', 'write', 'make')
 
 def connect(path):
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -118,10 +143,26 @@ def connect(path):
     for table, col, decl in ADDED:
         if col not in {r[1] for r in db.execute(f"PRAGMA table_info({table})")}:
             db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
+    ensure_loose(db)
     db.commit()
     try: os.makedirs(INBOX, exist_ok=True)
     except OSError: pass
     return db
+
+def loose_module(project):
+    return f'{LOOSE}/{slug(project or "lessons")}'
+
+def ensure_loose(db):
+    """The Loose lessons course: every lesson not in a course, one module per project (named as the project). Idempotent."""
+    db.execute("INSERT INTO courses(id,name,summary,requires,retention,data,source,at) VALUES(?,?,?,'[]',0.9,'{}','',0) "
+               "ON CONFLICT(id) DO NOTHING", (LOOSE, 'Loose lessons', 'Lessons made before courses, one module per project.'))
+    for r in db.execute("SELECT id, project FROM modules WHERE course IS NULL OR course=?", (LOOSE,)).fetchall():
+        db.execute("UPDATE modules SET course=?, cmodule=? WHERE id=?", (LOOSE, loose_module(r['project']), r['id']))
+    projects = {r['cmodule']: r['project'] or 'Lessons' for r in db.execute("SELECT cmodule, project FROM modules WHERE course=?", (LOOSE,))}
+    db.execute(f"DELETE FROM cmodules WHERE course=? AND id NOT IN ({','.join('?' * len(projects))})", (LOOSE, *projects))
+    for i, (cm, name) in enumerate(sorted(projects.items(), key=lambda x: x[1].lower())):
+        db.execute("INSERT INTO cmodules(id,course,name,ord,requires) VALUES(?,?,?,?,'[]') ON CONFLICT(id) DO UPDATE SET "
+                   "name=excluded.name, ord=excluded.ord", (cm, LOOSE, name, i))
 
 def load_decks(db, folder):
     """Upsert every deck JSON file in folder (plain decks and built-in code modules). History stays."""
@@ -130,6 +171,11 @@ def load_decks(db, folder):
         try:
             with open(f, encoding='utf-8') as fh: deck = json.load(fh)
         except Exception:
+            continue
+        if is_course(deck):
+            try:
+                with DB_LOCK: n += import_course(db, deck, f, True)[0]
+            except ValueError: pass
             continue
         if is_module(deck):
             with DB_LOCK: n += import_module(db, deck, slug(os.path.basename(f)[:-5]), f, True)[0]
@@ -142,12 +188,14 @@ def load_decks(db, folder):
     db.commit()
     return n
 
-def upsert_card(db, cid, deck, kind, prompt, answer, points, data, tags, ord_, learn_of=None):
-    db.execute("INSERT INTO cards(id,deck,kind,prompt,answer,points,tags,updated,data,ord,learn_of) VALUES(?,?,?,?,?,?,?,?,?,?,?) "
+def upsert_card(db, cid, deck, kind, prompt, answer, points, data, tags, ord_, learn_of=None, lo=None, note=None, role=None, is_check=0):
+    db.execute("INSERT INTO cards(id,deck,kind,prompt,answer,points,tags,updated,data,ord,learn_of,lo,note,role,is_check) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
                "ON CONFLICT(id) DO UPDATE SET deck=excluded.deck,kind=excluded.kind,prompt=excluded.prompt,"
                "answer=excluded.answer,points=excluded.points,tags=excluded.tags,updated=excluded.updated,"
-               "data=excluded.data,ord=excluded.ord,learn_of=excluded.learn_of",
-               (cid, deck, kind, prompt, answer, json.dumps(points), json.dumps(tags), time.time(), json.dumps(data), ord_, learn_of))
+               "data=excluded.data,ord=excluded.ord,learn_of=excluded.learn_of,lo=excluded.lo,note=excluded.note,"
+               "role=excluded.role,is_check=excluded.is_check",
+               (cid, deck, kind, prompt, answer, json.dumps(points), json.dumps(tags), time.time(), json.dumps(data), ord_, learn_of,
+                lo, note, role, is_check))
 
 def deck_list(folder):
     """Plain decks only; code modules are listed by stats() (they also come from the inbox)."""
@@ -196,14 +244,28 @@ def worked(d):
     prompt = str(se.get('prompt') or 'In your words: what does this code do, and why is it written this way?')
     return ann, prompt, rubric_points(as_list(se.get('rubric'))), bool(w)
 
-def import_module(db, doc, mid, source, built_in):
+def import_module(db, doc, mid, source, built_in, course=None, cmodule=None, ord_=0, los=None, note_ids=None):
     """Turn one lesson JSON into cards: the practice cards, and a Learn card in front of each (and one orientation).
+    course/cmodule: where it sits in a course (import_course); without them it is a Loose lesson. los / note_ids: the
+    lesson's LO and note ids, which an item's `lo` and `note` must name.
     Returns (cards added, notes about anything skipped). Caller holds DB_LOCK."""
     meta = doc.get('metadata') if isinstance(doc.get('metadata'), dict) else {}
     name = str(meta.get('module_name') or doc.get('module_name') or mid).replace('_', ' ')
     summary = doc.get('cta_summary') if isinstance(doc.get('cta_summary'), dict) else {}
     move = str(summary.get('expert_move') or '')
     cards, notes = [], []          # (item id, kind, prompt, answer, points, data, ord, learn_of item id)
+    tags = {}                      # item id -> (lo, note, role, is_check); a Learn card gets its practice card's lo and note
+    def tag(item, kind, iid, learn_id):
+        role = str(item.get('role') or DEFAULT_ROLE[kind])
+        if role in LATER_ROLES: notes.append(f'{iid}: role {role} arrives in phase 4'); return False
+        if kind not in ROLE_KIND.get(role, ()): notes.append(f'{iid}: role {role} is not a {kind} card'); role = DEFAULT_ROLE[kind]
+        lo, note = str(item.get('lo') or '') or None, str(item.get('note') or '') or None
+        if lo and los is not None and lo not in los: notes.append(f"{iid}: LO {lo} is not one of this lesson's"); lo = None
+        if note and note_ids is not None and note not in note_ids: notes.append(f"{iid}: note {note} is not one of this lesson's"); note = None
+        lo, note = (f'{course}/{lo}' if lo and course else lo), (f'{mid}:{note}' if note else None)
+        chk = 1 if item.get('check') is True else 0
+        tags[iid] = (lo, note, role, chk); tags[learn_id] = (lo, note, None, chk)    # a check item's Learn card would show its answer
+        return True
     orient = str(summary.get('orientation') or summary.get('schematic_mental_model') or '')
     terms = as_list(doc.get('tier_3_terminology_cards'))
     if orient:
@@ -214,6 +276,7 @@ def import_module(db, doc, mid, source, built_in):
         if not isinstance(t, dict) or not str(t.get('term', '')).strip():
             notes.append(f'term {i + 1}: no term'); continue
         term, tid = str(t['term']).strip(), t.get('id') or f'term_{i + 1:02}'
+        if not tag(t, 'term', tid, f'teach-{tid}'): continue
         cloze = str(t.get('cloze_prompt') or '')
         if not BLANK.search(cloze):
             cloze = f"{t.get('concise_definition') or 'Name the term.'} This is called {{{{BLANK}}}}."
@@ -242,6 +305,7 @@ def import_module(db, doc, mid, source, built_in):
         if not fades:
             notes.append(f'drill {i + 1}: no usable level'); continue
         did = d.get('id') or f'drill_{i + 1:02}'
+        if not tag(d, 'drill', did, f'level0-{did}'): continue
         look = d.get('look_at') if isinstance(d.get('look_at'), dict) else {}
         data = {'breadcrumb': str(d.get('file_breadcrumb') or ''), 'context': str(d.get('context_comment') or ''),
                 'note': str(d.get('python_fluency_note') or ''), 'fades': fades, 'move': str(d.get('expert_move') or move),
@@ -255,6 +319,7 @@ def import_module(db, doc, mid, source, built_in):
             notes.append(f'explain card {i + 1}: needs a front prompt and a back explanation'); continue
         pts = rubric_points(as_list(c.get('eval_rubric')))
         cid_ = c.get('id') or f'card_{i + 1:02}'
+        if not tag(c, 'explain', cid_, f'preread-{cid_}'): continue
         data = {'type': str(c.get('card_type') or ''), 'breadcrumb': str(c.get('file_breadcrumb') or ''),
                 'move': str(c.get('expert_move') or move), 'hints': hints_of(c)}
         cards.append((cid_, 'explain', str(c['front_prompt']), str(c['back_explanation']), pts, data, 200 + 2 * i + 1, None))
@@ -272,23 +337,96 @@ def import_module(db, doc, mid, source, built_in):
         keep.add(cid); ids[item_id] = cid
     for item_id, kind, prompt, answer, pts, data, o, learn_of in cards:
         upsert_card(db, ids[item_id], mid, kind, prompt, answer, pts, data, as_list(meta.get('concepts_covered')), o,
-                    ids.get(learn_of) if learn_of else None)
+                    ids.get(learn_of) if learn_of else None, *tags.get(item_id, (None, None, None, 0)))
     # a practice card points at its Learn card too, so the page can offer "read the lesson again"
     for item_id, kind, prompt, answer, pts, data, o, learn_of in cards:
         if learn_of: db.execute("UPDATE cards SET learn_of=? WHERE id=? AND kind NOT IN (?,?,?,?)", (ids[item_id], ids[learn_of], *LEARN))
     for (old,) in db.execute("SELECT id FROM cards WHERE deck=?", (mid,)).fetchall():
         if old not in keep: db.execute("DELETE FROM cards WHERE id=?", (old,))     # attempts and schedule rows are kept
     lint = [str(x) for x in as_list(meta.get('lint'))]
-    db.execute("INSERT INTO modules(id,name,project,built_in,at,summary,concepts,files,source) VALUES(?,?,?,?,?,?,?,?,?) "
+    db.execute("INSERT INTO modules(id,name,project,built_in,at,summary,concepts,files,source,course,cmodule,ord) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) "
                "ON CONFLICT(id) DO UPDATE SET name=excluded.name,project=excluded.project,built_in=excluded.built_in,"
-               "summary=excluded.summary,concepts=excluded.concepts,files=excluded.files,source=excluded.source",
+               "summary=excluded.summary,concepts=excluded.concepts,files=excluded.files,source=excluded.source,"
+               "course=excluded.course,cmodule=excluded.cmodule,ord=excluded.ord",
                (mid, name, str(meta.get('project') or ''), 1 if built_in else 0, stamp(meta.get('timestamp'), mid),
                 json.dumps({**{k: str(summary.get(k) or '') for k in ('schematic_mental_model', 'design_rules_heuristics',
                             'hard_rules_invariants', 'hci_human_factors_bridge')}, 'lint': lint}),
                 json.dumps([str(x) for x in as_list(meta.get('concepts_covered'))]),
-                json.dumps([str(x) for x in as_list(meta.get('source_files'))]), os.path.basename(source)))
+                json.dumps([str(x) for x in as_list(meta.get('source_files'))]), os.path.basename(source), course, cmodule, ord_))
+    if course is None: ensure_loose(db)
     db.commit()
     return sum(1 for c in cards if c[1] not in LEARN), notes
+
+def is_course(doc):
+    return isinstance(doc, dict) and str(doc.get('format') or '').startswith('mentor-course/')
+
+def import_course(db, doc, source, built_in):
+    """One course file (format mentor-course/1, docs/mentor.md): the course, its modules, LOs and notes, and each lesson
+    through import_module. Lenient: anything broken is skipped and named in the notes (check-deck.py is the strict one).
+    What the file no longer has goes; attempts and schedule rows stay. Returns (cards added, notes). Caller holds DB_LOCK."""
+    cid = slug(doc.get('id') or os.path.basename(source).rsplit('.', 1)[0])
+    if cid == LOOSE: raise ValueError(f'the course id "{LOOSE}" is kept for lessons outside courses')
+    name, notes, n = str(doc.get('name') or cid), [], 0
+    for (old,) in db.execute("SELECT id FROM courses WHERE source=? AND id NOT IN (?,?)", (os.path.abspath(source), cid, LOOSE)).fetchall():
+        drop_course(db, old)                     # the same file under a new id: one course, not two
+    db.execute("INSERT INTO courses(id,name,summary,requires,retention,data,source,at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET "
+               "name=excluded.name,summary=excluded.summary,requires=excluded.requires,retention=excluded.retention,"
+               "data=excluded.data,source=excluded.source,at=excluded.at",
+               (cid, name, str(doc.get('summary') or ''), json.dumps([slug(r) for r in as_list(doc.get('requires'))]),
+                float(doc['retention']) if isinstance(doc.get('retention'), (int, float)) else 0.9,
+                json.dumps({'capstone': doc.get('capstone'), 'sources': as_list(doc.get('sources'))}), os.path.abspath(source), time.time()))
+    keep = {'cmodules': set(), 'modules': set(), 'los': set(), 'notes': set()}
+    def put_los(items, scope, owner):
+        ids = set()
+        for lo in as_list(items):
+            if not isinstance(lo, dict) or not lo.get('id'): notes.append(f'{owner}: an LO without an id'); continue
+            lid, parent = f"{cid}/{lo['id']}", lo.get('parent')
+            ids.add(str(lo['id'])); keep['los'].add(lid)
+            db.execute("INSERT OR REPLACE INTO los(id,course,owner,scope,text,verb,bloom,mode,knowledge,condition,standard,parent) "
+                       "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", (lid, cid, owner, scope, *(str(lo.get(k) or '') for k in
+                       ('text', 'verb', 'bloom', 'mode', 'knowledge', 'condition', 'standard')), f'{cid}/{parent}' if parent else None))
+        return ids
+    put_los(doc.get('los'), 'course', cid)
+    for i, mod in enumerate(as_list(doc.get('modules'))):
+        if not isinstance(mod, dict) or not mod.get('id'): notes.append(f'module {i + 1}: not a module with an id'); continue
+        cm = f"{cid}/{slug(mod['id'])}"; keep['cmodules'].add(cm)
+        db.execute("INSERT OR REPLACE INTO cmodules(id,course,name,ord,requires) VALUES(?,?,?,?,?)",
+                   (cm, cid, str(mod.get('name') or mod['id']), i, json.dumps([f'{cid}/{slug(r)}' for r in as_list(mod.get('requires'))])))
+        put_los(mod.get('los'), 'module', cm)
+        for j, les in enumerate(as_list(mod.get('lessons'))):
+            if not isinstance(les, dict) or not les.get('id'): notes.append(f"{mod['id']} lesson {j + 1}: not a lesson with an id"); continue
+            lid = slug(f"{cid}--{les['id']}")
+            if lid in keep['modules']: notes.append(f"lesson id {les['id']} is used twice in the course: the second one (in {mod['id']}) is skipped"); continue
+            keep['modules'].add(lid)
+            los, nids = put_los(les.get('los'), 'lesson', lid), set()
+            for nt in as_list(les.get('notes')):
+                if not isinstance(nt, dict) or not nt.get('id'): notes.append(f"{les['id']}: a note without an id"); continue
+                nids.add(str(nt['id'])); keep['notes'].add(f"{lid}:{nt['id']}")
+                db.execute("INSERT OR REPLACE INTO notes(id,lesson,kind,source_ref) VALUES(?,?,?,?)",
+                           (f"{lid}:{nt['id']}", lid, str(nt.get('kind') or ''), json.dumps(nt.get('source_ref') or {})))
+            meta = {**(les.get('metadata') if isinstance(les.get('metadata'), dict) else {}), 'project': name}
+            meta.setdefault('module_name', str(les.get('name') or les['id']))
+            k, nn = import_module(db, {**les, 'metadata': meta}, lid, source, built_in, course=cid, cmodule=cm, ord_=i * 100 + j, los=los, note_ids=nids)
+            n += k; notes += [f"{les['id']}: {x}" for x in nn]
+    lessons = [r[0] for r in db.execute("SELECT id FROM modules WHERE course=?", (cid,))]
+    for old in lessons:
+        if old not in keep['modules']: db.execute("DELETE FROM cards WHERE deck=?", (old,)); db.execute("DELETE FROM modules WHERE id=?", (old,))
+    for old, les in db.execute("SELECT id, lesson FROM notes").fetchall():
+        if les in lessons and old not in keep['notes']: db.execute("DELETE FROM notes WHERE id=?", (old,))
+    for table in ('cmodules', 'los'):
+        for (old,) in db.execute(f"SELECT id FROM {table} WHERE course=?", (cid,)).fetchall():
+            if old not in keep[table]: db.execute(f"DELETE FROM {table} WHERE id=?", (old,))
+    db.execute("UPDATE modules SET at=? WHERE course=?", (time.time(), cid))     # one course, one time: Lessons orders them by ord
+    db.commit()
+    return n, notes
+
+def drop_course(db, cid):
+    """A course and everything it imported, except attempts and schedule rows (your history stays)."""
+    lessons = [r[0] for r in db.execute("SELECT id FROM modules WHERE course=?", (cid,))]
+    for les in lessons:
+        db.execute("DELETE FROM cards WHERE deck=?", (les,)); db.execute("DELETE FROM notes WHERE lesson=?", (les,))
+    for table, col in (('modules', 'course'), ('los', 'course'), ('cmodules', 'course'), ('courses', 'id')):
+        db.execute(f"DELETE FROM {table} WHERE {col}=?", (cid,))
 
 def stamp(iso, mid):
     """When the module was written: its ISO timestamp, else the YYYYMMDD_HHMMSS file name, else now."""
@@ -308,10 +446,17 @@ def scan_inbox(db):
         mid, ok, msg = slug(e.name[:-5]), 0, ''
         try:
             with open(e.path, encoding='utf-8') as fh: doc = json.load(fh)
-            if not is_module(doc): raise ValueError('not a Mentor module (no tier_1/2/3 lists or cta_summary)')
-            with DB_LOCK:
-                n, notes = import_module(db, doc, mid, e.path, False)
-            ok, msg = (1 if n else 0), (f'{n} card{"s" if n != 1 else ""}' + (f'; skipped: {"; ".join(notes[:6])}' if notes else ''))
+            if is_course(doc):
+                with DB_LOCK:
+                    n, notes = import_course(db, doc, e.path, False)
+                mid = slug(doc.get('id') or e.name[:-5])
+                where = f" in {db.execute('SELECT COUNT(*) FROM modules WHERE course=?', (mid,)).fetchone()[0]} lessons"
+            elif is_module(doc):
+                with DB_LOCK:
+                    n, notes = import_module(db, doc, mid, e.path, False)
+                where = ''
+            else: raise ValueError('not a Mentor lesson or course (no tier_1/2/3 lists, cta_summary or "format": "mentor-course/1")')
+            ok, msg = (1 if n else 0), (f'{n} card{"s" if n != 1 else ""}{where}' + (f'; skipped: {"; ".join(notes[:6])}' if notes else ''))
         except json.JSONDecodeError as x:
             msg = f'not valid JSON (line {x.lineno}: {x.msg})'
         except (ValueError, KeyError, TypeError) as x:
@@ -600,13 +745,13 @@ CARD_Q = ("SELECT c.*, s.due, s.reps, s.level, s.refresh, m.at AS mat FROM cards
 def one_card(db, card_id):
     """A card to read again (Lessons view): a Learn card with its answers, never a practice card's answer."""
     c = db.execute(CARD_Q + " WHERE c.id=?", (card_id,)).fetchone()
-    if not c or c['kind'] not in LEARN: return None
+    if not c or c['kind'] not in LEARN or c['is_check']: return None
     return card_payload(db, c, read_only=True)
 
 def practice_card(db, card_id):
     """One practice card asked again (the end-of-session replay of today's mistakes): the question, never its answer."""
     c = db.execute(CARD_Q + " WHERE c.id=?", (card_id,)).fetchone()
-    if not c or c['kind'] in LEARN: return None
+    if not c or c['kind'] in LEARN or c['is_check']: return None
     return card_payload(db, c)
 
 GROUP_SEP = ' › '   # " › ": a lesson whose project is "A › B" sits in submenu B of menu A (4.22.0)
@@ -631,7 +776,7 @@ def next_card(db, deck=None, extra=False):
     q, args = CARD_Q, []
     w, wargs = deck_where(db, deck)
     if w: q += " WHERE " + w; args += wargs
-    rows = db.execute(q, args).fetchall()
+    rows = [r for r in db.execute(q, args).fetchall() if not r['is_check']]     # check items are for module checks, never practice
     # a Learn card sent back by stuck detection comes first, before any review
     back = [r for r in rows if r['refresh'] and r['kind'] in LEARN]
     if back: return card_payload(db, back[0]), None
@@ -786,6 +931,13 @@ def coach_line(kind, cov, conf, n, extra):
     if cov == 0: return f"None of the key ideas yet{rough}. {move}"
     return f"{k} of {n} key ideas{rough}. {move}"
 
+def review_kind(srow, ratings, now):
+    """What this rating is, for the review log. ratings: the card's earlier ratings, newest first. Learning lasts until
+    the card has been passed (Hard or better) once; rating a card before it is due is practising ahead (manual)."""
+    if not srow or not any(r >= 2 for r in ratings): return 'learn'
+    if srow['due'] is not None and srow['due'] > now: return 'manual'
+    return 'relearn' if ratings[0] == 1 else 'review'
+
 def rate(db, attempt_id, rating, grade_wrong):
     a = db.execute("SELECT * FROM attempts WHERE id=?", (attempt_id,)).fetchone()
     if not a: return None
@@ -815,8 +967,12 @@ def rate(db, attempt_id, rating, grade_wrong):
                    "ON CONFLICT(card_id) DO UPDATE SET stability=excluded.stability,difficulty=excluded.difficulty,"
                    "due=excluded.due,last=excluded.last,reps=excluded.reps,lapses=excluded.lapses,level=excluded.level",
                    (a['card_id'], s, d, due, now, reps, lapses, level))
-        db.execute("UPDATE attempts SET rating=?, grade_wrong=?, stuck=COALESCE(stuck, ?) WHERE id=?",
-                   (rating, 1 if grade_wrong else 0, 'held' if held else None, attempt_id))
+        ratings = [r[0] for r in db.execute("SELECT rating FROM attempts WHERE card_id=? AND id<? AND rating>0 ORDER BY id DESC",
+                                            (a['card_id'], attempt_id))]
+        before = (srow['due'] - srow['last']) / DAY if srow and srow['due'] is not None and srow['last'] else None
+        db.execute("UPDATE attempts SET rating=?, grade_wrong=?, stuck=COALESCE(stuck, ?), review=?, ivl_before=?, ivl_after=?, took=? WHERE id=?",
+                   (rating, 1 if grade_wrong else 0, 'held' if held else None, review_kind(srow, ratings, now), before,
+                    (due - now) / DAY, min(a['ms'] or 0, 60_000), attempt_id))
         db.commit()
     old = a['level']
     return {'due': due, 'days': round((due - now) / DAY, 1), 'level': level if c and c['kind'] == 'drill' else None,
@@ -827,29 +983,43 @@ def modules(db):
     out = []
     counts = db.execute("SELECT c.deck, c.kind, COUNT(*) n, SUM(CASE WHEN s.reps>0 THEN 1 ELSE 0 END) seen, "
                         "SUM(CASE WHEN c.kind='drill' AND s.level=3 THEN 1 ELSE 0 END) top "
-                        "FROM cards c LEFT JOIN sched s ON s.card_id=c.id GROUP BY c.deck, c.kind").fetchall()
+                        "FROM cards c LEFT JOIN sched s ON s.card_id=c.id WHERE COALESCE(c.is_check, 0)=0 GROUP BY c.deck, c.kind").fetchall()
     by = {}
     for r in counts: by.setdefault(r['deck'], {})[r['kind']] = {'n': r['n'], 'seen': r['seen'] or 0, 'top': r['top'] or 0}
     learn = {}
     for r in db.execute("SELECT c.id, c.deck, c.kind, c.prompt, c.answer, c.data, s.reps FROM cards c LEFT JOIN sched s ON s.card_id=c.id "
-                        "WHERE c.kind IN (?,?,?,?) ORDER BY c.ord, c.id", LEARN).fetchall():
+                        "WHERE c.kind IN (?,?,?,?) AND COALESCE(c.is_check, 0)=0 ORDER BY c.ord, c.id", LEARN).fetchall():
         d = json.loads(r['data'] or '{}')
         title = {'orientation': 'Orientation', 'teach': f"Teach: {r['prompt']}", 'level0': f"Worked example: {(d.get('breadcrumb') or '').split('->')[-1].strip() or r['prompt'][:40]}",
                  'preread': f"Before {(d.get('type') or 'the explain card').lower().replace('pre-mortem', 'the bug hunt')}: {(d.get('breadcrumb') or '').split('->')[-1].strip()}"}[r['kind']]
         learn.setdefault(r['deck'], []).append({'id': r['id'], 'kind': r['kind'], 'title': fill(title.rstrip(': ')), 'seen': bool(r['reps'])})
-    for m in db.execute("SELECT * FROM modules ORDER BY built_in, at DESC").fetchall():
+    for m in db.execute("SELECT * FROM modules ORDER BY built_in, at DESC, ord").fetchall():   # a course's lessons share one `at`
         cards = by.get(m['id'], {})
         out.append({'id': m['id'], 'name': fill(m['name']), 'project': fill(m['project']), 'built_in': bool(m['built_in']), 'at': m['at'],
+                    'course': m['course'], 'cmodule': m['cmodule'],
                     'summary': json.loads(fill(m['summary'], as_json=True) or '{}'), 'concepts': json.loads(fill(m['concepts'], as_json=True) or '[]'),
                     'files': json.loads(fill(m['files'], as_json=True) or '[]'), 'cards': cards, 'learn': learn.get(m['id'], []),
                     'to_learn': sum(c['n'] - c['seen'] for k, c in cards.items() if k in LEARN)})
+    return out
+
+def courses(db):
+    """Courses with their modules in order and each module's lesson ids, Loose lessons last; text filled in."""
+    lessons = {}
+    for r in db.execute("SELECT id, cmodule FROM modules ORDER BY ord, at DESC, id"): lessons.setdefault(r['cmodule'], []).append(r['id'])
+    los = {r[0]: r[1] for r in db.execute("SELECT course, COUNT(*) FROM los GROUP BY course")}
+    out = []
+    for c in db.execute("SELECT * FROM courses ORDER BY id=?, at DESC, id", (LOOSE,)).fetchall():
+        mods = [{'id': x['id'], 'name': fill(x['name']), 'requires': json.loads(x['requires'] or '[]'), 'lessons': lessons.get(x['id'], [])}
+                for x in db.execute("SELECT * FROM cmodules WHERE course=? ORDER BY ord, id", (c['id'],))]
+        out.append({'id': c['id'], 'name': fill(c['name']), 'summary': fill(c['summary']), 'loose': c['id'] == LOOSE,
+                    'modules': mods, 'los': los.get(c['id'], 0)})
     return out
 
 def stats(db, deck=None):
     scan_inbox(db)
     now = time.time(); day0 = now - (now % DAY)
     cw, args = deck_where(db, deck)
-    w = "WHERE " + cw if cw else ""
+    w = "WHERE COALESCE(c.is_check, 0)=0" + (" AND " + cw if cw else "")     # check items never wait to be studied
     cards = db.execute(f"SELECT c.id, c.kind, s.due, s.reps FROM cards c LEFT JOIN sched s ON s.card_id=c.id {w}", args).fetchall()
     ids = group_ids(db, deck)
     pats = [i + ':%' for i in ids] if ids is not None else ([deck + ':%'] if deck else [])
@@ -872,7 +1042,7 @@ def stats(db, deck=None):
             'grade_disputes': sum(1 for a in rated if a['grade_wrong']),
             'hints_per_card': round(sum(a['hints'] or 0 for a in week) / len(week), 2) if week else None,
             'sent_back': sum(1 for a in att if a['stuck'] in ('held', 'repeat', 'skipped') and a['at'] >= day0),
-            'modules': modules(db), 'imports': imports,
+            'modules': modules(db), 'courses': courses(db), 'imports': imports,
             'inbox': INBOX.replace(os.path.expanduser('~'), '~', 1)}
 
 # ---------- the local AI's part (docs/mentor-ai.md): stored with the attempt, shown labelled, not used for the rating ----------

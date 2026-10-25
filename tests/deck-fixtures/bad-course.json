@@ -1,0 +1,481 @@
+{
+ "format": "mentor-course/1",
+ "id": "bad-course",
+ "name": "A course that breaks every rule once",
+ "summary": "Enough of a small web server to rebuild its request checks and its weather cache yourself.",
+ "requires": [],
+ "retention": 0.9,
+ "sources": [
+  {
+   "cite": "Rosenshine 2012, principles of instruction",
+   "url": "https://www.aft.org/sites/default/files/periodicals/Rosenshine.pdf"
+  }
+ ],
+ "los": [
+  {
+   "id": "T1",
+   "text": "Build request checks that refuse unsafe POSTs",
+   "verb": "build",
+   "bloom": "create",
+   "mode": "write",
+   "knowledge": "procedural",
+   "condition": "docs allowed, no AI",
+   "standard": "all tests pass",
+   "parent": null
+  },
+  {
+   "id": "T2",
+   "text": "Build a cache for an outside service",
+   "verb": "build",
+   "bloom": "create",
+   "mode": "write",
+   "knowledge": "procedural",
+   "condition": "docs allowed, no AI",
+   "standard": "all tests pass",
+   "parent": null
+  }
+ ],
+ "capstone": {
+  "spec": "Rebuild a server with two routes, a host check and a JSON POST.",
+  "tests": "provided"
+ },
+ "modules": [
+  {
+   "id": "requests",
+   "name": "Requests on {{SERVER}}",
+   "requires": [
+    "weather"
+   ],
+   "los": [
+    {
+     "id": "M1",
+     "text": "Explain how the server decides a request is safe",
+     "verb": "explain",
+     "bloom": "understand",
+     "mode": "read",
+     "knowledge": "conceptual",
+     "condition": "hints up to rung 2",
+     "standard": "3 of 4 key ideas",
+     "parent": "T1"
+    }
+   ],
+   "lessons": [
+    {
+     "id": "words",
+     "name": "The words for a request",
+     "notes": [
+      {
+       "id": "n-words",
+       "kind": "term",
+       "source_ref": {
+        "repo": "argus-ui",
+        "path": "server/argus_ui.py",
+        "symbol": "no_such_function",
+        "commit": "beab7ba",
+        "lines": "374-384"
+       }
+      }
+     ],
+     "metadata": {
+      "module_name": "The words for a request"
+     },
+     "cta_summary": {
+      "orientation": "Three words you need before reading the server's checks."
+     },
+     "tier_3_terminology_cards": [
+      {
+       "id": "t-origin",
+       "lo": "L1",
+       "note": "n-words",
+       "role": "term",
+       "term": "Origin header",
+       "category": "Web",
+       "concise_definition": "The site a browser says a request came from.",
+       "project_anchor": "The server compares it with its own address.",
+       "contrast_anchor": "Unlike the Host header, it names the sender, not the receiver.",
+       "cloze_prompt": "A browser sends the {{BLANK}} to say which site made the request.",
+       "try_first": "How could a server tell which site sent a request?"
+      },
+      {
+       "id": "t-allow",
+       "lo": "L1",
+       "note": "n-words",
+       "role": "term",
+       "term": "host allowlist",
+       "category": "Web",
+       "concise_definition": "The short list of names a server answers to.",
+       "project_anchor": "Requests for any other name are refused.",
+       "contrast_anchor": "Unlike a blocklist, anything not listed is refused.",
+       "cloze_prompt": "The server only answers names on its {{BLANK}}.",
+       "try_first": "Why might a server refuse a request for a name it doesn't know?"
+      },
+      {
+       "id": "t-json",
+       "lo": "L1",
+       "note": "n-words",
+       "role": "term",
+       "check": true,
+       "term": "JSON-only POST",
+       "category": "Web",
+       "concise_definition": "A rule that a change request must carry JSON, not a form.",
+       "project_anchor": "A form from another site can't send JSON without asking first.",
+       "contrast_anchor": "Unlike a form post, it needs the browser's permission across sites.",
+       "cloze_prompt": "Requiring a {{BLANK}} stops plain forms on other sites from changing anything.",
+       "try_first": "What kind of request can any web page send without asking?"
+      }
+     ]
+    },
+    {
+     "id": "origin",
+     "name": "Why a cross-site POST is refused",
+     "los": [
+      {
+       "id": "L2",
+       "text": "Understand why the server refuses a POST from another site",
+       "verb": "understand",
+       "bloom": "understand",
+       "mode": "read",
+       "knowledge": "conceptual",
+       "condition": "no hints",
+       "standard": "2 of 2 key ideas",
+       "parent": "M1"
+      }
+     ],
+     "notes": [
+      {
+       "id": "n-host",
+       "kind": "snippet",
+       "source_ref": {
+        "repo": "argus-ui",
+        "path": "server/argus_ui.py",
+        "symbol": "do_POST",
+        "commit": "beab7ba",
+        "lines": "475-500"
+       }
+      },
+      {
+       "id": "n-csrf",
+       "kind": "claim",
+       "source_ref": {
+        "cite": "Barth, A., Jackson, C. and Mitchell, J. C. (2008). Robust defenses for cross-site request forgery. ACM Conference on Computer and Communications Security.",
+        "doi": "10.1145/1455770.1455782"
+       }
+      }
+     ],
+     "metadata": {
+      "module_name": "Why a cross-site POST is refused"
+     },
+     "cta_summary": {
+      "orientation": "Any page you visit can try to send a request to your server. This lesson is why that fails."
+     },
+     "tier_2_self_explanation_cards": [
+      {
+       "id": "c-why",
+       "lo": "L2",
+       "note": "n-csrf",
+       "role": "parsons",
+       "card_type": "Why this design",
+       "file_breadcrumb": "server › POST check",
+       "front_prompt": "Why does the server refuse a POST whose Origin is another site?",
+       "back_explanation": "Any page can make your browser send a request, with your access. Checking the Origin means only the server's own page can change things.",
+       "eval_rubric": [
+        {
+         "idea": "another page can send requests as you",
+         "any": [
+          "another page",
+          "other site",
+          "any page"
+         ]
+        },
+        {
+         "idea": "only the server's own page may change things",
+         "any": [
+          "own page",
+          "same site",
+          "only its"
+         ]
+        }
+       ],
+       "preread": {
+        "key_ideas": [
+         "A browser sends requests for any page you visit.",
+         "The Origin header names the page that asked."
+        ],
+        "try_first": "If any page can make your browser send a request, what stops a stranger's page?"
+       }
+      },
+      {
+       "id": "c-bug",
+       "lo": "L2",
+       "note": "n-host",
+       "role": "find-bug",
+       "card_type": "Pre-Mortem",
+       "file_breadcrumb": "server › POST check",
+       "front_prompt": "The check is changed to accept a POST when the Origin header is missing. What can go wrong?",
+       "back_explanation": "Some requests arrive without an Origin. If a missing one is let through, a stranger's page can still change things.",
+       "eval_rubric": [
+        {
+         "idea": "a request can arrive without the header",
+         "any": [
+          "missing",
+          "without",
+          "no origin"
+         ]
+        },
+        {
+         "idea": "a stranger's page gets through",
+         "any": [
+          "stranger",
+          "other site",
+          "gets through"
+         ]
+        }
+       ],
+       "preread": {
+        "key_ideas": [
+         "Not every request carries an Origin header."
+        ],
+        "try_first": "What should a check do when the thing it checks is missing?"
+       }
+      },
+      {
+       "id": "k-origin",
+       "lo": "L2",
+       "note": "n-csrf",
+       "role": "explain",
+       "check": true,
+       "card_type": "Why this design",
+       "file_breadcrumb": "server › POST check",
+       "front_prompt": "In two sentences: what attack does the Origin check stop, and how?",
+       "back_explanation": "It stops a page on another site from using your browser to change things. The server only accepts changes whose Origin is its own page.",
+       "eval_rubric": [
+        {
+         "idea": "another site uses your browser",
+         "any": [
+          "another site",
+          "other page",
+          "your browser"
+         ]
+        },
+        {
+         "idea": "only its own origin is accepted",
+         "any": [
+          "own",
+          "same",
+          "only"
+         ]
+        }
+       ],
+       "preread": {
+        "key_ideas": [
+         "The attack borrows your browser.",
+         "The check compares the Origin with the server's own."
+        ],
+        "try_first": "Who sends the request in this attack: you, or a page you happened to open?"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "weather",
+   "name": "The weather cache",
+   "requires": [
+    "requests"
+   ],
+   "los": [
+    {
+     "id": "M2",
+     "text": "Explain how the weather cache saves calls to the outside service",
+     "verb": "explain",
+     "bloom": "understand",
+     "mode": "read",
+     "knowledge": "conceptual",
+     "condition": "hints up to rung 2",
+     "standard": "2 of 3 key ideas",
+     "parent": "T2"
+    }
+   ],
+   "lessons": [
+    {
+     "id": "cache",
+     "name": "When to fetch again",
+     "los": [
+      {
+       "id": "L3",
+       "text": "Choose when the server should fetch the weather again",
+       "verb": "choose",
+       "bloom": "evaluate",
+       "mode": "read",
+       "knowledge": "conceptual",
+       "condition": "no hints",
+       "standard": "right on the first try",
+       "parent": "T1"
+      }
+     ],
+     "notes": [
+      {
+       "id": "n-cache",
+       "kind": "snippet",
+       "source_ref": {
+        "repo": "argus-ui",
+        "path": "server/no_such_file.py",
+        "symbol": "current",
+        "commit": "beab7ba",
+        "lines": "48-80"
+       }
+      },
+      {
+       "id": "n-fresh",
+       "kind": "concept",
+       "source_ref": {
+        "note": "Freshness versus calls",
+        "path": "docs/scene.md"
+       }
+      }
+     ],
+     "metadata": {
+      "module_name": "When to fetch again"
+     },
+     "cta_summary": {
+      "orientation": "The weather changes slowly, so asking for it on every page view wastes calls."
+     },
+     "tier_2_self_explanation_cards": [
+      {
+       "id": "c-ttl",
+       "lo": "L3",
+       "note": "n-fresh",
+       "role": "choose-design",
+       "card_type": "Why this design",
+       "file_breadcrumb": "server › weather",
+       "front_prompt": "Fetch the weather on every page view, or keep it for ten minutes? Choose and say why.",
+       "back_explanation": "Keep it for ten minutes: the weather barely changes in that time, and the outside service limits how often you may ask.",
+       "eval_rubric": [
+        {
+         "idea": "the weather changes slowly",
+         "any": [
+          "slowly",
+          "barely changes",
+          "doesn't change"
+         ]
+        },
+        {
+         "idea": "the service limits calls",
+         "any": [
+          "limit",
+          "rate",
+          "too many"
+         ]
+        }
+       ],
+       "preread": {
+        "key_ideas": [
+         "Outside services limit how often you may ask.",
+         "Weather changes over hours, not seconds."
+        ],
+        "try_first": "How often does the weather outside really change?"
+       }
+      },
+      {
+       "id": "c-stale",
+       "lo": "L3",
+       "note": "n-cache",
+       "role": "choose-design",
+       "card_type": "Why this design",
+       "file_breadcrumb": "server › weather",
+       "front_prompt": "The outside service is down. Show the last reading, or show nothing? Choose and say why.",
+       "back_explanation": "Show the last reading, marked as old: a slightly old answer is more useful than none, as long as it says so.",
+       "eval_rubric": [
+        {
+         "idea": "an old answer beats none",
+         "any": [
+          "old",
+          "last reading",
+          "better than nothing"
+         ]
+        },
+        {
+         "idea": "say that it is old",
+         "any": [
+          "mark",
+          "say",
+          "label"
+         ]
+        }
+       ],
+       "preread": {
+        "key_ideas": [
+         "A reading can be shown with its age."
+        ],
+        "try_first": "Would you rather see yesterday's forecast, or a blank?"
+       }
+      },
+      {
+       "id": "k-cache",
+       "lo": "L3",
+       "note": "n-cache",
+       "role": "choose-design",
+       "check": true,
+       "card_type": "Why this design",
+       "file_breadcrumb": "server › weather",
+       "front_prompt": "A page asks for the weather twice in one minute. What should the server do the second time, and why?",
+       "back_explanation": "Answer from the saved reading: it is fresh enough, and asking again would spend a call for nothing.",
+       "eval_rubric": [
+        {
+         "idea": "use the saved reading",
+         "any": [
+          "saved",
+          "cache",
+          "kept"
+         ]
+        },
+        {
+         "idea": "asking again wastes a call",
+         "any": [
+          "waste",
+          "call",
+          "limit"
+         ]
+        }
+       ],
+       "preread": {
+        "key_ideas": [
+         "A saved reading has an age."
+        ],
+        "try_first": "What does the server already have after the first request?"
+       }
+      }
+     ],
+     "tier_1_faded_code_drills": [
+      {
+       "id": "d-broken",
+       "lo": "L3",
+       "note": "n-cache",
+       "role": "drill",
+       "lang": "python",
+       "file_breadcrumb": "server › weather",
+       "context_comment": "Keep the reading for ten minutes.",
+       "full_canonical_code": "def fresh(at, now):\n    return now - at < 600 +\n",
+       "level_1_fade": "def fresh(at, now):\n    return now - at < {{BLANK_1}}\n",
+       "answers": {
+        "level_1": [
+         "600"
+        ]
+       },
+       "level_0_worked": {
+        "annotations": [
+         {
+          "line": 2,
+          "note": "Ten minutes, in seconds.",
+          "why": "The weather barely changes in that time."
+         }
+        ]
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
