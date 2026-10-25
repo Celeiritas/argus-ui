@@ -31,8 +31,12 @@ if [ -z "$1" ] || [ "$1" = mentor ]; then
   for r in 'ERROR R1 file' 'WARN R1 repo' 'R2 ' 'R3 ' 'R4 ' 'R5 '; do grep -q "$r" <<<"$out" || { echo "FAIL the checker missed: $r"; fail=1; }; done
   grep -q 'drill_01: ERROR R1 file' <<<"$out" && { echo "FAIL a file name inside code was reported"; fail=1; }
   # checker v2 (courses): the bad course breaks each rule once
-  out=$(python3 "$R/scripts/check-deck.py" "$R/tests/deck-fixtures/bad-course.json") && { echo "FAIL the bad course passed"; fail=1; }
-  for r in C1 C2 C3 C4 C5 C6 C7; do grep -q "ERROR $r " <<<"$out" || { echo "FAIL the course checker missed: $r"; echo "$out"; fail=1; }; done
+  out=$(python3 "$R/scripts/check-deck.py" --repo argus-ui="$R" "$R/tests/deck-fixtures/bad-course.json") && { echo "FAIL the bad course passed"; fail=1; }
+  for r in C1 C2 C3 C4 C5 C6 C7 C8; do grep -q "ERROR $r " <<<"$out" || { echo "FAIL the course checker missed: $r"; echo "$out"; fail=1; }; done
+  grep -q "no_such_function" <<<"$out" && grep -q "no_such_file.py" <<<"$out" || { echo "FAIL a missing symbol or file was not reported"; fail=1; }
+  # the good course's code references resolve in this repository at their commit
+  out=$(python3 "$R/scripts/check-deck.py" --repo argus-ui="$R" "$R/tests/deck-fixtures/good-course.json") || { echo "$out"; fail=1; }
+  grep -q "INFO C8" <<<"$out" && { echo "FAIL a reference was not checked"; echo "$out"; fail=1; }
   echo "== mentor model"   # courses, Loose lessons, the review log: no browser (tests/mentor_model_test.py)
   python3 "$R/tests/mentor_model_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1
 fi

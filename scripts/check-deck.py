@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Check Mentor lessons and decks against the deck rubric (docs/mentor-rubric.md).
+"""Check Mentor lessons, decks and courses against the deck rubric (docs/mentor-rubric.md).
 
-    python3 scripts/check-deck.py PATH...      files, or folders of *.json
+    python3 scripts/check-deck.py [--repo NAME=PATH]... [--online] PATH...      files, or folders of *.json
 
 Prints one line per finding, `file: card: LEVEL Rn message`, and exits 1 if any is an ERROR.
-Only what the learner reads is checked: code (snippets, canonical code, fades, answers) may name files."""
-import ast, json, os, re, sys, textwrap
+Only what the learner reads is checked: code (snippets, canonical code, fades, answers) may name files.
+Courses (`"format": "mentor-course/1"`) also get C1-C9. --repo NAME=PATH: a clone of the repository a course's code
+references name, so each file and symbol is looked up at its commit (C8). --online: paper links and DOIs must answer (C9)."""
+import ast, json, os, re, subprocess, sys, textwrap, urllib.error, urllib.parse, urllib.request
 
 # keys whose text is code, ids or bookkeeping, never prose the learner reads
 SKIP = {'full_canonical_code', 'level_1_fade', 'level_2_fade', 'level_3_fade', 'answers', 'snippet', 'code', 'any',
@@ -145,7 +147,9 @@ def check_course(doc):
             add(where, 'ERROR', 'C6', f'citation "{ref["cite"]}" is not "Author(s) (year). Title. Venue."')
 
     take_los(doc.get('los'), 'course', 'course')
-    for i, s in enumerate(lst(doc.get('sources'))): cite(f'source {i + 1}', s)
+    for i, s in enumerate(lst(doc.get('sources'))):
+        cite(f'source {i + 1}', s)
+        for x in resolve_ref(s) if isinstance(s, dict) else []: add(f'source {i + 1}', *x)
     for i, mod in enumerate(lst(doc.get('modules'))):
         if not isinstance(mod, dict) or not mod.get('id'): add(f'module {i + 1}', 'ERROR', 'C1', 'a module needs an id'); continue
         if mod['id'] in mods: add(mod['id'], 'ERROR', 'C1', 'module id used twice')
@@ -173,6 +177,7 @@ def check_course(doc):
                 if not isinstance(nt, dict) or not nt.get('id'): add(where, 'ERROR', 'C1', 'a note without an id'); continue
                 if nt['id'] in notes: add(f"{where}: note {nt['id']}", 'ERROR', 'C1', 'note id used twice')
                 notes[nt['id']] = nt; cite(f"{where}: note {nt['id']}", nt.get('source_ref'))
+                for x in resolve_ref(nt.get('source_ref')): add(f"{where}: note {nt['id']}", *x)
             counts, items = {lid: [0, 0] for lid in llos}, set()
             for key, roles in TIERS:
                 for item in lst(les.get(key)):
@@ -202,6 +207,65 @@ def check_course(doc):
     loop = cycle({k: [r_ for r_ in lst(v.get('requires')) if r_ in mods] for k, v in mods.items()})
     if loop: add('modules', 'ERROR', 'C5', 'requires go in a circle: ' + ' → '.join(loop))
     return out
+
+OPTS = {'repos': {}, 'online': False, 'links_skipped': 0}       # set by main(): --repo NAME=PATH, --online
+
+def resolve_ref(ref):
+    """C8 / C9: a note's source_ref resolves. Code {repo, path, symbol, commit}: the file is in the repo at that commit
+    and names the symbol. Paper {cite, url, doi}: with --online the link answers. Note {note, path}: the file exists here.
+    Returns [(level, rule, message)]."""
+    if not isinstance(ref, dict): return [('ERROR', 'C8', 'source_ref is not an object')]
+    if 'repo' in ref or 'symbol' in ref:
+        missing = [k for k in ('repo', 'path', 'symbol', 'commit') if not ref.get(k)]
+        if missing: return [('ERROR', 'C8', f'code reference without {", ".join(missing)}')]
+        root = OPTS['repos'].get(ref['repo'])
+        if not root: return [('INFO', 'C8', f'not checked: pass --repo {ref["repo"]}=PATH')]
+        try: got = subprocess.run(['git', '-C', root, 'show', f"{ref['commit']}:{ref['path']}"], capture_output=True,
+                                  text=True, encoding='utf-8', errors='replace', timeout=30)
+        except (OSError, subprocess.SubprocessError) as e: return [('ERROR', 'C8', f'cannot run git: {e}')]
+        if got.returncode: return [('ERROR', 'C8', f'{ref["path"]} is not in {ref["repo"]} at {ref["commit"]}')]
+        sym = re.escape(str(ref['symbol']))
+        if not re.search(rf'\b(?:def|class|function)\s+{sym}\b|^\s*(?:const |let |var )?{sym}\s*=', got.stdout, re.M):
+            return [('ERROR', 'C8', f'{ref["symbol"]} is not defined in {ref["path"]} at {ref["commit"]}')]
+        return []
+    found = []
+    if 'note' in ref and ref.get('path') and not os.path.exists(ref['path']):
+        found.append(('WARN', 'C8', f'note file {ref["path"]} not found from here'))
+    if not OPTS['online']: OPTS['links_skipped'] += bool(ref.get('url')) + bool(ref.get('doi')); return found
+    if ref.get('url'):
+        problem = link_problem(str(ref['url']))
+        if problem: found.append(problem)
+    if ref.get('doi'):
+        ok = doi_exists(str(ref['doi']))
+        if ok is None: found.append(('WARN', 'C9', f'DOI {ref["doi"]}: doi.org did not answer, not checked'))
+        elif not ok: found.append(('ERROR', 'C9', f'DOI {ref["doi"]} is not registered'))
+    return found
+
+BOT_WALL = (401, 403, 429)        # the site refuses automated checks: say so, don't call the link broken
+
+def link_problem(url):
+    """None when the link answers (status < 400), else (level, 'C9', message). HEAD first; some sites only answer GET."""
+    for method in ('HEAD', 'GET'):
+        try:
+            req = urllib.request.Request(url, method=method, headers={'User-Agent': 'check-deck/2 (Mentor course checker)'})
+            with urllib.request.urlopen(req, timeout=10) as r:
+                if r.status < 400: return None
+        except urllib.error.HTTPError as e:
+            if method == 'GET':
+                return ('WARN', 'C9', f'{url}: refuses automated checks ({e.code}); open it yourself') if e.code in BOT_WALL \
+                    else ('ERROR', 'C9', f'{url}: answers {e.code}')
+        except (urllib.error.URLError, OSError, ValueError) as e:
+            if method == 'GET': return ('ERROR', 'C9', f'{url}: no answer ({getattr(e, "reason", e)})')
+    return ('ERROR', 'C9', f'{url}: no answer')
+
+def doi_exists(doi):
+    """Asks doi.org's handle service (not the publisher, which may refuse robots) whether the DOI is registered:
+    True, False (doi.org says no such DOI: 404), or None (doi.org could not be reached)."""
+    try:
+        with urllib.request.urlopen(f'https://doi.org/api/handles/{urllib.parse.quote(doi)}', timeout=10) as r:
+            return json.load(r).get('responseCode') == 1
+    except urllib.error.HTTPError as e: return False if e.code == 404 else None
+    except (urllib.error.URLError, OSError, ValueError): return None
 
 def cycle(graph):
     """One cycle in {node: [nodes it requires]} as a list of nodes (first repeated at the end), or None."""
@@ -243,8 +307,16 @@ def main(argv):
         print(__doc__.strip()); return 2
     try: sys.stdout.reconfigure(encoding='utf-8')
     except AttributeError: pass
+    paths, it = [], iter(argv)
+    for a in it:
+        if a == '--online': OPTS['online'] = True
+        elif a == '--repo' or a.startswith('--repo='):
+            name, _, root = (a[7:] if a.startswith('--repo=') else next(it, '')).partition('=')
+            if not name or not root: print('--repo needs NAME=PATH, e.g. --repo argus-ui=.'); return 2
+            OPTS['repos'][name] = root
+        else: paths.append(a)
     errors = warns = 0
-    for f in files(argv):
+    for f in files(paths):
         try:
             with open(f, encoding='utf-8') as fh: doc = json.load(fh)
         except (OSError, ValueError) as e:
@@ -254,7 +326,8 @@ def main(argv):
         for cid, level, rule, msg in (check_course(doc) if is_course(doc) else check(doc)):
             print(f'{f}: {cid}: {level} {rule} {msg}')
             errors += level == 'ERROR'; warns += level == 'WARN'
-    print(f'check-deck: {errors} error{"s" * (errors != 1)}, {warns} warning{"s" * (warns != 1)}')
+    skipped = f'; {OPTS["links_skipped"]} link{"s" * (OPTS["links_skipped"] != 1)} not checked (add --online)' if OPTS['links_skipped'] else ''
+    print(f'check-deck: {errors} error{"s" * (errors != 1)}, {warns} warning{"s" * (warns != 1)}{skipped}')
     return 1 if errors else 0
 
 if __name__ == '__main__':

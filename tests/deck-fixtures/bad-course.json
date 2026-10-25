@@ -70,7 +70,7 @@
        "source_ref": {
         "repo": "argus-ui",
         "path": "server/argus_ui.py",
-        "symbol": "host_ok",
+        "symbol": "no_such_function",
         "commit": "beab7ba",
         "lines": "374-384"
        }
@@ -320,7 +320,7 @@
        "kind": "snippet",
        "source_ref": {
         "repo": "argus-ui",
-        "path": "server/sky.py",
+        "path": "server/no_such_file.py",
         "symbol": "current",
         "commit": "beab7ba",
         "lines": "48-80"
