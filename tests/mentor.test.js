@@ -269,4 +269,16 @@ run(async b => {
   check(gs.cards === one.cards && gs.cards > 0, 'a group\'s stats count the cards of its lessons');
   const none = await api(p, 'stats?deck=' + encodeURIComponent('group:NO_SUCH_MENU'));
   check(none.cards === 0, 'an unknown group has no cards (and no error)');
+
+  // courses (4.26.0): a course file in the inbox shows as one group in Lessons, its lessons in order; check items never served
+  fs.copyFileSync(path.join(__dirname, 'deck-fixtures', 'good-course.json'), path.join(INBOX, 'demo-server.json'));
+  await p.locator('[data-view=modules]').click(); await p.waitForTimeout(700);
+  const cg = p.locator('section.group', {has: p.locator('h2', {hasText: 'Rebuild a small web server'})});
+  check(await cg.locator('.module h4').allTextContents().then(t => t.join('|')) === 'The words for a request|Why a cross-site POST is refused|When to fetch again', 'a course shows as one group in Lessons, its lessons in course order');
+  const cs = await api(p, 'stats');
+  check(cs.courses && cs.courses[0].id === 'demo-server' && cs.courses.at(-1).id === 'loose', 'stats lists the course first and Loose lessons last');
+  await cg.locator('button[data-study^="group:"]').click(); await p.waitForTimeout(600);
+  const cc = (await api(p, 'next?deck=' + encodeURIComponent('group:Rebuild a small web server'))).card;
+  check(cc && cc.id.startsWith('demo-server--'), 'Study all on a course serves a card from its lessons');
+  check(p.errors.length === 0, 'courses: no page errors ' + p.errors.join(' | '));
 });

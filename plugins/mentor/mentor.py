@@ -407,6 +407,7 @@ def import_course(db, doc, source, built_in):
     for table in ('cmodules', 'los'):
         for (old,) in db.execute(f"SELECT id FROM {table} WHERE course=?", (cid,)).fetchall():
             if old not in keep[table]: db.execute(f"DELETE FROM {table} WHERE id=?", (old,))
+    db.execute("UPDATE modules SET at=? WHERE course=?", (time.time(), cid))     # one course, one time: Lessons orders them by ord
     db.commit()
     return n, notes
 
@@ -975,12 +976,26 @@ def modules(db):
         title = {'orientation': 'Orientation', 'teach': f"Teach: {r['prompt']}", 'level0': f"Worked example: {(d.get('breadcrumb') or '').split('->')[-1].strip() or r['prompt'][:40]}",
                  'preread': f"Before {(d.get('type') or 'the explain card').lower().replace('pre-mortem', 'the bug hunt')}: {(d.get('breadcrumb') or '').split('->')[-1].strip()}"}[r['kind']]
         learn.setdefault(r['deck'], []).append({'id': r['id'], 'kind': r['kind'], 'title': fill(title.rstrip(': ')), 'seen': bool(r['reps'])})
-    for m in db.execute("SELECT * FROM modules ORDER BY built_in, at DESC").fetchall():
+    for m in db.execute("SELECT * FROM modules ORDER BY built_in, at DESC, ord").fetchall():   # a course's lessons share one `at`
         cards = by.get(m['id'], {})
         out.append({'id': m['id'], 'name': fill(m['name']), 'project': fill(m['project']), 'built_in': bool(m['built_in']), 'at': m['at'],
+                    'course': m['course'], 'cmodule': m['cmodule'],
                     'summary': json.loads(fill(m['summary'], as_json=True) or '{}'), 'concepts': json.loads(fill(m['concepts'], as_json=True) or '[]'),
                     'files': json.loads(fill(m['files'], as_json=True) or '[]'), 'cards': cards, 'learn': learn.get(m['id'], []),
                     'to_learn': sum(c['n'] - c['seen'] for k, c in cards.items() if k in LEARN)})
+    return out
+
+def courses(db):
+    """Courses with their modules in order and each module's lesson ids, Loose lessons last; text filled in."""
+    lessons = {}
+    for r in db.execute("SELECT id, cmodule FROM modules ORDER BY ord, at DESC, id"): lessons.setdefault(r['cmodule'], []).append(r['id'])
+    los = {r[0]: r[1] for r in db.execute("SELECT course, COUNT(*) FROM los GROUP BY course")}
+    out = []
+    for c in db.execute("SELECT * FROM courses ORDER BY id=?, at DESC, id", (LOOSE,)).fetchall():
+        mods = [{'id': x['id'], 'name': fill(x['name']), 'requires': json.loads(x['requires'] or '[]'), 'lessons': lessons.get(x['id'], [])}
+                for x in db.execute("SELECT * FROM cmodules WHERE course=? ORDER BY ord, id", (c['id'],))]
+        out.append({'id': c['id'], 'name': fill(c['name']), 'summary': fill(c['summary']), 'loose': c['id'] == LOOSE,
+                    'modules': mods, 'los': los.get(c['id'], 0)})
     return out
 
 def stats(db, deck=None):
@@ -1010,7 +1025,7 @@ def stats(db, deck=None):
             'grade_disputes': sum(1 for a in rated if a['grade_wrong']),
             'hints_per_card': round(sum(a['hints'] or 0 for a in week) / len(week), 2) if week else None,
             'sent_back': sum(1 for a in att if a['stuck'] in ('held', 'repeat', 'skipped') and a['at'] >= day0),
-            'modules': modules(db), 'imports': imports,
+            'modules': modules(db), 'courses': courses(db), 'imports': imports,
             'inbox': INBOX.replace(os.path.expanduser('~'), '~', 1)}
 
 # ---------- the local AI's part (docs/mentor-ai.md): stored with the attempt, shown labelled, not used for the rating ----------

@@ -173,6 +173,26 @@ class Course(Base):
         s = m.stats(self.db)
         self.assertEqual((s['new'], s['learn']), (0, 0))
 
+    def test_stats_courses(self):
+        self.load()
+        with m.DB_LOCK: m.import_module(self.db, {'metadata': {'module_name': 'old one', 'project': 'argus-ui'},
+                                                  'cta_summary': {'orientation': 'x'}}, 'old-one', 'old-one.json', False)
+        cs = m.stats(self.db)['courses']
+        self.assertEqual([c['id'] for c in cs], ['demo-server', m.LOOSE])
+        self.assertEqual(cs[0]['los'], 7)
+        self.assertEqual([(x['id'], x['requires'], x['lessons']) for x in cs[0]['modules']],
+                         [('demo-server/requests', [], [m.slug('demo-server--words'), m.slug('demo-server--origin')]),
+                          ('demo-server/weather', ['demo-server/requests'], [m.slug('demo-server--cache')])])
+        self.assertTrue(cs[1]['loose']); self.assertEqual(cs[1]['modules'][0]['lessons'], ['old-one'])
+        mod = next(x for x in m.stats(self.db)['modules'] if x['id'] == m.slug('demo-server--cache'))
+        self.assertEqual((mod['course'], mod['cmodule']), ('demo-server', 'demo-server/weather'))
+
+    def test_course_text_filled(self):
+        with open(m.REALM_FILE, 'w', encoding='utf-8') as fh: json.dump({'SERVER': 'TestHost'}, fh)
+        self.load()
+        names = [x['name'] for x in m.stats(self.db)['courses'][0]['modules']]
+        self.assertEqual(names[0], 'Requests on TestHost')
+
     def test_inbox_course(self):
         os.makedirs(m.INBOX, exist_ok=True); shutil.copy(FIXTURE, os.path.join(m.INBOX, 'demo-server.json'))
         m.scan_inbox(self.db)
