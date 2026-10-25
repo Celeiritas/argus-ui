@@ -224,6 +224,7 @@ def import_module(db, doc, mid, source, built_in):
         cards.append((tid, 'term', cloze, term, [], data, o + 1, None))
         spot = t.get('spot_it') if isinstance(t.get('spot_it'), dict) and t['spot_it'].get('snippet') else None
         td = {k: data[k] for k in ('category', 'definition', 'anchor', 'contrast', 'move')}
+        td['try'] = str(t.get('try_first') or '')          # a question to try before the teach card explains (not graded)
         td['spot'] = {'snippet': str(spot['snippet']), 'line': int(spot.get('line') or 1), 'why': str(spot.get('why') or '')} if spot else None
         cards.append((f'teach-{tid}', 'teach', term, str(td['spot']['line']) if spot else '', [], td, o, tid))
     for i, d in enumerate(as_list(doc.get('tier_1_faded_code_drills') or doc.get('faded_code_drills'))):
@@ -260,7 +261,7 @@ def import_module(db, doc, mid, source, built_in):
         pre = c.get('preread') if isinstance(c.get('preread'), dict) else {}
         ideas = [str(x) for x in as_list(pre.get('key_ideas'))] or [p['idea'] for p in pts]
         near = pre.get('near_example') if isinstance(pre.get('near_example'), dict) and pre['near_example'].get('code') else None
-        pd = {'type': data['type'], 'breadcrumb': data['breadcrumb'], 'ideas': ideas, 'authored': bool(pre),
+        pd = {'type': data['type'], 'breadcrumb': data['breadcrumb'], 'ideas': ideas, 'authored': bool(pre), 'try': str(pre.get('try_first') or ''),
               'near': {'code': str(near['code']), 'ask': str(near.get('ask') or 'What would break here?')} if near else None}
         cards.append((f'preread-{cid_}', 'preread', str(near.get('ask') or 'What would break here?') if near else '',
                       str(near.get('answer') or '') if near else '', [], pd, 200 + 2 * i, cid_))
@@ -581,7 +582,7 @@ def card_payload(db, c, read_only=False):
         out.update({k: data.get(k) for k in ('files', 'terms', 'bridge')})
     elif c['kind'] == 'teach':
         spot = data.get('spot')
-        out.update({k: data.get(k, '') for k in ('category', 'definition', 'anchor', 'contrast', 'move')})
+        out.update({k: data.get(k, '') for k in ('category', 'definition', 'anchor', 'contrast', 'move', 'try')})
         out['spot'] = {'snippet': spot['snippet'], 'lines': len(spot['snippet'].split('\n'))} if spot else None
         if read_only and spot: out['spot'].update({'line': spot['line'], 'why': spot['why']})
     elif c['kind'] == 'level0':
@@ -589,7 +590,7 @@ def card_payload(db, c, read_only=False):
                     'context': data.get('context', ''), 'graded': bool(json.loads(c['points'] or '[]'))})
     elif c['kind'] == 'preread':
         out.update({'type': data.get('type', ''), 'breadcrumb': data.get('breadcrumb', ''), 'ideas': data.get('ideas', []),
-                    'near': data.get('near')})
+                    'near': data.get('near'), 'try': data.get('try', '')})
         if read_only and data.get('near'): out['near'] = {**data['near'], 'answer': c['answer']}
     return out
 

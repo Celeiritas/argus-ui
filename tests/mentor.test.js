@@ -39,11 +39,17 @@ run(async b => {
   // a lesson starts with its orientation: one screen, and five typed words before the cards
   await p.selectOption('#mdeck', 'argus-code'); await p.waitForTimeout(600);
   check(/^Orientation/.test(await p.locator('.kind').textContent()) && await p.locator('.tags li').count() === 8, 'a new lesson starts with its orientation and lists the terms coming');
+  check(!/Files:|\.py\b/.test(await p.locator('#qform').textContent()), 'the orientation names no files (the Lessons view keeps them)');
   await p.locator('#ans').fill('four words not enough');
   check(await p.locator('#goBtn').isDisabled(), 'Start learning waits for five words');
   await p.locator('#ans').fill('it caches the weather and serves cards'); await p.keyboard.press('Control+Enter'); await p.waitForTimeout(700);
 
-  // then teach cards, each ending in a spot-it check; a wrong line still moves on, with the why
+  // then teach cards: a question to try first (typed, not graded), then the term and a spot-it check; a wrong line still moves on, with the why
+  check(/^Teach/.test(await p.locator('.kind').textContent()) && await p.locator('#guess').count() === 1 && await p.locator('.defs').count() === 0, 'a teach card asks its try-first question before explaining');
+  check(await p.locator('#tryBtn').isDisabled(), 'Show the explanation waits for a typed guess');
+  await shot(p, 'mentor-try-first');
+  await p.locator('#guess').fill('it unlocks the lock for you'); await p.keyboard.press('Control+Enter'); await p.waitForTimeout(400);
+  check(/Your guess: it unlocks the lock for you/.test(await p.locator('.callout.tried').textContent()), 'the explanation shows under the question, next to the guess');
   check(/^Teach/.test(await p.locator('.kind').textContent()) && await p.locator('.lines .line').count() === 4, 'a teach card shows the term, its anchor and a snippet to spot it in');
   await shot(p, 'mentor-teach');
   await p.locator('.lines .line').nth(2).click(); await p.locator('#goBtn').click(); await p.waitForTimeout(600);
@@ -103,6 +109,7 @@ run(async b => {
   check(drill && drill.kind === 'drill' && drill.level === 1, 'drills unlock once every worked example has been read');
   await p.selectOption('#mdeck', ''); await p.selectOption('#mdeck', 'argus-code'); await p.waitForTimeout(600);
   check(await p.locator('pre.code input.blank').count() === 2, 'a level 1 drill has two blanks in the code');
+  check((await p.locator('.crumb').textContent()).replace('Where in the code: ', '') === 'current()', 'the card says which function, not which folder or file');
   await shot(p, 'mentor-drill-ask');
   await p.locator('input.blank').nth(0).fill('_mem'); await p.keyboard.press('Enter');
   check(await p.evaluate(() => document.activeElement.dataset.n) === '2', 'Enter moves to the next blank');
@@ -142,6 +149,7 @@ run(async b => {
   check(await p.locator('.module').first().locator('[data-read]').count() === 18, 'every Learn card of a lesson can be read again');
   await p.locator('.module').first().locator('[data-read]').nth(1).click(); await p.waitForTimeout(600);
   check(/reading again/.test(await p.locator('.deckname').first().textContent()) && /line 2/.test(await p.locator('#spotq').textContent()), 'a teach card opens read-only with its answer');
+  check(await p.locator('.callout.tried').count() === 1 && await p.locator('#guess').count() === 0, 'read-only, the try-first question is text with no guess step');
   await p.locator('#doneBtn').click(); await p.waitForTimeout(600);
   check(await p.locator('.ideas li.miss', {hasText: 'broken.json'}).count() === 1, 'a broken inbox file is listed with what is wrong');
   await p.locator('.module details summary').first().click();
@@ -153,7 +161,9 @@ run(async b => {
   // a pre-read before each explain card: the key ideas, then a near example to answer before the reveal
   for (const k of ['term', 'level0', 'drill']) await skip(p, 'argus-code', k, 8);
   await p.selectOption('#mdeck', 'argus-code'); await p.waitForTimeout(600);
-  check(/^Before the bug hunt/.test(await p.locator('.kind').textContent()) && await p.locator('.ideas.keys li').count() === 3, 'a pre-read lists the ideas the bug hunt rests on');
+  check(/^Before the bug hunt/.test(await p.locator('.kind').textContent()) && await p.locator('#guess').count() === 1 && await p.locator('.ideas.keys').count() === 0, 'a pre-read asks its try-first question first');
+  await p.locator('#guess').fill('the file is half there'); await p.locator('#tryBtn').click(); await p.waitForTimeout(400);
+  check(await p.locator('.ideas.keys li').count() === 3, 'then lists the ideas the bug hunt rests on');
   await p.locator('#ans').fill('a half written file'); await p.keyboard.press('Enter'); await p.waitForTimeout(600);
   check(/truncated LOG/.test(await p.locator('.model').last().textContent()), 'the near example reveals its answer after a typed guess');
   await p.locator('#rateBtn').click(); await p.waitForTimeout(500);
@@ -177,7 +187,7 @@ run(async b => {
   // an older lesson file without Learn fields still imports and gets derived Learn cards
   const old = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'themes', 'leafy-realm', 'decks', 'argus-code.json')));
   old.metadata.module_name = 'old_shape'; delete old.cta_summary.orientation; delete old.cta_summary.expert_move;
-  for (const t of old.tier_3_terminology_cards) { delete t.spot_it; delete t.hints; delete t.expert_move; }
+  for (const t of old.tier_3_terminology_cards) { delete t.spot_it; delete t.hints; delete t.expert_move; delete t.try_first; }
   for (const d of old.tier_1_faded_code_drills) { delete d.level_0_worked; delete d.hints; delete d.look_at; delete d.expert_move; }
   for (const c of old.tier_2_self_explanation_cards) { delete c.preread; delete c.hints; delete c.expert_move; }
   fs.writeFileSync(path.join(INBOX, '20261020_120200_old_shape.json'), JSON.stringify(old));
@@ -219,6 +229,7 @@ run(async b => {
   const DECK = '20261020_120300_realm';
   const d1 = (await api(p, 'next?deck=' + DECK)).card;
   check(d1 && d1.kind === 'teach' && d1.prompt === 'homeserver' && /under ~\./.test(d1.definition), 'without realm.json a placeholder shows its public default');
+  check(d1.try === '', 'a teach card without try_first has no question to try first (the page shows it straight away)');
   fs.mkdirSync(path.dirname(REALM), {recursive: true});
   fs.writeFileSync(REALM, JSON.stringify({SERVER: 'TestHost', ssh: 'thost', REPO_URL: 'https://example.com/elaia'}));
   const d2 = (await api(p, 'next?deck=' + DECK)).card;
