@@ -48,7 +48,7 @@
     const parts = String(t || '').includes('```') ? [String(t || '')] : String(t || '').split(/\n{2,}/).filter(x => x.trim());
     return `<div class="model">${rich(parts[0] || '')}</div>` + (parts.length > 1 ? `<details class="more"><summary>Show the full answer and sources</summary><div class="model">${rich(parts.slice(1).join('\n\n'))}</div></details>` : '');
   };
-  const need = (el, msg) => { let m = el.parentElement.querySelector('.needmsg'); if (!m) { m = document.createElement('p'); m.className = 'needmsg'; m.setAttribute('role', 'alert'); el.after(m); }
+  const need = (el, msg) => { const at = el.closest('p') || el; let m = at.parentElement.querySelector('.needmsg'); if (!m) { m = document.createElement('p'); m.className = 'needmsg'; m.setAttribute('role', 'alert'); at.after(m); }
     m.textContent = msg; el.focus(); el.oninput = (f => e => { m.remove(); el.oninput = f; if (f) f(e); })(el.oninput); };
   const sourceName = c => c.module || (M.decks.find(d => d.id === c.deck) || {}).name || c.deck;
   const moduleOf = id => M.modules.find(m => m.id === id);
@@ -67,7 +67,7 @@
         <div class="pick"><label for="mdeck">Study</label><select id="mdeck"></select></div></div>
       <p class="mstats" id="mstats" aria-live="polite"></p><div id="mpanel"></div></section>`;
     fillPicker();
-    $('#mdeck').onchange = e => { M.deck = e.target.value || null; save('mentor-deck', M.deck); if (M.view !== 'practice') setView('practice'); else next(); };
+    $('#mdeck').onchange = e => { M.replay = []; M.deck = e.target.value || null; save('mentor-deck', M.deck); if (M.view !== 'practice') setView('practice'); else next(); };
     $$('.views button').forEach(b => b.onclick = () => setView(b.dataset.view));
     setView(M.view);
   }
@@ -88,7 +88,7 @@
       (M.decks.length ? `<optgroup label="Decks">${M.decks.map(d => opt(d.id, d.name)).join('')}</optgroup>` : '');
   }
   function setView(v) {
-    M.view = v; save('mentor-view', v === 'modules' ? v : null);
+    M.view = v; M.replay = []; save('mentor-view', v === 'modules' ? v : null);
     $$('.views button').forEach(b => b.setAttribute('aria-pressed', b.dataset.view === v));
     v === 'modules' ? modulesView() : next();
   }
@@ -106,10 +106,11 @@
     if (M.view !== 'practice') return;
     clearIdle(); stats();
     const seq = M.seq = (M.seq || 0) + 1;         // two quick picker changes: only the last request may draw
-    const r = M.replay.length ? await get('next?replay=' + encodeURIComponent(M.replay.shift()))
+    const replaying = M.replay.length > 0;
+    const r = replaying ? await get('next?replay=' + encodeURIComponent(M.replay.shift()))
       : await get('next?' + (M.deck ? 'deck=' + encodeURIComponent(M.deck) + '&' : '') + (extra ? 'extra=1' : ''));
     if (seq !== M.seq || M.view !== 'practice') return;
-    M.card = r.card; M.result = null; M.hints = 0; M.reflections = []; M.step = 0; M.notes = [];
+    M.card = r.card; if (M.card) M.card.replaying = replaying; M.result = null; M.hints = 0; M.reflections = []; M.step = 0; M.notes = [];
     if (!M.card) {
       const t = M.session, miss = [...new Set(t.missed)];
       $('#mpanel').innerHTML = `<div class="panel done"><p class="kicker">All caught up</p>
@@ -213,7 +214,7 @@
     const btn = $('#checkBtn'); btn.disabled = true; clearIdle();
     let r; try { r = await send('answer', {card: c.id, text, confidence: conf, ms: Math.round(performance.now() - M.t0), hints: M.hints, reflections: M.reflections}); } catch (e) { r = {ok: false}; }
     if (!r.ok) { btn.disabled = false; return toast("Couldn't reach Mentor to check that answer. Check that the server is on, then try again."); }
-    M.result = r; M.grade_wrong = false;
+    M.result = r; M.grade_wrong = false; r.shown = M.hints === 4;
     const n = r.hits.length + r.missed.length, pct = Math.round(r.coverage * 100);
     const shown = M.hints === 4;
     let kind = tone(r.coverage, shown), head, detail;
@@ -247,11 +248,12 @@
       <p class="deckname">${esc(sourceName(c))} · ${esc(kindLabel(c))}${M.hints ? ` · ${plural(M.hints, 'hint')} used` : ''}</p>
       ${verdict(kind, head, `<p class="coach">${inline(esc(r.coach))}</p>`)}${stuck}
       ${detail}${note}
-      <fieldset class="rategroup"><legend>How well did you know it? Mentor suggests <b>${esc(RATES.find(x => x[0] === r.suggested)[1])}</b>.</legend>
+      ${c.replaying ? `<p class="coach">A replay: practice only. The card keeps the schedule from your first try.</p><div class="row"><button type="button" class="primary" id="replayNext">${M.replay.length ? 'Go to the next mistake' : 'Finish the replay'}</button></div></div>` : `<fieldset class="rategroup"><legend>How well did you know it? Mentor suggests <b>${esc(RATES.find(x => x[0] === r.suggested)[1])}</b>.</legend>
         <div class="seg rates">${RATES.map(([v, nm, d], i) => `<label><input type="radio" name="rate" value="${v}" ${v === r.suggested ? 'checked' : ''}><span><b>${i + 1}. ${nm}</b><small>${d}</small><small class="when">In ${back(r.previews[v])}${lvl(v)}</small>${v === r.suggested ? '<em class="tag">Mentor suggests</em>' : ''}</span></label>`).join('')}</div>
         <p class="help">The suggestion comes from what you got right${M.hints ? ' and the hints you used' : ''}; pick what feels true. Keys <kbd>1</kbd>–<kbd>4</kbd> choose, <kbd>Enter</kbd> saves.</p></fieldset>
       <div class="row"><button type="button" class="primary" id="rateBtn">${verb(r.suggested)}</button></div>
-      <details class="report"><summary>Report a grading problem</summary><label class="check"><input type="checkbox" id="gw"> Mentor's grade was wrong: my answer was better or worse than it scored</label></details></div>`;
+      <details class="report"><summary>Report a grading problem</summary><label class="check"><input type="checkbox" id="gw"> Mentor's grade was wrong: my answer was better or worse than it scored</label></details></div>`}`;
+    if (c.replaying) { $('#rhead').focus(); $('#replayNext').onclick = () => { M.result = null; next(); }; return; }
     $('#rhead').focus();
     if (r.ai_pending) aiLater(r.attempt);
     // each key idea you got: a few olive leaves from its tick (reduced motion: the tick alone)
@@ -276,7 +278,7 @@
     let s; try { s = await send('rate', {attempt: r.attempt, rating: v, grade_wrong: M.grade_wrong}); } catch (e) { s = {ok: false}; }
     if (!s.ok) { M.result = r; return toast("Couldn't save that rating. Try again in a moment."); }
     if (s.learn) { toast(r.skipped ? 'Skipped. It comes back if the practice card goes wrong.' : 'Read. On to the next card.'); return next(); }
-    M.session.answered++; if (r.coverage >= .99 && !r.shown_answer && v > 1) M.session.right++; else M.session.missed.push(r.card || (M.card && M.card.id));
+    M.session.answered++; if (r.coverage >= .99 && !r.shown && v > 1) M.session.right++; else M.session.missed.push(M.card && M.card.id);
     const lv = s.level_change > 0 ? ` Level ${s.level} next time: ${s.level === 3 ? "you'll write the whole body" : 'the logic is blanked'}.` : s.level_change < 0 ? ` Back to level ${s.level} for now.` : '';
     toast(s.held ? `Held for a day${s.back ? ', and the lesson card for it comes back first' : ''}.` : (v === 1 ? 'Coming back in 10 minutes for another try.' : `Saved. Next review in ${back(s.days)}.`) + lv);
     next();
@@ -367,7 +369,7 @@
       if (!c.spot) { form.onsubmit = e => { e.preventDefault(); finish(''); }; go.focus(); return; }
       const lines = $$('.lines .line'), no = $('#lineNo');
       let picked = 0;
-      const pick = n => { picked = n; lines.forEach(b => { b.classList.toggle('is', +b.dataset.line === n); b.setAttribute('aria-pressed', +b.dataset.line === n); }); no.value = n || ''; };
+      const pick = n => { picked = n; $$('#qform .needmsg').forEach(x => x.remove()); lines.forEach(b => { b.classList.toggle('is', +b.dataset.line === n); b.setAttribute('aria-pressed', +b.dataset.line === n); }); no.value = n || ''; };
       lines.forEach(b => { b.onclick = () => pick(+b.dataset.line); b.onkeydown = e => { const i = +b.dataset.line; if (e.key === 'ArrowDown' && lines[i]) { e.preventDefault(); lines[i].focus(); } if (e.key === 'ArrowUp' && lines[i - 2]) { e.preventDefault(); lines[i - 2].focus(); } }; });
       no.oninput = () => { const n = +no.value; pick(n >= 1 && n <= lines.length ? n : 0); };
       form.onsubmit = e => { e.preventDefault(); if (!picked) return need(no, 'Pick a line first: click it, or type its number.'); finish(String(picked)); };
@@ -466,18 +468,18 @@
       const imp = (s.imports || []).filter(i => !i.ok || i.msg.includes('skipped'));
       const groups = [...new Set(mods.map(m => m.project || 'Lessons'))];
       const row = m => { const t = tally(m), pct = t.n ? Math.round(100 * t.seen / t.n) : 0;
-        return `<li class="module" aria-labelledby="mh-${esc(m.id)}"><div class="mrow">
+        return `<li class="module"><div class="mrow">
           <div class="mname"><h4 id="mh-${esc(m.id)}">${esc(m.name)}</h4><p class="meta">${plural(t.n, 'card')}${m.to_learn ? ` · ${m.to_learn} lesson cards to read` : ''}${m.built_in ? ' · comes with Argus' : ''}</p></div>
           <div class="mprog"><span class="lpbar" role="progressbar" aria-label="${esc(m.name)}: cards practised" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="width:${pct}%"></span></span><small>${t.seen ? `${pct}% practised` : 'Not started'}</small></div>
           <button type="button" data-study="${esc(m.id)}" aria-describedby="mh-${esc(m.id)}">${action(m)}</button></div>
           <div class="mmore">${SUMMARY.some(([k]) => m.summary[k]) || (m.summary.lint || []).length ? `<details><summary>About this lesson</summary><dl class="defs">${SUMMARY.filter(([k]) => m.summary[k]).map(([k, n]) => `<dt>${n}</dt><dd>${rich(m.summary[k])}</dd>`).join('')}</dl>${(m.summary.lint || []).length ? `<p class="meta">Notes from the lesson's author: ${m.summary.lint.map(esc).join('; ')}</p>` : ''}</details>` : ''}
           ${m.learn.length ? `<details><summary>Read the lesson again</summary><ul class="learnlist">${m.learn.map(l => `<li><button type="button" data-read="${esc(l.id)}"><span>${esc(l.title)}</span><small>${l.seen ? 'read' : 'not yet'}</small></button></li>`).join('')}</ul></details>` : ''}</div></li>`; };
       $('#mpanel').innerHTML = `<div class="modules">
-        ${cont ? `<section class="cont" aria-labelledby="cont-h"><div><p class="kicker">Continue where you left off</p><h2 id="cont-h">${esc(cont.name)}</h2><p class="meta">${cont.to_learn ? `${cont.to_learn} lesson cards still to read` : `${tally(cont).n - tally(cont).seen} cards not practised yet`}</p></div>
+        ${cont ? `<section class="cont" aria-labelledby="cont-h"><div><p class="kicker">Continue where you left off</p><h2 id="cont-h">${esc(cont.name)}</h2><p class="meta">${cont.to_learn ? `${cont.to_learn} lesson cards still to read` : `${Math.round(100 * tally(cont).seen / (tally(cont).n || 1))}% practised`}</p></div>
           <button type="button" class="primary" data-study="${esc(cont.id)}">Continue the lesson</button></section>` : ''}
         ${s.due ? `<section class="duebar" aria-labelledby="due-h"><div><h2 id="due-h">${plural(s.due, 'card')} due for review</h2><p class="meta">From all your lessons, mixed</p></div><button type="button" id="reviewAll">Review ${plural(s.due, 'card')}</button></section>` : ''}
-        ${mods.length ? groups.map(g => { const ms = mods.filter(m => (m.project || 'Lessons') === g), files = [...new Set(ms.flatMap(m => m.files))];
-          return `<section class="group" aria-labelledby="g-${esc(g)}"><div class="ghead"><h2 id="g-${esc(g)}">${esc(g)}</h2>${ms.length > 1 && g !== 'Lessons' ? `<button type="button" class="link" data-study="group:${esc(g)}">Study all ${ms.length}</button>` : ''}</div>
+        ${mods.length ? groups.map((g, gi) => { const ms = mods.filter(m => (m.project || 'Lessons') === g), files = [...new Set(ms.flatMap(m => m.files))];
+          return `<section class="group" aria-labelledby="g-${gi}"><div class="ghead"><h2 id="g-${gi}">${esc(g)}</h2>${ms.length > 1 && g !== 'Lessons' ? `<button type="button" class="link" data-study="group:${esc(g)}">Study all ${ms.length}</button>` : ''}</div>
             <ul class="course-list">${ms.map(row).join('')}</ul>
             ${files.length ? `<details class="srcs"><summary>Where these lessons come from (${files.length})</summary><ul>${files.map(f => `<li>${esc(f)}</li>`).join('')}</ul></details>` : ''}</section>`; }).join('')
           : `<div class="empty"><b>No lessons yet</b>Add one with the steps under "Add a lesson".</div>`}

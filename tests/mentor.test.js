@@ -35,7 +35,7 @@ run(async b => {
   await p.keyboard.press('1');
   check(await p.locator('#rateBtn').textContent() === 'Run again in 10 min', 'key 1 picks Again and the button says what happens');
   await p.keyboard.press('Enter'); await p.waitForTimeout(700);
-  check(/10 minutes/.test(await p.locator('#toastText').textContent()), 'Needs work brings the card back in 10 minutes');
+  check(/10 minutes/.test(await p.locator('#toastText').textContent()), 'Again brings the card back in 10 minutes');
 
   // a lesson starts with its orientation: one screen, and five typed words before the cards
   await p.selectOption('#mdeck', 'argus-code'); await p.waitForTimeout(600);
@@ -75,7 +75,7 @@ run(async b => {
   check(/expert's first move/.test(await p.locator('#hints').textContent()), 'rung 2 is the expert\'s first move');
   await p.locator('#ans').fill('context manager'); await p.keyboard.press('Enter'); await p.waitForTimeout(600);
   check(await p.locator('.verdict.ok').count() === 1 && /Correct · context manager/.test(await p.locator('#rhead').textContent()) && /2 hints used/.test(await p.locator('#rpanel .deckname').first().textContent()), 'a right term is confirmed (Correct, in green, with a tick) and the hints used are shown');
-  check(await p.locator('input[name=rate]:checked').first().inputValue() === '3', 'rung 2 caps the suggested rating at Well enough');
+  check(await p.locator('input[name=rate]:checked').first().inputValue() === '3', 'rung 2 caps the suggested rating at Good');
   check(await p.locator('.defs dt', {hasText: "Where it's used"}).count() === 1, 'the feedback shows where the term is used');
   await p.locator('#rateBtn').click(); await p.waitForTimeout(500);
   // "Show answer" on a blank card offers a hint first; the answer rung counts as a blank
@@ -84,7 +84,7 @@ run(async b => {
   await p.locator('#offerAns').click(); await p.waitForTimeout(500);
   check(/Hint 4 of 4/.test(await p.locator('#hints').textContent()) && await p.locator('#checkBtn').textContent() === 'Rate it', 'the answer rung shows the answer and leaves only rating');
   await p.locator('#checkBtn').click(); await p.waitForTimeout(600);
-  check(/The answer was shown/.test(await p.locator('#rhead').textContent()) && await p.locator('input[name=rate]:checked').first().inputValue() === '1', 'an answer shown counts as a blank: Needs work suggested');
+  check(/The answer was shown/.test(await p.locator('#rhead').textContent()) && await p.locator('input[name=rate]:checked').first().inputValue() === '1', 'an answer shown counts as a blank: Again suggested');
   check(/skipped the lesson card/.test(await p.locator('.coach.back').textContent()), 'failing a term whose teach card was skipped says so');
   await p.locator('#rateBtn').click(); await p.waitForTimeout(600);
   check(/^Teach/.test(await p.locator('.kind').textContent()) && /back to the lesson/.test(await p.locator('.deckname').first().textContent()), 'the skipped teach card comes back before anything else');
@@ -97,7 +97,7 @@ run(async b => {
   await p.selectOption('#mdeck', ''); await p.selectOption('#mdeck', 'argus-code'); await p.waitForTimeout(600);
   check(await p.locator('#annot .callout').count() === 1 && await p.locator('#worked .ln.hi').count() === 1, 'level 0 shows annotation 1 and highlights its line');
   await p.locator('#goBtn').click(); await p.waitForTimeout(200);
-  check(await p.locator('.needmsg').count() === 1 && await p.locator('#call0 p').count() === 0, 'the note waits for three typed words, and says so');
+  check(await p.locator('.needmsg').count() === 1 && await p.locator('#call0 p:not(.needmsg)').count() === 0, 'the note waits for three typed words, and says so');
   await p.locator('#why0').fill('so only one request fetches'); await p.keyboard.press('Enter'); await p.waitForTimeout(300);
   check(/Two requests can arrive at once/.test(await p.locator('#call0').textContent()), 'typing reveals the annotation\'s why');
   await shot(p, 'mentor-level0');
@@ -164,7 +164,7 @@ run(async b => {
   check(await p.locator('.module .defs dt', {hasText: 'The big picture'}).first().isVisible(), 'the breakdown opens');
   await shot(p, 'mentor-modules');
   await p.locator('.module', {hasText: 'inbox test module'}).locator('[data-study]').click(); await p.waitForTimeout(600);
-  check(await p.locator('#mdeck').inputValue() === '20261020_120000_inbox_test' && /^Orientation/.test(await p.locator('.kind').textContent()), 'Study this lesson opens its orientation');
+  check(await p.locator('#mdeck').inputValue() === '20261020_120000_inbox_test' && /^Orientation/.test(await p.locator('.kind').textContent()), 'Start on a lesson row opens its orientation');
 
   // a pre-read before each explain card: the key ideas, then a near example to answer before the reveal
   for (const k of ['term', 'level0', 'drill']) await skip(p, 'argus-code', k, 8);
