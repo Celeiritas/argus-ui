@@ -99,5 +99,85 @@ class ReviewLog(Base):
         r = self.db.execute("SELECT review, ivl_before, ivl_after, took FROM attempts WHERE id=?", (a['attempt'],)).fetchone()
         self.assertEqual(tuple(r), (None, None, None, None))
 
+FIXTURE = os.path.join(R, 'tests', 'deck-fixtures', 'good-course.json')
+
+class Course(Base):
+    def setUp(self):
+        super().setUp(); self.db = m.connect(self.path)
+        with open(FIXTURE, encoding='utf-8') as fh: self.doc = json.load(fh)
+    def load(self, doc=None):
+        with m.DB_LOCK: return m.import_course(self.db, doc or self.doc, FIXTURE, False)
+    def study(self, **kw):
+        """Answer and rate Good every card the queue serves until it has nothing left; returns the served card ids."""
+        served = []
+        for _ in range(200):
+            c, _due = m.next_card(self.db, **kw)
+            if not c: break
+            served.append(c['id']); a = m.answer(self.db, c['id'], 'x', 3, 2000); m.rate(self.db, a['attempt'], 3, False)
+        return served
+
+    def test_import_course_tables(self):
+        n, notes = self.load()
+        self.assertEqual(notes, [])
+        self.assertEqual(self.count("SELECT COUNT(*) FROM courses WHERE id='demo-server'"), 1)
+        self.assertEqual([r[0] for r in self.db.execute("SELECT id FROM cmodules WHERE course='demo-server' ORDER BY ord")],
+                         ['demo-server/requests', 'demo-server/weather'])
+        self.assertEqual({r[0]: r[1] for r in self.db.execute("SELECT scope, COUNT(*) FROM los WHERE course='demo-server' GROUP BY scope")},
+                         {'course': 2, 'module': 2, 'lesson': 3})
+        self.assertEqual(self.count("SELECT COUNT(*) FROM notes"), 5)
+        self.assertEqual(json.loads(self.db.execute("SELECT source_ref FROM notes WHERE id LIKE '%:n-host'").fetchone()[0])['symbol'], 'do_POST')
+        practice = self.db.execute("SELECT * FROM cards WHERE kind IN ('term','explain','drill','define')").fetchall()
+        self.assertEqual(len(practice), 9)
+        self.assertTrue(all(c['lo'].startswith('demo-server/L') and c['role'] and c['note'] for c in practice))
+        self.assertEqual(self.count("SELECT COUNT(*) FROM cards WHERE is_check=1"), 3)
+        self.assertEqual(self.db.execute("SELECT role FROM cards WHERE id LIKE '%:c-bug'").fetchone()[0], 'find-bug')
+        les = self.db.execute("SELECT * FROM modules WHERE id=?", (m.slug('demo-server--origin'),)).fetchone()
+        self.assertEqual((les['course'], les['cmodule'], les['project']), ('demo-server', 'demo-server/requests', 'Rebuild a small web server'))
+        self.assertEqual(self.db.execute("SELECT parent FROM los WHERE id='demo-server/L2'").fetchone()[0], 'demo-server/M1')
+
+    def test_reimport_drops_removed_lesson(self):
+        self.load()
+        kept = m.slug('demo-server--cache')
+        a = m.answer(self.db, kept + ':c-ttl', 'it changes slowly', 3, 2000); m.rate(self.db, a['attempt'], 3, False)
+        doc = json.loads(json.dumps(self.doc)); doc['modules'][0]['lessons'].pop(0)       # lesson "words" removed
+        self.load(doc)
+        gone = m.slug('demo-server--words')
+        self.assertEqual(self.count("SELECT COUNT(*) FROM modules WHERE id=?", gone), 0)
+        self.assertEqual(self.count("SELECT COUNT(*) FROM cards WHERE deck=?", gone), 0)
+        self.assertEqual(self.count("SELECT COUNT(*) FROM notes WHERE lesson=?", gone), 0)
+        self.assertEqual(self.count("SELECT COUNT(*) FROM los WHERE id='demo-server/L1'"), 0)
+        self.assertEqual(self.count("SELECT COUNT(*) FROM attempts WHERE card_id=?", kept + ':c-ttl'), 1)
+        self.assertEqual(self.count("SELECT COUNT(*) FROM sched WHERE card_id=?", kept + ':c-ttl'), 1)
+
+    def test_lenient_import_notes(self):
+        doc = json.loads(json.dumps(self.doc)); les = doc['modules'][0]['lessons'][1]['tier_2_self_explanation_cards']
+        les[0]['role'] = 'parsons'; les[1]['lo'] = 'L9'; doc['modules'][1]['lessons'].append('not a lesson')
+        n, notes = self.load(doc)
+        text = ' | '.join(notes)
+        self.assertIn('role parsons arrives in phase 4', text); self.assertIn('L9', text); self.assertIn('lesson 2', text)
+        self.assertEqual(self.count("SELECT COUNT(*) FROM cards WHERE id LIKE '%:c-why'"), 0)
+        self.assertIsNone(self.db.execute("SELECT lo FROM cards WHERE id LIKE '%:c-bug'").fetchone()[0])
+        self.assertGreater(n, 0)
+
+    def test_check_items_never_served(self):
+        self.load()
+        checks = {r[0] for r in self.db.execute("SELECT id FROM cards WHERE is_check=1")}
+        served = self.study() + self.study(deck='group:Rebuild a small web server') + self.study(extra=True)
+        self.assertFalse(checks & set(served))
+        practice = {r[0] for r in self.db.execute("SELECT id FROM cards WHERE is_check=0 AND kind IN ('term','explain')")}
+        self.assertEqual(practice - set(served), set(), 'a check item held back the rest of its lesson')
+
+    def test_checks_not_counted_as_waiting(self):
+        self.load()
+        self.study()
+        s = m.stats(self.db)
+        self.assertEqual((s['new'], s['learn']), (0, 0))
+
+    def test_inbox_course(self):
+        os.makedirs(m.INBOX, exist_ok=True); shutil.copy(FIXTURE, os.path.join(m.INBOX, 'demo-server.json'))
+        m.scan_inbox(self.db)
+        r = self.db.execute("SELECT ok, msg, module FROM imports").fetchone()
+        self.assertEqual((r['ok'], r['module']), (1, 'demo-server')); self.assertIn('in 3 lessons', r['msg'])
+
 if __name__ == '__main__':
     unittest.main()
