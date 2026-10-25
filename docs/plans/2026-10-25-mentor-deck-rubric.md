@@ -36,7 +36,7 @@
 
 Rules (learner-facing fields only; code fields skipped: `full_canonical_code`, `level_*_fade`, `answers`, `snippet`, `near_example.code`):
 - R1 ERROR file paths: a word ending in a source-file extension (`.py .js .css .json .sh .md .html .ts .yml .yaml .toml`) or a `dir/file` path; also in `file_breadcrumb` (only the last part may remain: a function or name, no extension).
-- R1 ERROR repo jargon: `repo`, `PR #`, `pull request`, `commit`, `handoff`, `CLAUDE.md`, `worktree`, `TODO` (whole words, case-insensitive).
+- R1 WARN repo jargon (a git lesson may need these words): `repo`, `PR #`, `pull request`, `commit`, `handoff`, `CLAUDE.md`, `worktree`, `TODO` (whole words, case-insensitive).
 - R2 WARN one idea: definitions over 30 words, explanations / answers over 80 words, key ideas over 3 per pre-read.
 - R3 WARN question first: a teach card (term) or pre-read without `try_first`.
 - R4 ERROR worked example first: a drill without `level_0_worked` annotations or without `level_1_fade`.

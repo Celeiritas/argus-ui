@@ -28,6 +28,8 @@ Code an AI writes for you skips the part where you build the mental model (the *
 
 Argus ships one lesson, **Argus: caching, locks and the Mentor scheduler** (`themes/leafy-realm/decks/argus-code.json`), made from this project's own `sky.py` and `mentor.py`. It doubles as an example of the format, Learn fields included. A lesson needs no drills: terms and explain cards alone import and run, and a spot-it snippet can be a terminal transcript rather than code. Anything that names your machines, paths or hosts belongs in your private inbox or decks folder, not in a theme: themes ship with the repository.
 
+**How a card should read** (4.24.0): every lesson and deck follows the [deck rubric](mentor-rubric.md): no file paths or repo words in what you read, one idea per card, a question before each explanation, a worked example before the fades, plain words with every term defined once. `python3 scripts/check-deck.py <file or folder>` checks a lesson before it goes in the inbox; the tests run it on the decks that ship.
+
 ## Menus and submenus (4.22.0)
 A lesson's `metadata.project` names where it sits in the Study picker. A plain project (`Sound-Haptics-Lab`) puts the lesson under **Lessons** as "project: name". A project with the separator ` › ` (space, U+203A, space), such as `GAME_RESEARCH › Topics`, puts it in its own submenu; the picker offers **Study all** for that submenu and **Study all of GAME_RESEARCH** for the whole menu. Group choices travel as `group:<project>` (`next?deck=group:GAME_RESEARCH`) and take every lesson whose project is that name or lies under it.
 

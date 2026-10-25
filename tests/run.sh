@@ -22,6 +22,15 @@ MODEL_PORT=${MODEL_PORT:-8098}; python3 "$T/fx/fake_model.py" $MODEL_PORT > "$T/
 trap 'kill $PID $MPID 2>/dev/null; echo "(server log and screenshots: $T)"' EXIT
 for i in $(seq 50); do curl -s -o /dev/null "http://127.0.0.1:$PORT/" && break; sleep .2; done
 fail=0
+# the deck rubric (docs/mentor-rubric.md): the shipped decks pass, and the checker still catches each rule
+if [ -z "$1" ] || [ "$1" = mentor ]; then
+  echo "== deck rubric"
+  res=$(python3 "$R/scripts/check-deck.py" "$R"/themes/*/decks "$R/tests/deck-fixtures/good-lesson.json") || { echo "$res"; fail=1; }
+  tail -1 <<<"$res"
+  out=$(python3 "$R/scripts/check-deck.py" "$R/tests/deck-fixtures/bad-lesson.json") && { echo "FAIL the bad fixture passed"; fail=1; }
+  for r in 'ERROR R1 file' 'WARN R1 repo' 'R2 ' 'R3 ' 'R4 ' 'R5 '; do grep -q "$r" <<<"$out" || { echo "FAIL the checker missed: $r"; fail=1; }; done
+  grep -q 'drill_01: ERROR R1 file' <<<"$out" && { echo "FAIL a file name inside code was reported"; fail=1; }
+fi
 if [ "$1" = demo ]; then   # bash tests/run.sh demo: record the README preview GIF
   BASE="http://127.0.0.1:$PORT/argus/" FIXTURES="$T/fx" SHOTS="$T" node "$R/tests/demo.js" || exit 1
   ffmpeg -loglevel error -y -ss 1.5 -i "$T/demo.webm" -vf "setpts=PTS/1.5,fps=10,scale=720:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=64:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle" "$R/docs/screenshots/preview.gif"
