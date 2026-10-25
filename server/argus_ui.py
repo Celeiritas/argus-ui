@@ -41,6 +41,9 @@ PAGES = ['olympus', 'home']      # sections that are not agents: the Olympus pla
 # Yours live outside the install, so upgrades keep them, like the sounds. Bundled plugins ship with Elaia (the repo's
 # plugins/ folder, installed to ~/.local/share/argus-ui/bundled/) and are replaced by each install; yours win on the same id.
 PLUGINS = os.path.expanduser(os.environ.get('ARGUS_PLUGINS', '~/.config/argus-ui/plugins'))
+# Links to other pages on the same machine (a studio, a dashboard), shown in the section bar and on Home: a list of
+# {"name", "what", "href"} in ~/.config/argus-ui/links.json; href must be a same-host path ("/studio/") or https://.
+LINKS = os.path.expanduser(os.environ.get('ARGUS_LINKS', '~/.config/argus-ui/links.json'))
 BUNDLED = os.path.expanduser(os.environ.get('ARGUS_BUNDLED', '~/.local/share/argus-ui/bundled'))
 PLUGIN_ID = re.compile(r'^[a-z][a-z0-9-]{0,31}$')
 RESERVED = {'api', 'static', 'plugins', 'play', 'all', 'argus', 'sw.js', 'manifest.webmanifest',   # 'play' means Olympus in the page
@@ -283,6 +286,19 @@ def collapse(jobs):
         out.append(dict(last, name=base[len(last['persona']) + 1:], runs=len(rs), canfreeze=False, canrun=False))
     return sorted(out, key=lambda j: (j['persona'], j['name']))
 
+def links():
+    try:
+        with open(LINKS, encoding='utf-8') as f: raw = json.load(f)
+    except (OSError, ValueError):
+        return []
+    out = []
+    for x in raw if isinstance(raw, list) else []:
+        if not isinstance(x, dict): continue
+        name, what, href = str(x.get('name') or '').strip()[:40], str(x.get('what') or '').strip()[:40], str(x.get('href') or '').strip()
+        if name and (re.fullmatch(r'/[\w./~%+-]*', href) and not href.startswith('//') or re.fullmatch(r'https://[^\s"\'<>]+', href)):
+            out.append(dict(name=name, what=what, href=href))
+    return out[:8]
+
 def state():
     fz = frozen()
     jobs = collapse([info(u, fz) for u in units()])
@@ -290,7 +306,7 @@ def state():
     return dict(updated=datetime.now().strftime('%I:%M %p').lstrip('0'), jobs=jobs,
                 title=THEME.get('title', 'Argus'), subtitle=THEME.get('subtitle', 'tasks'),
                 personas=[dict(key=k, name=n, domain=d) for k, n, d in PERSONAS],
-                soon=THEME.get('coming_soon', []),
+                soon=THEME.get('coming_soon', []), links=links(),
                 plugins=[plugin_view(p) for p in ps], alerts=alerts(set(PKEYS) | set(PAGES) | {p['id'] for p in ps}))
 
 def plugin_view(p):

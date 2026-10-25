@@ -14,6 +14,13 @@ Home (`<base>/home`) answers **"what needs me today, across the realm, and where
    When nothing does: *"Nothing needs you. The realm is quiet."* (While sections are still answering: "Asking every section…".) Warnings stay on their cards on the Watch page.
 3. **Places**: one medallion per section in the section bar's order (Watch, Mentor, Olympus, then plugins), each with its one line: Watch's task count, a server plugin's status line, a static plugin's version.
 
+## Links to other pages (4.25.0)
+Pages on the same machine that aren't Elaia sections (a studio, a dashboard) can sit in the section bar and on Home. List them in `~/.config/argus-ui/links.json` (or `ARGUS_LINKS`), read on every refresh:
+```json
+[{"name": "Sound Lab", "what": "Studio", "href": "/studio/"}]
+```
+`href` must be a path on this host (`/…`) or an `https://` address; anything else (`javascript:`, `//other-host`) is dropped, as is a broken file. At most 8. In the bar a link has an "opens another page" mark; on Home it is a place whose button says "Open <what>".
+
 ## Status v2 (what a server plugin answers)
 `GET api/<id>/status` → `{"line": "…", "needs": true, "action": "Study 5 due cards"}`. `line` is required for anything to show; `needs` (only `true` counts) puts the plugin in **Needs you**; `action` is the button's label, verb-first, cut to 32 characters, and defaults to "Open <name>". Elaia passes on only these three fields and never errors (`{"line": null}` when a plugin has nothing or fails). A plugin that answers only `{"line"}` keeps working and simply never appears in the list. Mentor answers `needs` when cards are due.
 

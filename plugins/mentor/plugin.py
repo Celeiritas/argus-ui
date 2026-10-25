@@ -60,6 +60,8 @@ def _get(path, query):
         for d in DECK_DIRS: decks += mentor.deck_list(d)
         return 200, {'decks': decks}
     if path == 'next':
+        if query.get('replay'):                  # one practice card asked again (replaying the session's mistakes)
+            return 200, {'card': mentor.practice_card(DB, query['replay'][0])}
         if query.get('card'):                    # one Learn card to read again (Lessons view); never a practice card
             return 200, {'card': mentor.one_card(DB, query['card'][0])}
         card, next_due = mentor.next_card(DB, deck, (query.get('extra') or ['0'])[0] == '1')

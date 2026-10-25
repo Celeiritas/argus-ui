@@ -30,6 +30,13 @@ Argus ships one lesson, **Argus: caching, locks and the Mentor scheduler** (`the
 
 **How a card should read** (4.24.0): every lesson and deck follows the [deck rubric](mentor-rubric.md): no file paths or repo words in what you read, one idea per card, a question before each explanation, a worked example before the fades, plain words with every term defined once. `python3 scripts/check-deck.py <file or folder>` checks a lesson before it goes in the inbox; the tests run it on the decks that ship.
 
+## The study screen and the Lessons page (4.25.0)
+- **No greyed-out buttons.** Every button works; if something is missing (a guess, a picked line, three words of *why*), a line under the field says what, and focus goes there.
+- **Lines wrap.** Code and spot-it snippets wrap long lines and keep their indentation; nothing scrolls sideways. The box you write a whole function body in still doesn't wrap.
+- **One lesson chosen:** the header shows how many of its lesson cards you've read.
+- **End of a session:** "This session: 12 cards answered, 9 right", and **Replay your 3 mistakes** asks those cards again (`next?replay=<card id>` serves a practice card without its answer).
+- **Lessons** is a course map: one *Continue where you left off*, the reviews due, then each project's lessons as one framed list. A row has the name, one line, how much is practised and one action (Start, Continue, Review); *About this lesson* and *Read the lesson again* open under it; each project's sources are one list behind *Where these lessons come from*. Calibration, the local AI line and how to add a lesson are under *About Mentor and adding a lesson*.
+
 ## Menus and submenus (4.22.0)
 A lesson's `metadata.project` names where it sits in the Study picker. A plain project (`Sound-Haptics-Lab`) puts the lesson under **Lessons** as "project: name". A project with the separator ` › ` (space, U+203A, space), such as `GAME_RESEARCH › Topics`, puts it in its own submenu; the picker offers **Study all** for that submenu and **Study all of GAME_RESEARCH** for the whole menu. Group choices travel as `group:<project>` (`next?deck=group:GAME_RESEARCH`) and take every lesson whose project is that name or lies under it.
 
@@ -55,7 +62,7 @@ Copy [`realm.example.json`](realm.example.json) to `~/.config/leafy/realm.json` 
    - **Whole bodies** are parsed with Python's `ast` (never run). Same structure as the model = full marks; otherwise you see both versions, how alike they are, and Python's own syntax error with its line number.
    - **Terms** allow small typos; part of a multi-word term counts as close.
    - **Explanations** use the key-idea rubric (below).
-3. You see the full code and *why it's written this way*, then pick how well you knew it (a Learn card has no rating: *Next card* marks it read) (Very well / Well enough / Not well / Needs work, or keys 1–4) and confirm. Each choice shows when the card returns ([FSRS-4.5](https://github.com/open-spaced-repetition/fsrs4anki/wiki/The-Algorithm); internally Easy / Good / Hard / Again, stored as 4–1) and, for drills, the level it comes back at.
+3. The result comes in one band under the question, the same place every time: **Correct** (green, a tick), **Partly right** (amber, a minus), **Not quite** (red, a cross) or **Answer shown**, always with the word and the icon, never colour alone, and the coach line saying why or where to look. Key ideas are marked "✓ Got it" / "✕ Missing"; a long model answer shows its first paragraph, with the rest (evidence, notes, sources) behind *Show the full answer and sources*. Then pick how well you knew it, in Anki's order: **1 Again · 2 Hard · 3 Good · 4 Easy**, each showing when the card comes back (keys 1–4, Enter saves; a Learn card has no rating: *Next card* marks it read). If Mentor's grade was off, *Report a grading problem* holds the "grade was wrong" flag ([FSRS-4.5](https://github.com/open-spaced-repetition/fsrs4anki/wiki/The-Algorithm); stored as 1–4).
 4. If Mentor's grade was off, tick **Mentor's grade was wrong**. That flag is training data for the learning grader.
 
 The stats line also tracks **calibration**: how your confidence compares with what you actually got right.
