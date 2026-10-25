@@ -11,6 +11,7 @@ from datetime import datetime
 PORT = int(os.environ.get('ARGUS_PORT', 8095))
 BIND = os.environ.get('ARGUS_BIND', '0.0.0.0')          # e.g. 127.0.0.1 to allow only tailscale serve / this machine
 MAX_BODY = 4096
+PLUGIN_MAX_BODY = 64 * 1024 * 1024   # the most a server plugin may ask for with "max_body" (4.23.0)
 HOME = os.path.expanduser('~')
 STATIC = os.environ.get('ARGUS_STATIC', f'{HOME}/.local/share/argus-ui/static')
 SYSTEMCTL = os.environ.get('ARGUS_SYSTEMCTL', 'systemctl')
@@ -50,6 +51,7 @@ mimetypes.add_type('application/wasm', '.wasm')
 SERVER_PLUGINS = {}      # id -> the loaded plugin.py module (load_server_plugins, at startup)
 PLUGIN_LOCKS = {}        # id -> lock: one POST at a time per plugin, like the powers' LOCK
 PLUGIN_DIR = {}          # id -> the folder its plugin.py was loaded from (bundled or yours)
+PLUGIN_BODY = {}         # id -> its POST size limit ("max_body" in plugin.json, 4.23.0)
 
 def safe_file(d, name):
     # a file named in a manifest: relative, inside the folder, and there
@@ -86,6 +88,10 @@ def manifest(pid, d):
     if p['kind'] == 'server':
         p['server'], p['page'] = safe_file(d, m.get('server') or 'plugin.py'), safe_file(d, m.get('page') or 'page.js')
         p['style'] = safe_file(d, m.get('style'))
+        # a larger POST limit for its own api/<id>/... (a page that saves records or uploads images), never below the
+        # default and never above PLUGIN_MAX_BODY; every other check on a POST stays the same
+        mb = m.get('max_body')
+        p['max_body'] = min(max(mb, MAX_BODY), PLUGIN_MAX_BODY) if isinstance(mb, int) and not isinstance(mb, bool) else MAX_BODY
         return p if p['server'].endswith('.py') and p['page'] else None
     return None                                                        # an unknown kind is skipped
 
@@ -117,7 +123,7 @@ def load_server_plugins():
         except Exception:
             print(f'argus-ui: skipped server plugin {pid}: it failed to load\n{traceback.format_exc()}', file=sys.stderr, flush=True)
             continue
-        SERVER_PLUGINS[pid] = mod; PLUGIN_LOCKS[pid] = threading.Lock(); PLUGIN_DIR[pid] = d
+        SERVER_PLUGINS[pid] = mod; PLUGIN_LOCKS[pid] = threading.Lock(); PLUGIN_DIR[pid] = d; PLUGIN_BODY[pid] = p['max_body']
         print(f'argus-ui: loaded server plugin {pid} {p["version"]}'.rstrip() + (' (bundled)' if p['bundled'] else ''), file=sys.stderr, flush=True)
 
 # Headers on every plugin file: a sandboxed, opaque origin (even when opened in its own tab) that can't
@@ -460,12 +466,13 @@ class H(BaseHTTPRequestHandler):
         if origin and origin.split('://', 1)[-1] != self.headers.get('Host'): return self.deny(403, 'cross-site request blocked')
         try: n = int(self.headers.get('Content-Length', 0) or 0)
         except ValueError: n = -1
-        if n < 0 or n > MAX_BODY: return self.deny(413, 'request too large')
+        p = self.path_parts()
+        pid, _, rest = p[4:].partition('/')
+        limit = PLUGIN_BODY.get(pid, MAX_BODY) if p.startswith('api/') and pid in SERVER_PLUGINS else MAX_BODY
+        if n < 0 or n > limit: return self.deny(413, 'request too large')
         try: body = json.loads(self.rfile.read(n) or b'{}')
         except Exception: return self.deny(400, 'bad json')
         if not isinstance(body, dict): return self.deny(400, 'bad json')
-        p = self.path_parts()
-        pid, _, rest = p[4:].partition('/')
         if p.startswith('api/') and pid in SERVER_PLUGINS: return self.plugin_call(pid, 'post', rest, body)   # after every check above
         u = str(body.get('job', ''))
         actions = {'api/freeze': freeze, 'api/thaw': thaw, 'api/bolt': bolt, 'api/run': bolt}

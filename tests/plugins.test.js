@@ -83,7 +83,9 @@ run(async b => {
   const post = (headers, data) => s.request.post(api + 'echo', {headers: {'Content-Type': 'application/json', ...headers}, data});
   check((await post({Origin: 'http://evil.example', 'Sec-Fetch-Site': 'cross-site'}, {text: 'x'})).status() === 403, 'server plugin: a cross-site POST is refused');
   check((await post({'Content-Type': 'text/plain'}, '{"text":"x"}')).status() === 415, 'server plugin: a POST that is not JSON is refused');
-  check((await post({}, {text: 'x'.repeat(5000)})).status() === 413, 'server plugin: a POST over 4 KB is refused');
+  check((await post({}, {text: 'x'.repeat(5000)})).status() === 200, 'server plugin: "max_body": 8192 lets a 5 KB POST through (4.23.0)');
+  check((await post({}, {text: 'x'.repeat(9000)})).status() === 413, 'server plugin: a POST over its max_body is refused');
+  check((await s.request.post(BASE + 'api/freeze', {headers: {'Content-Type': 'application/json'}, data: {job: 'x'.repeat(5000)}})).status() === 413, 'Elaia\'s own POSTs keep the 4 KB limit');
   check((await s.request.get(BASE + 'plugins/demo-server/plugin.py')).status() === 404, 'server plugin: plugin.py is never served');
   check((await s.request.get(BASE + 'plugins/demo-server/page.js')).status() === 200, 'server plugin: its page script is served');
   check((await s.request.get(BASE + 'api/demo-broken/ping')).status() === 404 && (await s.request.get(BASE + 'demo-broken')).status() === 404,

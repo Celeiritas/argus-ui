@@ -63,7 +63,7 @@ A server plugin is **trusted code**: only the owner installs plugins, so its pag
   page.js            the page script
   page.css           optional style sheet
 ```
-Extra manifest fields: `"server"` (default `plugin.py`), `"page"` (default `page.js`), `"style"` (optional). `entry` is not used.
+Extra manifest fields: `"server"` (default `plugin.py`), `"page"` (default `page.js`), `"style"` (optional), `"max_body"` (optional, 4.23.0: the largest POST in bytes its `api/<id>/...` accepts; default and minimum 4096, at most 64 MB, for a page that saves long records or uploads images; Elaia's own routes keep 4 KB). `entry` is not used.
 
 **Python side.** At startup Elaia imports `plugin.py` by its path and calls `init(ctx)` once, if it has one. A plugin that fails to import or whose `init` raises is logged (`skipped server plugin <id>` and the traceback, in Elaia's journal) and gets no pill, no section and no API; the rest of Elaia starts. **A new or changed `plugin.py` needs a restart**: a deploy restarts Elaia, or run `systemctl --user restart argus-ui`; `page.js` and `page.css` are fetched fresh after a change, like static plugins.
 - `ctx.id`, `ctx.version` (Elaia's version), `ctx.config_dir` (the plugin's folder, bundled or yours), `ctx.theme_dir` (the installed theme: `theme.json`, `decks/`, `icons/`), `ctx.data_dir` (`~/.local/share/argus-ui/plugins/<id>/`, made for it: keep files here), `ctx.base_url` (`/argus/`, or `ARGUS_BASE_URL`).
