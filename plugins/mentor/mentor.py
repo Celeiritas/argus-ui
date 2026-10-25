@@ -603,6 +603,12 @@ def one_card(db, card_id):
     if not c or c['kind'] not in LEARN: return None
     return card_payload(db, c, read_only=True)
 
+def practice_card(db, card_id):
+    """One practice card asked again (the end-of-session replay of today's mistakes): the question, never its answer."""
+    c = db.execute(CARD_Q + " WHERE c.id=?", (card_id,)).fetchone()
+    if not c or c['kind'] in LEARN: return None
+    return card_payload(db, c)
+
 GROUP_SEP = ' › '   # " › ": a lesson whose project is "A › B" sits in submenu B of menu A (4.22.0)
 
 def group_ids(db, deck):

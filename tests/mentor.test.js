@@ -29,24 +29,25 @@ run(async b => {
   await p.locator('#ans').fill('spread out over time, remembered better than cramming');
   await p.locator('#ans').focus(); await p.keyboard.press('Control+Enter'); await p.waitForTimeout(600);
   const labels = await p.locator('.seg.rates label b').allTextContents();
-  check(labels.join('|') === '1. Very well|2. Well enough|3. Not well|4. Needs work', 'ratings read Very well … Needs work');
+  check(labels.join('|') === '1. Again|2. Hard|3. Good|4. Easy', "ratings read Again, Hard, Good, Easy (Anki's order)");
   check(await p.locator('input[name=rate]:checked').count() === 1, "Mentor's suggestion is preselected");
-  await p.keyboard.press('4');
-  check(await p.locator('#rateBtn').textContent() === 'Run again in 10 min', 'key 4 picks Needs work and the button says what happens');
+  check(await p.locator('#rpanel .verdict[role=status] svg').count() === 1 && /Correct|Partly right|Not quite/.test(await p.locator('#rhead').textContent()), 'the verdict has an icon and a word, not colour alone');
+  await p.keyboard.press('1');
+  check(await p.locator('#rateBtn').textContent() === 'Run again in 10 min', 'key 1 picks Again and the button says what happens');
   await p.keyboard.press('Enter'); await p.waitForTimeout(700);
   check(/10 minutes/.test(await p.locator('#toastText').textContent()), 'Needs work brings the card back in 10 minutes');
 
   // a lesson starts with its orientation: one screen, and five typed words before the cards
   await p.selectOption('#mdeck', 'argus-code'); await p.waitForTimeout(600);
-  check(/^Orientation/.test(await p.locator('.kind').textContent()) && await p.locator('.tags li').count() === 8, 'a new lesson starts with its orientation and lists the terms coming');
+  check(/^Orientation/.test(await p.locator('.kind').textContent()) && (await p.locator('.termline').textContent()).split(', ').length === 8, 'a new lesson starts with its orientation and names the terms coming, as one plain line');
   check(!/Files:|\.py\b/.test(await p.locator('#qform').textContent()), 'the orientation names no files (the Lessons view keeps them)');
-  await p.locator('#ans').fill('four words not enough');
-  check(await p.locator('#goBtn').isDisabled(), 'Start learning waits for five words');
-  await p.locator('#ans').fill('it caches the weather and serves cards'); await p.keyboard.press('Control+Enter'); await p.waitForTimeout(700);
+  check(await p.locator('#qform textarea').count() === 0 && await p.locator('#goBtn').textContent() === 'Start the lesson', 'no summary box to fill in before starting');
+  await p.locator('#goBtn').click(); await p.waitForTimeout(700);
 
   // then teach cards: a question to try first (typed, not graded), then the term and a spot-it check; a wrong line still moves on, with the why
   check(/^Teach/.test(await p.locator('.kind').textContent()) && await p.locator('#guess').count() === 1 && await p.locator('.defs').count() === 0, 'a teach card asks its try-first question before explaining');
-  check(await p.locator('#tryBtn').isDisabled(), 'Show the explanation waits for a typed guess');
+  await p.locator('#tryBtn').click(); await p.waitForTimeout(200);
+  check(await p.locator('.needmsg[role=alert]').count() === 1 && await p.locator('#guess').count() === 1, 'an empty guess gets a message under the box, not a greyed-out button');
   await shot(p, 'mentor-try-first');
   await p.locator('#guess').fill('it unlocks the lock for you'); await p.keyboard.press('Control+Enter'); await p.waitForTimeout(400);
   check(/Your guess: it unlocks the lock for you/.test(await p.locator('.callout.tried').textContent()), 'the explanation shows under the question, next to the guess');
@@ -54,6 +55,7 @@ run(async b => {
   await shot(p, 'mentor-teach');
   await p.locator('.lines .line').nth(2).click(); await p.locator('#goBtn').click(); await p.waitForTimeout(600);
   check(/line 2/.test(await p.locator('#rhead').textContent()) && /released on exit/.test(await p.locator('.coach').textContent()), 'the wrong line shows the right one and why');
+  check(await p.locator('.verdict.bad').count() === 1 && await p.locator('.line.wrong').count() === 1 && await p.locator('.line.right').count() === 1, 'the picked line is marked wrong, the right one right');
   check(await p.locator('input[name=rate]').count() === 0, 'a Learn card has no rating');
   await p.locator('#rateBtn').click(); await p.waitForTimeout(600);
   check(/^Teach/.test(await p.locator('.kind').textContent()), 'the next teach card follows');
@@ -72,9 +74,9 @@ run(async b => {
   await p.locator('#hints textarea').last().fill('it is the with block'); await p.locator('#hintBtn').click(); await p.waitForTimeout(500);
   check(/expert's first move/.test(await p.locator('#hints').textContent()), 'rung 2 is the expert\'s first move');
   await p.locator('#ans').fill('context manager'); await p.keyboard.press('Enter'); await p.waitForTimeout(600);
-  check((await p.locator('#rhead').textContent()).trim() === 'context manager' && /2 hints used/.test(await p.locator('#rpanel .deckname').first().textContent()), 'a right term is confirmed and the hints used are shown');
+  check(await p.locator('.verdict.ok').count() === 1 && /Correct · context manager/.test(await p.locator('#rhead').textContent()) && /2 hints used/.test(await p.locator('#rpanel .deckname').first().textContent()), 'a right term is confirmed (Correct, in green, with a tick) and the hints used are shown');
   check(await p.locator('input[name=rate]:checked').first().inputValue() === '3', 'rung 2 caps the suggested rating at Well enough');
-  check(await p.locator('.defs dt', {hasText: 'In your code'}).count() === 1, 'the feedback shows where the term lives in the code');
+  check(await p.locator('.defs dt', {hasText: "Where it's used"}).count() === 1, 'the feedback shows where the term is used');
   await p.locator('#rateBtn').click(); await p.waitForTimeout(500);
   // "Show answer" on a blank card offers a hint first; the answer rung counts as a blank
   await p.locator('#checkBtn').click(); await p.waitForTimeout(300);
@@ -94,7 +96,8 @@ run(async b => {
   check(l0 && l0.kind === 'level0', 'worked examples come once every term has been seen');
   await p.selectOption('#mdeck', ''); await p.selectOption('#mdeck', 'argus-code'); await p.waitForTimeout(600);
   check(await p.locator('#annot .callout').count() === 1 && await p.locator('#worked .ln.hi').count() === 1, 'level 0 shows annotation 1 and highlights its line');
-  check(await p.locator('#goBtn').isDisabled(), 'the why waits for three typed words');
+  await p.locator('#goBtn').click(); await p.waitForTimeout(200);
+  check(await p.locator('.needmsg').count() === 1 && await p.locator('#call0 p').count() === 0, 'the note waits for three typed words, and says so');
   await p.locator('#why0').fill('so only one request fetches'); await p.keyboard.press('Enter'); await p.waitForTimeout(300);
   check(/Two requests can arrive at once/.test(await p.locator('#call0').textContent()), 'typing reveals the annotation\'s why');
   await shot(p, 'mentor-level0');
@@ -116,9 +119,9 @@ run(async b => {
   check(await p.evaluate(() => document.activeElement.dataset.n) === '2', 'Enter moves to the next blank');
   await p.keyboard.type('data'); await p.keyboard.press('Enter'); await p.waitForTimeout(600);
   check(/2 of 2 blanks right/.test(await p.locator('#rhead').textContent()), 'both blanks graded right');
-  check(/level 2/.test(await p.locator('.seg.rates label').first().textContent()), 'a fast, right answer offers level 2');
+  check(/level 2/.test(await p.locator('.seg.rates label').last().textContent()), 'a fast, right answer offers level 2');
   await shot(p, 'mentor-drill');
-  await p.keyboard.press('1'); await p.keyboard.press('Enter'); await p.waitForTimeout(700);
+  await p.keyboard.press('4'); await p.keyboard.press('Enter'); await p.waitForTimeout(700);
   check(/Level 2 next time/.test(await p.locator('#toastText').textContent()), 'the toast says the drill moves up a level');
 
   // a second fast, right answer (level 2: the logic) takes it to level 3
@@ -134,6 +137,9 @@ run(async b => {
   await api(p, 'rate', {attempt: w2.attempt, rating: 1, grade_wrong: false});
   const back = (await api(p, 'next?deck=argus-code')).card;
   check(back && back.kind === 'level0' && back.id === 'argus-code:level0-drill_02' && back.refresh, 'the worked example comes back first');
+  const rp = (await api(p, 'next?replay=' + encodeURIComponent('argus-code:drill_02'))).card;
+  check(rp && rp.id === 'argus-code:drill_02' && rp.code && !('answer' in rp), "replaying a mistake asks the practice card again, without its answer");
+  check((await api(p, 'next?replay=' + encodeURIComponent('argus-code:level0-drill_02'))).card === null, 'replay never serves a Learn card');
   await p.selectOption('#mdeck', ''); await p.selectOption('#mdeck', 'argus-code'); await p.waitForTimeout(600);
   check(/back to the lesson/.test(await p.locator('.deckname').first().textContent()), 'the page says it is back to the lesson');
   await skip(p, 'argus-code', 'level0', 1);
@@ -146,6 +152,7 @@ run(async b => {
   fs.writeFileSync(path.join(INBOX, '20261020_120100_broken.json'), '{"tier_1_faded_code_drills": [');
   await p.locator('[data-view=modules]').click(); await p.waitForTimeout(700);
   check(await p.locator('.module').count() === 2, 'a lesson copied into the inbox shows up without a restart');
+  check(await p.locator('.course-list .module .mrow button[data-study]').count() === 2 && await p.locator('.modules .cont button[data-study]').count() === 1, 'each lesson is one row with one action, under one Continue');
   await p.locator('.module').first().locator('details', {hasText: 'Read the lesson again'}).locator('summary').click();
   check(await p.locator('.module').first().locator('[data-read]').count() === 18, 'every Learn card of a lesson can be read again');
   await p.locator('.module').first().locator('[data-read]').nth(1).click(); await p.waitForTimeout(600);

@@ -30,6 +30,7 @@ const home = (() => {
       .concat(mp ? [place(url('mentor'), pluginMark(mp), mp.name, st(lines.mentor))] : [])
       .concat([place(url('olympus'), '<img src="static/icons/olympus.png" alt="">', 'Olympus', 'Powers, weather, seasons')])
       .concat(PLUGINS.filter(p => p !== mp).map(p => place(url(p.id), pluginMark(p), p.name, p.kind === 'server' ? st(lines[p.id]) : p.version ? `Version ${p.version}` : 'Open it')))
+      .concat((S.links || []).map(x => place(esc(x.href), '<svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="16" fill="#1C2127" stroke="#2A9D8F" stroke-width="1.5"/><path d="M20 11h5v5M25 11l-8 8M23 20v4a1 1 0 0 1-1 1H12a1 1 0 0 1-1-1V14a1 1 0 0 1 1-1h4" fill="none" stroke="#A7B6C4" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>', x.name, `Open ${x.what || x.name}`)))
       .join('');
   }
   function draw() {

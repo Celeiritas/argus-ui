@@ -32,6 +32,17 @@ run(async b => {
   const order = await p.locator('.placelist .place b').allTextContents();
   check(order[0] === 'Watch' && order[1] === 'Mentor' && order[2] === 'Olympus', 'places in the section bar\'s order: Watch, Mentor, Olympus, then plugins');
 
+  // links to other pages on this machine (~/.config/argus-ui/links.json): in the section bar and on Home; unsafe hrefs dropped
+  const LK = path.join(path.dirname(process.env.FIXTURES), 'home/.config/argus-ui/links.json');
+  fs.mkdirSync(path.dirname(LK), {recursive: true});
+  fs.writeFileSync(LK, JSON.stringify([{name: 'Sound Lab', what: 'Studio', href: '/studio-test/'}, {name: 'Bad', what: 'x', href: 'javascript:alert(1)'}]));
+  await p.evaluate(() => refresh()); await p.waitForTimeout(700);
+  const lk = p.locator('#realms a.realm.link');
+  check(await lk.count() === 1 && await lk.getAttribute('href') === '/studio-test/' && /Sound Lab/.test(await lk.textContent()), 'a link from links.json sits in the section bar; an unsafe href is dropped');
+  check(await place('Sound Lab').count() === 1 && await place('Sound Lab').getAttribute('href') === '/studio-test/' && /Open Studio/.test(await place('Sound Lab').textContent()), 'and on Home as a place that opens it');
+  fs.unlinkSync(LK); await p.evaluate(() => refresh()); await p.waitForTimeout(500);
+  check(await p.locator('#realms a.realm.link').count() === 0, 'no links file, no links');
+
   fs.mkdirSync(AL, {recursive: true});
   fs.writeFileSync(path.join(AL, 'zeus.json'), JSON.stringify({job: 'zeus-approve', level: 'alert', message: 'Janus could not verify the approval; the request is held', link: 'demo-server'}));
   await p.evaluate(() => refresh()); await p.waitForTimeout(700);

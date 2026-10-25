@@ -72,3 +72,57 @@
 .mentor .aiowl{display:grid;grid-template-columns:44px 1fr;gap:var(--s3);align-items:start;margin:0 0 var(--s3);padding:var(--s2) var(--s3);border:1px solid #9BAA6A;border-radius:12px;background:#1f241a}
 .mentor .aiowl svg{width:44px;height:52px}.mentor .aiowl p{margin:0;color:var(--snow);font-size:var(--fs-sec)}
 .mentor .aiowl small{display:block;color:#C9D3A3;font-size:var(--fs-meta)}.mentor .aiowl .fb{display:block;margin-top:var(--s1);color:var(--powder)}
+/* 4.25: the verdict band, marked key ideas and lines, wrapped code (docs/plans/2026-10-25-mentor-study-ui.md) */
+.mentor .verdict{margin:var(--s3) calc(-1 * var(--s4)) var(--s4);padding:var(--s4);border-top:2px solid var(--powder);background:#262d35}
+.mentor .verdict .vt{display:flex;align-items:center;gap:var(--s2);margin:0 0 var(--s2);font-size:20px;font-weight:600;line-height:1.3;color:var(--snow)}
+.mentor .verdict .vt:focus,.mentor .verdict .vt:focus-visible{outline:none}   /* focus is moved here for screen readers; it is not a control */
+.mentor .verdict svg{flex:none;width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
+.mentor .verdict .coach{margin:0;color:#C9D3DC}
+.mentor .verdict.ok{border-color:var(--ok);background:#20372B}.mentor .verdict.ok .vt b,.mentor .verdict.ok svg{color:var(--ok)}
+.mentor .verdict.part{border-color:var(--run);background:#3A3326}.mentor .verdict.part .vt b,.mentor .verdict.part svg{color:var(--run)}
+.mentor .verdict.bad{border-color:var(--bad);background:#3A2530}.mentor .verdict.bad .vt b,.mentor .verdict.bad svg{color:var(--bad)}
+.mentor .verdict.shown svg{color:var(--powder)}
+.mentor .verdict .vt b{font-weight:600}
+.mentor .ideas.marked{list-style:none;padding:0;margin:0 0 var(--s4)}
+.mentor .ideas.marked li{display:grid;grid-template-columns:92px 1fr;gap:var(--s2);align-items:baseline;padding:var(--s1) 0;font-size:var(--fs-body)}
+.mentor .ideas.marked li::before{content:none}
+.mentor .ideas.marked .hit b{color:var(--ok);font-weight:600}.mentor .ideas.marked .miss b{color:var(--bad);font-weight:600}
+.mentor .line.right{background:#20372B;box-shadow:inset 4px 0 0 var(--ok)}.mentor .line.wrong{background:#3A2530;box-shadow:inset 4px 0 0 var(--bad)}
+.mentor .line .mark{margin-left:auto;padding-left:var(--s3);font-family:inherit;font-size:var(--fs-sec);font-weight:600;white-space:nowrap}
+.mentor .line.right .mark{color:var(--ok)}.mentor .line.wrong .mark{color:var(--bad)}
+.mentor pre.code,.mentor .line{white-space:pre-wrap;overflow-wrap:anywhere}
+.mentor .lines{overflow:visible}
+.mentor .line{align-items:flex-start;padding-top:var(--s2);padding-bottom:var(--s2)}
+.mentor .needmsg{margin:var(--s1) 0 0;color:var(--run);font-size:var(--fs-sec)}
+.mentor .kicker{margin:var(--s4) 0 var(--s1);font-size:var(--fs-sec);font-weight:600;color:var(--teal)}
+.mentor .lesson-title{margin:0 0 var(--s2);font-size:22px;font-weight:600;line-height:1.25}
+.mentor .termline{margin:0;line-height:1.6;color:var(--snow)}
+.mentor details.more{margin:var(--s2) 0 var(--s4)}.mentor details.more>summary,.mentor details.report>summary{min-height:var(--hit);display:flex;align-items:center;cursor:pointer}
+.mentor details.report{margin-top:var(--s3);color:var(--powder);font-size:var(--fs-sec)}
+.mentor .rategroup legend b{font-weight:600;color:var(--snow)}
+.mentor .mine{color:var(--powder);margin:0 0 var(--s3)}
+.mentor .mstats{display:flex;flex-wrap:wrap;gap:var(--s2) var(--s4);align-items:center}
+.mentor .lp{display:flex;align-items:center;gap:var(--s3);flex:1 1 320px;min-width:0}
+.mentor .lpbar{flex:1;height:8px;background:var(--line);border-radius:4px;overflow:hidden}.mentor .lpbar>span{display:block;height:100%;background:var(--teal)}
+/* 4.25: Lessons as a course map */
+.modules{display:flex;flex-direction:column;gap:var(--s4)}
+.modules h2{margin:0;font-size:var(--fs-h2);font-weight:600}
+.modules .cont,.modules .duebar{display:flex;flex-wrap:wrap;gap:var(--s3) var(--s6);align-items:center;justify-content:space-between;padding:var(--s4) var(--s6);background:var(--card);border:1px solid var(--line);border-radius:12px}
+.modules .cont{border-color:var(--teal)}.modules .cont h2{font-size:20px}
+.modules .cont .kicker{margin-top:0}
+.modules .ghead{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);margin:var(--s2) 0}
+.modules button.link{background:none;border:0;color:var(--powder);text-decoration:underline;min-height:var(--hit);padding:0 var(--s2)}
+.modules .course-list{list-style:none;margin:0;padding:0;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.modules .course-list>li.module{border-top:1px solid var(--line);padding:0 var(--s4)}.modules .course-list>li.module:first-child{border-top:0}
+.modules .mrow{display:grid;grid-template-columns:minmax(0,1fr) 180px 120px;gap:var(--s4);align-items:center;min-height:64px;padding:var(--s2) 0}
+.modules .mname h4{margin:0;font-size:var(--fs-body);font-weight:600}
+.modules .mname .meta{margin:0;font-size:var(--fs-sec)}
+.modules .mprog{display:flex;flex-direction:column;gap:var(--s1)}.modules .mprog small{color:var(--powder);font-size:var(--fs-sec)}
+.modules .mrow>button{min-height:var(--hit)}
+.modules .module details{margin:0 0 var(--s2)}.modules .module details>summary{min-height:var(--hit);display:inline-flex;align-items:center;cursor:pointer;color:var(--powder);font-size:var(--fs-sec);margin-right:var(--s4)}
+.modules .srcs ul{margin:0;padding-left:var(--s6);color:var(--powder);font-size:var(--fs-sec)}.modules .srcs li{margin:0 0 var(--s1);overflow-wrap:anywhere}
+.modules .srcs>summary,.modules .about>summary{min-height:var(--hit);display:flex;align-items:center;cursor:pointer;color:var(--powder);font-size:var(--fs-sec)}
+@media (max-width:640px){.modules .mrow{grid-template-columns:1fr;gap:var(--s2)}.modules .mrow>button{width:100%}}
+.modules .mprog .lpbar{flex:none;display:block;height:8px}
+.modules .mmore{display:flex;flex-wrap:wrap;gap:0 var(--s4)}.modules .mmore details{margin:0}.modules .mmore details[open]{flex-basis:100%}
+.modules .module{padding-bottom:var(--s1)}
