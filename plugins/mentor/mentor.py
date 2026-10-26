@@ -919,9 +919,10 @@ def coach_line(kind, cov, conf, n, extra):
             if extra.get('problem'): return f"Python can't read your version ({extra['problem']}). Fix that line in your head, then compare the two."
             if extra.get('same_structure'): return "Same structure as the model answer. You wrote it from memory."
             return f"It runs differently from the model answer. {move}"
-        if cov >= 0.99: return f"All {n} blank{'s' if n != 1 else ''} right."
+        # the verdict above already says how many blanks were right: the coach line says what to do with that
+        if cov >= 0.99: return "You filled every blank from memory. Read the full code once more as a whole."
         where = f" Look at {look[0]}." if look else ''
-        return f"{k} of {n} blanks right. {move}{where}"
+        return f"{move}{where}"
     if kind == 'term':
         if cov >= 0.99: return "Right term. Read where it lives in your code, so you'll spot it next time."
         if cov > 0: return f"Close, not the exact term. {move}"
