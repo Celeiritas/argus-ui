@@ -149,7 +149,7 @@
       const sentence = esc(c.prompt).replace(BLANK, () => '<input class="blank term" id="ans" aria-label="Missing term" autocomplete="off" autocapitalize="off" spellcheck="false">');
       body = `<p class="cloze" id="qprompt">${inline(sentence)}</p><p class="help">Type the missing term. <kbd>Enter</kbd> checks.</p>`;
     } else {
-      body = `<div class="prompt" id="qprompt">${rich(c.prompt)}</div>
+      body = `<div class="prompt question" id="qprompt">${rich(c.prompt)}</div>
         <div class="field"><label for="ans">${c.kind === 'explain' ? 'Your explanation, in your own words' : 'Your answer, in your own words'}</label>
           <textarea id="ans" aria-describedby="anshelp" autocomplete="off" spellcheck="true"></textarea>
           <p class="help" id="anshelp">Write it before peeking. Leave it blank if you don't know. <kbd>Ctrl</kbd>+<kbd>Enter</kbd> checks.</p></div>`;
@@ -233,7 +233,7 @@
     } else if (c.kind === 'term') {
       const typed = text;
       head = shown ? `The answer was shown: “${esc(r.reference)}”` : r.coverage >= .99 ? esc(r.reference) : `the answer is “${esc(r.reference)}”`;
-      detail = `${typed && r.coverage < .99 ? `<p class="mine">You wrote “${esc(typed)}”.</p>` : ''}
+      detail = `${typed && r.coverage < .99 ? `<p class="label">You wrote</p><p class="model mine">${esc(typed)}</p>` : ''}
         <dl class="defs">${r.definition ? `<dt>What it means</dt><dd>${inline(esc(r.definition))}</dd>` : ''}${r.anchor ? `<dt>Where it's used</dt><dd>${inline(esc(r.anchor))}</dd>` : ''}${r.contrast ? `<dt>Not to be confused with</dt><dd>${inline(esc(r.contrast))}</dd>` : ''}</dl>`;
     } else {
       head = shown ? 'The answer was shown' : `${r.hits.length} of ${plural(n, 'key idea')}`;
@@ -321,7 +321,7 @@
         <ol class="ideas keys">${(c.ideas || []).map(i => `<li>${inline(esc(i))}</li>`).join('')}</ol>
         ${c.near ? `<p class="label">A near example</p><pre class="code"><code>${esc(c.near.code)}</code></pre>
           ${readOnly ? `<p class="coach"><b>${inline(esc(c.near.ask))}</b> ${inline(esc(c.near.answer || ''))}</p>`
-          : `<div class="field"><label for="ans">${esc(c.near.ask)}</label><input id="ans" class="blank wide" autocomplete="off"><p class="help"><kbd>Enter</kbd> reveals the answer.</p></div>`}` : ''}`;
+          : `<div class="field"><label for="ans" class="task">${esc(c.near.ask)}</label><input id="ans" class="blank wide" autocomplete="off"><p class="help"><kbd>Enter</kbd> reveals the answer.</p></div>`}` : ''}`;
       go = readOnly ? done : `<button type="submit" class="primary" id="goBtn">${c.near ? 'Show the answer' : 'Go to the next card'}</button>`;
     }
     $('#mpanel').innerHTML = `<form class="panel learn" id="qform" novalidate>${head}${body}<div class="row">${go}</div></form>`;
@@ -332,7 +332,7 @@
   // a question to answer before the explanation (pretesting): typed, never graded or sent, then the card itself
   function tryFirst(c, head, skip) {
     $('#mpanel').innerHTML = `<form class="panel learn" id="qform" novalidate>${head}${c.kind === 'teach' ? `<h3>${esc(c.prompt)}</h3>` : ''}
-      <div class="field"><label for="guess">Try first: ${inline(esc(c.try))}</label><textarea id="guess" rows="2" aria-describedby="guesshelp"></textarea>
+      <div class="field"><label for="guess" class="task">Try first: ${inline(esc(c.try))}</label><textarea id="guess" rows="2" aria-describedby="guesshelp"></textarea>
       <p class="help" id="guesshelp">A guess is fine: it isn't graded. <kbd>Ctrl</kbd>+<kbd>Enter</kbd> shows the ${c.kind === 'teach' ? 'explanation' : 'ideas'}.</p></div>
       <div class="row"><button type="submit" class="primary" id="tryBtn">${c.kind === 'teach' ? 'Show the explanation' : 'Show the ideas'}</button>${skip}</div></form>`;
     M.t0 = performance.now();
@@ -430,7 +430,7 @@
       band = verdict(n ? tone(r.coverage) : 'ok', n ? (r.coverage >= .99 ? `All ${plural(n, 'key idea')}` : `${r.hits.length} of ${plural(n, 'key idea')}`) : 'Explained', `<p class="coach">${inline(esc(r.coach))}</p>`)
         + `${text ? `<p class="label">You wrote</p><p class="model mine">${esc(text)}</p>` : ''}${keyIdeas(r)}`;
     } else {
-      band = `<h3 tabindex="-1" id="rhead">${inline(esc(c.near ? c.near.ask : 'Read'))}</h3>${text ? `<p class="label">You wrote</p><p class="model mine">${esc(text)}</p>` : ''}${r.answer ? `<p class="deckname">Answer</p>${answerBlock(r.answer)}` : ''}<p class="coach">${inline(esc(r.coach))}</p>`;
+      band = `<h3 tabindex="-1" id="rhead">${inline(esc(c.near ? c.near.ask : 'Read'))}</h3>${text ? `<p class="label">You wrote</p><p class="model mine">${esc(text)}</p>` : ''}${r.answer ? `<p class="label">Answer</p>${answerBlock(r.answer)}` : ''}<p class="coach">${inline(esc(r.coach))}</p>`;
     }
     $('#mpanel').innerHTML = `<div class="panel learn" id="rpanel"><p class="deckname">${esc(sourceName(c))} · ${esc(kindLabel(c))}</p>
       ${band}<div class="row"><button type="button" class="primary" id="rateBtn">Next card</button></div></div>`;

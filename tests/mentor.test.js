@@ -187,6 +187,9 @@ run(async b => {
   // explain cards come after the pre-reads; fenced code in the prompt is shown as code
   await p.selectOption('#mdeck', ''); await p.selectOption('#mdeck', 'argus-code'); await p.waitForTimeout(600);
   check(await p.locator('.kind').textContent() === 'Find the bug' && await p.locator('.prompt pre.code').count() === 1, 'a pre-mortem card shows its code');
+  const fw = sel => p.locator(sel).first().evaluate(e => { const s = getComputedStyle(e); return s.fontSize + '/' + s.fontWeight; });
+  const [q, fl, lg] = [await fw('#qprompt p'), await fw('.field label'), await fw('fieldset legend')];
+  check(q === '16px/600' && fl === '14px/600' && lg === '14px/600', `the question is the strongest text; the field's name and "How sure are you?" are labels (${q}, ${fl}, ${lg})`);
   await p.evaluate(() => { localStorage.setItem('mentor-streak', '2'); window.moteCalls = 0; const m = fx.motes; fx.motes = (...a) => { moteCalls++; return m(...a); }; });   // two right in a row already
   await p.locator('#ans').fill('A crash leaves a truncated file, so json load fails next start. Write a temp file then os.replace, which is atomic.');
   await p.keyboard.press('Control+Enter');
