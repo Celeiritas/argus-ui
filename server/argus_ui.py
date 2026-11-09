@@ -111,7 +111,13 @@ def plugin_ctx(pid, d):
         with open(os.path.join(STATIC, 'VERSION')) as f: v = f.read().strip()
     except OSError: v = 'dev'
     return types.SimpleNamespace(id=pid, data_dir=os.path.join(SHARE, 'plugins', pid), config_dir=d, theme_dir=STATIC,
-                                 base_url=os.environ.get('ARGUS_BASE_URL', '/argus/'), version=v, headers={})
+                                 base_url=os.environ.get('ARGUS_BASE_URL', '/argus/'), version=v, headers={}, jobs=plugin_jobs)
+
+def plugin_jobs(prefix=''):
+    """ctx.jobs(prefix): the tasks Watch shows (state, last, next, frozen ...) whose unit starts with prefix, so a server
+    plugin reads what Elaia already collects instead of running systemctl itself (Memory reads mnemosyne-*)."""
+    fz = frozen()
+    return collapse([info(u, fz) for u in units() if u.startswith(str(prefix))])
 
 def load_server_plugins():
     """Import each server plugin's plugin.py by path and call its init(ctx) once. One that fails is logged and

@@ -1,0 +1,45 @@
+/* Memory's own styles (the plugin's page.css). Shared pieces (.panel, .primary, .sr, the hold ring) are in argus.css.
+   The shelf is plain bars until the owner approves the mem-jar, shelf and vessel art (docs/ui-plan.md §13). */
+.memory{display:grid;gap:var(--s4);grid-template-columns:minmax(0,1fr);max-width:960px}
+@media (min-width:900px){.memory{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.memory .mem-where,.memory .mem-shelfp{grid-column:1/-1}}
+.memory .panel{padding:var(--s4);min-width:0}
+.memory code{font-size:var(--fs-sec);background:#1a1f25;border-radius:4px;padding:0 var(--s1);overflow-wrap:anywhere}
+.mem-where{margin:0;color:var(--powder);font-size:var(--fs-sec);overflow-wrap:anywhere}
+.mem-meta{margin:var(--s3) 0 0;color:var(--frost);font-size:var(--fs-meta);line-height:1.5}
+.mem-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s3) var(--s4);margin:0 0 var(--s3)}
+.mem-facts dt{font-size:var(--fs-meta);font-weight:600;color:var(--frost);margin:0 0 2px}
+.mem-facts dd{margin:0;font-size:var(--fs-body);overflow-wrap:anywhere;white-space:normal;overflow:visible;text-overflow:clip}   /* the Watch cards' dd is one cut-off line */
+.mem-facts small{display:block;font-size:var(--fs-meta);color:var(--powder)}
+.mem-warn,.mem-run{margin:0 0 var(--s3);font-size:var(--fs-sec);line-height:1.5;border-left:3px solid var(--run);padding-left:var(--s2)}
+.mem-run{border-color:var(--stone)}
+.mem-act{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s2) var(--s3)}
+.mem-act button{min-height:var(--hit)}
+.mem-note{margin:0;flex:1 1 200px;color:var(--powder);font-size:var(--fs-meta);line-height:1.5}
+.mem-why{margin:var(--s2) 0 0;font-size:var(--fs-sec);min-height:1.5em;line-height:1.5}
+.mem-copies{list-style:none;margin:0;padding:0;display:grid;gap:var(--s2)}
+.mem-copies li{display:grid;grid-template-columns:28px minmax(0,1fr);gap:0 var(--s2);align-items:center}
+.mem-copies .mark{grid-row:span 2;width:28px;height:28px;border-radius:50%;border:2px solid currentColor;display:grid;place-items:center;font-weight:600;font-size:var(--fs-sec)}
+.mem-copies .what{font-size:var(--fs-body)}.mem-copies .what b{font-weight:600}
+.mem-copies .word{font-size:var(--fs-sec);font-weight:600}
+.mem-copies .detail{font-size:var(--fs-meta);color:var(--powder);overflow-wrap:anywhere}
+.mem-copies .yes .mark,.mem-copies .yes .word{color:var(--ok)}
+.mem-copies .no .mark,.mem-copies .no .word{color:var(--bad)}
+.mem-copies .stale .mark,.mem-copies .stale .word{color:var(--run)}
+.mem-copies .unknown .mark,.mem-copies .unknown .word{color:var(--frost)}
+.mem-copies .unknown .mark{border-style:dashed}
+.mem-shelf{list-style:none;margin:var(--s3) 0 0;padding:0 0 var(--s1);display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,48px);gap:var(--s2);
+  align-items:end;border-bottom:3px solid var(--line);min-height:170px}
+.mem-shelf .mem-jar{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;min-width:0;height:170px}
+.mem-shelf .mem-bar{display:block;flex:none;width:100%;max-width:36px;height:calc(10px + var(--h,0) * 104px);background:var(--slate);border:1px solid var(--frost);border-bottom:0;border-radius:6px 6px 0 0}
+.mem-shelf .newest .mem-bar{background:#3d5a4c;border-color:var(--stone);box-shadow:0 0 10px rgba(143,196,164,.35)}
+.mem-shelf .filling .mem-bar{background:transparent;border:1px dashed var(--stone)}
+.mem-shelf .mem-lab{display:flex;flex-direction:column;align-items:center;margin-top:var(--s1);font-size:var(--fs-meta);color:var(--powder);line-height:1.2}
+.mem-shelf .mem-lab b{font-weight:600;color:var(--snow)}
+@media (prefers-reduced-motion:no-preference){.mem-shelf .filling .mem-bar{animation:mem-fill 2.4s ease-in-out infinite alternate}}
+@keyframes mem-fill{from{opacity:.45}to{opacity:1}}
+.mem-all{margin-top:var(--s3)}
+.mem-all summary{cursor:pointer;min-height:var(--hit);display:flex;align-items:center;font-size:var(--fs-sec);font-weight:600}
+.mem-all summary:focus-visible{outline:2px solid var(--powder);outline-offset:2px}
+.mem-list{list-style:none;margin:0;padding:0}
+.mem-list li{display:flex;flex-wrap:wrap;gap:0 var(--s3);padding:var(--s2) 0;border-top:1px solid var(--line);font-size:var(--fs-sec)}
+.mem-list li span{color:var(--powder)}.mem-list .size{margin-left:auto}.mem-list small{font-size:var(--fs-meta);color:var(--frost)}

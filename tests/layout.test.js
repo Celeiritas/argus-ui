@@ -35,8 +35,8 @@ run(async b => {
   for (const w of [1280, 1024]) {
     const lp = await page(b, w, 720); await lp.goto(BASE + 'home'); await lp.locator('.home .places').waitFor(); await lp.waitForTimeout(500);
     const bar = await lp.locator('.realms').evaluate(bar => { const f = bar.querySelector('.realm').getBoundingClientRect();
-      return {row: [...bar.querySelectorAll('.realm,.mute')].every(e => e.getBoundingClientRect().top < f.bottom), compact: bar.classList.contains('compact'), bare: bar.classList.contains('bare')}; });
-    check(bar.row, `${w}: the sections bar stays one row, Mute sounds included (${await lp.locator('#realms .realm').count()} sections${bar.compact ? ', second lines hidden' : ''}${bar.bare ? ', weather hidden' : ''})`);
+      return {row: [...bar.querySelectorAll('.realm,.mute')].every(e => e.getBoundingClientRect().top < f.bottom), compact: bar.classList.contains('compact'), bare: bar.classList.contains('bare'), tight: bar.classList.contains('tight'), scroll: bar.classList.contains('scroll')}; });
+    check(bar.row, `${w}: the sections bar stays one row, Mute sounds included (${await lp.locator('#realms .realm').count()} sections${bar.compact ? ', second lines hidden' : ''}${bar.bare ? ', weather hidden' : ''}${bar.tight ? ', smaller marks' : ''}${bar.scroll ? ', scrolling' : ''})`);
     if (w === 1024) {
       check(bar.compact, '1024: the pills dropped their second line to fit');
       const mute = await lp.locator('#mute').boundingBox();
