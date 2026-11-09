@@ -662,9 +662,7 @@ def grade_drill(card, level, text):
     if level == 3:
         cov, f = grade_body(fade['code'], text, str(expected[0]))
         return cov, f, [{'n': 1, 'ok': cov >= 0.99, 'expected': str(expected[0])}]
-    try: typed = json.loads(text) if text.strip().startswith('[') else [text]
-    except ValueError: typed = [text]
-    typed = [str(x) for x in as_list(typed)] + [''] * len(expected)
+    typed = [str(x) for x in typed_boxes(text)] + [''] * len(expected)
     order = sorted(set(blanks_in(fade['code'])))
     per = [{'n': n, 'ok': bool(typed[i].strip()) and same_code(typed[i], expected[i]), 'typed': typed[i],
             'expected': expected[i] if isinstance(expected[i], str) else expected[i][0]} for i, n in enumerate(order)]
@@ -679,11 +677,19 @@ def grade_term(card, text):
     if w == g or r >= 0.86: return 1.0
     return 0.5 if set(want) & set(got) - {'the', 'a'} else 0.0
 
+def typed_boxes(text):
+    """The page's per-box answer: a flat JSON list of strings (numbers accepted). Anything else is one typed answer, [text]:
+    plain text, broken JSON, JSON nested deeper than the parser goes (RecursionError), or a list holding lists or objects."""
+    if not text.strip().startswith('['): return [text]
+    try: got = json.loads(text)
+    except (ValueError, RecursionError): return [text]
+    ok = isinstance(got, list) and all(isinstance(x, (str, int, float)) and not isinstance(x, bool) for x in got)
+    return got if ok else [text]
+
 def typed_list(text, n):
-    """A card's per-box answer (a JSON list of strings, as the page sends it), padded to n boxes."""
-    try: got = json.loads(text) if text.strip().startswith('[') else [text]
-    except ValueError: got = [text]
-    return [str(x) for x in as_list(got)][:max(n, 0) or None] + [''] * max(0, n - len(as_list(got)))
+    """A card's per-box answer (typed_boxes), as strings, padded or cut to n boxes."""
+    got = [str(x) for x in typed_boxes(text)]
+    return got[:max(n, 0) or None] + [''] * max(0, n - len(got))
 
 def grade_trace(card, text):
     """A trace card: the value after each step's line, each step graded on its own by the key-idea grader (its state, or an
@@ -953,15 +959,18 @@ def right_answer(rating, hints):
     """Answered right, for mastery and module checks: rated Good or Easy, with no hint above rung 2 (spec section 8)."""
     return (rating or 0) >= 3 and (hints or 0) <= 2
 
-def mastery(db, now=None):
+def mastery(db, now=None, hidden=None):
     """Where each course lesson and course module stands. Loose lessons are never locked and have no module check.
     A lesson's progress is the share of its practice cards answered right at least once (right_answer); it is mastered
     at PASS (80%). A module is mastered when all its lessons are; it is locked while a module it `requires` isn't mastered.
     A lesson is locked while its module is, or while a lesson it `requires` isn't mastered. A module's check items are
     served once the module is mastered (and not locked): each once; one answered wrong comes back the next day, until the
-    check passes (PASS of its items right, each item's latest answer counting).
+    check passes (PASS of its items right, each item's latest answer counting). An item whose note had a sibling rated today
+    (bury siblings, `hidden`: buried() unless given) waits until tomorrow: the check's `now` counts only the items served
+    today and `later` the ones held back, so the course map and the queue say the same.
     Returns {'lessons': {id: {...}}, 'modules': {cmodule id: {...}}, 'checks': {check item ids to serve now}}."""
     now = now or time.time()
+    hidden = hidden or buried(db, now)
     lessons = {r['id']: dict(r) for r in db.execute("SELECT id, name, course, cmodule, requires FROM modules WHERE course IS NOT NULL AND course<>?", (LOOSE,))}
     out = {'lessons': {}, 'modules': {}, 'checks': set()}
     if not lessons: return out
@@ -969,12 +978,14 @@ def mastery(db, now=None):
     for r in db.execute("SELECT card_id, rating, hints, at FROM attempts WHERE rating>0 AND COALESCE(undone, 0)=0 ORDER BY id"):
         latest[r['card_id']] = r
         if right_answer(r['rating'], r['hints']): right.add(r['card_id'])
-    practice, checks, learn = {}, {}, {}
-    for c in db.execute("SELECT c.id, c.deck, c.kind, c.is_check, s.reps FROM cards c LEFT JOIN sched s ON s.card_id=c.id"):
+    practice, checks, learn, held = {}, {}, {}, set()      # held: check items buried today
+    for c in db.execute("SELECT c.id, c.deck, c.kind, c.is_check, c.note, s.reps, s.step FROM cards c LEFT JOIN sched s ON s.card_id=c.id"):
         if c['deck'] not in lessons: continue
         if c['kind'] in LEARN:
             if not c['is_check']: learn.setdefault(c['deck'], []).append(bool(c['reps']))
-        else: (checks if c['is_check'] else practice).setdefault(c['deck'], []).append(c['id'])
+        else:
+            (checks if c['is_check'] else practice).setdefault(c['deck'], []).append(c['id'])
+            if c['is_check'] and hidden(c): held.add(c['id'])
     for lid, les in lessons.items():
         cards = practice.get(lid, [])
         if cards: prog = sum(1 for x in cards if x in right) / len(cards)
@@ -1001,10 +1012,11 @@ def mastery(db, now=None):
         answered = [i for i in items if i in latest]
         state = ('none' if not items else 'waiting' if m['locked'] or not m['mastered'] else
                  ('passed' if len(ok) / len(items) >= PASS - 1e-9 else 'failed') if len(answered) == len(items) else 'ready')
-        m['check'] = {'state': state, 'items': len(items), 'answered': len(answered), 'right': len(ok), 'now': 0}
+        m['check'] = {'state': state, 'items': len(items), 'answered': len(answered), 'right': len(ok), 'now': 0, 'later': 0}
         if state in ('ready', 'failed'):
             serve = [i for i in items if i not in latest or (i not in ok and latest[i]['at'] < day0)]
-            out['checks'].update(serve); m['check']['now'] = len(serve)
+            today = [i for i in serve if i not in held]
+            out['checks'].update(today); m['check']['now'] = len(today); m['check']['later'] = len(serve) - len(today)
     for lid, x in out['lessons'].items():
         mod = out['modules'].get(x['cmodule'], {})
         waiting = [out['lessons'][r]['name'] for r in x['requires'] if not out['lessons'][r]['mastered']]
@@ -1025,7 +1037,7 @@ def next_card(db, deck=None, extra=False):
     w, wargs = deck_where(db, deck)
     if w: q += " WHERE " + w; args += wargs
     hidden = buried(db, now)
-    info = mastery(db, now)
+    info = mastery(db, now, hidden)
     locked = {k for k, v in info['lessons'].items() if v['locked']}     # a locked lesson's new cards wait; its reviews go on
     # check items are for module checks, never practice; a buried sibling waits for tomorrow (and holds back nothing)
     every = db.execute(q, args).fetchall()
@@ -1045,8 +1057,9 @@ def next_card(db, deck=None, extra=False):
     due = sorted((r for r in rows if r['due'] is not None and r['due'] <= now), key=lambda r: r['due'])
     order = lambda r: (r['mat'] or 0, r['deck'], r['ord'] or 0, r['id'])
     new = sorted((r for r in rows if ready(r)), key=order)
-    # a module's check, once all its lessons are mastered: after the reviews due, before new cards (a sibling buried today waits)
-    checks = sorted((r for r in every if r['id'] in info['checks'] and r['kind'] not in LEARN and not hidden(r)), key=order)
+    # a module's check, once all its lessons are mastered: after the reviews due, before new cards (mastery leaves out an
+    # item buried today, so the course map counts the same)
+    checks = sorted((r for r in every if r['id'] in info['checks'] and r['kind'] not in LEARN), key=order)
     pool = due or checks or new
     if pool: c = interleave(pool)
     elif extra and [r for r in rows if r['due']]: c = min((r for r in rows if r['due']), key=lambda r: r['due'])   # practise ahead
@@ -1081,7 +1094,8 @@ def learn_answer(db, c, text, ms, skipped):
         extra = {'line': data['spot']['line'], 'why': data['spot']['why'], 'spot_ok': ok}
     elif kind == 'level0':
         try: parts = json.loads(text) if text.strip().startswith('{') else {}
-        except ValueError: parts = {}
+        except (ValueError, RecursionError): parts = {}
+        if not isinstance(parts, dict): parts = {}
         explain = str(parts.get('explain') or '')
         if json.loads(c['points'] or '[]') and explain.strip():
             cov, hits, missed, f = grade(c, explain); feats.update(f)
@@ -1350,14 +1364,14 @@ def stats(db, deck=None):
     cw, args = deck_where(db, deck)
     w = "WHERE COALESCE(c.is_check, 0)=0" + (" AND " + cw if cw else "")     # check items never wait to be studied
     hidden = buried(db, now)       # a buried sibling is neither due nor new until tomorrow
-    info = mastery(db, now)
+    info = mastery(db, now, hidden)
     locked = {k for k, v in info['lessons'].items() if v['locked']}
     # a locked lesson's cards don't wait to be studied yet (only its reviews, if it was studied before it was locked)
     cards = [c for c in db.execute(f"SELECT c.id, c.deck, c.kind, c.note, s.due, s.reps, s.step FROM cards c LEFT JOIN sched s ON s.card_id=c.id {w}", args)
              if not hidden(c) and not (c['deck'] in locked and c['due'] is None)]
     cw2 = "WHERE c.is_check=1" + (" AND " + cw if cw else "")
-    checks = sum(1 for c in db.execute(f"SELECT c.id, c.kind, c.note, s.step FROM cards c LEFT JOIN sched s ON s.card_id=c.id {cw2}", args)
-                 if c['id'] in info['checks'] and c['kind'] not in LEARN and not hidden(c))
+    checks = sum(1 for c in db.execute(f"SELECT c.id, c.kind FROM cards c {cw2}", args)    # buried ones are left out by mastery
+                 if c['id'] in info['checks'] and c['kind'] not in LEARN)
     ids = group_ids(db, deck)
     pats = [i + ':%' for i in ids] if ids is not None else ([deck + ':%'] if deck else [])
     aw = ("WHERE " + " OR ".join("a.card_id LIKE ?" for _ in pats)) if pats else ("WHERE 0" if ids is not None else "")

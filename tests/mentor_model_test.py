@@ -569,6 +569,14 @@ class Roles(Base):
         self.assertEqual(self.ans('loops--write:z-1', list(reversed(want)))['coverage'], 0.2)
         self.assertEqual(self.ans('loops--write:z-1', 'not a list')['coverage'], 0)
 
+    def test_odd_typed_answers_are_graded_as_text(self):
+        deep = '[' * 3000                         # under the 4096-byte POST limit, deeper than json.loads goes
+        for cid in ('loops--read:t-1', 'loops--write:z-1'):
+            r = self.ans(cid, deep)
+            self.assertEqual(r['coverage'], 0, cid); self.assertEqual(r['rows'][0]['typed'], deep, 'kept as one typed answer')
+        self.assertEqual(m.typed_list('[["0"], "2"]', 3), ['[["0"], "2"]', '', ''], 'a list holding lists is one typed answer')
+        self.assertEqual(m.typed_list('["0", 2]', 3), ['0', '2', ''])
+
     def test_grade_write_by_key_ideas_parsed_never_run(self):
         model = self.doc['modules'][0]['lessons'][1]['code_cards'][3]['answer']
         r = self.ans('loops--write:w-1', model)
@@ -636,7 +644,7 @@ class Mastery(Base):
         self.assertTrue(all(not c.get('check') for c in served[:first]))
         self.assertGreaterEqual(first, 10, 'the check comes after the practice cards of both lessons')
         mod = m.mastery(self.db)['modules']['loops/loops-basics']
-        self.assertEqual(mod['check'], {'state': 'passed', 'items': 4, 'answered': 4, 'right': 4, 'now': 0})
+        self.assertEqual(mod['check'], {'state': 'passed', 'items': 4, 'answered': 4, 'right': 4, 'now': 0, 'later': 0})
         self.assertEqual(m.stats(self.db)['checks'], 0)
 
     def test_failed_check_comes_back_tomorrow(self):
@@ -651,6 +659,24 @@ class Mastery(Base):
         self.assertEqual((c['id'], c.get('check')), ('loops--write:w-k', True))
         self.right(c['id'])
         self.assertEqual(mod()['state'], 'passed')
+
+    def test_check_waits_for_buried_siblings_with_bury_on(self):
+        m.set_settings(self.db, {'bury': True})          # the default: the course map, the counts and the queue agree
+        for cid in ('read:p-1', 'read:p-2', 'read:t-1', 'read:t-2', 'write:z-1', 'write:z-2', 'write:w-1', 'write:w-2'): self.right('loops--' + cid)
+        def agree():
+            st = m.stats(self.db)
+            course = next(c for c in st['courses'] if any(md['id'] == 'loops/loops-basics' for md in c['modules']))
+            chk = next(md for md in course['modules'] if md['id'] == 'loops/loops-basics')['check']
+            self.assertEqual(st['checks'], chk['now'], 'the counts line and the course map count the same check questions')
+            return chk
+        chk = agree()
+        self.assertEqual((chk['state'], chk['now'], chk['later']), ('ready', 0, 4), 'every check item shares a note rated today')
+        c, _ = m.next_card(self.db)
+        self.assertFalse(c and c.get('check'), 'the queue serves no check item today either')
+        self.db.execute("UPDATE attempts SET at=at-?", (m.DAY,)); self.db.commit()
+        chk = agree()
+        self.assertEqual((chk['now'], chk['later']), (4, 0), 'tomorrow the check is served')
+        self.assertTrue(m.next_card(self.db)[0].get('check'))
 
     def test_check_item_rating_undone(self):
         for cid in ('read:p-1', 'read:p-2', 'read:t-1', 'read:t-2', 'write:z-1', 'write:z-2', 'write:w-1', 'write:w-2'): self.right('loops--' + cid)
@@ -702,6 +728,15 @@ class RoleChecker(unittest.TestCase):
                 got = self.found(json.load(fh))
             errors = [(lvl, r) for _w, lvl, r, _m in got if lvl == 'ERROR']
             self.assertEqual(errors, [('ERROR', rule)] * 2, f'bad-{role}.json: {got}')
+    def test_code_cards_are_python_by_default(self):
+        with open(os.path.join(R, 'tests', 'deck-fixtures', 'bad-predict.json'), encoding='utf-8') as fh: doc = json.load(fh)
+        card = doc['modules'][0]['lessons'][0]['code_cards'][1]
+        del card['lang']                              # as Mentor reads it: no lang is Python, so its code is still parsed
+        self.assertIn('code is not valid Python', ' | '.join(x for _w, lvl, _r, x in self.found(doc) if lvl == 'ERROR'))
+        card['lang'] = 'javascript'
+        got = self.found(doc)
+        self.assertNotIn('code is not valid Python', ' | '.join(x for _w, lvl, _r, x in got if lvl == 'ERROR'))
+        self.assertIn(('INFO', 'C10', 'not parsed (javascript): only Python is checked'), [(lvl, r, x) for _w, lvl, r, x in got])
     def test_role_in_the_wrong_list_and_later_roles(self):
         doc = json.loads(json.dumps(self.doc)); doc['modules'][0]['lessons'][0]['code_cards'][0]['role'] = 'explain'
         doc['modules'][0]['lessons'][0]['code_cards'][1]['role'] = 'make'

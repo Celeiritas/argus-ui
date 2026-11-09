@@ -569,8 +569,9 @@
   // a course's module in the map (4.32): its lock, lessons mastered, share answered right, and its check, then its lessons
   const courseOf = ms => ((M.stats || {}).courses || []).find(c => !c.loose && c.modules.some(md => md.lessons.includes(ms[0].id)));
   const checkText = k => !k || k.state === 'none' ? '' : k.state === 'waiting' ? `Module check (${plural(k.items, 'question')}) once every lesson is mastered`
-    : k.state === 'ready' ? `Module check ready: ${plural(k.now, 'question')} to answer` : k.state === 'passed' ? `Module check passed: ${k.right} of ${k.items} right`
-    : `Module check not passed yet: ${k.right} of ${k.items} right; ${k.now ? `${plural(k.now, 'question')} to answer again` : 'the missed questions come back tomorrow'}`;
+    : k.state === 'ready' ? `Module check ready: ${k.now ? `${plural(k.now, 'question')} to answer` : ''}${k.now && k.later ? ', ' : ''}${k.later ? `${plural(k.later, 'question')} tomorrow (cards from the same notes were practised today)` : ''}`
+    : k.state === 'passed' ? `Module check passed: ${k.right} of ${k.items} right`
+    : `Module check not passed yet: ${k.right} of ${k.items} right; ${k.now ? `${plural(k.now, 'question')} to answer again` : 'the missed questions come back tomorrow'}${k.now && k.later ? `, ${k.later} tomorrow` : ''}`;
   function cmod(md, ms, row) {
     const les = md.lessons.map(id => ms.find(m => m.id === id)).filter(Boolean); if (!les.length) return '';
     const pct = Math.round(100 * (md.progress || 0)), w = md.waiting_on || [], ct = checkText(md.check);
