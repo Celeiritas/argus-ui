@@ -1,4 +1,5 @@
-"""Mentor's data model without a browser: courses, the Loose lessons course, the review log (docs/plans/2026-10-25-mentor-courses-phase1.md).
+"""Mentor's data model without a browser: courses, the Loose lessons course, the review log (docs/plans/2026-10-25-mentor-courses-phase1.md),
+and the 4.29 study behaviours: learning steps, undo of the last rating, bury siblings.
 
     python3 tests/mentor_model_test.py -v        (tests/run.sh runs it under "== mentor model")
 
@@ -74,9 +75,11 @@ class ReviewLog(Base):
         now = time.time(); self.db.execute("UPDATE sched SET due=?, last=? WHERE card_id='d:fitts'", (now - 60, now - days_ago * m.DAY)); self.db.commit()
 
     def test_review_log_new_then_review(self):
-        a = self.go(3)
-        self.assertEqual(a['review'], 'learn'); self.assertIsNone(a['ivl_before']); self.assertGreater(a['ivl_after'], 0)
-        self.overdue(3); a = self.go(1)
+        a = self.go(3)                                # new card, Good: learning step 2 (10 min)
+        self.assertEqual(a['review'], 'learn'); self.assertIsNone(a['ivl_before']); self.assertAlmostEqual(a['ivl_after'] * m.DAY, 600, delta=2)
+        self.overdue(0); a = self.go(3)               # Good on the last step: graduates to days
+        self.assertEqual(a['review'], 'learn'); self.assertGreaterEqual(a['ivl_after'], 1)
+        self.overdue(3); a = self.go(1)               # a lapse on a review card: relearning
         self.assertEqual(a['review'], 'review'); self.assertAlmostEqual(a['ivl_before'], 3, delta=0.01)
         self.overdue(0); a = self.go(3)
         self.assertEqual(a['review'], 'relearn')
@@ -86,7 +89,7 @@ class ReviewLog(Base):
         self.assertEqual(self.go(3)['review'], 'learn')
 
     def test_review_log_manual(self):
-        self.go(3)          # due in days: rating it again now is practising ahead
+        self.go(4)          # Easy graduates at once, due in days: rating it again now is practising ahead
         self.assertEqual(self.go(3)['review'], 'manual')
 
     def test_took_capped(self):
@@ -160,6 +163,7 @@ class Course(Base):
         self.assertGreater(n, 0)
 
     def test_check_items_never_served(self):
+        m.set_settings(self.db, {'bury': False})       # every practice card in one sitting (bury siblings is tested in Bury)
         self.load()
         checks = {r[0] for r in self.db.execute("SELECT id FROM cards WHERE is_check=1")}
         served = self.study() + self.study(deck='group:Rebuild a small web server') + self.study(extra=True)
@@ -234,6 +238,208 @@ class Course(Base):
         m.scan_inbox(self.db)
         r = self.db.execute("SELECT ok, msg, module FROM imports").fetchone()
         self.assertEqual((r['ok'], r['module']), (1, 'demo-server')); self.assertIn('in 3 lessons', r['msg'])
+
+class Upgrade429(Upgrade):
+    """4.29 adds sched.step / sched.relearn, attempts.prev_json / attempts.undone and the settings table."""
+    def test_upgrade_twice_keeps_everything(self):
+        self.old_db()
+        m.connect(self.path).close(); self.db = m.connect(self.path)
+        cols = lambda t: {r[1] for r in self.db.execute(f"PRAGMA table_info({t})")}
+        self.assertTrue({'step', 'relearn'} <= cols('sched')); self.assertTrue({'prev_json', 'undone'} <= cols('attempts'))
+        self.assertEqual([self.count(f"SELECT COUNT(*) FROM {t}") for t in ('cards', 'sched', 'attempts')], [3, 2, 4])
+        self.assertEqual(self.count("SELECT COUNT(*) FROM sched WHERE step IS NOT NULL"), 0, 'a card from before steps stays in review')
+        self.assertEqual(self.count("SELECT COUNT(*) FROM attempts WHERE undone=1"), 0)
+        self.assertEqual(m.settings(self.db), {'bury': True})
+
+class Card(Base):
+    """Two plain cards, answered and rated through the same calls the page makes."""
+    def setUp(self):
+        super().setUp(); self.db = m.connect(self.path)
+        with m.DB_LOCK:
+            m.upsert_card(self.db, 'd:fitts', 'd', 'define', "Define: Fitts's law", 'time to point grows with distance',
+                          [{'idea': 'distance', 'any': ['distance']}], {}, [], 0)
+            m.upsert_card(self.db, 'd:hick', 'd', 'define', "Define: Hick's law", 'time to choose grows with the choices',
+                          [{'idea': 'choices', 'any': ['choices']}], {}, [], 1)
+            self.db.commit()
+    def answer(self, card='d:fitts', text='it grows with distance'):
+        return m.answer(self.db, card, text, 3, 4000)
+    def go(self, rating, card='d:fitts'):
+        a = self.answer(card); return a, m.rate(self.db, a['attempt'], rating, False)
+    def sched(self, card='d:fitts'):
+        r = self.db.execute("SELECT * FROM sched WHERE card_id=?", (card,)).fetchone()
+        return {k: r[k] for k in m.SCHED_COLS} if r else None
+    def due_now(self, card='d:fitts', days_ago=0):
+        now = time.time()
+        self.db.execute("UPDATE sched SET due=?, last=? WHERE card_id=?", (now - 1, now - days_ago * m.DAY - 1, card)); self.db.commit()
+
+class Steps(Card):
+    def test_timeline_new_card(self):
+        now = 1_000_000.0
+        s, d, due, reps, lapses, step, relearn = m.schedule(None, 3, now)          # Good: step 2, in 10 min
+        self.assertEqual((due - now, step, relearn, reps, lapses), (600, 1, 0, 1, 0))
+        self.assertEqual((s, d), (m.W[2], m.init_d(3)))
+        row = {'stability': s, 'difficulty': d, 'due': due, 'last': now, 'reps': reps, 'lapses': lapses, 'step': step, 'relearn': relearn}
+        s2, d2, due2, _, _, step2, _ = m.schedule(row, 3, due)                       # Good on the last step: FSRS days
+        self.assertIsNone(step2); self.assertEqual(due2 - due, m.interval_days(s) * m.DAY)
+        self.assertEqual((s2, d2), (s, d), 'same-day steps leave the FSRS memory as the first rating set it')
+        self.assertEqual((m.schedule(row, 1, due)[2] - due, m.schedule(row, 1, due)[5]), (60, 0), 'Again goes back to step 1 (1 min)')
+        self.assertEqual(m.schedule(row, 2, due)[2] - due, 600, 'Hard on step 2 repeats it')
+        self.assertEqual(m.schedule(None, 1, now)[2] - now, 60, 'Again on a new card: 1 min')
+        self.assertEqual(m.schedule(None, 2, now)[2] - now, 360, 'Hard on step 1: between 1 and 10 min (6 min)')
+        e = m.schedule(None, 4, now)
+        self.assertEqual((e[2] - now, e[5]), (m.interval_days(m.W[3]) * m.DAY, None), 'Easy graduates at once')
+        self.assertEqual(m.schedule(None, 1, now)[4], 0, 'Again on a new card is not a lapse')
+
+    def test_timeline_lapse_relearns(self):
+        now = 5_000_000.0
+        row = {'stability': 10.0, 'difficulty': 5.0, 'due': now, 'last': now - 10 * m.DAY, 'reps': 4, 'lapses': 0, 'step': None, 'relearn': 0}
+        s, d, due, reps, lapses, step, relearn = m.schedule(row, 1, now)
+        self.assertEqual((due - now, step, relearn, lapses), (600, 0, 1, 1)); self.assertLess(s, 10)
+        rl = {**row, 'stability': s, 'difficulty': d, 'due': due, 'last': now, 'reps': reps, 'lapses': lapses, 'step': step, 'relearn': relearn}
+        self.assertEqual(m.schedule(rl, 2, due)[2] - due, 900, 'Hard on the one relearning step: half as long again')
+        g = m.schedule(rl, 3, due)
+        self.assertEqual((g[2] - due, g[5], g[6]), (m.interval_days(s) * m.DAY, None, 0), 'Good graduates from relearning')
+        self.assertGreater(m.schedule(rl, 4, due)[2], g[2], 'Easy is longer than Good')
+
+    def test_previews_are_what_rating_does(self):
+        a = self.answer()
+        self.assertEqual({g: round(v * m.DAY) for g, v in a['previews'].items() if g < 4}, {1: 60, 2: 360, 3: 600})
+        self.assertEqual(round(a['previews'][4]), m.interval_days(m.W[3]))
+        r = m.rate(self.db, a['attempt'], 3, False)
+        self.assertAlmostEqual(r['days'] * m.DAY, 600, delta=2); self.assertEqual(r['step'], 1)
+
+    def test_step_card_served_and_counted_when_due(self):
+        self.go(3); self.go(3, 'd:hick')
+        c, nxt = m.next_card(self.db)
+        self.assertIsNone(c, 'a card 10 minutes away is not served yet'); self.assertAlmostEqual(nxt - time.time(), 600, delta=5)
+        st = m.stats(self.db)
+        self.assertEqual((st['due'], st['steps'], st['new']), (0, 2, 0))
+        self.due_now()
+        self.assertEqual(m.next_card(self.db)[0]['id'], 'd:fitts')
+        self.assertEqual(m.stats(self.db)['due'], 1)
+
+class Undo(Card):
+    def test_undo_restores_exactly(self):
+        self.go(4); self.due_now(days_ago=20)                   # a review card, due
+        before = self.sched(); n = self.count("SELECT COUNT(*) FROM attempts")
+        a, r = self.go(1)
+        self.assertNotEqual(self.sched(), before)
+        u = m.undo(self.db, a['attempt'])
+        self.assertTrue(u['undone']); self.assertEqual(u['card']['id'], 'd:fitts'); self.assertNotIn('answer', u['card'])
+        self.assertEqual(self.sched(), before, 'stability, difficulty, due, last, reps, lapses, level, step: as before the rating')
+        self.assertEqual(self.count("SELECT COUNT(*) FROM attempts"), n + 1, 'the log row stays')
+        row = self.db.execute("SELECT rating, undone, review FROM attempts WHERE id=?", (a['attempt'],)).fetchone()
+        self.assertEqual(tuple(row), (1, 1, 'review'))
+
+    def test_undo_a_new_card_makes_it_new_again(self):
+        a, _ = self.go(3)
+        m.undo(self.db, a['attempt'])
+        self.assertEqual(self.sched(), m.NEVER)
+        self.assertEqual(m.stats(self.db)['new'], 2)
+        self.assertEqual(m.next_card(self.db)[0]['id'], 'd:fitts', 'served as a new card again')
+
+    def test_only_the_last_rating_once(self):
+        a1, _ = self.go(3); a2, _ = self.go(3, 'd:hick')
+        self.assertFalse(m.undo(self.db, a1['attempt'])['undone'], 'an older rating')
+        self.assertTrue(m.undo(self.db, a2['attempt'])['undone'])
+        self.assertFalse(m.undo(self.db, a2['attempt'])['undone'], 'the same one twice')
+        self.assertFalse(m.undo(self.db, a1['attempt'])['undone'], 'one step back only: never the rating before an undone one')
+        a3, _ = self.go(3, 'd:hick')
+        self.assertTrue(m.undo(self.db, a3['attempt'])['undone'], 'answering again makes a new rating to undo')
+        self.assertFalse(m.undo(self.db, 99999)['undone'])
+
+    def test_undone_rating_left_out_of_history(self):
+        a, _ = self.go(1); m.undo(self.db, a['attempt'])
+        self.assertEqual(m.stats(self.db)['labels'], 0, 'an undone rating is not a grader label')
+        _, r = self.go(3)
+        self.assertEqual(self.db.execute("SELECT review FROM attempts ORDER BY id DESC LIMIT 1").fetchone()[0], 'learn')
+        self.assertEqual(r['step'], 1, 'the card starts its steps as if the undone Again never happened')
+
+    def test_rating_from_before_undo_existed(self):
+        a, _ = self.go(3)
+        self.db.execute("UPDATE attempts SET prev_json=NULL"); self.db.commit()
+        self.assertFalse(m.undo(self.db, a['attempt'])['undone'])
+
+    def test_undo_a_hold_takes_the_learn_card_back(self):
+        with m.DB_LOCK:
+            m.upsert_card(self.db, 'd:teach-x', 'd', 'teach', 'x', '', [], {}, [], 2)
+            m.upsert_card(self.db, 'd:x', 'd', 'define', 'Define x', 'x is x', [{'idea': 'x', 'any': ['x']}], {}, [], 3, learn_of='d:teach-x')
+            self.db.commit()
+        a = m.answer(self.db, 'd:teach-x', '', None, 1000); m.rate(self.db, a['attempt'], 0, False)
+        right = lambda: m.answer(self.db, 'd:x', 'x', 3, 4000)      # a right answer, so the rating alone sends it back (not stuck)
+        m.rate(self.db, right()['attempt'], 1, False)
+        a2 = right(); r2 = m.rate(self.db, a2['attempt'], 1, False)  # Again twice in a week: held, the teach card sent back
+        self.assertIsNone(a2['stuck'])
+        self.assertTrue(r2['held'] and r2['back'])
+        self.assertEqual(self.sched('d:teach-x')['refresh'], 1)
+        m.undo(self.db, a2['attempt'])
+        self.assertEqual(self.sched('d:teach-x')['refresh'], 0)
+        self.assertEqual(self.sched('d:teach-x')['reps'], 1, 'it stays read')
+
+class Bury(Base):
+    def setUp(self):
+        super().setUp(); self.db = m.connect(self.path)
+        with open(FIXTURE, encoding='utf-8') as fh: doc = json.load(fh)
+        with m.DB_LOCK: m.import_course(self.db, doc, FIXTURE, False)
+        self.deck = m.slug('demo-server--words')
+        self.origin, self.allow = self.deck + ':t-origin', self.deck + ':t-allow'        # one note, n-words
+    def read_learn(self, **kw):
+        """Mark Learn cards read until a practice card comes up; returns it (None: nothing left today)."""
+        while True:
+            c, _ = m.next_card(self.db, self.deck, **kw)
+            if not c or c['kind'] not in m.LEARN: return c
+            a = m.answer(self.db, c['id'], '', None, 1000); m.rate(self.db, a['attempt'], 0, False)
+    def rate_first(self, rating=4):
+        c = self.read_learn(); self.assertIn(c['id'], (self.origin, self.allow))
+        a = m.answer(self.db, c['id'], 'x', 3, 2000); m.rate(self.db, a['attempt'], rating, False)
+        return c['id'], ({self.origin, self.allow} - {c['id']}).pop()
+
+    def test_sibling_hidden_from_next_and_counts(self):
+        new_before = m.stats(self.db, self.deck)['new']
+        first, sib = self.rate_first()
+        self.assertIsNone(self.read_learn(), 'the sibling is not served today')
+        self.assertEqual(m.stats(self.db, self.deck)['new'], new_before - 2, 'neither the answered card nor its buried sibling is waiting')
+        ahead = m.next_card(self.db, self.deck, extra=True)[0]
+        self.assertNotEqual(ahead and ahead['id'], sib, 'practising ahead skips it too')
+
+    def test_sibling_due_review_is_buried_too(self):
+        first, sib = self.rate_first()
+        now = time.time()
+        self.db.execute("INSERT INTO sched(card_id,stability,difficulty,due,last,reps,lapses) VALUES(?,5,5,?,?,3,0)", (sib, now - 60, now - 5 * m.DAY))
+        self.db.commit()
+        self.assertEqual(m.stats(self.db, self.deck)['due'], 0, 'a due sibling is not counted as due today')
+        self.assertIsNone(m.next_card(self.db, self.deck)[0])
+
+    def test_back_tomorrow(self):
+        first, sib = self.rate_first()
+        self.db.execute("UPDATE attempts SET at=at-?", (m.DAY,)); self.db.commit()
+        self.assertEqual(self.read_learn()['id'], sib)
+
+    def test_setting_off(self):
+        self.assertEqual(m.set_settings(self.db, {'bury': False}), {'bury': False})
+        first, sib = self.rate_first()
+        self.assertEqual(self.read_learn()['id'], sib)
+        m.set_settings(self.db, {'bury': True})
+        self.assertIsNone(self.read_learn())
+
+    def test_step_card_not_buried(self):
+        first, sib = self.rate_first(3)                         # Good on a new card: on its steps
+        a = m.answer(self.db, sib, 'x', 3, 2000)                # practised anyway (replay, or ahead): now both are rated today
+        m.rate(self.db, a['attempt'], 3, False)
+        self.db.execute("UPDATE sched SET due=? WHERE step IS NOT NULL", (time.time() - 1,)); self.db.commit()
+        self.assertIn(self.read_learn()['id'], (first, sib), 'cards on their learning steps keep coming back')
+
+    def test_undo_unburies(self):
+        first, sib = self.rate_first()
+        a = self.db.execute("SELECT id FROM attempts WHERE card_id=? ORDER BY id DESC LIMIT 1", (first,)).fetchone()[0]
+        self.assertTrue(m.undo(self.db, a)['undone'])
+        self.assertIn(self.read_learn()['id'], (first, sib))
+        self.assertEqual(m.stats(self.db, self.deck)['new'], 2)
+
+    def test_settings_ignore_unknown_and_wrong_types(self):
+        self.assertEqual(m.set_settings(self.db, {'bury': 'no', 'other': 1}), {'bury': True})
+        self.assertEqual(self.count("SELECT COUNT(*) FROM settings"), 0)
+        self.assertEqual(m.stats(self.db)['settings'], {'bury': True})
 
 _spec = importlib.util.spec_from_file_location('check_deck', os.path.join(R, 'scripts', 'check-deck.py'))
 cd = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(cd)
