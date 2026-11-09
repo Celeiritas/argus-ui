@@ -31,8 +31,9 @@ lesson in this format plus LO / note / role / check fields (import_course). Olde
 Code modules arrive in the inbox folder (~/.local/share/argus-ui/inbox, or ARGUS_MENTOR_INBOX). It is checked every
 time the page asks for a card, so a copied-in file shows up without a restart. Files are read, never moved or deleted.
 
-The server's routes are fixed (decks, next, stats, answer, rate); a drill's blanks arrive in `answer` as a JSON list.
-Scheduling: FSRS-4.5 (Free Spaced Repetition Scheduler) with its published default weights.
+The server's routes are fixed (decks, next, stats, answer, rate, undo, settings); a drill's blanks arrive in `answer` as a JSON list.
+Scheduling: FSRS-4.5 (Free Spaced Repetition Scheduler) with its published default weights, plus Anki's behaviours on top
+(4.29): learning steps (1 min, 10 min; relearning 10 min), undo of the last rating, and bury siblings (same note, until tomorrow).
 """
 import ast, io, json, math, os, re, sqlite3, textwrap, threading, time, glob, tokenize
 from difflib import SequenceMatcher
@@ -113,6 +114,9 @@ CREATE TABLE IF NOT EXISTS los(
   condition TEXT, standard TEXT, parent TEXT);
 CREATE TABLE IF NOT EXISTS notes(
   id TEXT PRIMARY KEY, lesson TEXT, kind TEXT, source_ref TEXT);
+-- 4.29: study settings chosen on the page (bury siblings); one row per key, JSON values
+CREATE TABLE IF NOT EXISTS settings(
+  key TEXT PRIMARY KEY, value TEXT);
 """
 # columns added after 4.5 (older databases get them on start; nothing is lost)
 ADDED = [('cards', 'data', "TEXT DEFAULT '{}'"), ('cards', 'ord', 'INTEGER DEFAULT 0'),
@@ -127,7 +131,11 @@ ADDED = [('cards', 'data', "TEXT DEFAULT '{}'"), ('cards', 'ord', 'INTEGER DEFAU
          ('modules', 'course', 'TEXT'), ('modules', 'cmodule', 'TEXT'), ('modules', 'ord', 'INTEGER DEFAULT 0'),
          ('cards', 'lo', 'TEXT'), ('cards', 'note', 'TEXT'), ('cards', 'role', 'TEXT'), ('cards', 'is_check', 'INTEGER DEFAULT 0'),
          # 4.26: the review log (Anki's revlog): learn/review/relearn/manual, interval before and after (days), time capped at 60 s
-         ('attempts', 'review', 'TEXT'), ('attempts', 'ivl_before', 'REAL'), ('attempts', 'ivl_after', 'REAL'), ('attempts', 'took', 'INTEGER')]
+         ('attempts', 'review', 'TEXT'), ('attempts', 'ivl_before', 'REAL'), ('attempts', 'ivl_after', 'REAL'), ('attempts', 'took', 'INTEGER'),
+         # 4.29: learning steps (the step a card is at, None once it is in review; relearn = the steps after a lapse),
+         # undo (the schedule before a rating, and whether that rating was undone; a log row is never deleted)
+         ('sched', 'step', 'INTEGER'), ('sched', 'relearn', 'INTEGER DEFAULT 0'),
+         ('attempts', 'prev_json', 'TEXT'), ('attempts', 'undone', 'INTEGER DEFAULT 0')]
 LOOSE = 'loose'          # the course every lesson in the old format belongs to, one module per project
 # card roles (spec section 5) and the card kind that runs each today; phase 4 adds the rest
 ROLE_KIND = {'term': ('term',), 'recall': ('define', 'term'), 'explain': ('explain',), 'find-bug': ('explain',),
@@ -626,23 +634,51 @@ def interval_days(s):
 def init_d(g):
     return min(10, max(1, W[4] - (g - 3) * W[5]))
 
+# Learning steps (Anki's behaviour on FSRS, spec section 7): a new card comes back after 1 min, then 10 min, before FSRS
+# schedules it in days; a lapsed card (Again on a review) relearns with one 10 min step. Seconds.
+LEARN_STEPS, RELEARN_STEPS = (60, 600), (600,)
+
+def hard_delay(steps, i):
+    """Hard on a learning step: on the first of two or more steps, halfway between the first two (whole minutes, so the
+    button's preview is exact); with one step, half as long again; otherwise the current step once more."""
+    if i == 0 and len(steps) > 1: return round((steps[0] + steps[1]) / 2 / 60) * 60
+    if len(steps) == 1: return round(steps[0] * 1.5)
+    return steps[i]
+
 def schedule(row, g, now):
-    """row = previous sched row or None; g = rating 1..4. Returns new (stability, difficulty, due, reps, lapses)."""
-    if row is None or not row['reps']:
-        s, d = W[g - 1], init_d(g)
-        due = now + (600 if g == 1 else 3600 if g == 2 else interval_days(s) * DAY)
-        return s, d, due, 1, 1 if g == 1 else 0
-    s, d = row['stability'], row['difficulty']
-    r = retrievability(max(0, (now - (row['last'] or now)) / DAY), s)
-    d = d - W[6] * (g - 3)
-    d = min(10, max(1, W[7] * init_d(3) + (1 - W[7]) * d))
-    if g == 1:
-        s = W[11] * d ** -W[12] * ((s + 1) ** W[13] - 1) * math.exp(W[14] * (1 - r))
-        return s, d, now + 600, row['reps'] + 1, row['lapses'] + 1
-    hard = W[15] if g == 2 else 1
-    easy = W[16] if g == 4 else 1
-    s = s * (1 + math.exp(W[8]) * (11 - d) * s ** -W[9] * (math.exp(W[10] * (1 - r)) - 1) * hard * easy)
-    return s, d, now + interval_days(s) * DAY, row['reps'] + 1, row['lapses']
+    """row = previous sched row or None; g = rating 1..4. Returns the new (stability, difficulty, due, reps, lapses, step,
+    relearn). step: the learning step the card is now at (0-based), None once FSRS schedules it in days.
+    A new card's first rating sets its FSRS memory (stability, difficulty); answers on the same day's steps leave it as it
+    is (FSRS-4.5 learns from one review a day), and graduating gives the interval that memory earns."""
+    new = row is None or not row['reps']
+    step = None if new else row['step']
+    if new:
+        s, d, reps, lapses, step, relearn = W[g - 1], init_d(g), 1, 0, 0, 0
+    elif step is not None:
+        s, d, reps, lapses, relearn = row['stability'], row['difficulty'], row['reps'] + 1, row['lapses'] or 0, row['relearn'] or 0
+    else:
+        s, d = row['stability'], row['difficulty']
+        r = retrievability(max(0, (now - (row['last'] or now)) / DAY), s)
+        d = d - W[6] * (g - 3)
+        d = min(10, max(1, W[7] * init_d(3) + (1 - W[7]) * d))
+        if g == 1:                # a lapse: FSRS's new stability, then the relearning steps
+            s = W[11] * d ** -W[12] * ((s + 1) ** W[13] - 1) * math.exp(W[14] * (1 - r))
+            if RELEARN_STEPS: return s, d, now + RELEARN_STEPS[0], row['reps'] + 1, (row['lapses'] or 0) + 1, 0, 1
+            return s, d, now + interval_days(s) * DAY, row['reps'] + 1, (row['lapses'] or 0) + 1, None, 0
+        hard = W[15] if g == 2 else 1
+        easy = W[16] if g == 4 else 1
+        s = s * (1 + math.exp(W[8]) * (11 - d) * s ** -W[9] * (math.exp(W[10] * (1 - r)) - 1) * hard * easy)
+        return s, d, now + interval_days(s) * DAY, row['reps'] + 1, row['lapses'] or 0, None, 0
+    steps = RELEARN_STEPS if relearn else LEARN_STEPS
+    if not steps: return s, d, now + interval_days(s) * DAY, reps, lapses, None, 0
+    i = 0 if new else min(step, len(steps) - 1)
+    if g == 1: return s, d, now + steps[0], reps, lapses, 0, relearn
+    if g == 2: return s, d, now + hard_delay(steps, i), reps, lapses, i, relearn
+    if g == 3 and i + 1 < len(steps): return s, d, now + steps[i + 1], reps, lapses, i + 1, relearn
+    # graduate: Good on the last step, or Easy on any step. Easy is a day longer than Good would be from the same memory,
+    # except on a new card, whose memory Easy already set (FSRS's own first Easy interval)
+    days = interval_days(s) + (1 if g == 4 and not new else 0)
+    return s, d, now + days * DAY, reps, lapses, None, 0
 
 # Expertise reversal (Kalyuga et al. 2003): blanks that help a beginner slow down someone who knows the code.
 def fast_ms(level, blanks):
@@ -658,7 +694,7 @@ def next_level(db, card, srow, attempt, g):
     if g < 3 or attempt['coverage'] < 0.99 or lv >= 3: return lv, False
     if (attempt['hints'] or 0) >= 3: return lv, False       # a near example or the answer was shown: no step up this time
     feats = json.loads(attempt['features'] or '{}')
-    prev = db.execute("SELECT coverage FROM attempts WHERE card_id=? AND id<? AND level=? AND rating IS NOT NULL ORDER BY id DESC LIMIT 1",
+    prev = db.execute("SELECT coverage FROM attempts WHERE card_id=? AND id<? AND level=? AND rating IS NOT NULL AND COALESCE(undone, 0)=0 ORDER BY id DESC LIMIT 1",
                       (card['id'], attempt['id'], lv)).fetchone()
     if attempt['ms'] <= fast_ms(lv, feats.get('blanks', 1)) or (prev and prev['coverage'] >= 0.99):
         higher = [int(k) for k in fades if int(k) > lv]
@@ -666,10 +702,10 @@ def next_level(db, card, srow, attempt, g):
     return lv, False
 
 def plan(db, card, srow, attempt, g, now):
-    s, d, due, reps, lapses = schedule(srow, g, now)
+    s, d, due, reps, lapses, step, relearn = schedule(srow, g, now)
     level, up = (next_level(db, card, srow, attempt, g) if card['kind'] == 'drill' else (1, False))
     if up: due = min(due, now + DAY)          # try the harder level soon instead of after a long gap
-    return s, d, due, reps, lapses, level, up
+    return s, d, due, reps, lapses, step, relearn, level, up
 
 # ---------- API helpers ----------
 _recent = []        # modules/decks in the order their cards were last served (most recent last)
@@ -739,7 +775,7 @@ def card_payload(db, c, read_only=False):
         if read_only and data.get('near'): out['near'] = {**data['near'], 'answer': c['answer']}
     return out
 
-CARD_Q = ("SELECT c.*, s.due, s.reps, s.level, s.refresh, m.at AS mat FROM cards c LEFT JOIN sched s ON s.card_id=c.id "
+CARD_Q = ("SELECT c.*, s.due, s.reps, s.level, s.refresh, s.step, m.at AS mat FROM cards c LEFT JOIN sched s ON s.card_id=c.id "
           "LEFT JOIN modules m ON m.id=c.deck")
 
 def one_card(db, card_id):
@@ -770,13 +806,52 @@ def deck_where(db, deck):
     if not ids: return "0", []
     return "c.deck IN (" + ",".join("?" * len(ids)) + ")", ids
 
+# ---------- study settings (the page's settings strip; stored in the database, next to the history they shape) ----------
+SETTINGS = {'bury': True}         # bury siblings: spec section 15.3, on by default
+
+def settings(db):
+    out = dict(SETTINGS)
+    for r in db.execute("SELECT key, value FROM settings"):
+        if r['key'] in SETTINGS:
+            try: v = json.loads(r['value'])
+            except ValueError: continue
+            if isinstance(v, type(SETTINGS[r['key']])): out[r['key']] = v
+    return out
+
+def set_settings(db, changes):
+    """Save the known keys with the right type; anything else is ignored. Returns every setting."""
+    with DB_LOCK:
+        for k, v in (changes or {}).items():
+            if k in SETTINGS and isinstance(v, type(SETTINGS[k])):
+                db.execute("INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (k, json.dumps(v)))
+        db.commit()
+    return settings(db)
+
+def day_start(now):
+    """Local midnight before now: "until tomorrow" ends here plus a day."""
+    t = time.localtime(now)
+    return time.mktime((t.tm_year, t.tm_mon, t.tm_mday, 0, 0, 0, 0, 0, -1))
+
+def buried(db, now):
+    """Bury siblings (Anki): once a card is rated today, the other cards from its note wait until tomorrow. Returns a test
+    for a card row (needs id, kind, note, step). A Learn card is never buried, nor a card in its learning steps (it is
+    already on its way), nor anything when the setting is off. Notes come from courses; a Loose lesson card has none."""
+    if not settings(db)['bury']: return lambda r: False
+    rated = {}
+    for r in db.execute("SELECT DISTINCT c.note, a.card_id FROM attempts a JOIN cards c ON c.id=a.card_id WHERE a.at>=? AND a.rating>0 "
+                        "AND COALESCE(a.undone, 0)=0 AND c.note IS NOT NULL", (day_start(now),)):
+        rated.setdefault(r['note'], set()).add(r['card_id'])
+    return lambda r: bool(r['note'] and rated.get(r['note'], set()) - {r['id']} and r['kind'] not in LEARN and r['step'] is None)
+
 def next_card(db, deck=None, extra=False):
     scan_inbox(db)
     now = time.time()
     q, args = CARD_Q, []
     w, wargs = deck_where(db, deck)
     if w: q += " WHERE " + w; args += wargs
-    rows = [r for r in db.execute(q, args).fetchall() if not r['is_check']]     # check items are for module checks, never practice
+    hidden = buried(db, now)
+    # check items are for module checks, never practice; a buried sibling waits for tomorrow (and holds back nothing)
+    rows = [r for r in db.execute(q, args).fetchall() if not r['is_check'] and not hidden(r)]
     # a Learn card sent back by stuck detection comes first, before any review
     back = [r for r in rows if r['refresh'] and r['kind'] in LEARN]
     if back: return card_payload(db, back[0]), None
@@ -896,8 +971,8 @@ def answer(db, card_id, text, confidence, ms, hints=0, reflections=None, skipped
     srow = db.execute("SELECT * FROM sched WHERE card_id=?", (card_id,)).fetchone()
     now = time.time()
     plans = {g: plan(db, c, srow, att, g, now) for g in (1, 2, 3, 4)}
-    previews = {g: round((p[2] - now) / DAY, 3) for g, p in plans.items()}      # days until it returns
-    level_after = {g: p[5] for g, p in plans.items()} if c['kind'] == 'drill' else None
+    previews = {g: round((p[2] - now) / DAY, 6) for g, p in plans.items()}      # days until it returns (to the second: steps are minutes)
+    level_after = {g: p[7] for g, p in plans.items()} if c['kind'] == 'drill' else None
     n = len(hits) + len(missed)
     return {'attempt': cur.lastrowid, 'kind': c['kind'], 'coverage': round(cov, 2), 'hits': hits, 'missed': missed,
             'previews': previews, 'level_after': level_after, 'reference': c['answer'], 'suggested': sug, 'hints': hints,
@@ -933,8 +1008,10 @@ def coach_line(kind, cov, conf, n, extra):
     return f"{k} of {n} key ideas{rough}. {move}"
 
 def review_kind(srow, ratings, now):
-    """What this rating is, for the review log. ratings: the card's earlier ratings, newest first. Learning lasts until
-    the card has been passed (Hard or better) once; rating a card before it is due is practising ahead (manual)."""
+    """What this rating is, for the review log. ratings: the card's earlier ratings, newest first. A card on its learning
+    steps is learning (or relearning, after a lapse); before steps (4.29), learning lasted until the card was first passed
+    (Hard or better). Rating a review card before it is due is practising ahead (manual)."""
+    if srow and srow['reps'] and srow['step'] is not None: return 'relearn' if srow['relearn'] else 'learn'
     if not srow or not any(r >= 2 for r in ratings): return 'learn'
     if srow['due'] is not None and srow['due'] > now: return 'manual'
     return 'relearn' if ratings[0] == 1 else 'review'
@@ -955,29 +1032,58 @@ def rate(db, attempt_id, rating, grade_wrong):
     held, back = False, False
     with DB_LOCK:
         srow = db.execute("SELECT * FROM sched WHERE card_id=?", (a['card_id'],)).fetchone()
-        if c is None: s, d, due, reps, lapses, level, up = (*schedule(srow, rating, now), 1, False)
-        else: s, d, due, reps, lapses, level, up = plan(db, c, srow, a, rating, now)
+        prev = {'sched': {k: srow[k] for k in SCHED_COLS} if srow else None}     # for undo: the schedule as it was
+        if c is None: s, d, due, reps, lapses, step, relearn, level, up = (*schedule(srow, rating, now), 1, False)
+        else: s, d, due, reps, lapses, step, relearn, level, up = plan(db, c, srow, a, rating, now)
         if c and c['learn_of']:
-            older = db.execute("SELECT hints, rating, at FROM attempts WHERE card_id=? AND id<? AND rating IS NOT NULL ORDER BY id DESC LIMIT 3",
-                               (c['id'], attempt_id)).fetchall()
+            older = db.execute("SELECT hints, rating, at FROM attempts WHERE card_id=? AND id<? AND rating IS NOT NULL AND COALESCE(undone, 0)=0 "
+                               "ORDER BY id DESC LIMIT 3", (c['id'], attempt_id)).fetchall()
             # the answer was shown twice, or "Needs work" twice in a week: hold the card a day and send its Learn card back
             if (a['hints'] == 4 and any(o['hints'] == 4 for o in older)) or (rating == 1 and any(o['rating'] == 1 and now - o['at'] < LAPSE_WINDOW for o in older)):
                 held, due = True, max(due, now + DAY)
+                lrow = db.execute("SELECT * FROM sched WHERE card_id=?", (c['learn_of'],)).fetchone()
+                prev['learn'] = {'id': c['learn_of'], 'refresh': lrow['refresh'] if lrow else 0}
                 back = refresh(db, c['learn_of'])
-        db.execute("INSERT INTO sched(card_id,stability,difficulty,due,last,reps,lapses,level) VALUES(?,?,?,?,?,?,?,?) "
+        db.execute("INSERT INTO sched(card_id,stability,difficulty,due,last,reps,lapses,level,step,relearn) VALUES(?,?,?,?,?,?,?,?,?,?) "
                    "ON CONFLICT(card_id) DO UPDATE SET stability=excluded.stability,difficulty=excluded.difficulty,"
-                   "due=excluded.due,last=excluded.last,reps=excluded.reps,lapses=excluded.lapses,level=excluded.level",
-                   (a['card_id'], s, d, due, now, reps, lapses, level))
-        ratings = [r[0] for r in db.execute("SELECT rating FROM attempts WHERE card_id=? AND id<? AND rating>0 ORDER BY id DESC",
+                   "due=excluded.due,last=excluded.last,reps=excluded.reps,lapses=excluded.lapses,level=excluded.level,"
+                   "step=excluded.step,relearn=excluded.relearn",
+                   (a['card_id'], s, d, due, now, reps, lapses, level, step, relearn))
+        ratings = [r[0] for r in db.execute("SELECT rating FROM attempts WHERE card_id=? AND id<? AND rating>0 AND COALESCE(undone, 0)=0 ORDER BY id DESC",
                                             (a['card_id'], attempt_id))]
         before = (srow['due'] - srow['last']) / DAY if srow and srow['due'] is not None and srow['last'] else None
-        db.execute("UPDATE attempts SET rating=?, grade_wrong=?, stuck=COALESCE(stuck, ?), review=?, ivl_before=?, ivl_after=?, took=? WHERE id=?",
+        db.execute("UPDATE attempts SET rating=?, grade_wrong=?, stuck=COALESCE(stuck, ?), review=?, ivl_before=?, ivl_after=?, took=?, "
+                   "prev_json=?, undone=0 WHERE id=?",
                    (rating, 1 if grade_wrong else 0, 'held' if held else None, review_kind(srow, ratings, now), before,
-                    (due - now) / DAY, min(a['ms'] or 0, 60_000), attempt_id))
+                    (due - now) / DAY, min(a['ms'] or 0, 60_000), json.dumps(prev), attempt_id))
         db.commit()
     old = a['level']
-    return {'due': due, 'days': round((due - now) / DAY, 1), 'level': level if c and c['kind'] == 'drill' else None,
+    return {'due': due, 'days': round((due - now) / DAY, 6), 'step': step, 'level': level if c and c['kind'] == 'drill' else None,
             'level_change': (level - old) if old and c and c['kind'] == 'drill' else 0, 'held': held, 'back': back}
+
+SCHED_COLS = ('stability', 'difficulty', 'due', 'last', 'reps', 'lapses', 'level', 'refresh', 'step', 'relearn')
+# a schedule row that was not there before a rating comes back as "never studied" (the row stays; nothing is deleted)
+NEVER = {'stability': None, 'difficulty': None, 'due': None, 'last': None, 'reps': 0, 'lapses': 0, 'level': None, 'refresh': 0,
+         'step': None, 'relearn': 0}
+
+def undo(db, attempt_id):
+    """Ctrl+Z: take back the latest rating. Only that one (the page sends its own session's last rating; an older one, one
+    already undone, or one from before 4.29 is refused), so a stale page can't rewind history. The card's schedule (and a
+    Learn card the rating sent back stops being sent back) returns to exactly what it was; the log row stays, marked undone=1.
+    Returns {'undone': False} when there is nothing to undo, else the card to answer again."""
+    with DB_LOCK:
+        a = db.execute("SELECT * FROM attempts WHERE id=?", (attempt_id,)).fetchone()
+        last = db.execute("SELECT id FROM attempts WHERE rating>0 AND COALESCE(undone, 0)=0 ORDER BY id DESC LIMIT 1").fetchone()
+        if not a or not a['prev_json'] or a['undone'] or not a['rating'] or not last or last['id'] != a['id']: return {'undone': False}
+        if db.execute("SELECT 1 FROM attempts WHERE id>? AND undone=1", (attempt_id,)).fetchone(): return {'undone': False}   # one step back only
+        prev = json.loads(a['prev_json'])
+        vals = prev.get('sched') or NEVER
+        db.execute(f"UPDATE sched SET {', '.join(k + '=?' for k in SCHED_COLS)} WHERE card_id=?", (*(vals.get(k) for k in SCHED_COLS), a['card_id']))
+        if prev.get('learn'):          # only its "sent back" flag: reading it since then still counts
+            db.execute("UPDATE sched SET refresh=? WHERE card_id=?", (prev['learn']['refresh'] or 0, prev['learn']['id']))
+        db.execute("UPDATE attempts SET undone=1 WHERE id=?", (attempt_id,))
+        db.commit()
+    return {'undone': True, 'rating': a['rating'], 'card': practice_card(db, a['card_id'])}
 
 def modules(db):
     """Lessons for the Lessons view: the CTA summary, what's in them, how far along you are, and the Learn cards to read again."""
@@ -1021,12 +1127,14 @@ def stats(db, deck=None):
     now = time.time(); day0 = now - (now % DAY)
     cw, args = deck_where(db, deck)
     w = "WHERE COALESCE(c.is_check, 0)=0" + (" AND " + cw if cw else "")     # check items never wait to be studied
-    cards = db.execute(f"SELECT c.id, c.kind, s.due, s.reps FROM cards c LEFT JOIN sched s ON s.card_id=c.id {w}", args).fetchall()
+    hidden = buried(db, now)       # a buried sibling is neither due nor new until tomorrow
+    cards = [c for c in db.execute(f"SELECT c.id, c.kind, c.note, s.due, s.reps, s.step FROM cards c LEFT JOIN sched s ON s.card_id=c.id {w}", args)
+             if not hidden(c)]
     ids = group_ids(db, deck)
     pats = [i + ':%' for i in ids] if ids is not None else ([deck + ':%'] if deck else [])
     aw = ("WHERE " + " OR ".join("a.card_id LIKE ?" for _ in pats)) if pats else ("WHERE 0" if ids is not None else "")
     att = db.execute(f"SELECT a.* FROM attempts a {aw} ORDER BY a.id DESC LIMIT 500", pats).fetchall()
-    rated = [a for a in att if a['rating']]
+    rated = [a for a in att if a['rating'] and not a['undone']]
     conf = [a for a in rated if a['confidence']]
     # calibration: confidence (1-4 -> 0..1) minus coverage; positive = overconfident
     cal = round(sum((a['confidence'] - 1) / 3 - a['coverage'] for a in conf) / len(conf), 2) if conf else None
@@ -1036,6 +1144,8 @@ def stats(db, deck=None):
     return {'cards': len(practice), 'new': sum(1 for c in practice if c['due'] is None),
             'learn': sum(1 for c in cards if c['kind'] in LEARN and not c['reps']),
             'due': sum(1 for c in practice if c['due'] is not None and c['due'] <= now),
+            # cards on their learning steps that come back later today (once its minutes are up a card counts as due instead)
+            'steps': sum(1 for c in practice if c['step'] is not None and c['due'] is not None and now < c['due'] < day_start(now) + DAY),
             'learned': sum(1 for c in practice if (c['reps'] or 0) > 0),
             'today': sum(1 for a in att if a['at'] >= day0 and a['kind'] not in LEARN),
             'avg_coverage': round(sum(a['coverage'] for a in rated) / len(rated), 2) if rated else None,
@@ -1043,7 +1153,7 @@ def stats(db, deck=None):
             'grade_disputes': sum(1 for a in rated if a['grade_wrong']),
             'hints_per_card': round(sum(a['hints'] or 0 for a in week) / len(week), 2) if week else None,
             'sent_back': sum(1 for a in att if a['stuck'] in ('held', 'repeat', 'skipped') and a['at'] >= day0),
-            'modules': modules(db), 'courses': courses(db), 'imports': imports,
+            'modules': modules(db), 'courses': courses(db), 'imports': imports, 'settings': settings(db),
             'inbox': INBOX.replace(os.path.expanduser('~'), '~', 1)}
 
 # ---------- the local AI's part (docs/mentor-ai.md): stored with the attempt, shown labelled, not used for the rating ----------
@@ -1066,7 +1176,7 @@ def export(db, out):
     Placeholders stay as {{...}}; answers are yours, so the file stays on your machine."""
     n = 0
     for a in db.execute("SELECT a.*, c.prompt, c.answer AS reference FROM attempts a LEFT JOIN cards c ON c.id=a.card_id WHERE a.rating IS NOT NULL ORDER BY a.id"):
-        d = {k: a[k] for k in ('id', 'card_id', 'kind', 'at', 'prompt', 'reference', 'answer', 'confidence', 'ms', 'coverage', 'suggested', 'rating', 'grade_wrong', 'hints', 'grader')}
+        d = {k: a[k] for k in ('id', 'card_id', 'kind', 'at', 'prompt', 'reference', 'answer', 'confidence', 'ms', 'coverage', 'suggested', 'rating', 'grade_wrong', 'hints', 'grader', 'undone')}
         d['features'] = json.loads(a['features'] or '{}'); d['ai'] = json.loads(a['ai']) if a['ai'] else None
         out.write(json.dumps(d) + '\n'); n += 1
     return n

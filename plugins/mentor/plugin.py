@@ -90,6 +90,10 @@ def _post(path, body):
                               int(body.get('hints') or 0), body.get('reflections') or [], bool(body.get('skipped')))
         elif path == 'rate':
             r = mentor.rate(DB, int(body.get('attempt') or 0), int(body.get('rating') or 0), bool(body.get('grade_wrong')))
+        elif path == 'undo':                          # Ctrl+Z: the page's last rating this session; {'undone': False} if not undoable
+            r = mentor.undo(DB, int(body.get('attempt') or 0))
+        elif path == 'settings':                      # the settings strip: known keys with the right type only
+            r = {'settings': mentor.set_settings(DB, {k: v for k, v in body.items() if k in mentor.SETTINGS})}
         else: return 404, {'ok': False, 'msg': 'not found'}
     except (ValueError, TypeError): return 400, {'ok': False, 'msg': 'bad request'}
     if r is None: return 400, {'ok': False, 'msg': 'unknown card or attempt'}

@@ -7,7 +7,8 @@
   let FX = null;                              // Elaia's shared effects (api.fx); null on an Elaia older than 4.18
   let ARGUS = null;                           // Argus's reactions (api.argus); null on an Elaia older than 4.20
   const M = {deck: null, view: 'practice', card: null, t0: 0, result: null, shown: false, decks: [], modules: [], stats: null,
-             hints: 0, reflections: [], idle: null, step: 0, notes: [], session: {answered: 0, right: 0, missed: []}, replay: []};
+             hints: 0, reflections: [], idle: null, step: 0, notes: [], session: {answered: 0, right: 0, missed: []}, replay: [],
+             last: null, again: null};      // last: this session's last rating (Ctrl+Z undoes it); again: the card an undo brought back
   try { M.deck = localStorage.getItem('mentor-deck') || null; M.view = localStorage.getItem('mentor-view') === 'modules' ? 'modules' : 'practice'; } catch (e) {}
   const save = (k, v) => { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch (e) {} };
   const stored = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
@@ -22,9 +23,10 @@
   const IDLE = {drill: 45, term: 30, explain: 90, define: 60};        // seconds without a keystroke before the Hint button pulses
   const BLANK = /\{\{\s*BLANK(?:_(\d+))?\s*\}\}/g;
   const back = d => d < 1 / 24 ? `${Math.max(1, Math.round(d * 1440))} min` : d < 1 ? `${Math.round(d * 24)} hour${Math.round(d * 24) === 1 ? '' : 's'}` : `${Math.round(d)} day${Math.round(d) === 1 ? '' : 's'}`;
-  const verb = v => v === 1 ? 'Run again in 10 min' : 'Save and continue';
+  const verb = (v, previews) => v === 1 ? `Run again in ${back(previews[1])}` : 'Save and continue';     // Again's time from the server: 1 min on a new card, 10 min after a lapse
   const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
   const words = s => (s.match(/[A-Za-z0-9_']+/g) || []).length;
+  const typing = el => !!el && (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && /^(text|search|number|email|url)$/.test(el.type)) || el.isContentEditable);
   function calText(c) { if (c == null) return 'not enough answers yet'; if (c > .15) return 'running overconfident'; if (c < -.15) return 'running underconfident'; return 'well calibrated'; }
   function when(ts) { if (!ts) return ''; const d = new Date(ts * 1000), m = (ts * 1000 - Date.now()) / 60000; return m < 60 ? `in ${Math.max(1, Math.round(m))} min` : m < 1440 ? `at ${d.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'})}` : d.toLocaleDateString([], {weekday: 'short', month: 'short', day: 'numeric'}); }
   // text from a lesson: paragraphs, `inline code` and ```fenced``` blocks; escaped first, so nothing in it becomes markup
@@ -67,8 +69,17 @@
           <button type="button" data-view="practice" aria-pressed="${M.view === 'practice'}">Study</button>
           <button type="button" data-view="modules" aria-pressed="${M.view === 'modules'}">Lessons</button></div>
         <div class="pick"><label for="mdeck">Study</label><select id="mdeck"></select></div></div>
-      <p class="mstats" id="mstats" aria-live="polite"></p><div id="mpanel"></div></section>`;
+      <p class="mstats" id="mstats" aria-live="polite"></p>
+      <details class="msettings"><summary>Study settings</summary>
+        <label class="check"><input type="checkbox" id="mbury" ${(s.settings || {}).bury !== false ? 'checked' : ''}> Hide a card's siblings until tomorrow</label>
+        <p class="help">Siblings are cards made from the same note of a course. After you answer one, the others wait until tomorrow, so one doesn't give the next away.</p></details>
+      <div id="mpanel"></div></section>`;
     fillPicker();
+    $('#mbury').onchange = async e => {
+      let r; try { r = await send('settings', {bury: e.target.checked}); } catch (x) { r = {ok: false}; }
+      if (!r.ok) { e.target.checked = !e.target.checked; return toast("Couldn't save that setting. Check that the server is on, then try again."); }
+      e.target.checked = r.settings.bury; toast(r.settings.bury ? 'Siblings now wait until tomorrow.' : 'Siblings now come up the same day.'); stats();
+    };
     $('#mdeck').onchange = e => { M.replay = []; M.deck = e.target.value || null; save('mentor-deck', M.deck); if (M.view !== 'practice') setView('practice'); else next(); };
     $$('.views button').forEach(b => b.onclick = () => setView(b.dataset.view));
     setView(M.view);
@@ -99,7 +110,7 @@
     M.stats = s; M.modules = s.modules || M.modules; fillPicker();
     const m = M.deck && moduleOf(M.deck), read = m ? m.learn.filter(l => l.seen).length : 0, all = m ? m.learn.length : 0;
     $('#mstats').innerHTML = (m && all ? `<span class="lp"><span class="lpbar" role="progressbar" aria-label="Lesson cards read" aria-valuemin="0" aria-valuemax="${all}" aria-valuenow="${read}"><span style="width:${Math.round(100 * read / all)}%"></span></span><span>${read} of ${all} lesson cards read</span></span>` : '')
-      + `<span>${s.learn ? `<b>${s.learn}</b> to learn · ` : ''}<b>${s.due}</b> due · <b>${s.new}</b> new</span>`;
+      + `<span>${s.learn ? `<b>${s.learn}</b> to learn · ` : ''}<b>${s.due}</b> due · <b>${s.new}</b> new${s.steps ? ` · <b>${s.steps}</b> back later today` : ''}</span>`;
   }
   const clearIdle = () => { if (M.idle) clearTimeout(M.idle); M.idle = null; };
 
@@ -108,8 +119,9 @@
     if (M.view !== 'practice') return;
     clearIdle(); stats();
     const seq = M.seq = (M.seq || 0) + 1;         // two quick picker changes: only the last request may draw
-    const replaying = M.replay.length > 0;
-    const r = replaying ? await get('next?replay=' + encodeURIComponent(M.replay.shift()))
+    const again = M.again; M.again = null;
+    const replaying = !again && M.replay.length > 0;
+    const r = again ? {card: again} : replaying ? await get('next?replay=' + encodeURIComponent(M.replay.shift()))
       : await get('next?' + (M.deck ? 'deck=' + encodeURIComponent(M.deck) + '&' : '') + (extra ? 'extra=1' : ''));
     if (seq !== M.seq || M.view !== 'practice') return;
     M.card = r.card; if (M.card) M.card.replaying = replaying; M.result = null; M.hints = 0; M.reflections = []; M.step = 0; M.notes = [];
@@ -129,7 +141,7 @@
       ${big && c.kind !== 'term' ? `<details class="big"><summary>Show the big picture of this lesson</summary>${rich(big)}</details>` : ''}`;
     const conf = `<fieldset><legend>How sure are you?</legend><div class="seg">${CONF.map(([v, n]) => `<label><input type="radio" name="conf" value="${v}">${n}</label>`).join('')}</div></fieldset>`;
     const go = `<div class="row"><button type="submit" class="primary" id="checkBtn">Check answer</button><button type="button" id="hintBtn" aria-describedby="hinthelp">Show a hint</button></div>
-      <p class="help" id="hinthelp">A hint lowers the rating Mentor suggests; the answer counts as a blank. <kbd>Alt</kbd>+<kbd>H</kbd> opens the next hint.</p><div id="hints" aria-live="polite"></div>`;
+      <p class="help" id="hinthelp">A hint lowers the rating Mentor suggests; the answer counts as a blank. <kbd>Alt</kbd>+<kbd>H</kbd> opens the next hint; <kbd>Esc</kbd> leaves the answer box, then <kbd>Space</kbd> shows the answer.</p><div id="hints" aria-live="polite"></div>`;
     let body;
     if (c.kind === 'drill' && c.level < 3) {
       const nums = [...new Set([...c.code.matchAll(BLANK)].map(m => +(m[1] || 1)))].sort((a, b) => a - b), done = new Set();
@@ -165,7 +177,10 @@
     const idle = () => { clearIdle(); if (M.hints < 4) M.idle = setTimeout(() => hb.classList.add('pulse'), (IDLE[c.kind] || 60) * 1000); };
     form.oninput = () => { label(); hb.classList.remove('pulse'); idle(); }; label(); idle();
     (boxes[0] || ta).focus();
-    form.onkeydown = e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); form.requestSubmit(); } };
+    form.onkeydown = e => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); form.requestSubmit(); }
+      else if (e.key === 'Escape' && typing(e.target)) { e.preventDefault(); const q = $('#qprompt'); q.tabIndex = -1; q.focus(); }   // out of the box: Space and Ctrl+Z work
+    };
     boxes.forEach((b, i) => b.onkeydown = e => { if (e.key !== 'Enter' || e.ctrlKey || e.metaKey) return; e.preventDefault(); boxes[i + 1] ? boxes[i + 1].focus() : form.requestSubmit(); });
     if (ta && ta.classList.contains('codein')) ta.onkeydown = e => {   // keep the indent; one level deeper after a colon
       if (e.key !== 'Enter' || e.ctrlKey || e.metaKey || e.shiftKey) return;
@@ -251,8 +266,8 @@
       ${detail}${note}
       ${c.replaying ? `<p class="coach">A replay: practice only. The card keeps the schedule from your first try.</p><div class="row"><button type="button" class="primary" id="replayNext">${M.replay.length ? 'Go to the next mistake' : 'Finish the replay'}</button></div></div>` : `<fieldset class="rategroup"><legend>How well did you know it? Mentor suggests <b>${esc(RATES.find(x => x[0] === r.suggested)[1])}</b>.</legend>
         <div class="seg rates">${RATES.map(([v, nm, d], i) => `<label><input type="radio" name="rate" value="${v}" ${v === r.suggested ? 'checked' : ''}><span><b>${i + 1}. ${nm}</b><small>${d}</small><small class="when">In ${back(r.previews[v])}${lvl(v)}</small>${v === r.suggested ? '<em class="tag">Mentor suggests</em>' : ''}</span></label>`).join('')}</div>
-        <p class="help">The suggestion comes from what you got right${M.hints ? ' and the hints you used' : ''}; pick what feels true. Keys <kbd>1</kbd>–<kbd>4</kbd> choose, <kbd>Enter</kbd> saves.</p></fieldset>
-      <div class="row"><button type="button" class="primary" id="rateBtn">${verb(r.suggested)}</button></div>
+        <p class="help">The suggestion comes from what you got right${M.hints ? ' and the hints you used' : ''}; pick what feels true. Keys <kbd>1</kbd>–<kbd>4</kbd> choose, <kbd>Enter</kbd> saves, <kbd>Ctrl</kbd>+<kbd>Z</kbd> takes the last rating back.</p></fieldset>
+      <div class="row"><button type="button" class="primary" id="rateBtn">${verb(r.suggested, r.previews)}</button></div>
       <details class="report"><summary>Report a grading problem</summary><label class="check"><input type="checkbox" id="gw"> Mentor's grade was wrong: my answer was better or worse than it scored</label></details></div>`}`;
     if (c.replaying) { $('#rhead').focus(); $('#replayNext').onclick = () => { M.result = null; next(); }; return; }
     $('#rhead').focus();
@@ -271,7 +286,7 @@
     }
     $('#gw').onchange = e => M.grade_wrong = e.target.checked;
     const pick = () => +($('input[name=rate]:checked')?.value || 0);
-    $$('input[name=rate]').forEach(i => i.onchange = () => $('#rateBtn').textContent = verb(pick()));
+    $$('input[name=rate]').forEach(i => i.onchange = () => $('#rateBtn').textContent = verb(pick(), r.previews));
     $('#rateBtn').onclick = () => pick() && rate(pick());
   }
   async function rate(v) {
@@ -279,10 +294,32 @@
     let s; try { s = await send('rate', {attempt: r.attempt, rating: v, grade_wrong: M.grade_wrong}); } catch (e) { s = {ok: false}; }
     if (!s.ok) { M.result = r; return toast("Couldn't save that rating. Try again in a moment."); }
     if (s.learn) { toast(r.skipped ? 'Skipped. It comes back if the practice card goes wrong.' : 'Read. On to the next card.'); return next(); }
-    M.session.answered++; if (r.coverage >= .99 && !r.shown && v > 1) M.session.right++; else M.session.missed.push(M.card && M.card.id);
+    const right = r.coverage >= .99 && !r.shown && v > 1;
+    M.session.answered++; if (right) M.session.right++; else M.session.missed.push(M.card && M.card.id);
+    M.last = {attempt: r.attempt, card: M.card && M.card.id, right};
     const lv = s.level_change > 0 ? ` Level ${s.level} next time: ${s.level === 3 ? "you'll write the whole body" : 'the logic is blanked'}.` : s.level_change < 0 ? ` Back to level ${s.level} for now.` : '';
-    toast(s.held ? `Held for a day${s.back ? ', and the lesson card for it comes back first' : ''}.` : (v === 1 ? 'Coming back in 10 minutes for another try.' : `Saved. Next review in ${back(s.days)}.`) + lv);
+    toast((s.held ? `Held for a day${s.back ? ', and the lesson card for it comes back first' : ''}.` : v === 1 ? `Coming back in ${back(s.days)} for another try.`
+      : s.step != null ? `Saved. One more look in ${back(s.days)}.` : `Saved. Next review in ${back(s.days)}.`) + lv, {label: 'Undo', fn: undo});
     next();
+  }
+  // Ctrl+Z (or Undo on the toast): take back this session's last rating; the card comes back to answer again
+  async function undo() {
+    const L = M.last; if (!L) return toast('Nothing to undo.');
+    let s; try { s = await send('undo', {attempt: L.attempt}); } catch (e) { s = {ok: false}; }
+    if (!s.ok) return toast("Couldn't reach Mentor to undo that. Check that the server is on, then try again.");
+    M.last = null;
+    if (!s.undone || !s.card) return toast('Nothing to undo.');
+    const t = M.session; t.answered = Math.max(0, t.answered - 1);
+    if (L.right) t.right = Math.max(0, t.right - 1); else { const i = t.missed.lastIndexOf(L.card); if (i >= 0) t.missed.splice(i, 1); }
+    toast(`Undone: ${RATES.find(x => x[0] === s.rating)[1]} is taken back. Answer the card again.`);
+    M.again = s.card;
+    if (M.view !== 'practice') setView('practice'); else next();
+  }
+  // Space on a question (not in a text box): show the answer. Typed something: check it; nothing typed: the answer rung
+  function showAnswer() {
+    const typed = $$('#qform input.blank').some(b => b.value.trim()) || ($('#qform textarea#ans') || {value: ''}).value.trim();
+    if (typed || M.hints === 4) return $('#qform').requestSubmit();
+    hint(4);
   }
 
   /* ----- Learn cards: orientation, teach (+ spot it), level 0 worked example, pre-read ----- */
@@ -500,10 +537,21 @@
     });
   }
 
+  // text boxes typed into since they were drawn: only those have an undo of their own when they are empty
+  const edited = new WeakSet(); addEventListener('input', e => { if (typing(e.target)) edited.add(e.target); }, true);
   addEventListener('keydown', e => {
     const a = document.activeElement;
-    if (!ROOT) return;
+    if (!ROOT || !ROOT.isConnected || !ROOT.getClientRects().length) return;      // Mentor isn't the section on screen
     if (e.altKey && (e.key === 'h' || e.key === 'H') && M.card && !M.result && !isLearn(M.card)) { e.preventDefault(); return hint(); }
+    // Ctrl+Z: the last rating; a text box keeps its own undo when it has text, or when you emptied it and there is no
+    // rating to take back. A fresh empty box has no undo of its own, so there Mentor answers (Nothing to undo)
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'z' || e.key === 'Z')) {
+      if (typing(a) && (a.value || (!M.last && edited.has(a)))) return;
+      e.preventDefault(); return undo();
+    }
+    // Space: show the answer of a practice card, when no text box, button or other control has the key
+    if (e.key === ' ' && !e.ctrlKey && !e.metaKey && !e.altKey && M.view === 'practice' && M.card && !M.result && !isLearn(M.card) && $('#qform')
+        && !typing(a) && !/^(BUTTON|SELECT|SUMMARY|A|INPUT|TEXTAREA|LABEL)$/.test(a.tagName) && !a.isContentEditable) { e.preventDefault(); return showAnswer(); }
     if (!M.result || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || (a.tagName === 'INPUT' && a.type === 'text')) return;
     if (/^[1-4]$/.test(e.key)) { const i = $$('input[name=rate]')[+e.key - 1]; if (i) { i.checked = true; i.dispatchEvent(new Event('change')); i.focus(); } }
     else if (e.key === 'Enter' && a.type === 'radio') { e.preventDefault(); $('#rateBtn').click(); }
