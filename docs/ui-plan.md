@@ -26,7 +26,7 @@ Each section below reuses these, so they come first and keep every page consiste
 | **`holdConfirm(button, onDone)`** (built in 4.18) | The 3-second hold with a ring that fills and the words "Hold… 3 · 2 · 1"; Space/Enter held works the same; reduced motion shows the countdown words only. | Throne's Approve and Roll back, Delivery's Release. One implementation, one test. |
 | **Status v2** | `GET api/<id>/status` may add `needs` (true when the owner should act), `action` (a verb-first label, 32 characters at most, e.g. "Approve argus-ui 4.15.0") and `count`. Old plugins keep working: `{line}` alone still shows. | Home's "Needs you" list is built from it. |
 | **Events** | `GET api/<id>/events?since=<iso>` → `[{t, kind, text, link}]`, at most 50, newest last, read from the agent's own logs. | Home's "Today" strip and each page's history use it. |
-| **`ctx.jobs()`** | A server plugin can read the task information Elaia already collects (last run, next run, state) without its own subprocess. | Mnemosyne has no status file; her page needs the timer's last and next run. |
+| **`ctx.jobs()`** (built in 4.30.0: `ctx.jobs(prefix)`, docs/leafy-plugin.md) | A server plugin can read the task information Elaia already collects (last run, next run, state) without its own subprocess. | Mnemosyne has no status file; her page needs the timer's last and next run. |
 
 ## 3. Home: the agora (`<base>/home`)
 **What it is for:** *"What needs me today, across the whole realm, and where do I go?"* Home is about **you**. Watch is about **the machines**: "is every task running?". Today they look alike (a grid of tiles next to a grid of cards), so Home changes shape.
@@ -105,6 +105,7 @@ Ten of the twelve-plus-two seats now have powers (4.15 added Hermes' sandal, Ath
 **Art (needs approval):** the tablet, the throne silhouette and the stage nodes. The bolt and the crumble exist already.
 
 ## 10. Mnemosyne · Memory (`<base>/memory`, new bundled plugin in this repo)
+**Built in 4.30.0** (docs/memory.md) with plain bars and words; the jar, shelf and vessel art waits for approval. The PC copy reads a marker file (`last-backup.json`) instead of a manual tick, and Back up now refuses while a game runs (Medusa's game guard).
 **What it is for:** are my backups fresh, and how many copies exist. Mnemosyne has no repo and no status file. Her job writes snapshots `<server>-brain_<date>_<time>.tar.gz` weekly (Sun 04:00), so the page reads the snapshot folder (names, sizes, times) and `ctx.jobs()`.
 - **Shows:** the last snapshot's age and size, the next run, and the count and total size of snapshots. Then **the shelf**: one jar per snapshot, its height scaled by size, labelled by date, the newest glowing faintly.
 - **3-2-1, honestly:** three vessels: *on the server* ✓, *on the PC* (✓ when a copy is there; the PC folder is not visible from the server, so this is a manual tick for now), *off-site* ✕ "drives planned". It shows what isn't done instead of hiding it.
