@@ -5,13 +5,14 @@ const fs = require('fs'), path = require('path');
 const INBOX = path.join(process.env.FIXTURES || '.', '..', 'home', '.local', 'share', 'argus-ui', 'inbox');
 const api = (p, what, body) => body ? p.request.post(BASE + 'api/mentor/' + what, {data: body}).then(r => r.json()) : p.request.get(BASE + 'api/mentor/' + what).then(r => r.json());
 const LEARN = ['orientation', 'teach', 'level0', 'preread'];
-// answer the next card of a lesson through the API (a Learn card is marked read; a practice card gets a blank answer), so the page moves on
+// answer the next card of a lesson through the API (a Learn card is marked read; a practice card gets a blank answer, rated Easy so
+// it graduates at once: a card on its 1 or 10 min learning steps (4.29) would come back in the middle of a later check), so the page moves on
 async function skip(p, deck, kind, n) {
   for (let i = 0; i < n; i++) {
     const {card} = await api(p, 'next?deck=' + deck);
     if (!card || card.kind !== kind) return card;
     const r = await api(p, 'answer', {card: card.id, text: LEARN.includes(kind) ? 'read it, five words long' : '', confidence: 2, ms: 1000});
-    await api(p, 'rate', {attempt: r.attempt, rating: LEARN.includes(kind) ? 0 : 3, grade_wrong: false});
+    await api(p, 'rate', {attempt: r.attempt, rating: LEARN.includes(kind) ? 0 : 4, grade_wrong: false});
   }
   return (await api(p, 'next?deck=' + deck)).card;
 }
@@ -24,18 +25,57 @@ run(async b => {
   check(await p.locator('#mdeck option[value="argus-code"]').count() === 1, 'the built-in lesson is in the Study picker');
   check(/to learn/.test(await p.locator('#mstats').textContent()), 'the stats line counts the Learn cards still to read');
 
+  // the settings strip (4.29): bury siblings, on by default, saved on the server
+  check(await p.locator('#mbury').isChecked(), 'Study settings: hiding siblings until tomorrow is on by default');
+  await p.locator('.msettings summary').click(); await p.locator('#mbury').uncheck(); await p.waitForTimeout(400);
+  check((await api(p, 'stats')).settings.bury === false, 'turning it off is saved');
+  await p.locator('#mbury').check(); await p.waitForTimeout(400);
+  check((await api(p, 'stats')).settings.bury === true, 'and on again');
+  await p.locator('.msettings summary').click();
+
   // a plain deck still works as before
   await p.selectOption('#mdeck', 'psych-design'); await p.waitForTimeout(500);
+  const q1 = await p.locator('#qprompt').textContent();
   await p.locator('#ans').fill('spread out over time, remembered better than cramming');
   await p.locator('#ans').focus(); await p.keyboard.press('Control+Enter'); await p.waitForTimeout(600);
   const labels = await p.locator('.seg.rates label b').allTextContents();
   check(labels.join('|') === '1. Again|2. Hard|3. Good|4. Easy', "ratings read Again, Hard, Good, Easy (Anki's order)");
   check(await p.locator('input[name=rate]:checked').count() === 1, "Mentor's suggestion is preselected");
   check(await p.locator('#rpanel .verdict[role=status] svg').count() === 1 && /Correct|Partly right|Not quite/.test(await p.locator('#rhead').textContent()), 'the verdict has an icon and a word, not colour alone');
+  check(/In 1 min/.test(await p.locator('.seg.rates label').nth(0).textContent()) && /In 6 min/.test(await p.locator('.seg.rates label').nth(1).textContent())
+    && /In 10 min/.test(await p.locator('.seg.rates label').nth(2).textContent()) && /In \d+ days/.test(await p.locator('.seg.rates label').nth(3).textContent()),
+    'a new card shows its learning steps on the buttons: 1 min, 6 min, 10 min, then days for Easy');
   await p.keyboard.press('1');
-  check(await p.locator('#rateBtn').textContent() === 'Run again in 10 min', 'key 1 picks Again and the button says what happens');
+  check(await p.locator('#rateBtn').textContent() === 'Run again in 1 min', 'key 1 picks Again and the button says what happens (step 1: 1 min)');
+  const before = await api(p, 'stats?deck=psych-design');
   await p.keyboard.press('Enter'); await p.waitForTimeout(700);
-  check(/10 minutes/.test(await p.locator('#toastText').textContent()), 'Again brings the card back in 10 minutes');
+  check(/1 min/.test(await p.locator('#toastText').textContent()) && await p.locator('#toastAct').textContent() === 'Undo', 'Again brings the card back in 1 minute; the toast offers Undo');
+
+  // Ctrl+Z (4.29) takes the last rating back: the card comes back to answer again; a second press has nothing to undo.
+  // The next card's answer box has focus but is empty, so this is not the box's own undo
+  check(await p.evaluate(() => document.activeElement.id) === 'ans', "the next card's answer box has focus");
+  await p.keyboard.press('Control+z'); await p.waitForTimeout(700);
+  check(/Undone: Again/.test(await p.locator('#toastText').textContent()) && await p.locator('#qprompt').textContent() === q1, 'Ctrl+Z takes the rating back and the same card is asked again');
+  const after = await api(p, 'stats?deck=psych-design');
+  check(after.new === before.new && after.steps === 0, 'the card is new again, not on its learning steps');
+  await p.keyboard.press('Control+z'); await p.waitForTimeout(500);
+  check(/Nothing to undo/.test(await p.locator('#toastText').textContent()), 'a second Ctrl+Z says there is nothing to undo');
+  await p.locator('#ans').fill('typed'); await p.locator('#ans').press('Control+z');
+  check(!/Undone/.test(await p.locator('#toastText').textContent()), "Ctrl+Z in a box with text in it is the box's own undo");
+  await p.locator('#ans').fill('');
+
+  // Space shows the answer (4.29), but never from inside a text box
+  await p.locator('#ans').press(' ');
+  check(await p.locator('#ans').inputValue() === ' ' && await p.locator('#rpanel').count() === 0, 'Space in the answer box types a space');
+  await p.locator('#ans').fill(''); await p.keyboard.press('Escape');
+  check(await p.evaluate(() => document.activeElement.id) === 'qprompt', 'Esc leaves the answer box for the question');
+  await p.keyboard.press(' '); await p.waitForTimeout(500);
+  check(/Hint 4 of 4/.test(await p.locator('#hints').textContent()) && await p.locator('#checkBtn').textContent() === 'Rate it', 'Space with nothing typed shows the answer');
+  await p.keyboard.press(' '); await p.waitForTimeout(600);
+  check(/The answer was shown/.test(await p.locator('#rhead').textContent()), 'Space on Rate it (a button) presses it');
+  await p.locator('#rateBtn').click(); await p.waitForTimeout(700);
+  await p.locator('#ans').fill('cues you see instead of ones you remember'); await p.keyboard.press('Escape'); await p.keyboard.press(' '); await p.waitForTimeout(600);
+  check(await p.locator('#rpanel .verdict').count() === 1 && /You wrote/.test(await p.locator('#rpanel').textContent()), 'Space with an answer typed checks it and shows the model answer');
 
   // a lesson starts with its orientation: one screen, and five typed words before the cards
   await p.selectOption('#mdeck', 'argus-code'); await p.waitForTimeout(600);
@@ -84,7 +124,8 @@ run(async b => {
   check(await p.locator('.verdict.ok').count() === 1 && /Correct · context manager/.test(await p.locator('#rhead').textContent()) && /2 hints used/.test(await p.locator('#rpanel .deckname').first().textContent()), 'a right term is confirmed (Correct, in green, with a tick) and the hints used are shown');
   check(await p.locator('input[name=rate]:checked').first().inputValue() === '3', 'rung 2 caps the suggested rating at Good');
   check(await p.locator('.defs dt', {hasText: "Where it's used"}).count() === 1, 'the feedback shows where the term is used');
-  await p.locator('#rateBtn').click(); await p.waitForTimeout(500);
+  await p.keyboard.press('4'); await p.locator('#rateBtn').click(); await p.waitForTimeout(500);       // Easy: graduates, off its learning steps
+  const shownId = (await api(p, 'next?deck=argus-code')).card.id;      // the card the page shows next
   // "Show answer" on a blank card offers a hint first; the answer rung counts as a blank
   await p.locator('#checkBtn').click(); await p.waitForTimeout(300);
   check(await p.locator('#offer').count() === 1, 'a blank Show answer offers a hint first');
@@ -97,6 +138,12 @@ run(async b => {
   check(/^Teach/.test(await p.locator('.kind').textContent()) && /back to the lesson/.test(await p.locator('.deckname').first().textContent()), 'the skipped teach card comes back before anything else');
   check(await p.locator('#guess').count() === 0 && await p.locator('.defs').count() === 1, 'back to the lesson: no second guess, the explanation straight away');
   await skip(p, 'argus-code', 'teach', 1);
+  // the term rated Again above is back in 1 min (its first learning step): answer it right now, Easy, so it graduates
+  const AC = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'themes', 'leafy-realm', 'decks', 'argus-code.json')));
+  const tAgain = AC.tier_3_terminology_cards.find(t => 'argus-code:' + t.id === shownId);
+  check(!!tAgain, 'the card shown with its answer was a term card: ' + shownId);
+  const ta2 = await api(p, 'answer', {card: shownId, text: tAgain ? tAgain.term : '', confidence: 4, ms: 2000});
+  await api(p, 'rate', {attempt: ta2.attempt, rating: 4, grade_wrong: false});
 
   // worked example (level 0) before the first drill: one annotation at a time, the why after three typed words, then a self-explanation
   const l0 = await skip(p, 'argus-code', 'term', 8);
@@ -215,8 +262,6 @@ run(async b => {
   const h = await api(p, 'answer', {card: '20261020_120200_old_shape:drill_01', hint: 1});
   check(h.rung === 2 && /returns/.test(h.text) && h.next === 4, 'a card without authored hints skips to the expert\'s move, then the answer');
   await p.selectOption('#mdeck', ''); await p.selectOption('#mdeck', 'argus-code'); await p.waitForTimeout(600);
-  const ta2 = await api(p, 'answer', {card: 'argus-code:term_02', text: 'generator expression', confidence: 4, ms: 2000});   // else it is the soonest-due card
-  await api(p, 'rate', {attempt: ta2.attempt, rating: 4, grade_wrong: false});
   await p.locator('#ahead').click(); await p.waitForTimeout(600);
   check(/level 3 of 3/.test(await p.locator('.kind').textContent()) && await p.locator('textarea.codein').count() === 1, 'Practice ahead brings back the drill at level 3: a body to write');
   await p.locator('textarea.codein').focus(); await p.keyboard.type('with _lock:'); await p.keyboard.press('Enter');
