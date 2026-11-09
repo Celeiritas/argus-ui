@@ -33,16 +33,18 @@ function playOr(k, fallback) { if (!soundOn) return; const a = audio[k]; if (!a 
   try { const n = a.cloneNode(); n.volume = a.volume; n.play().catch(() => fallback && fallback()); } catch (e) {} }
 function muteLabel() { $('#mute').textContent = soundOn ? 'Mute sounds' : 'Unmute sounds'; fitRealms(); }
 // many sections on a laptop: before the bar wraps, the pills drop their second line (still read out), then the weather goes,
-// then the marks and padding shrink (44 px hit areas kept), and last the bar becomes one row that scrolls sideways
-const FIT = ['compact', 'bare', 'tight', 'scroll'];
+// then (4.28.0) the bar becomes one row that scrolls sideways like a phone's, with Mute sounds held at its right end
 function fitRealms() {
   const bar = $('.realms'), first = bar.querySelector('.realm'), last = $('#mute');
   const wraps = () => last.getBoundingClientRect().top >= first.getBoundingClientRect().bottom;
-  bar.classList.remove(...FIT);
+  bar.classList.remove('compact', 'bare', 'scroll');
   if (!first || getComputedStyle(bar).flexDirection === 'column' || !wraps()) return;   // the ultrawide rail is a column
-  for (const step of FIT) { bar.classList.add(step); if (!wraps()) return; }
+  bar.classList.add('compact'); if (wraps()) bar.classList.add('bare'); if (wraps()) bar.classList.add('scroll');
 }
 let fitAt; addEventListener('resize', () => { cancelAnimationFrame(fitAt); fitAt = requestAnimationFrame(fitRealms); });
+// a scrolling bar on a laptop: the mouse wheel moves it sideways (a phone swipes)
+$('.realms').addEventListener('wheel', e => { const bar = e.currentTarget;
+  if (bar.classList.contains('scroll') && Math.abs(e.deltaY) > Math.abs(e.deltaX)) { bar.scrollLeft += e.deltaY; e.preventDefault(); } }, {passive: false});
 $('#mute').onclick = () => { soundOn = !soundOn; try { localStorage.setItem('argus-sound', soundOn ? 'on' : 'off'); } catch (e) {} muteLabel(); };
 muteLabel();
 let actx = null;

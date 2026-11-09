@@ -43,6 +43,7 @@ A folder with a missing or invalid manifest is skipped quietly. If a theme's `co
 ## What a static plugin gets
 - **Its section, `<base>/<id>`.** Argus's page as a side page (Argus in the corner, the section bar on top), with the plugin's `entry` in a frame that fills the content area, plus a "Show full screen" button. The 15-second refresh never reloads the frame, so a game keeps running.
 - **Its files at `<base>/plugins/<id>/...`.** These are served from the plugin's folder only: the same path guard as `static/`, so `..` can't climb out, and `plugin.json` is never served. `plugins/<id>` redirects to `plugins/<id>/` so relative URLs work. Types are set for `.js`/`.mjs` (`text/javascript`), `.json`, `.glb`, `.wasm`, images and the like.
+- **Caching.** Every plugin file carries `Last-Modified` and an `ETag`, and a reload that already has the file gets `304 Not Modified` (no body). A content-hashed name, `<name>.<8 lower-case hex>.<ext>` (e.g. `models/ares.1a2b3c4d.glb`), is sent `Cache-Control: public, max-age=31536000, immutable`: change the file, change its name. Every other text file, `*.html`, `*.js`, `*.mjs`, `*.css`, `*.json` and `*.map`, is `no-cache` (checked on every load; cheap with the 304), since these point to the hashed names or change with a deploy (an unhashed stylesheet or mask list would otherwise stay stale for an hour). Everything else (unhashed binaries: models, images, audio, `.wasm`) is `max-age=3600` with the same validators.
 - **Relative URLs only.** Argus runs at `/` and at `/argus/` (behind `tailscale serve`), so a plugin must never use absolute paths. Spartamelee's `dist/` already works under any base path.
 
 ## The sandbox, and why
@@ -125,6 +126,8 @@ A server plugin whose id is one of the theme's agent keys and whose manifest say
 - The agent's tasks, if it has any, still show on the Watch page.
 
 **Mentor** is the first bundled plugin (`plugins/mentor/`, `"agent": true`): the worked example of a big one. Its database stays where it always was, outside `ctx.data_dir`, so the move kept everyone's history.
+
+**Pads** is a small bundled plugin that is not an agent (`plugins/pads/`, docs/pads.md): its own section and a Home place, read-only, with a Python test that runs without a browser (`tests/pads_test.py`).
 
 Leaving a section loads a new page, so a plugin's timers and listeners end with it; there is no `hide()`.
 

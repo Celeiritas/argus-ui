@@ -1,0 +1,31 @@
+/* Leafy Pads (plugins/pads/page.js). Type 16/14/12, weights 400/600; states are an icon and a word, never colour alone. */
+.pads{max-width:960px}
+.pads .padhead{display:flex;flex-wrap:wrap;gap:var(--s3);align-items:flex-start;justify-content:space-between;margin:0 0 var(--s3)}
+.pads .padhead h3{margin:0}
+.pads .padsum{margin:var(--s1) 0 0;color:var(--powder);font-size:var(--fs-sec)}
+.pads .padsum:empty{display:none}
+.pads .padcheck{min-height:var(--hit)}
+.pads .padlist{list-style:none;margin:0;padding:0}
+.pads .pad{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:var(--s3);align-items:center;padding:var(--s3) 0;border-top:1px solid var(--line)}
+.pads .pad:first-child{border-top:0}
+.pads .slot{display:inline-flex;align-items:center;justify-content:center;min-width:56px;min-height:32px;padding:0 var(--s2);border-radius:8px;background:var(--slate);font-size:var(--fs-sec);font-weight:600}
+.pads .slot.none{background:none;border:1px dashed var(--line);color:var(--frost);font-size:var(--fs-meta);font-weight:400}
+.pads .who{min-width:0}
+.pads .who b{display:block;font-size:var(--fs-body);font-weight:600;overflow-wrap:anywhere}
+.pads .who .meta{display:block;color:var(--frost);font-size:var(--fs-meta);overflow-wrap:anywhere}
+.pads .facts{display:flex;flex-wrap:wrap;gap:var(--s2);justify-content:flex-end;list-style:none;margin:0;padding:0}
+.pads .facts li{display:inline-flex;align-items:center;gap:var(--s1);min-height:28px;padding:0 var(--s2);border-radius:99px;font-size:var(--fs-sec);white-space:nowrap}
+.pads .facts .mode{border:1px solid var(--powder);font-weight:600}
+.pads .facts .mode.unknown{border-style:dashed;border-color:var(--frost);font-weight:400;white-space:normal}
+.pads .facts .kind{color:var(--powder)}
+.pads .facts .rumble.yes{color:var(--ok)}
+.pads .facts .rumble.no{color:var(--frost)}
+.pads .ico{flex:none;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.pads .padnote{color:var(--powder);font-size:var(--fs-sec);margin:var(--s3) 0 0}
+.pads .padfoot{color:var(--frost);font-size:var(--fs-meta);margin:var(--s4) 0 0}
+/* phones: slot and name on the first line, the three facts on their own line under them */
+@media (max-width:640px){
+  .pads{padding:var(--s4)}
+  .pads .pad{grid-template-columns:auto minmax(0,1fr)}
+  .pads .facts{grid-column:1/-1;justify-content:flex-start}
+}

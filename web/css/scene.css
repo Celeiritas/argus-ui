@@ -69,8 +69,8 @@ a.realm:hover,.realm.on{border-color:var(--line);background:var(--card)}
    then smaller marks and padding (hit areas stay 44 px), and last one row that scrolls sideways inside the bar */
 .realms.compact .realm small{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .realms.bare .wx{display:none}.realms.bare .wx + .mute{margin-left:auto}
-.realms.tight .realm{gap:var(--s1);padding-right:var(--s2)}.realms.tight .realm img,.realms.tight .realm>svg{width:28px;height:28px}.realms.tight .realm .dot{left:20px}
-.realms.scroll{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:thin}.realms.scroll .realm,.realms.scroll .mute{flex:none}
+.realms.scroll{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}.realms.scroll .realm,.realms.scroll .mute{flex:none}
+.realms.scroll .mute{position:sticky;right:0;z-index:1;background:var(--night);box-shadow:calc(-1 * var(--s4)) 0 var(--s4) var(--night)}   /* pills pass under it */
 header{grid-template-areas:"title argus tools"}.title{grid-area:title}.argus{grid-area:argus}.tools{grid-area:tools}
 .hero{grid-area:hero;display:none;width:clamp(96px,min(10vw,20vh),240px);aspect-ratio:1;justify-self:center}
 .side header{grid-template-areas:"title hero argus"}.side .hero{display:block}.side .tools,.side nav{display:none}
