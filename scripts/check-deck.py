@@ -5,7 +5,7 @@
 
 Prints one line per finding, `file: card: LEVEL Rn message`, and exits 1 if any is an ERROR.
 Only what the learner reads is checked: code (snippets, canonical code, fades, answers) may name files.
-Courses (`"format": "mentor-course/1"`) also get C1-C9. --repo NAME=PATH: a clone of the repository a course's code
+Courses (`"format": "mentor-course/1"`) also get C1-C13 (C10-C13: the predict, trace, parsons and write cards' fields). --repo NAME=PATH: a clone of the repository a course's code
 references name, so each file and symbol is looked up at its commit (C8). --online: paper links and DOIs must answer (C9)."""
 import ast, http.client, json, os, re, subprocess, sys, textwrap, urllib.error, urllib.parse, urllib.request
 
@@ -97,7 +97,14 @@ def check(doc):
         if len(ideas) > MAX_IDEAS: r.append(('WARN', 'R2', f'pre-read has {len(ideas)} key ideas (at most {MAX_IDEAS})'))
         if not str(pre.get('try_first') or '').strip(): r.append(('WARN', 'R3', 'pre-read has no try_first question'))
         add(cid, r)
+    for i, c in enumerate(lst(doc.get('code_cards'))):            # 4.32: predict, trace, parsons, write (their code is code)
+        if not isinstance(c, dict): continue
+        r = []; text_rules({k: v for k, v in c.items() if k not in CODE_FIELDS}, r); crumb_rule(c, r)
+        add(c.get('id') or f'code card {i + 1}', r)
     return found
+
+# a code card's fields that hold code, output or values: never checked as prose
+CODE_FIELDS = {'code', 'answer', 'lines', 'steps', 'starter', 'lang'}
 
 # ---------- courses (checker v2; docs/plans/2026-10-25-mentor-courses-spec.md sections 4, 5, 10) ----------
 LO_FIELDS = ('id', 'text', 'verb', 'bloom', 'mode', 'knowledge', 'condition', 'standard', 'parent')
@@ -105,9 +112,11 @@ ENUMS = {'bloom': ('remember', 'understand', 'apply', 'analyse', 'evaluate', 'cr
          'knowledge': ('factual', 'conceptual', 'procedural', 'metacognitive')}
 VERBS = set('trace predict explain write fix choose build name define order find modify compare rebuild describe'.split())
 VAGUE = re.compile(r'^(?:know|understand|learn(?:\s+about)?)\b', re.I)       # not observable (Mager)
-LATER_ROLES = ('predict', 'trace', 'parsons', 'write', 'make')                  # card roles phase 4 adds
+LATER_ROLES = ('make',)                                                          # tasks and the capstone: a later phase
 TIERS = (('tier_3_terminology_cards', ('term', 'recall')), ('tier_1_faded_code_drills', ('drill',)),
-         ('tier_2_self_explanation_cards', ('explain', 'find-bug', 'choose-design')))
+         ('tier_2_self_explanation_cards', ('explain', 'find-bug', 'choose-design')),
+         ('code_cards', ('predict', 'trace', 'parsons', 'write')))
+ROLE_RULE = {'predict': 'C10', 'trace': 'C11', 'parsons': 'C12', 'write': 'C13'}
 CITE = re.compile(r'^.+ \(\d{4}[a-z]?\)\. .+\. .+\.$')                          # Author(s) (year). Title. Venue.
 
 def is_course(doc):
@@ -124,6 +133,7 @@ def check_course(doc):
     """Return [(where, level, rule, message)] for one course: C1 schema, C2 LO form, C3 alignment, C4 cards,
     C5 requires, C6 citations, C7 answers parse, and each lesson's R1-R5."""
     out, los, mods, lessons = [], {}, {}, {}     # los: LO id -> (scope, owner id, lo); lessons: slug -> "module/lesson"
+    lesson_req = {}                              # "module/lesson" -> (its slug, the lesson ids it requires, as written)
     add = lambda where, level, rule, msg: out.append((where, level, rule, msg))
     for k in ('format', 'id', 'name', 'los', 'modules'):
         if k not in doc: add('course', 'ERROR', 'C1', f'no "{k}"')
@@ -182,6 +192,7 @@ def check_course(doc):
                 p = ident(los[lid][2].get('parent'))
                 if p and (p not in los or los[p][0] != 'module' or los[p][1] != mid):
                     add(f'{where}: LO {lid}', 'ERROR', 'C3', f'parent "{p}" is not an LO of module {mid}')
+            lesson_req[where] = (slug(lesid), [ident(r_) for r_ in lst(les.get('requires'))], les.get('requires'))
             notes = {}
             for nt in lst(les.get('notes')):
                 nid = ident(nt.get('id')) if isinstance(nt, dict) else None
@@ -197,7 +208,7 @@ def check_course(doc):
                     if iid in items: add(w, 'ERROR', 'C1', 'card id used twice in the lesson')
                     items.add(iid)
                     role = ident(item.get('role'))
-                    if role in LATER_ROLES: add(w, 'ERROR', 'C4', f'role {role} arrives in phase 4'); continue
+                    if role in LATER_ROLES: add(w, 'ERROR', 'C4', f'role {role} arrives in a later phase'); continue
                     if role not in roles: add(w, 'ERROR', 'C4', f'role "{role}" is not one of {", ".join(roles)} for this list')
                     lo, note = ident(item.get('lo')), ident(item.get('note'))
                     if lo not in counts: add(w, 'ERROR', 'C4', f'lo {json.dumps(item.get("lo"))} is not one of this lesson\'s LOs')
@@ -205,6 +216,7 @@ def check_course(doc):
                     if item.get('note') is None: add(w, 'WARN', 'C4', 'no note: where does this card come from?')
                     elif note not in notes: add(w, 'ERROR', 'C4', f'note {json.dumps(item.get("note"))} is not one of this lesson\'s')
                     if key == 'tier_1_faded_code_drills': parses(item, notes.get(note), w, add)
+                    if key == 'code_cards' and role in ROLE_RULE: role_fields(item, role, w, add)
             for lid, (practice, checks) in counts.items():
                 if practice < 2: add(f'{where}: LO {lid}', 'ERROR', 'C4', f'{practice} practice card{"s" * (practice != 1)} (at least 2)')
                 if checks < 1: add(f'{where}: LO {lid}', 'ERROR', 'C4', 'no check item ("check": true)')
@@ -218,6 +230,13 @@ def check_course(doc):
             if ident(r_) not in mods: add(mid_, 'ERROR', 'C5', f'requires {json.dumps(r_)}, which is not a module of this course')
     loop = cycle({k: [ident(r_) for r_ in lst(v.get('requires')) if ident(r_) in mods] for k, v in mods.items()})
     if loop: add('modules', 'ERROR', 'C5', 'requires go in a circle: ' + ' → '.join(loop))
+    for where, (me, req, raw) in lesson_req.items():          # 4.32: a lesson unlocks when the lessons it requires are mastered
+        if raw is not None and not isinstance(raw, list): add(where, 'ERROR', 'C5', 'requires should be a list of lesson ids'); continue
+        for r_ in req:
+            if not r_ or slug(r_) not in lessons: add(where, 'ERROR', 'C5', f'requires {json.dumps(r_)}, which is not a lesson of this course')
+            elif slug(r_) == me: add(where, 'ERROR', 'C5', 'a lesson cannot require itself')
+    loop = cycle({me: [slug(r_) for r_ in req if r_ and slug(r_) in lessons and slug(r_) != me] for me, req, _raw in lesson_req.values()})
+    if loop: add('lessons', 'ERROR', 'C5', 'lesson requires go in a circle: ' + ' → '.join(loop))
     return out
 
 OPTS = {'repos': {}, 'online': False, 'links_skipped': 0}       # set by main(): --repo NAME=PATH, --online
@@ -326,6 +345,50 @@ def parses(item, note, where, add):
     for name, src in blobs:
         try: ast.parse(textwrap.dedent(str(src or '')))
         except SyntaxError as e: add(where, 'ERROR', 'C7', f'{name} is not valid Python (line {e.lineno}: {e.msg})')
+
+def is_python(item):
+    """A code card's language, as Mentor reads it: Python unless its `lang` says otherwise (docs/mentor.md, code cards).
+    (Drills guess from their note's source path instead: parses().)"""
+    return str(item.get('lang') or 'python') == 'python'
+
+def text(x):
+    return x if isinstance(x, str) and x.strip() else None
+
+def role_fields(item, role, where, add):
+    """C10-C13: what a predict, trace, parsons or write card needs (docs/mentor.md, code cards), and its Python parses.
+    predict: code, front_prompt, answer, eval_rubric. trace: code, front_prompt, steps [{line, state}] with each line in
+    the code. parsons: front_prompt, 3-12 lines of code (strings) that parse together. write: front_prompt, answer (parses),
+    eval_rubric."""
+    rule = ROLE_RULE[role]
+    bad = lambda msg: add(where, 'ERROR', rule, f'{role} card: {msg}')
+    py = is_python(item)
+    if not py: add(where, 'INFO', rule, f'not parsed ({item.get("lang")}): only Python is checked')
+    def parse(name, src):
+        if not py: return
+        try: ast.parse(textwrap.dedent(src))
+        except SyntaxError as e: bad(f'{name} is not valid Python (line {e.lineno}: {e.msg})')
+    if not text(item.get('front_prompt')): bad('no front_prompt (the question)')
+    if role in ('predict', 'trace'):
+        if not text(item.get('code')): bad('no code to read')
+        else: parse('code', item['code'])
+    if role in ('predict', 'write'):
+        if not text(item.get('answer')): bad('no answer (the model answer it is graded against)')
+        elif role == 'write': parse('answer', item['answer'])
+        if not [x for x in lst(item.get('eval_rubric')) if isinstance(x, (dict, str)) and x]:
+            bad('no eval_rubric: the key ideas the answer is graded by')
+    if role == 'trace':
+        steps, n = lst(item.get('steps')), len(str(item.get('code') or '').split('\n'))
+        if not steps: bad('no steps: the value after each line ([{"line": 1, "state": "total = 0"}])')
+        if len(steps) > 8: bad(f'{len(steps)} steps (at most 8: one idea per card)')
+        for k, st in enumerate(steps):
+            ln = st.get('line') if isinstance(st, dict) else None
+            if not isinstance(st, dict) or not text(st.get('state')): bad(f'step {k + 1} has no state')
+            elif not isinstance(ln, int) or isinstance(ln, bool) or not 1 <= ln <= n: bad(f'step {k + 1}: line {json.dumps(ln)} is not a line of the code (1-{n})')
+    if role == 'parsons':
+        lines = lst(item.get('lines'))
+        if not all(isinstance(x, str) and x.strip() for x in lines): bad('every line must be a line of code (text)')
+        elif not 3 <= len(lines) <= 12: bad(f'{len(lines)} lines (3 to 12)')
+        else: parse('lines in order', '\n'.join(lines))
 
 def files(paths):
     for p in paths:

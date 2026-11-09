@@ -38,14 +38,18 @@ A course file (`"format": "mentor-course/1"`, [docs/mentor.md](mentor.md#courses
 | C1 | a missing `format`, `id`, `name`, `los` or `modules`; a module without `name` / `lessons`, a lesson without `los`; an id used twice (LOs and lessons in the course, where `Words` and `words` count as the same; modules; notes and cards in a lesson); an id that is a list or an object |
 | C2 | an LO missing any of `id, text, verb, bloom, mode, knowledge, condition, standard, parent`; a `bloom`, `mode` or `knowledge` outside its list; more than one verb; *know*, *understand* or *learn about* as the verb; text that doesn't start with its verb. An unusual verb is a warning |
 | C3 | a module LO whose parent isn't a course LO, a lesson LO whose parent isn't an LO of its own module. A course or module LO nothing serves is a warning |
-| C4 | a card without an LO of its lesson, a role that doesn't fit its list (term, recall · drill · explain, find-bug, choose-design), a role phase 4 adds (predict, trace, parsons, write, make), a `note` the lesson doesn't have; an LO with fewer than 2 practice cards or no check item |
-| C5 | `requires` naming a module the course doesn't have, or modules that require each other in a circle |
+| C4 | a card without an LO of its lesson, a role that doesn't fit its list (term, recall · drill · explain, find-bug, choose-design · `code_cards`: predict, trace, parsons, write), a role a later phase adds (make), a `note` the lesson doesn't have; an LO with fewer than 2 practice cards or no check item |
+| C5 | `requires` naming a module the course doesn't have, or modules that require each other in a circle; a lesson's `requires` that isn't a list, names a lesson the course doesn't have or the lesson itself, or lessons that require each other in a circle |
 | C6 | a citation not written **Author(s) (year). Title. Venue.** |
 | C7 | a Python drill whose canonical code or level-3 answer doesn't parse (`ast`, never run; other languages are reported as not checked) |
 | C8 | a `commit` that isn't a commit id; with `--repo NAME=PATH`: a code reference whose file isn't in the repository at its commit, or doesn't define its symbol (a Python, JS or C# function, class, method or assignment). Without it: a note that it wasn't checked |
+| C10 | a `predict` card without `front_prompt`, `code`, `answer` or `eval_rubric`; Python code that doesn't parse |
+| C11 | a `trace` card without `front_prompt` or `code`; no `steps`, more than 8, or a step without a `state` or whose `line` isn't a line of the code; Python code that doesn't parse |
+| C12 | a `parsons` card without `front_prompt`; fewer than 3 or more than 12 `lines`, a line that isn't text; Python lines that don't parse in their right order |
+| C13 | a `write` card without `front_prompt`, `answer` or `eval_rubric`; a Python `answer` that doesn't parse |
 | C9 | with `--online`: a link that isn't http(s), answers 404 or not at all; a DOI (bare, `doi:` or a doi.org link) doi.org doesn't know. A site that refuses robots (401, 403, 429) is a warning: open it yourself |
 
-`python3 scripts/check-deck.py --repo argus-ui=. --online course.json`. The tests run it on `tests/deck-fixtures/good-course.json` (clean) and `bad-course.json` (each rule broken once).
+`python3 scripts/check-deck.py --repo argus-ui=. --online course.json`. The tests run it on `tests/deck-fixtures/good-course.json` and `good-roles.json` (clean), `bad-course.json` (each rule broken once) and `bad-predict.json`, `bad-trace.json`, `bad-parsons.json`, `bad-write.json` (C10 to C13, each broken twice). A code card's code, answer, lines and steps are code, so R1 and R2 skip them. A code card is Python unless its `lang` says otherwise (as Mentor reads it); a card in another language is reported as not parsed (INFO).
 
 ## Not checked by the script (read it yourself)
 - Every term used in the orientation or a prompt has a term card, or is replaced by plain words.

@@ -1,5 +1,6 @@
 """Mentor's data model without a browser: courses, the Loose lessons course, the review log (docs/plans/2026-10-25-mentor-courses-phase1.md),
-and the 4.29 study behaviours: learning steps, undo of the last rating, bury siblings.
+and the 4.29 study behaviours: learning steps, undo of the last rating, bury siblings; the 4.32 card roles (predict, trace,
+parsons, write), mastery and unlock, module checks, and the checker's C10-C13.
 
     python3 tests/mentor_model_test.py -v        (tests/run.sh runs it under "== mentor model")
 
@@ -154,31 +155,43 @@ class Course(Base):
 
     def test_lenient_import_notes(self):
         doc = json.loads(json.dumps(self.doc)); les = doc['modules'][0]['lessons'][1]['tier_2_self_explanation_cards']
-        les[0]['role'] = 'parsons'; les[1]['lo'] = 'L9'; doc['modules'][1]['lessons'].append('not a lesson')
+        les[0]['role'] = 'make'; les[1]['lo'] = 'L9'; doc['modules'][1]['lessons'].append('not a lesson')
         n, notes = self.load(doc)
         text = ' | '.join(notes)
-        self.assertIn('role parsons arrives in phase 4', text); self.assertIn('L9', text); self.assertIn('lesson 2', text)
+        self.assertIn('role make arrives in a later phase', text); self.assertIn('L9', text); self.assertIn('lesson 2', text)
         self.assertEqual(self.count("SELECT COUNT(*) FROM cards WHERE id LIKE '%:c-why'"), 0)
         self.assertIsNone(self.db.execute("SELECT lo FROM cards WHERE id LIKE '%:c-bug'").fetchone()[0])
         self.assertGreater(n, 0)
 
-    def test_check_items_never_served(self):
+    def test_check_items_only_as_a_module_check(self):
+        # 4.32: check items are never practice; once every lesson of their module is mastered they come once, as the check
         m.set_settings(self.db, {'bury': False})       # every practice card in one sitting (bury siblings is tested in Bury)
         self.load()
-        checks = {r[0] for r in self.db.execute("SELECT id FROM cards WHERE is_check=1")}
-        served = self.study() + self.study(deck='group:Rebuild a small web server') + self.study(extra=True)
-        self.assertFalse(checks & set(served))
+        checks = {r[0] for r in self.db.execute("SELECT id FROM cards WHERE is_check=1 AND kind NOT IN ('teach','preread','level0')")}
+        lesson_module = {r[0]: r[1] for r in self.db.execute("SELECT id, cmodule FROM modules")}
+        served = []
+        for _ in range(200):
+            c, _due = m.next_card(self.db)
+            if not c: break
+            if c['id'] in checks:
+                self.assertTrue(c.get('check'), 'a check item is served flagged as a check')
+                self.assertTrue(m.mastery(self.db)['modules'][lesson_module[c['deck']]]['mastered'], 'a check before its module is mastered')
+            else: self.assertNotIn('check', c)
+            served.append(c['id']); a = m.answer(self.db, c['id'], 'x', 3, 2000); r = m.rate(self.db, a['attempt'], 3, False)
+            if c['id'] in checks: self.assertEqual((a['previews'], r['due'], r['check']), ({}, None, True), 'a check item is never scheduled')
+        self.assertEqual(sorted(x for x in served if x in checks), sorted(checks), 'each check item asked exactly once')
         practice = {r[0] for r in self.db.execute("SELECT id FROM cards WHERE is_check=0 AND kind IN ('term','explain')")}
         self.assertEqual(practice - set(served), set(), 'a check item held back the rest of its lesson')
+        self.assertFalse(checks & set(self.study(extra=True)), 'practising ahead never serves a check item')
+        self.assertEqual(self.count("SELECT COUNT(*) FROM attempts WHERE review='check'"), len(checks))
 
     def test_check_items_learn_cards_hidden(self):
         # a check item's teach card or pre-read would show its answer: it waits with the check item
         self.load()
         served = set(self.study())
-        hidden = {r[0] for r in self.db.execute("SELECT id FROM cards WHERE is_check=1")}
-        self.assertEqual(hidden, {m.slug('demo-server--words') + ':' + x for x in ('t-json', 'teach-t-json')} |
-                         {m.slug('demo-server--origin') + ':' + x for x in ('k-origin', 'preread-k-origin')} |
-                         {m.slug('demo-server--cache') + ':' + x for x in ('k-cache', 'preread-k-cache')})
+        hidden = {r[0] for r in self.db.execute("SELECT id FROM cards WHERE is_check=1 AND kind IN ('teach','preread','level0')")}
+        self.assertEqual(hidden, {m.slug('demo-server--words') + ':teach-t-json', m.slug('demo-server--origin') + ':preread-k-origin',
+                                  m.slug('demo-server--cache') + ':preread-k-cache'})
         self.assertFalse(hidden & served)
         listed = {l['id'] for x in m.stats(self.db)['modules'] for l in x['learn']}
         self.assertFalse(hidden & listed, 'Lessons lists a check item\'s Learn card to read again')
@@ -496,6 +509,255 @@ class Checker(unittest.TestCase):
         [(level, rule, msg)] = cd.resolve_ref(ref)
         self.assertEqual((level, rule), ('ERROR', 'C8')); self.assertIn('commit', msg)
         self.assertFalse(os.path.exists(os.path.join(R, 'x')))
+
+
+ROLES = os.path.join(R, 'tests', 'deck-fixtures', 'good-roles.json')
+
+class Roles(Base):
+    """4.32: predict, trace, parsons and write cards (spec section 5): import, what the page gets, grading."""
+    def setUp(self):
+        super().setUp(); self.db = m.connect(self.path)
+        with open(ROLES, encoding='utf-8') as fh: self.doc = json.load(fh)
+        with m.DB_LOCK: self.n, self.notes = m.import_course(self.db, self.doc, ROLES, False)
+    def card(self, cid):
+        return m.card_payload(self.db, self.db.execute(m.CARD_Q + " WHERE c.id=?", (cid,)).fetchone())
+    def ans(self, cid, text, hints=0):
+        return m.answer(self.db, cid, text if isinstance(text, str) else json.dumps(text), 3, 3000, hints)
+
+    def test_import(self):
+        self.assertEqual(self.notes, [])
+        kinds = {r[0]: r[1] for r in self.db.execute("SELECT kind, COUNT(*) FROM cards WHERE kind IN ('predict','trace','parsons','write') GROUP BY kind")}
+        self.assertEqual(kinds, {'predict': 3, 'trace': 3, 'parsons': 3, 'write': 3})
+        self.assertEqual(self.count("SELECT COUNT(*) FROM cards WHERE is_check=1"), 4)
+        self.assertEqual({r[0] for r in self.db.execute("SELECT role FROM cards WHERE kind='trace'")}, {'trace'})
+        self.assertEqual(json.loads(self.db.execute("SELECT requires FROM modules WHERE id='loops--write'").fetchone()[0]), ['loops--read'])
+
+    def test_payload_never_gives_the_answer_away(self):
+        for cid in ('loops--read:p-1', 'loops--read:t-1', 'loops--write:z-1', 'loops--write:w-1'):
+            p = self.card(cid); blob = json.dumps(p)
+            self.assertNotIn('answer', p, cid); self.assertNotIn('points', p, cid)
+            if p['kind'] == 'predict': self.assertIn('total = 0', p['code'])
+            if p['kind'] == 'trace': self.assertEqual(p['steps'], [1, 3, 3]); self.assertNotIn('total = 6', blob)
+            if p['kind'] == 'write': self.assertEqual(p['starter'], 'def double_all(items):'); self.assertNotIn('append', blob)
+        want = self.doc['modules'][0]['lessons'][1]['code_cards'][0]['lines']
+        got = self.card('loops--write:z-1')['lines']
+        self.assertEqual(sorted(got), sorted(want)); self.assertNotEqual(got, want, 'the lines come mixed, never in their right order')
+        self.assertEqual(got, self.card('loops--write:z-1')['lines'], 'the same order while the card is on screen')
+
+    def test_grade_predict_by_key_ideas(self):
+        self.assertEqual(self.ans('loops--read:p-1', 'It prints 6')['coverage'], 1)
+        r = self.ans('loops--read:p-1', '7')
+        self.assertEqual((r['coverage'], r['missed']), (0, ['it prints 6'])); self.assertIn('total = 0', r['code'])
+        self.assertEqual(self.ans('loops--read:p-2', '1\n2\n3')['coverage'], 1)
+
+    def test_grade_trace_per_step(self):
+        r = self.ans('loops--read:t-1', ['total = 0', '2', 'total = 6'])
+        self.assertEqual((r['coverage'], r['hits']), (1, ['After line 1', 'After line 3', 'After line 3']))
+        r = self.ans('loops--read:t-1', ['0', '2', '5'])
+        self.assertAlmostEqual(r['coverage'], 0.67, places=2); self.assertEqual([x['ok'] for x in r['rows']], [True, True, False])
+        self.assertEqual(r['rows'][2]['expected'], 'total = 6')
+        self.assertEqual(self.ans('loops--read:t-1', ['2', '0', '6'])['coverage'], 0.33, 'a value counts only in its own step')
+        self.assertEqual(self.ans('loops--read:t-1', '')['coverage'], 0)
+
+    def test_grade_parsons_partial_credit_per_line(self):
+        want = self.doc['modules'][0]['lessons'][1]['code_cards'][0]['lines']
+        self.assertEqual(self.ans('loops--write:z-1', want)['coverage'], 1)
+        swapped = [want[0], want[2], want[1], want[3], want[4]]
+        r = self.ans('loops--write:z-1', swapped)
+        self.assertEqual(r['coverage'], 0.6); self.assertEqual(r['missed'], ['Line 2', 'Line 3'])
+        self.assertEqual(self.ans('loops--write:z-1', [w + '  ' for w in want])['coverage'], 1, 'trailing spaces do not matter')
+        self.assertEqual(self.ans('loops--write:z-1', list(reversed(want)))['coverage'], 0.2)
+        self.assertEqual(self.ans('loops--write:z-1', 'not a list')['coverage'], 0)
+
+    def test_odd_typed_answers_are_graded_as_text(self):
+        deep = '[' * 3000                         # under the 4096-byte POST limit, deeper than json.loads goes
+        for cid in ('loops--read:t-1', 'loops--write:z-1'):
+            r = self.ans(cid, deep)
+            self.assertEqual(r['coverage'], 0, cid); self.assertEqual(r['rows'][0]['typed'], deep, 'kept as one typed answer')
+        self.assertEqual(m.typed_list('[["0"], "2"]', 3), ['[["0"], "2"]', '', ''], 'a list holding lists is one typed answer')
+        self.assertEqual(m.typed_list('["0", 2]', 3), ['0', '2', ''])
+
+    def test_grade_write_by_key_ideas_parsed_never_run(self):
+        model = self.doc['modules'][0]['lessons'][1]['code_cards'][3]['answer']
+        r = self.ans('loops--write:w-1', model)
+        self.assertEqual((r['coverage'], r['problem']), (1, None))
+        r = self.ans('loops--write:w-1', 'def double_all(items)\n    return [x * 2 for x in items]')
+        self.assertIn('line 1', r['problem']); self.assertEqual(r['coverage'], 1, 'the key ideas are graded as written; the syntax error is shown beside them')
+        self.assertIn("Python can't read", r['coach'])
+        self.assertIn('write', m.AI_KINDS, 'the local AI scores written code in shadow mode')
+
+    def test_hint_ladder_and_answer_rung(self):
+        h = m.hint(self.db, 'loops--write:z-1', 4)
+        self.assertEqual(h['text'], '\n'.join(self.doc['modules'][0]['lessons'][1]['code_cards'][0]['lines']))
+        self.assertTrue(m.hint(self.db, 'loops--read:t-1', 2)['text'].startswith('Keep a small table'))
+        r = self.ans('loops--read:t-1', ['0', '2', '6'], hints=4)
+        self.assertEqual((r['coverage'], r['suggested']), (0, 1), 'the answer shown counts as a blank')
+
+class Mastery(Base):
+    """4.32: a lesson unlocks when the lessons it requires reach PASS (80%); a module's check comes once its lessons do."""
+    def setUp(self):
+        super().setUp(); self.db = m.connect(self.path)
+        m.set_settings(self.db, {'bury': False})          # bury siblings is tested in Bury; here every card of a note today
+        with open(ROLES, encoding='utf-8') as fh: doc = json.load(fh)
+        with m.DB_LOCK: m.import_course(self.db, doc, ROLES, False)
+    def right(self, cid, rating=3, hints=0):
+        a = m.answer(self.db, cid, 'x', 3, 2000, hints); return m.rate(self.db, a['attempt'], rating, False)
+    def serve_all(self, deck):
+        """Cards the queue serves for a deck, Learn cards read, practice cards rated Good, until nothing is left."""
+        out = []
+        for _ in range(100):
+            c, _due = m.next_card(self.db, deck)
+            if not c: return out
+            out.append(c); self.right(c['id'], 0 if c['kind'] in m.LEARN else 3)
+        return out
+
+    def test_locked_until_required_lesson_at_pass(self):
+        les = m.mastery(self.db)['lessons']
+        self.assertFalse(les['loops--read']['locked']); self.assertTrue(les['loops--write']['locked'])
+        self.assertEqual(les['loops--write']['waiting_on'], ['Read a loop'])
+        self.assertEqual(m.next_card(self.db, 'loops--write')[0], None, 'a locked lesson serves nothing, not even its orientation')
+        self.assertIn('Read a loop', m.locked_reason(self.db, 'loops--write'))
+        self.assertEqual((m.stats(self.db, 'loops--write')['new'], m.stats(self.db, 'loops--write')['learn']), (0, 0), 'nothing waits in a locked lesson')
+        self.assertIsNone(m.locked_reason(self.db, 'loops--read'))
+        for cid in ('p-1', 'p-2', 't-1'): self.right('loops--read:' + cid)
+        x = m.mastery(self.db)['lessons']['loops--read']
+        self.assertEqual((x['progress'], x['mastered']), (0.75, False)); self.assertTrue(m.mastery(self.db)['lessons']['loops--write']['locked'])
+        self.right('loops--read:t-2', rating=2)                  # Hard: not right yet
+        self.right('loops--read:t-2', rating=3, hints=3)          # a near example was shown: not right either
+        self.assertTrue(m.mastery(self.db)['lessons']['loops--write']['locked'])
+        self.right('loops--read:t-2')
+        self.assertFalse(m.mastery(self.db)['lessons']['loops--write']['locked'])
+        self.assertEqual(m.next_card(self.db, 'loops--write')[0]['kind'], 'orientation')
+
+    def test_undo_relocks(self):
+        for cid in ('p-1', 'p-2', 't-1'): self.right('loops--read:' + cid)
+        a = m.answer(self.db, 'loops--read:t-2', 'x', 3, 2000); m.rate(self.db, a['attempt'], 3, False)
+        self.assertFalse(m.mastery(self.db)['lessons']['loops--write']['locked'])
+        m.undo(self.db, a['attempt'])
+        self.assertTrue(m.mastery(self.db)['lessons']['loops--write']['locked'], 'an undone rating does not count')
+
+    def test_module_check_after_all_lessons_mastered(self):
+        served = self.serve_all('group:Read and write a loop')
+        checks = [c for c in served if c.get('check')]
+        self.assertEqual(sorted(c['id'] for c in checks), ['loops--read:p-k', 'loops--read:t-k', 'loops--write:w-k', 'loops--write:z-k'])
+        first = served.index(checks[0])
+        self.assertTrue(all(not c.get('check') for c in served[:first]))
+        self.assertGreaterEqual(first, 10, 'the check comes after the practice cards of both lessons')
+        mod = m.mastery(self.db)['modules']['loops/loops-basics']
+        self.assertEqual(mod['check'], {'state': 'passed', 'items': 4, 'answered': 4, 'right': 4, 'now': 0, 'later': 0})
+        self.assertEqual(m.stats(self.db)['checks'], 0)
+
+    def test_failed_check_comes_back_tomorrow(self):
+        for cid in ('read:p-1', 'read:p-2', 'read:t-1', 'read:t-2', 'write:z-1', 'write:z-2', 'write:w-1', 'write:w-2'): self.right('loops--' + cid)
+        mod = lambda: m.mastery(self.db)['modules']['loops/loops-basics']['check']
+        self.assertEqual((mod()['state'], mod()['now']), ('ready', 4)); self.assertEqual(m.stats(self.db)['checks'], 4)
+        self.right('loops--read:p-k'); self.right('loops--read:t-k'); self.right('loops--write:z-k'); self.right('loops--write:w-k', rating=1)
+        self.assertEqual((mod()['state'], mod()['right'], mod()['now']), ('failed', 3, 0), '3 of 4 is 75%: under 80%, and not again today')
+        self.db.execute("UPDATE attempts SET at=at-?", (m.DAY,)); self.db.commit()
+        self.assertEqual(mod()['now'], 1, 'tomorrow only the missed item comes back')
+        c, _ = m.next_card(self.db)
+        self.assertEqual((c['id'], c.get('check')), ('loops--write:w-k', True))
+        self.right(c['id'])
+        self.assertEqual(mod()['state'], 'passed')
+
+    def test_check_waits_for_buried_siblings_with_bury_on(self):
+        m.set_settings(self.db, {'bury': True})          # the default: the course map, the counts and the queue agree
+        for cid in ('read:p-1', 'read:p-2', 'read:t-1', 'read:t-2', 'write:z-1', 'write:z-2', 'write:w-1', 'write:w-2'): self.right('loops--' + cid)
+        def agree():
+            st = m.stats(self.db)
+            course = next(c for c in st['courses'] if any(md['id'] == 'loops/loops-basics' for md in c['modules']))
+            chk = next(md for md in course['modules'] if md['id'] == 'loops/loops-basics')['check']
+            self.assertEqual(st['checks'], chk['now'], 'the counts line and the course map count the same check questions')
+            return chk
+        chk = agree()
+        self.assertEqual((chk['state'], chk['now'], chk['later']), ('ready', 0, 4), 'every check item shares a note rated today')
+        c, _ = m.next_card(self.db)
+        self.assertFalse(c and c.get('check'), 'the queue serves no check item today either')
+        self.db.execute("UPDATE attempts SET at=at-?", (m.DAY,)); self.db.commit()
+        chk = agree()
+        self.assertEqual((chk['now'], chk['later']), (4, 0), 'tomorrow the check is served')
+        self.assertTrue(m.next_card(self.db)[0].get('check'))
+
+    def test_check_item_rating_undone(self):
+        for cid in ('read:p-1', 'read:p-2', 'read:t-1', 'read:t-2', 'write:z-1', 'write:z-2', 'write:w-1', 'write:w-2'): self.right('loops--' + cid)
+        a = m.answer(self.db, 'loops--read:p-k', '2', 3, 2000); m.rate(self.db, a['attempt'], 3, False)
+        u = m.undo(self.db, a['attempt'])
+        self.assertTrue(u['undone']); self.assertEqual((u['card']['id'], u['card']['check']), ('loops--read:p-k', True))
+        self.assertEqual(m.mastery(self.db)['modules']['loops/loops-basics']['check']['answered'], 0)
+
+    def test_module_requires_lock_the_next_module(self):
+        with open(FIXTURE, encoding='utf-8') as fh: doc = json.load(fh)
+        with m.DB_LOCK: m.import_course(self.db, doc, FIXTURE, False)
+        x = m.mastery(self.db)
+        self.assertTrue(x['modules']['demo-server/weather']['locked']); self.assertTrue(x['lessons'][m.slug('demo-server--cache')]['locked'])
+        self.assertEqual(x['lessons'][m.slug('demo-server--cache')]['waiting_on'], ['Requests on homeserver'])
+        cs = next(c for c in m.stats(self.db)['courses'] if c['id'] == 'demo-server')
+        self.assertEqual([(md['locked'], md['done'], md['check']['state']) for md in cs['modules']], [(False, 0, 'waiting'), (True, 0, 'waiting')])
+        les = {x['id']: x for x in m.stats(self.db)['modules']}
+        self.assertTrue(les[m.slug('demo-server--cache')]['locked']); self.assertEqual(les[m.slug('demo-server--words')]['progress'], 0)
+        self.assertEqual(les[m.slug('demo-server--words')]['cards']['term']['n'], 2, 'the per-kind card counts stay as they were')
+
+    def test_loose_lessons_never_locked(self):
+        m.load_decks(self.db, os.path.join(R, 'themes', 'leafy-realm', 'decks'))
+        loose = [x for x in m.stats(self.db)['modules'] if x['course'] == m.LOOSE]
+        self.assertTrue(loose); self.assertTrue(all('locked' not in x for x in loose))
+        self.assertIsNotNone(m.next_card(self.db, loose[0]['id'])[0])
+
+class Upgrade432(Upgrade):
+    """4.32 adds modules.requires; connecting twice changes nothing more."""
+    def test_upgrade_twice(self):
+        self.old_db()
+        m.connect(self.path).close(); self.db = m.connect(self.path); self.db.close(); self.db = m.connect(self.path)
+        self.assertIn('requires', {r[1] for r in self.db.execute("PRAGMA table_info(modules)")})
+        self.assertEqual([self.count(f"SELECT COUNT(*) FROM {t}") for t in ('cards', 'sched', 'attempts', 'modules')], [3, 2, 4, 2])
+        self.assertEqual(self.count("SELECT COUNT(*) FROM modules WHERE requires='[]'"), 2)
+        self.assertEqual(m.mastery(self.db)['lessons'], {}, 'Loose lessons have no unlock rules')
+
+class RoleChecker(unittest.TestCase):
+    """C10-C13 (each role's fields) and C5 for lesson requires, on the fixtures and on odd values."""
+    def setUp(self):
+        with open(ROLES, encoding='utf-8') as fh: self.doc = json.load(fh)
+        cd.OPTS.update(repos={}, online=False, links_skipped=0)
+    def found(self, doc):
+        return [(w, lvl, rule, msg) for w, lvl, rule, msg in cd.check_course(doc)]
+    def test_good_roles_clean(self):
+        self.assertEqual([x for x in self.found(self.doc) if x[1] != 'INFO'], [])
+    def test_each_bad_fixture_breaks_its_rule(self):
+        for role, rule in (('predict', 'C10'), ('trace', 'C11'), ('parsons', 'C12'), ('write', 'C13')):
+            with open(os.path.join(R, 'tests', 'deck-fixtures', f'bad-{role}.json'), encoding='utf-8') as fh:
+                got = self.found(json.load(fh))
+            errors = [(lvl, r) for _w, lvl, r, _m in got if lvl == 'ERROR']
+            self.assertEqual(errors, [('ERROR', rule)] * 2, f'bad-{role}.json: {got}')
+    def test_code_cards_are_python_by_default(self):
+        with open(os.path.join(R, 'tests', 'deck-fixtures', 'bad-predict.json'), encoding='utf-8') as fh: doc = json.load(fh)
+        card = doc['modules'][0]['lessons'][0]['code_cards'][1]
+        del card['lang']                              # as Mentor reads it: no lang is Python, so its code is still parsed
+        self.assertIn('code is not valid Python', ' | '.join(x for _w, lvl, _r, x in self.found(doc) if lvl == 'ERROR'))
+        card['lang'] = 'javascript'
+        got = self.found(doc)
+        self.assertNotIn('code is not valid Python', ' | '.join(x for _w, lvl, _r, x in got if lvl == 'ERROR'))
+        self.assertIn(('INFO', 'C10', 'not parsed (javascript): only Python is checked'), [(lvl, r, x) for _w, lvl, r, x in got])
+    def test_role_in_the_wrong_list_and_later_roles(self):
+        doc = json.loads(json.dumps(self.doc)); doc['modules'][0]['lessons'][0]['code_cards'][0]['role'] = 'explain'
+        doc['modules'][0]['lessons'][0]['code_cards'][1]['role'] = 'make'
+        msgs = ' | '.join(f'{r} {x}' for _w, _l, r, x in self.found(doc))
+        self.assertIn('C4 role "explain" is not one of predict, trace, parsons, write', msgs)
+        self.assertIn('C4 role make arrives in a later phase', msgs)
+    def test_lesson_requires(self):
+        doc = json.loads(json.dumps(self.doc)); les = doc['modules'][0]['lessons']
+        les[1]['requires'] = ['nope']; msgs = ' | '.join(x for *_a, x in self.found(doc))
+        self.assertIn('requires "nope", which is not a lesson of this course', msgs)
+        les[1]['requires'] = ['read']; les[0]['requires'] = ['write']
+        self.assertIn('lesson requires go in a circle', ' | '.join(x for *_a, x in self.found(doc)))
+        les[0]['requires'] = 'write'
+        self.assertIn('requires should be a list', ' | '.join(x for *_a, x in self.found(doc)))
+    def test_odd_values_dont_crash(self):
+        doc = json.loads(json.dumps(self.doc)); cards = doc['modules'][0]['lessons'][0]['code_cards']
+        cards[3]['steps'] = [None, {'line': True, 'state': 'x'}, {'line': '2', 'state': 3}]
+        cards[0]['eval_rubric'] = 'six'; cards[1]['code'] = ['print(1)']
+        doc['modules'][0]['lessons'][1]['code_cards'][0]['lines'] = [1, 2, 3]
+        rules = {r for _w, lvl, r, _m in self.found(doc) if lvl == 'ERROR'}
+        self.assertEqual(rules, {'C10', 'C11', 'C12'})
 
 if __name__ == '__main__':
     unittest.main()

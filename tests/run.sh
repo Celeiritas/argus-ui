@@ -28,7 +28,7 @@ fail=0
 # the deck rubric (docs/mentor-rubric.md): the shipped decks pass, and the checker still catches each rule
 if [ -z "$1" ] || [ "$1" = mentor ]; then
   echo "== deck rubric"
-  res=$(python3 "$R/scripts/check-deck.py" "$R"/themes/*/decks "$R/tests/deck-fixtures/good-lesson.json" "$R/tests/deck-fixtures/good-course.json") || { echo "$res"; fail=1; }
+  res=$(python3 "$R/scripts/check-deck.py" "$R"/themes/*/decks "$R/tests/deck-fixtures/good-lesson.json" "$R/tests/deck-fixtures/good-course.json" "$R/tests/deck-fixtures/good-roles.json") || { echo "$res"; fail=1; }
   tail -1 <<<"$res"
   out=$(python3 "$R/scripts/check-deck.py" "$R/tests/deck-fixtures/bad-lesson.json") && { echo "FAIL the bad fixture passed"; fail=1; }
   for r in 'ERROR R1 file' 'WARN R1 repo' 'R2 ' 'R3 ' 'R4 ' 'R5 '; do grep -q "$r" <<<"$out" || { echo "FAIL the checker missed: $r"; fail=1; }; done
@@ -37,6 +37,11 @@ if [ -z "$1" ] || [ "$1" = mentor ]; then
   out=$(python3 "$R/scripts/check-deck.py" --repo argus-ui="$R" "$R/tests/deck-fixtures/bad-course.json") && { echo "FAIL the bad course passed"; fail=1; }
   for r in C1 C2 C3 C4 C5 C6 C7 C8; do grep -q "ERROR $r " <<<"$out" || { echo "FAIL the course checker missed: $r"; echo "$out"; fail=1; }; done
   grep -q "no_such_function" <<<"$out" && grep -q "no_such_file.py" <<<"$out" || { echo "FAIL a missing symbol or file was not reported"; fail=1; }
+  # 4.32: each card role's fields (C10 predict, C11 trace, C12 parsons, C13 write): one bad fixture per role, refused for that rule
+  for r in predict:C10 trace:C11 parsons:C12 write:C13; do
+    out=$(python3 "$R/scripts/check-deck.py" "$R/tests/deck-fixtures/bad-${r%%:*}.json") && { echo "FAIL bad-${r%%:*}.json passed"; fail=1; }
+    grep -q "ERROR ${r##*:} " <<<"$out" || { echo "FAIL the checker missed ${r##*:} in bad-${r%%:*}.json"; echo "$out"; fail=1; }
+  done
   # the good course's code references resolve in this repository at their commit
   out=$(python3 "$R/scripts/check-deck.py" --repo argus-ui="$R" "$R/tests/deck-fixtures/good-course.json") || { echo "$out"; fail=1; }
   grep -q "INFO C8" <<<"$out" && { echo "FAIL a reference was not checked"; echo "$out"; fail=1; }
