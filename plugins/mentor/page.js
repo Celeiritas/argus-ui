@@ -537,13 +537,16 @@
     });
   }
 
+  // text boxes typed into since they were drawn: only those have an undo of their own when they are empty
+  const edited = new WeakSet(); addEventListener('input', e => { if (typing(e.target)) edited.add(e.target); }, true);
   addEventListener('keydown', e => {
     const a = document.activeElement;
     if (!ROOT || !ROOT.isConnected || !ROOT.getClientRects().length) return;      // Mentor isn't the section on screen
     if (e.altKey && (e.key === 'h' || e.key === 'H') && M.card && !M.result && !isLearn(M.card)) { e.preventDefault(); return hint(); }
-    // Ctrl+Z: the last rating; a text box keeps its own undo when it has text, or when there is no rating to take back
+    // Ctrl+Z: the last rating; a text box keeps its own undo when it has text, or when you emptied it and there is no
+    // rating to take back. A fresh empty box has no undo of its own, so there Mentor answers (Nothing to undo)
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'z' || e.key === 'Z')) {
-      if (typing(a) && (a.value || !M.last)) return;
+      if (typing(a) && (a.value || (!M.last && edited.has(a)))) return;
       e.preventDefault(); return undo();
     }
     // Space: show the answer of a practice card, when no text box, button or other control has the key
