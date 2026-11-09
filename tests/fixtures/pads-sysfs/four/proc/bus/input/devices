@@ -1,0 +1,80 @@
+I: Bus=0011 Vendor=0001 Product=0001 Version=ab41
+N: Name="AT Translated Set 2 keyboard"
+P: Phys=isa0060/serio0/input0
+S: Sysfs=/devices/platform/i8042/serio0/input/input3
+U: Uniq=
+H: Handlers=sysrq kbd leds event3
+B: PROP=0
+B: EV=120013
+B: KEY=402000000 3803078f800d001 feffffdfffefffff fffffffffffffffe
+B: MSC=10
+B: LED=7
+
+I: Bus=0003 Vendor=28de Product=1304 Version=0111
+N: Name="Valve Software Steam Controller Keyboard"
+P: Phys=usb-0000-05-00.3-1.1/input0
+S: Sysfs=/devices/pci0000-00/usb1/1-1/1-1.1/input/input10
+U: Uniq=
+H: Handlers=sysrq kbd leds event10
+B: PROP=0
+B: EV=120013
+B: KEY=1000000000007 ff9f207ac14057ff febeffdfffefffff fffffffffffffffe
+
+I: Bus=0003 Vendor=28de Product=1304 Version=0111
+N: Name="Valve Software Steam Controller Mouse"
+P: Phys=usb-0000-05-00.3-1.1/input0
+S: Sysfs=/devices/pci0000-00/usb1/1-1/1-1.1/input/input11
+U: Uniq=
+H: Handlers=event11 mouse1
+B: PROP=0
+B: EV=17
+B: KEY=1f0000 0 0 0 0
+B: REL=903
+B: MSC=10
+
+I: Bus=0003 Vendor=2e8a Product=10c6 Version=0111
+N: Name="OpenPuck SInput"
+P: Phys=usb-0000-05-00.3-1.1/input0
+S: Sysfs=/devices/pci0000-00/usb1/1-1/1-1.1/input/input20
+U: Uniq=
+H: Handlers=event20 js0
+B: PROP=0
+B: EV=20001b
+B: KEY=7fff000000000000 0 0 0 0
+B: ABS=3003f
+B: FF=107030000 0
+
+I: Bus=0003 Vendor=28de Product=1304 Version=0111
+N: Name="Valve Software Steam Controller"
+P: Phys=usb-0000-05-00.3-1.4/input1
+S: Sysfs=/devices/pci0000-00/usb1/1-1/1-1.4/input/input12
+U: Uniq=
+H: Handlers=event12 js1
+B: PROP=0
+B: EV=20001b
+B: KEY=7fff000000000000 0 0 0 0
+B: ABS=3003f
+B: FF=107030000 0
+
+I: Bus=0006 Vendor=045e Product=028e Version=0111
+N: Name="Microsoft X-Box 360 pad 0"
+P: Phys=
+S: Sysfs=/devices/virtual/input/input30
+U: Uniq=
+H: Handlers=event30 js2
+B: PROP=0
+B: EV=20001b
+B: KEY=7fff000000000000 0 0 0 0
+B: ABS=3003f
+B: FF=107030000 0
+
+I: Bus=0003 Vendor=2dc8 Product=3019 Version=0111
+N: Name="Generic GameCube Adapter Port 1"
+P: Phys=usb-0000-05-00.3-1.2/input0
+S: Sysfs=/devices/pci0000-00/usb1/1-1/1-1.2/input/input14
+U: Uniq=
+H: Handlers=event14 js3
+B: PROP=0
+B: EV=20001b
+B: KEY=7fff000000000000 0 0 0 0
+B: ABS=3003f
