@@ -60,6 +60,9 @@ run(async b => {
   check(after.new === before.new && after.steps === 0, 'the card is new again, not on its learning steps');
   await p.keyboard.press('Control+z'); await p.waitForTimeout(500);
   check(/Nothing to undo/.test(await p.locator('#toastText').textContent()), 'a second Ctrl+Z says there is nothing to undo');
+  await p.locator('#ans').pressSequentially('typed'); await p.locator('#ans').press('Control+a'); await p.locator('#ans').press('Delete');
+  await p.locator('#ans').press('Control+z'); await p.waitForTimeout(300);
+  check(await p.locator('#ans').inputValue() === 'typed', 'with no rating to take back, Ctrl+Z in an emptied box brings its text back');
   await p.locator('#ans').fill('typed'); await p.locator('#ans').press('Control+z');
   check(!/Undone/.test(await p.locator('#toastText').textContent()), "Ctrl+Z in a box with text in it is the box's own undo");
   await p.locator('#ans').fill('');

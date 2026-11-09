@@ -1144,8 +1144,8 @@ def stats(db, deck=None):
     return {'cards': len(practice), 'new': sum(1 for c in practice if c['due'] is None),
             'learn': sum(1 for c in cards if c['kind'] in LEARN and not c['reps']),
             'due': sum(1 for c in practice if c['due'] is not None and c['due'] <= now),
-            # cards on their learning steps that come back before the day ends (each counts as due once its minutes are up)
-            'steps': sum(1 for c in practice if c['step'] is not None and c['due'] is not None and c['due'] < day_start(now) + DAY),
+            # cards on their learning steps that come back later today (once its minutes are up a card counts as due instead)
+            'steps': sum(1 for c in practice if c['step'] is not None and c['due'] is not None and now < c['due'] < day_start(now) + DAY),
             'learned': sum(1 for c in practice if (c['reps'] or 0) > 0),
             'today': sum(1 for a in att if a['at'] >= day0 and a['kind'] not in LEARN),
             'avg_coverage': round(sum(a['coverage'] for a in rated) / len(rated), 2) if rated else None,

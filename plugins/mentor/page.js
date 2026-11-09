@@ -541,9 +541,9 @@
     const a = document.activeElement;
     if (!ROOT || !ROOT.isConnected || !ROOT.getClientRects().length) return;      // Mentor isn't the section on screen
     if (e.altKey && (e.key === 'h' || e.key === 'H') && M.card && !M.result && !isLearn(M.card)) { e.preventDefault(); return hint(); }
-    // Ctrl+Z: the last rating; a text box with something in it keeps its own undo
+    // Ctrl+Z: the last rating; a text box keeps its own undo when it has text, or when there is no rating to take back
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'z' || e.key === 'Z')) {
-      if (typing(a) && a.value) return;
+      if (typing(a) && (a.value || !M.last)) return;
       e.preventDefault(); return undo();
     }
     // Space: show the answer of a practice card, when no text box, button or other control has the key

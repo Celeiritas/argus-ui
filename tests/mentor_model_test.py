@@ -316,7 +316,8 @@ class Steps(Card):
         self.assertEqual((st['due'], st['steps'], st['new']), (0, 2, 0))
         self.due_now()
         self.assertEqual(m.next_card(self.db)[0]['id'], 'd:fitts')
-        self.assertEqual(m.stats(self.db)['due'], 1)
+        st = m.stats(self.db)
+        self.assertEqual((st['due'], st['steps']), (1, 1), 'a step card whose minutes are up is due, not also back later today')
 
 class Undo(Card):
     def test_undo_restores_exactly(self):
