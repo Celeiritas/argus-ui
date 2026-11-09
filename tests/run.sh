@@ -9,7 +9,9 @@ R=$(cd "$(dirname "$0")/.." && pwd); T=$(mktemp -d); PORT=${PORT:-8097}
 export NODE_PATH="${NODE_PATH:-$R/node_modules:$(npm root -g 2>/dev/null)}"
 TH=${THEME:-leafy-realm}; bash "$R/scripts/build.sh" $TH >/dev/null; V=$(cat "$R/VERSION")
 mkdir -p "$T/pkg" "$T/home/.cache/argus-ui" "$T/fx"; tar xzf "$R/dist/argus-ui-$V-$TH.tar.gz" -C "$T/pkg"
-cp "$R"/tests/fixtures/* "$T/fx/"; chmod +x "$T"/fx/*.py "$T"/fx/*.sh
+cp -r "$R"/tests/fixtures/* "$T/fx/"; chmod +x "$T"/fx/*.py "$T"/fx/*.sh
+# the Memory page reads ~/.mnemosyne/<Server>-brain/: three fixture snapshots and some decoys (tests/memory.test.js)
+mkdir -p "$T/home/.mnemosyne"; cp -r "$R/tests/fixtures/memory/Server-brain" "$T/home/.mnemosyne/"
 # LeafyPlugins: the demo plugin(s) live where installs keep them, inside the throwaway HOME
 mkdir -p "$T/home/.config/argus-ui/plugins"; cp -r "$R"/tests/plugin-fixtures/. "$T/home/.config/argus-ui/plugins/"
 # and bundled ones, as an install puts them next to Elaia (an agent-claiming plugin, and a demo-server that yours replaces)
@@ -39,6 +41,10 @@ if [ -z "$1" ] || [ "$1" = mentor ]; then
   grep -q "INFO C8" <<<"$out" && { echo "FAIL a reference was not checked"; echo "$out"; fail=1; }
   echo "== mentor model"   # courses, Loose lessons, the review log: no browser (tests/mentor_model_test.py)
   python3 "$R/tests/mentor_model_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1
+fi
+if [ -z "$1" ] || [ "$1" = memory ]; then
+  echo "== memory model"   # the Memory page's server side, no browser (tests/memory_test.py)
+  python3 "$R/tests/memory_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1
 fi
 if [ "$1" = demo ]; then   # bash tests/run.sh demo: record the README preview GIF
   BASE="http://127.0.0.1:$PORT/argus/" FIXTURES="$T/fx" SHOTS="$T" node "$R/tests/demo.js" || exit 1
