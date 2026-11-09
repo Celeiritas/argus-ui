@@ -54,13 +54,41 @@ A course is one JSON file in the inbox (or a decks folder), `"format": "mentor-c
                                        {"id": "k-origin", "lo": "L2", "note": "n-host", "role": "explain", "check": true, "…": "…"}]}]}]}
 ```
 A full example is `tests/deck-fixtures/good-course.json`; `python3 scripts/check-deck.py` checks a course before it goes in the inbox (the C rules in the [deck rubric](mentor-rubric.md)).
-- **Roles** today: `term`, `recall`, `explain`, `find-bug`, `choose-design`, `drill`. `predict`, `trace`, `parsons`, `write` and `make` come with the new card types; until then such a card is skipped and named in Lessons.
+- **Roles:** `term`, `recall`, `explain`, `find-bug`, `choose-design`, `drill`, and since 4.32 `predict`, `trace`, `parsons` and `write` (in a lesson's `code_cards` list, below). `make` (tasks and the capstone) comes later; until then such a card is skipped and named in Lessons.
 - **Check items** (`"check": true`) are kept for module checks: they're never served as practice, never hold back a lesson's other cards, and never count as waiting. Their Learn cards wait with them (a teach card or pre-read would show the answer). Every LO needs at least 2 practice cards and 1 check item.
 - **Source references:** `{repo, path, symbol, commit, lines}` for code, `{cite, url, doi}` for a paper, `{note, path}` for your own notes. A symbol is the bare name (`host_ok`); `host_ok()` and `H.do_GET` are read as `host_ok` and `do_GET`. `commit` is a commit id. Cards show the symbol, never the path.
 - **Loose lessons:** every lesson in the older format belongs to the built-in course *Loose lessons*, one module per project. Nothing moves in Lessons: a course's lessons show as one group under the course's name, in course order.
 - **Re-importing** a changed course keeps your history; a lesson, note or LO the file no longer has goes (its attempts and schedule rows stay). Lesson ids are unique within a course; a file whose course `id` changes replaces its old course instead of adding a second one.
 
 **Review log.** Every rating also stores what it was, as Anki's review log does: `review` (*learn* until the card is first passed with Hard or better, *review*, *relearn* after an Again, *manual* when practising ahead), `ivl_before` and `ivl_after` (days), and `took` (time, capped at 60 s; the raw `ms` stays for the grader). This is what fitting FSRS to you will read later.
+
+## Code cards, unlocking and module checks (4.32)
+Four card roles for reading code before writing it (spec sections 5 and 8; read and trace before write, Xie et al., 2019). They go in a lesson's `code_cards` list, each with `id`, `lo`, `note`, `role`, `front_prompt` (the question), and `lang` (`python` by default; only Python is parsed):
+
+| Role | You see | You do | Graded | Needs |
+|---|---|---|---|---|
+| `predict` | the code, with line numbers | type what it prints or returns | key ideas, against the model answer (`answer`) | `code`, `answer`, `eval_rubric` |
+| `trace` | the code, with line numbers, and one box per step ("Step 2: after line 3") | type each name's value after that line | each step on its own: its `state` or an `accept` wording | `code`, `steps: [{"line": 3, "state": "total = 2", "accept": ["2"]}]` |
+| `parsons` | the lines, mixed (never in their right order) | put them in order with **Up** / **Down** on each line | exact order: one point per line in its right place (4 of 5 in place = 80%) | `lines`, in their right order (3 to 12) |
+| `write` | a box, starting from `starter` if given | write the code (<kbd>Enter</kbd> keeps the indent) | key ideas; Python's own syntax error is shown beside them (parsed, never run) | `answer` (the model code), `eval_rubric`, optional `starter` |
+
+```json
+"code_cards": [
+  {"id": "p-1", "lo": "L1", "note": "n-read", "role": "predict", "front_prompt": "What does this print?",
+   "code": "total = 0\nfor n in [1, 2, 3]:\n    total = total + n\nprint(total)", "answer": "6",
+   "eval_rubric": [{"idea": "it prints 6", "any": ["6"]}]},
+  {"id": "z-1", "lo": "L3", "note": "n-write", "role": "parsons", "front_prompt": "Put the lines in order so the function adds up a list.",
+   "lines": ["def total(items):", "    result = 0", "    for x in items:", "        result = result + x", "    return result"]}
+]
+```
+The full example, one lesson requiring another, is `tests/deck-fixtures/good-roles.json`; the checker's rules for each role are C10 to C13 in the [deck rubric](mentor-rubric.md).
+- **Key ideas in code.** On these cards words like `for`, `in`, `is`, `and` and `or` count (in a written explanation they are skipped), so `{"idea": "loops over the items", "any": ["for"]}` works. A trace step accepts its `state` (all its words: `total = 2` needs `total` and `2`) or any `accept` wording; a value counts only in its own step.
+- **Parsons by keyboard.** Every line has **Up** and **Down** buttons (44 px). Focus starts on the first line's Down; after a move, focus stays on the same button of the line you moved, so pressing again keeps moving it; <kbd>Alt</kbd>+<kbd>↑</kbd> / <kbd>Alt</kbd>+<kbd>↓</kbd> on a line's button moves it too. A line read out for screen readers says where it went ("Line moved to place 2 of 5"), or that it is already first or last. <kbd>Ctrl</kbd>+<kbd>Enter</kbd> checks.
+- **The local AI** (if on) scores written code in shadow mode, as it does explanations: shown, labelled, never the rating. It never writes or changes course material.
+- **Unlocking.** A course lesson can name the lessons of its course it builds on: `"requires": ["read"]`. It opens when each of them is **mastered**: 80% of its practice cards answered right (the spec's module pass threshold). *Right* means rated Good or Easy with no hint above the second rung (the expert's first move); one right answer per card is enough, and an undone rating doesn't count. A module's `requires` (other modules) works the same way: its lessons open once every lesson of the required modules is mastered. Until then the lesson serves nothing, its cards don't count as new, Lessons shows it as **Locked** with what opens it, and choosing it in Study says the same. A card studied before its lesson became locked keeps its reviews. Loose lessons are never locked.
+- **Module checks.** Check items (`"check": true`) are still never practice. Once every lesson of their module is mastered, each one is asked once, as the **module check** (after the reviews due, before new cards; the card says *module check*, and the rating buttons show no review times because a check is not scheduled). The check passes at 80% right. A missed item comes back the next day, alone, until it passes. Undo works on a check answer too.
+- **The course map.** In Lessons, a course shows each module with its lessons under it: *2 of 3 lessons mastered* or *Locked: opens when … is mastered*, a bar for the share answered right, and the check's state (*once every lesson is mastered*, *ready: 3 questions to answer*, *passed: 4 of 4 right*, *not passed yet*). Each lesson row shows *75% right* or *100% right · mastered*, or **Locked** and what opens it. The counts line adds the module check questions ready now, and Home's line says so when nothing else waits.
+- `stats` returns `checks` and `pass`, each course module's `done`, `progress`, `mastered`, `locked`, `waiting_on` and `check`, and each course lesson's `progress`, `mastered`, `locked`, `waiting_on`; `next` returns `locked` (the sentence) when a chosen lesson waits. The database gained `modules.requires` (added on start, once; nothing else changes).
 
 ## Menus and submenus (4.22.0)
 A lesson's `metadata.project` names where it sits in the Study picker. A plain project (`Sound-Haptics-Lab`) puts the lesson under **Lessons** as "project: name". A project with the separator ` › ` (space, U+203A, space), such as `GAME_RESEARCH › Topics`, puts it in its own submenu; the picker offers **Study all** for that submenu and **Study all of GAME_RESEARCH** for the whole menu. Group choices travel as `group:<project>` (`next?deck=group:GAME_RESEARCH`) and take every lesson whose project is that name or lies under it.
