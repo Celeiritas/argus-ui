@@ -33,8 +33,10 @@ leafy.register('pads', (() => {
     return [`${d.connected} connected`, steam && `${steam} Steam virtual`, other && `${other} virtual`].filter(Boolean).join(' · ');
   }
 
+  let asked = 0;                       // the newest read wins: a slow 15 s refresh never paints over a newer "Check again"
   async function draw(el, api) {
-    const {ok, data: d} = await api.get('list');
+    const n = ++asked, {ok, data: d} = await api.get('list');
+    if (n !== asked) return;
     const list = el.querySelector('.padbody'), sum = el.querySelector('.padsum');
     if (!ok || !d) { list.innerHTML = `<div class="empty"><b>No answer from the server</b>The list comes back on its own when Elaia answers again.</div>`; sum.textContent = ''; return; }
     sum.textContent = summary(d);
