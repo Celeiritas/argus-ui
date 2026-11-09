@@ -32,13 +32,15 @@ function play(k) { if (!soundOn) return; try { const a = audio[k]; a.currentTime
 function playOr(k, fallback) { if (!soundOn) return; const a = audio[k]; if (!a || a.error || a.networkState === 3) return fallback && fallback();
   try { const n = a.cloneNode(); n.volume = a.volume; n.play().catch(() => fallback && fallback()); } catch (e) {} }
 function muteLabel() { $('#mute').textContent = soundOn ? 'Mute sounds' : 'Unmute sounds'; fitRealms(); }
-// many sections on a laptop: before the bar wraps, the pills drop their second line (still read out), then the weather goes
+// many sections on a laptop: before the bar wraps, the pills drop their second line (still read out), then the weather goes,
+// then the marks and padding shrink (44 px hit areas kept), and last the bar becomes one row that scrolls sideways
+const FIT = ['compact', 'bare', 'tight', 'scroll'];
 function fitRealms() {
   const bar = $('.realms'), first = bar.querySelector('.realm'), last = $('#mute');
   const wraps = () => last.getBoundingClientRect().top >= first.getBoundingClientRect().bottom;
-  bar.classList.remove('compact', 'bare');
+  bar.classList.remove(...FIT);
   if (!first || getComputedStyle(bar).flexDirection === 'column' || !wraps()) return;   // the ultrawide rail is a column
-  bar.classList.add('compact'); if (wraps()) bar.classList.add('bare');
+  for (const step of FIT) { bar.classList.add(step); if (!wraps()) return; }
 }
 let fitAt; addEventListener('resize', () => { cancelAnimationFrame(fitAt); fitAt = requestAnimationFrame(fitRealms); });
 $('#mute').onclick = () => { soundOn = !soundOn; try { localStorage.setItem('argus-sound', soundOn ? 'on' : 'off'); } catch (e) {} muteLabel(); };
