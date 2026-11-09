@@ -125,6 +125,8 @@ A server plugin whose id is one of the theme's agent keys and whose manifest say
 
 **Mentor** is the first bundled plugin (`plugins/mentor/`, `"agent": true`): the worked example of a big one. Its database stays where it always was, outside `ctx.data_dir`, so the move kept everyone's history.
 
+**Pads** is a small bundled plugin that is not an agent (`plugins/pads/`, docs/pads.md): its own section and a Home place, read-only, with a Python test that runs without a browser (`tests/pads_test.py`).
+
 Leaving a section loads a new page, so a plugin's timers and listeners end with it; there is no `hide()`.
 
 ## Checking a plugin
