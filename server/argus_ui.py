@@ -33,6 +33,7 @@ PERSONAS = [(a['key'], a['name'], a.get('domain', '')) for a in THEME.get('agent
 NEVER_FREEZE = set(THEME.get('never_freeze', ['argus-ui']))
 PKEYS = [p[0] for p in PERSONAS]
 PAGES = ['olympus', 'home']      # sections that are not agents: the Olympus playground, Home (docs/home.md)
+MOVED = {'pads': 'controllers'}  # sections that changed their address: <base>/pads still lands on Controllers (4.33.0, for one release)
 
 # ---------- LeafyPlugins (docs/leafy-plugin.md) ----------
 # A plugin is a folder ~/.config/argus-ui/plugins/<id>/ with a plugin.json manifest. "static" plugins
@@ -509,7 +510,12 @@ class H(BaseHTTPRequestHandler):
             return self.out(json.dumps({'log': log(u) if u in units() else ''}), 'application/json')
         if p.startswith('plugins/'): return self.plugin_file(p[8:])
         first = p.split('/')[0]
-        if p == '' or first in PKEYS or first in PAGES or first in {x['id'] for x in plugins()}: return self.out(page())
+        ids = {x['id'] for x in plugins()}
+        if first in MOVED and first not in ids and MOVED[first] in ids:     # a moved section: an old bookmark lands on the new address
+            q = urlsplit(self.path).query                                   # relative, so it is right at /, at /argus/ and behind a proxy that strips the prefix
+            self.send_response(301); self.send_header('Location', '../' * p.count('/') + MOVED[first] + ('?' + q if q else ''))
+            self.send_header('Cache-Control', 'no-store'); self.send_header('Content-Length', '0'); self.end_headers(); return  # not remembered: the old id is free again later
+        if p == '' or first in PKEYS or first in PAGES or first in ids: return self.out(page())
         return self.out('not found', 'text/plain', 404)
 
     def deny(self, code, msg): return self.out(json.dumps({'ok': False, 'msg': msg}), 'application/json', code)

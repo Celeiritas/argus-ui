@@ -1,0 +1,10 @@
+{
+  "slots": [
+    {"slot": "P1", "label": "{{CONTROLLER_1}}", "match": ["28de:1304", "045e:028e", "2e8a:10c6", "0f0d:0092"]},
+    {"slot": "P2", "label": "{{CONTROLLER_2}}", "match": ["phys:-1.2/"]},
+    {"slot": "P3", "label": "{{CONTROLLER_3}}", "match": ["phys:-1.3/"]},
+    {"slot": "Retro", "label": "{{CONTROLLER_4}}", "match": ["<part of the controller's name>"]}
+  ],
+  "modes": {"1234:abcd": "<what this controller's ids mean>"},
+  "wake_hint": "Press a controller's Home or Steam button to wake it."
+}

@@ -1,0 +1,8 @@
+{
+  "slots": [
+    {"slot": "P1", "label": "Main controller", "match": ["2e8a:10c6", "045e:028e"]},
+    {"slot": "P2", "match": ["phys:-1.4/"]},
+    {"slot": "Retro", "label": "GameCube controller", "match": ["gamecube adapter"]}
+  ],
+  "wake_hint": "Test hint: press the Home button."
+}
