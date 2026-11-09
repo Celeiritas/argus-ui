@@ -12,7 +12,9 @@ TMP = tempfile.mkdtemp(prefix='argus-cache-test-')
 PLUG = os.path.join(TMP, 'plugins')
 shutil.copytree(os.path.join(R, 'tests', 'plugin-fixtures', 'spartamelee'), os.path.join(PLUG, 'spartamelee'))
 EXTRA = {'assets.json': '{}', 'data/roster.json': '{}', 'audio/hit.ogg': 'not a sound', 'thumbs/ares.webp': 'x',
-         'ui/menu.0f1e2d3c.webp': 'x', 'app.9a8b7c6d.js': '//', 'models/zeus.1A2B3C4D.glb': 'upper-case hex is not a hash'}
+         'ui/menu.0f1e2d3c.webp': 'x', 'app.9a8b7c6d.js': '//', 'models/zeus.1A2B3C4D.glb': 'upper-case hex is not a hash',
+         'frames/frames.css': 'body{}', 'models/masks/index.json': '[]', 'render/mod.mjs': '//', 'app.js.map': '{}',
+         'ui/theme.0a1b2c3d.css': 'body{}', 'models/plain.glb': 'x'}
 for name, text in EXTRA.items():
     f = os.path.join(PLUG, 'spartamelee', *name.split('/')); os.makedirs(os.path.dirname(f), exist_ok=True)
     with open(f, 'w') as fh: fh.write(text)
@@ -80,7 +82,9 @@ class PluginCache(unittest.TestCase):
     def test_cache_rules(self):
         want = {'models/ares.1a2b3c4d.glb': YEAR, 'ui/menu.0f1e2d3c.webp': YEAR, 'app.9a8b7c6d.js': YEAR,
                 '': FRESH, 'index.html': FRESH, 'app.js': FRESH, 'assets.json': FRESH, 'data/roster.json': FRESH,
-                'data.json': HOUR, 'audio/hit.ogg': HOUR, 'thumbs/ares.webp': HOUR, 'models/zeus.1A2B3C4D.glb': HOUR}
+                'data.json': FRESH, 'frames/frames.css': FRESH, 'models/masks/index.json': FRESH, 'render/mod.mjs': FRESH,
+                'app.js.map': FRESH, 'ui/theme.0a1b2c3d.css': YEAR,
+                'audio/hit.ogg': HOUR, 'thumbs/ares.webp': HOUR, 'models/plain.glb': HOUR, 'models/zeus.1A2B3C4D.glb': HOUR}
         for name, cache in want.items():
             code, h, _ = self.get('plugins/spartamelee/' + name)
             self.assertEqual((code, h.get('cache-control')), (200, cache), name)

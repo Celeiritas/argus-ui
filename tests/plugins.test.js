@@ -53,8 +53,8 @@ run(async b => {
   const since = await p.request.get(BASE + 'plugins/spartamelee/index.html', {headers: {'If-Modified-Since': lm}});
   check(since.status() === 304, 'plugin files: If-Modified-Since answers 304 for an unchanged file');
   const cc = async path => (await p.request.get(BASE + 'plugins/spartamelee/' + path)).headers()['cache-control'];
-  check(await cc('index.html') === 'no-cache' && await cc('app.js') === 'no-cache' && await cc('data.json') === 'max-age=3600',
-    'plugin files: the page and scripts are checked every time; other unhashed files keep an hour');
+  check(await cc('index.html') === 'no-cache' && await cc('app.js') === 'no-cache' && await cc('data.json') === 'no-cache',
+    'plugin files: unhashed pages, scripts and JSON are checked every time (the hour for unhashed binaries is in plugin_cache_test.py)');
   const redir = await p.request.get(BASE + 'plugins/spartamelee', {maxRedirects: 0});
   check(redir.status() === 301 && /plugins\/spartamelee\/$/.test(redir.headers()['location']), 'plugins/<id> redirects to plugins/<id>/ so relative URLs work');
 

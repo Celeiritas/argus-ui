@@ -137,9 +137,10 @@ PLUGIN_HEADERS = {'Content-Security-Policy': "sandbox allow-scripts allow-pointe
                   'Referrer-Policy': 'no-referrer', 'Cross-Origin-Resource-Policy': 'cross-origin'}
 # Caching plugin files (4.27.0): every file carries Last-Modified and an ETag, and a conditional GET answers 304, so a
 # reload re-checks a file instead of downloading it again. A content-hashed name (models/ares.1a2b3c4d.glb) never
-# changes, so it is kept a year; the files that point to those names are checked every time; the rest for an hour.
+# changes, so it is kept a year; every unhashed text file (page, script, stylesheet, JSON, source map) may point to
+# those names or change with a deploy, so it is checked every time; the rest (unhashed binaries) for an hour.
 HASHED = re.compile(r'\.[0-9a-f]{8}\.[A-Za-z0-9]+$')
-FRESH = re.compile(r'(\.html|\.js|(^|/)plugin\.json|(^|/)assets\.json|(^|/)data/[^/]+\.json)$')
+FRESH = re.compile(r'\.(html|js|mjs|css|json|map)$')
 
 def plugin_cache(rel):
     """Cache-Control for a plugin file, by its path inside the plugin folder (forward slashes)."""
