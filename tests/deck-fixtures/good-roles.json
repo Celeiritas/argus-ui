@@ -1,0 +1,448 @@
+{
+ "format": "mentor-course/1",
+ "id": "loops",
+ "name": "Read and write a loop",
+ "summary": "Read a loop before you write one: predict it, trace it, put it in order, then write it.",
+ "requires": [],
+ "retention": 0.9,
+ "sources": [
+  {
+   "cite": "Xie, B. et al. (2019). A theory of instruction for introductory programming skills. Computer Science Education."
+  }
+ ],
+ "los": [
+  {
+   "id": "T1",
+   "text": "Build a small function that loops over a list",
+   "verb": "build",
+   "bloom": "create",
+   "mode": "write",
+   "knowledge": "procedural",
+   "condition": "no hints above rung 2",
+   "standard": "right on the first try",
+   "parent": null
+  }
+ ],
+ "modules": [
+  {
+   "id": "loops-basics",
+   "name": "Loops over a list",
+   "requires": [],
+   "los": [
+    {
+     "id": "M1",
+     "text": "Explain what a loop does with each item",
+     "verb": "explain",
+     "bloom": "understand",
+     "mode": "read",
+     "knowledge": "conceptual",
+     "condition": "no hints above rung 2",
+     "standard": "right on the first try",
+     "parent": "T1"
+    },
+    {
+     "id": "M2",
+     "text": "Write a loop that adds up a list",
+     "verb": "write",
+     "bloom": "apply",
+     "mode": "write",
+     "knowledge": "procedural",
+     "condition": "no hints above rung 2",
+     "standard": "right on the first try",
+     "parent": "T1"
+    }
+   ],
+   "lessons": [
+    {
+     "id": "read",
+     "name": "Read a loop",
+     "requires": [],
+     "los": [
+      {
+       "id": "L1",
+       "text": "Predict what a short loop prints",
+       "verb": "predict",
+       "bloom": "understand",
+       "mode": "read",
+       "knowledge": "conceptual",
+       "condition": "no hints above rung 2",
+       "standard": "right on the first try",
+       "parent": "M1"
+      },
+      {
+       "id": "L2",
+       "text": "Trace the values a loop gives a name",
+       "verb": "trace",
+       "bloom": "understand",
+       "mode": "read",
+       "knowledge": "conceptual",
+       "condition": "no hints above rung 2",
+       "standard": "right on the first try",
+       "parent": "M1"
+      }
+     ],
+     "notes": [
+      {
+       "id": "n-read",
+       "kind": "claim",
+       "source_ref": {
+        "cite": "Xie, B. et al. (2019). A theory of instruction for introductory programming skills. Computer Science Education."
+       }
+      }
+     ],
+     "metadata": {
+      "module_name": "Read a loop"
+     },
+     "cta_summary": {
+      "orientation": "Before you write a loop, run one in your head: what it prints, and what each name holds after each line."
+     },
+     "code_cards": [
+      {
+       "id": "p-1",
+       "lo": "L1",
+       "note": "n-read",
+       "role": "predict",
+       "lang": "python",
+       "code": "total = 0\nfor n in [1, 2, 3]:\n    total = total + n\nprint(total)",
+       "front_prompt": "What does this print?",
+       "answer": "6",
+       "eval_rubric": [
+        {
+         "idea": "it prints 6",
+         "any": [
+          "6"
+         ]
+        }
+       ]
+      },
+      {
+       "id": "p-2",
+       "lo": "L1",
+       "note": "n-read",
+       "role": "predict",
+       "lang": "python",
+       "code": "words = ['a', 'bb', 'ccc']\nfor w in words:\n    print(len(w))",
+       "front_prompt": "What does this print?",
+       "answer": "1\n2\n3",
+       "eval_rubric": [
+        {
+         "idea": "one number per word: 1, 2, 3",
+         "any": [
+          "1 2 3"
+         ]
+        }
+       ]
+      },
+      {
+       "id": "p-k",
+       "lo": "L1",
+       "note": "n-read",
+       "role": "predict",
+       "lang": "python",
+       "check": true,
+       "code": "count = 0\nfor x in [5, 0, 7]:\n    if x:\n        count = count + 1\nprint(count)",
+       "front_prompt": "What does this print?",
+       "answer": "2",
+       "eval_rubric": [
+        {
+         "idea": "it prints 2 (zero counts as false)",
+         "any": [
+          "2"
+         ]
+        }
+       ]
+      },
+      {
+       "id": "t-1",
+       "lo": "L2",
+       "note": "n-read",
+       "role": "trace",
+       "lang": "python",
+       "code": "total = 0\nfor n in [2, 4]:\n    total = total + n",
+       "front_prompt": "Write the value of the name after each step, for example: total = 2.",
+       "steps": [
+        {
+         "line": 1,
+         "state": "total = 0",
+         "accept": [
+          "0"
+         ]
+        },
+        {
+         "line": 3,
+         "state": "total = 2",
+         "accept": [
+          "2"
+         ]
+        },
+        {
+         "line": 3,
+         "state": "total = 6",
+         "accept": [
+          "6"
+         ]
+        }
+       ]
+      },
+      {
+       "id": "t-2",
+       "lo": "L2",
+       "note": "n-read",
+       "role": "trace",
+       "lang": "python",
+       "code": "x = 3\nx = x * 2\nx = x - 1",
+       "front_prompt": "Write the value of the name after each step, for example: total = 2.",
+       "steps": [
+        {
+         "line": 1,
+         "state": "x = 3",
+         "accept": [
+          "3"
+         ]
+        },
+        {
+         "line": 2,
+         "state": "x = 6",
+         "accept": [
+          "6"
+         ]
+        },
+        {
+         "line": 3,
+         "state": "x = 5",
+         "accept": [
+          "5"
+         ]
+        }
+       ]
+      },
+      {
+       "id": "t-k",
+       "lo": "L2",
+       "note": "n-read",
+       "role": "trace",
+       "lang": "python",
+       "check": true,
+       "code": "n = 10\nn = n // 3\nn = n + 1",
+       "front_prompt": "Write the value of the name after each step, for example: total = 2.",
+       "steps": [
+        {
+         "line": 1,
+         "state": "n = 10",
+         "accept": [
+          "10"
+         ]
+        },
+        {
+         "line": 2,
+         "state": "n = 3",
+         "accept": [
+          "3"
+         ]
+        },
+        {
+         "line": 3,
+         "state": "n = 4",
+         "accept": [
+          "4"
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "write",
+     "name": "Write a loop",
+     "requires": [
+      "read"
+     ],
+     "los": [
+      {
+       "id": "L3",
+       "text": "Order the lines of a function with a loop",
+       "verb": "order",
+       "bloom": "apply",
+       "mode": "write",
+       "knowledge": "procedural",
+       "condition": "no hints above rung 2",
+       "standard": "right on the first try",
+       "parent": "M2"
+      },
+      {
+       "id": "L4",
+       "text": "Write a function with a loop from a one-line description",
+       "verb": "write",
+       "bloom": "apply",
+       "mode": "write",
+       "knowledge": "procedural",
+       "condition": "no hints above rung 2",
+       "standard": "right on the first try",
+       "parent": "M2"
+      }
+     ],
+     "notes": [
+      {
+       "id": "n-write",
+       "kind": "claim",
+       "source_ref": {
+        "cite": "Parsons, D. and Haden, P. (2006). Parson's programming puzzles: a fun and effective learning tool for first programming courses. Australasian Conference on Computing Education."
+       }
+      }
+     ],
+     "metadata": {
+      "module_name": "Write a loop"
+     },
+     "cta_summary": {
+      "orientation": "Now the other way round: put the lines of a loop in order, then write small loops yourself."
+     },
+     "code_cards": [
+      {
+       "id": "z-1",
+       "lo": "L3",
+       "note": "n-write",
+       "role": "parsons",
+       "lang": "python",
+       "front_prompt": "Put the lines in order so the function adds up a list.",
+       "lines": [
+        "def total(items):",
+        "    result = 0",
+        "    for x in items:",
+        "        result = result + x",
+        "    return result"
+       ]
+      },
+      {
+       "id": "z-2",
+       "lo": "L3",
+       "note": "n-write",
+       "role": "parsons",
+       "lang": "python",
+       "front_prompt": "Put the lines in order so the function counts the words longer than three letters.",
+       "lines": [
+        "def count_long(words):",
+        "    n = 0",
+        "    for w in words:",
+        "        if len(w) > 3:",
+        "            n = n + 1",
+        "    return n"
+       ]
+      },
+      {
+       "id": "z-k",
+       "lo": "L3",
+       "note": "n-write",
+       "role": "parsons",
+       "lang": "python",
+       "check": true,
+       "front_prompt": "Put the lines in order so the function finds the biggest item.",
+       "lines": [
+        "def biggest(items):",
+        "    best = items[0]",
+        "    for x in items:",
+        "        if x > best:",
+        "            best = x",
+        "    return best"
+       ]
+      },
+      {
+       "id": "w-1",
+       "lo": "L4",
+       "note": "n-write",
+       "role": "write",
+       "lang": "python",
+       "front_prompt": "Write `double_all(items)`: it returns a new list with every item doubled.",
+       "starter": "def double_all(items):",
+       "answer": "def double_all(items):\n    out = []\n    for x in items:\n        out.append(x * 2)\n    return out",
+       "eval_rubric": [
+        {
+         "idea": "loops over the items",
+         "any": [
+          "for"
+         ]
+        },
+        {
+         "idea": "doubles each item",
+         "any": [
+          "* 2",
+          "2 *",
+          "x + x"
+         ]
+        },
+        {
+         "idea": "returns the new list",
+         "any": [
+          "return"
+         ]
+        }
+       ]
+      },
+      {
+       "id": "w-2",
+       "lo": "L4",
+       "note": "n-write",
+       "role": "write",
+       "lang": "python",
+       "front_prompt": "Write `count_even(nums)`: it returns how many of the numbers are even.",
+       "starter": "def count_even(nums):",
+       "answer": "def count_even(nums):\n    n = 0\n    for x in nums:\n        if x % 2 == 0:\n            n = n + 1\n    return n",
+       "eval_rubric": [
+        {
+         "idea": "loops over the numbers",
+         "any": [
+          "for"
+         ]
+        },
+        {
+         "idea": "tests for even with % 2",
+         "any": [
+          "% 2",
+          "even"
+         ]
+        },
+        {
+         "idea": "returns the count",
+         "any": [
+          "return"
+         ]
+        }
+       ]
+      },
+      {
+       "id": "w-k",
+       "lo": "L4",
+       "note": "n-write",
+       "role": "write",
+       "lang": "python",
+       "check": true,
+       "front_prompt": "Write `first_negative(nums)`: it returns the first number below zero, or None.",
+       "starter": "def first_negative(nums):",
+       "answer": "def first_negative(nums):\n    for x in nums:\n        if x < 0:\n            return x\n    return None",
+       "eval_rubric": [
+        {
+         "idea": "loops over the numbers",
+         "any": [
+          "for"
+         ]
+        },
+        {
+         "idea": "returns as soon as one is below zero",
+         "any": [
+          "< 0",
+          "return x"
+         ]
+        },
+        {
+         "idea": "returns None after the loop",
+         "any": [
+          "None"
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
