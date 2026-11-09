@@ -339,4 +339,125 @@ run(async b => {
   const cc = (await api(p, 'next?deck=' + encodeURIComponent('group:Rebuild a small web server'))).card;
   check(cc && cc.id.startsWith('demo-server--'), 'Study all on a course serves a card from its lessons');
   check(p.errors.length === 0, 'courses: no page errors ' + p.errors.join(' | '));
+
+  // 4.32: predict, trace, parsons and write cards, each through the page by keyboard; a lesson that waits for another;
+  // the module check once both lessons are mastered; the course map's locks and progress; 375 px
+  fs.copyFileSync(path.join(__dirname, 'deck-fixtures', 'good-roles.json'), path.join(INBOX, 'loops.json'));
+  await api(p, 'settings', {bury: false});            // every card of a note in one sitting (turned back on at the end)
+  const lk = await api(p, 'next?deck=loops--write');
+  check(!lk.card && /Read a loop/.test(lk.locked || ''), 'a lesson that requires another serves nothing and names the lesson it waits for');
+  await p.locator('[data-view=modules]').click(); await p.waitForTimeout(700);
+  const rg = p.locator('section.group', {has: p.locator('h2', {hasText: 'Read and write a loop'})});
+  check(await rg.locator('.cmod h3', {hasText: 'Loops over a list'}).count() === 1, 'the course map shows the module above its lessons');
+  check(/0 of 2 lessons mastered/.test(await rg.locator('.cmod .cmhead .meta').textContent()) && /Module check \(4 questions\) once every lesson is mastered/.test(await rg.locator('.cmod .cmhead .meta').textContent()),
+    'the module says how many lessons are mastered and when its check comes');
+  check(/^5 cards · 1 lesson cards? to read/.test(await rg.locator('.module:not(.locked)').locator('.mname .meta').textContent()), 'an open lesson row still counts its cards (4 practice, 1 to read)');
+  const locked = rg.locator('.module.locked', {hasText: 'Write a loop'});
+  check(await locked.locator('.locktag', {hasText: 'Locked'}).count() === 1 && await locked.locator('[data-study]').count() === 0, 'a locked lesson says Locked in words and has no study button');
+  check(/Opens at 80% right in: Read a loop/.test(await locked.locator('.meta').textContent()), 'the locked lesson says what opens it');
+  await p.selectOption('#mdeck', 'loops--write'); await p.waitForTimeout(600);
+  check(/isn't open yet/.test(await p.locator('#mpanel').textContent()) && /Read a loop/.test(await p.locator('#mpanel .lockline').textContent()), 'choosing a locked lesson in Study says why, instead of "nothing due"');
+  await p.selectOption('#mdeck', 'loops--read'); await p.waitForTimeout(600);
+  await p.locator('#goBtn').click(); await p.waitForTimeout(500);                       // the orientation
+  const rateGood = async () => { await p.keyboard.press('3'); await p.keyboard.press('Enter'); await p.waitForTimeout(500); };
+  // predict: the code with line numbers, a box for the output, Ctrl+Enter checks; key ideas against the model answer
+  check(/Predict the output/.test(await p.locator('#qform .deckname').textContent()) && await p.locator('#qform .lines.static li').count() === 4, 'a predict card shows its code with numbered lines');
+  check(await p.evaluate(() => document.activeElement.id) === 'ans', 'the answer box has focus');
+  await shot(p, 'mentor-predict');
+  await p.keyboard.type('6'); await p.keyboard.press('Control+Enter'); await p.waitForTimeout(500);
+  check(/1 of 1 key idea/.test(await p.locator('#rhead').textContent()) && /What it prints/.test(await p.locator('#rpanel').textContent()), 'predict: graded by key ideas, the output shown');
+  await rateGood();
+  await p.keyboard.type('1\n2\n4'); await p.keyboard.press('Control+Enter'); await p.waitForTimeout(500);
+  check(/0 of 1 key idea/.test(await p.locator('#rhead').textContent()) && await p.locator('#rpanel .verdict.bad').count() === 1, 'predict: a wrong output is Not quite');
+  await rateGood();
+  // trace: one box per step; Enter moves to the next step
+  check(/Trace the values/.test(await p.locator('#qform .deckname').textContent()) && await p.locator('#qform .tsteps input').count() === 3, 'a trace card has one box per step');
+  check(/Step 2: after line 3/.test(await p.locator('#qform .tsteps').textContent()), 'each step names its line');
+  await p.keyboard.type('total = 0'); await p.keyboard.press('Enter'); await p.keyboard.type('2'); await p.keyboard.press('Enter');
+  check(await p.evaluate(() => document.activeElement.id) === 'tr2', 'Enter moves to the next step');
+  await p.keyboard.type('total = 5'); await p.keyboard.press('Control+Enter'); await p.waitForTimeout(500);
+  await shot(p, 'mentor-trace-result');
+  check(/2 of 3 values right/.test(await p.locator('#rhead').textContent()) && /the value is total = 6/.test(await p.locator('#rpanel .ideas').textContent()), 'trace: each step graded on its own, the right value shown');
+  await rateGood();
+  await p.keyboard.type('3'); await p.keyboard.press('Enter'); await p.keyboard.type('6'); await p.keyboard.press('Enter'); await p.keyboard.type('x = 5');
+  await p.keyboard.press('Control+Enter'); await p.waitForTimeout(500); await rateGood();
+  // the predict card answered wrong but rated Good (the learner's call) counts as right for mastery: 4 of 4
+  check(/All caught up/.test(await p.locator('#mpanel').textContent()), 'the read lesson has nothing left today (its check waits for the whole module)');
+  const opened = await api(p, 'next?deck=loops--write');
+  check(opened.card && opened.card.kind === 'orientation', 'once Read a loop reaches 80% right, Write a loop opens');
+  // parsons: the lines come mixed; Up/Down buttons and Alt+arrows move them, focus stays with the moved line
+  await p.selectOption('#mdeck', 'loops--write'); await p.waitForTimeout(600);
+  await p.locator('#goBtn').click(); await p.waitForTimeout(500);
+  const want = JSON.parse(fs.readFileSync(path.join(__dirname, 'deck-fixtures', 'good-roles.json'))).modules[0].lessons[1].code_cards[0].lines;
+  const lines = async () => (await p.locator('#plist li code').allTextContents()).map(t => t === ' ' ? '' : t);
+  check(/Put the lines in order/.test(await p.locator('#qform .deckname').textContent()) && JSON.stringify(await lines()) !== JSON.stringify(want), 'a Parsons card shows the lines mixed');
+  check(await p.evaluate(() => document.activeElement.classList.contains('pdown')), 'focus starts on the first line\'s Down button');
+  const hits = await p.locator('#plist button').evaluateAll(bs => bs.every(b => b.getBoundingClientRect().height >= 44 && b.getBoundingClientRect().width >= 44));
+  check(hits, 'every Up and Down button is at least 44 px');
+  await shot(p, 'mentor-parsons');
+  const first = (await lines())[0];
+  await p.keyboard.press('Enter'); await p.waitForTimeout(100);                 // Down on the first line, by keyboard
+  check((await lines())[1] === first && await p.evaluate(() => document.activeElement.closest('li') && document.activeElement.closest('li').querySelector('code').textContent) === first,
+    'Enter on Down moves the line down and focus stays with it');
+  check(/Line moved to place 2 of 5/.test(await p.locator('#plive').textContent()), 'a live line says where the line went');
+  await p.keyboard.press('Shift+Tab'); await p.keyboard.press('Enter'); await p.waitForTimeout(100);  // its Up button: back to place 1
+  check((await lines())[0] === first, 'Up moves it back');
+  await p.keyboard.press('Enter'); await p.waitForTimeout(100);
+  check(/already first/.test(await p.locator('#plive').textContent()), 'Up on the first line says it is already first (no greyed-out button)');
+  // sort it with Alt+ArrowUp only: for each place, take the line that belongs there up to it
+  for (let i = 0; i < want.length; i++) {
+    const now = await lines(), at = now.indexOf(want[i], i);
+    if (at === i) continue;
+    await p.locator('#plist li').nth(at).locator('.pup').focus();
+    for (let k = at; k > i; k--) await p.keyboard.press('Alt+ArrowUp');
+  }
+  check(JSON.stringify(await lines()) === JSON.stringify(want), 'Alt+ArrowUp on a line\'s button sorts the lines by keyboard alone');
+  // phone: the same card at 375 px fits without sideways scrolling, buttons still 44 px
+  const ph2 = await page(b, 375, 760); await ph2.goto(BASE + 'mentor'); await ph2.waitForTimeout(800);
+  await ph2.selectOption('#mdeck', 'loops--write'); await ph2.waitForTimeout(700);
+  check(await ph2.locator('#plist li').count() === 5 && await noOverflow(ph2), 'phone: a Parsons card fits 375 px without sideways scrolling');
+  check(await ph2.locator('#plist button').evaluateAll(bs => bs.every(b => b.getBoundingClientRect().height >= 44)), 'phone: Up and Down stay 44 px');
+  await shot(ph2, 'mentor-phone-parsons');
+  await ph2.locator('[data-view=modules]').click(); await ph2.waitForTimeout(700);
+  check(await noOverflow(ph2), 'phone: the course map with a module and its lessons fits 375 px');
+  await ph2.close();
+  await p.keyboard.press('Control+Enter'); await p.waitForTimeout(500);
+  check(/5 of 5 lines in place/.test(await p.locator('#rhead').textContent()) && await p.locator('#rpanel .verdict.ok').count() === 1, 'parsons: exact order is Correct');
+  await rateGood();
+  await p.keyboard.press('Control+Enter'); await p.waitForTimeout(500);       // the second Parsons card, checked as shown
+  check(/of 6 lines in place/.test(await p.locator('#rhead').textContent()) && await p.locator('#rpanel .ideas .miss').count() >= 1, 'parsons: partial credit, one row per place');
+  await rateGood();
+  // write: a starter line, Enter keeps the indent; key ideas; Python's syntax error shown, never run
+  check(/Write the code/.test(await p.locator('#qform .deckname').textContent()) && (await p.locator('#ans').inputValue()).startsWith('def double_all(items):'), 'a write card starts from its starter line');
+  check(await p.locator('#checkBtn').textContent() === 'Show answer', 'the starter alone is not an answer');
+  await p.keyboard.type('out = []'); await p.keyboard.press('Enter'); await p.keyboard.type('for x in items:'); await p.keyboard.press('Enter');
+  check((await p.locator('#ans').inputValue()).endsWith('for x in items:\n        '), 'Enter after a colon indents one more level');
+  await p.keyboard.type('out.append(x * 2)'); await p.keyboard.press('Enter');
+  await p.locator('#ans').press('Backspace'); for (let i = 0; i < 3; i++) await p.keyboard.press('Backspace');
+  await p.keyboard.type('return out'); await p.keyboard.press('Control+Enter'); await p.waitForTimeout(500);
+  await shot(p, 'mentor-write-result');
+  check(/3 of 3 key ideas/.test(await p.locator('#rhead').textContent()) && /Model answer/.test(await p.locator('#rpanel').textContent()), 'write: graded by key ideas, the model answer beside yours');
+  await rateGood();
+  await p.locator('#ans').fill('def count_even(nums)\n    return len([x for x in nums if x % 2 == 0])'); await p.keyboard.press('Control+Enter'); await p.waitForTimeout(500);
+  check(/Python says/.test(await p.locator('#rpanel').textContent()) && /line 1/.test(await p.locator('#rpanel').textContent()), "write: Python's own syntax error is shown");
+  await rateGood();
+  // the module check: both lessons mastered, so the check items come, labelled, without schedule times
+  const cs2 = await api(p, 'stats');
+  check(cs2.checks === 4, 'the counts line knows 4 module check questions are ready: ' + cs2.checks);
+  await p.locator('[data-view=modules]').click(); await p.waitForTimeout(700);
+  await rg.locator('button[data-study^="group:"]').click(); await p.waitForTimeout(600);     // Study all of the course
+  check(/module check/i.test(await p.locator('#qform .deckname').textContent()), 'a check item is served labelled as the module check');
+  const ck = await p.locator('#qform .deckname').textContent();
+  if (/Predict/.test(ck)) await p.keyboard.type('2'); else if (/Write/.test(ck)) await p.keyboard.type('return None'); else if (/Trace/.test(ck)) { await p.keyboard.type('10'); await p.keyboard.press('Enter'); await p.keyboard.type('3'); await p.keyboard.press('Enter'); await p.keyboard.type('4'); }
+  await p.keyboard.press('Control+Enter'); await p.waitForTimeout(500);
+  check(await p.locator('#rpanel .checkline').count() === 1 && await p.locator('#rpanel .rates .when').count() === 0, 'a check item counts toward the check and shows no review times');
+  await rateGood();
+  check(/Saved for the module check/.test(await p.locator('#toastText').textContent()), 'the toast says it was saved for the check');
+  await p.locator('[data-view=modules]').click(); await p.waitForTimeout(700);
+  await shot(p, 'mentor-course-map');
+  const meta = await rg.locator('.cmod .cmhead .meta').textContent();
+  check(/2 of 2 lessons mastered/.test(meta) && /Module check ready: 3 questions to answer/.test(meta), 'the course map shows the module mastered and its check in progress: ' + meta);
+  check(await rg.locator('.module.locked').count() === 0 && /right · mastered/.test(await rg.locator('.module', {hasText: 'Read a loop'}).locator('.mprog').textContent()), 'no lesson is locked now, and a mastered one says so');
+  await api(p, 'settings', {bury: true});
+  check(p.errors.length === 0, 'card roles: no page errors ' + p.errors.join(' | '));
 });

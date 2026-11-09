@@ -145,3 +145,30 @@
 .mentor code{font-size:var(--fs-sec)}
 .mentor h3 code,.mentor .task code,.mentor .field label code{font-size:var(--fs-body)}
 .mentor .coach code,.mentor .help code,.mentor .mine code,.mentor .crumb code,.mentor .deckname code,.mentor .label code,.mentor .callout b code,.mentor .verdict code{font-size:inherit}
+/* 4.32: predict, trace, parsons and write cards; locks and module checks on the course map. Same type roles as above:
+   code 14/400, labels 14/600, the task 16/600; every control 44 px */
+.mentor .lines.static{margin:0 0 var(--s4)}
+.mentor .lines.static .line{min-height:0;cursor:default;padding-top:var(--s1);padding-bottom:var(--s1)}
+.mentor textarea.out{width:100%;font-family:var(--mono);font-size:var(--fs-sec);line-height:1.6}
+.mentor .tsteps{list-style:none;padding:0;margin:0 0 var(--s2)}
+.mentor .tsteps li{margin:0 0 var(--s3)}
+.mentor .tsteps label{display:block;font-size:var(--fs-sec);font-weight:600;color:var(--powder);margin:0 0 var(--s1)}
+.mentor .tsteps input.blank.wide{font-family:var(--mono);font-size:var(--fs-sec)}
+.mentor .parsons{list-style:none;padding:0;margin:0 0 var(--s2);background:#1a1f25;border:1px solid var(--line);border-radius:8px}
+.mentor .parsons li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--s2);align-items:center;padding:var(--s1) var(--s2) var(--s1) var(--s3);border-top:1px solid var(--line)}
+.mentor .parsons li:first-child{border-top:0}
+.mentor .parsons code{background:none;padding:0;font-family:var(--mono);font-size:var(--fs-sec);font-weight:400;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--snow)}
+.mentor .pbtns{display:flex;gap:var(--s1)}
+.mentor .pbtns button{min-height:var(--hit);min-width:var(--hit);padding:0 var(--s2);font-size:var(--fs-sec);font-weight:600}
+.mentor .pbtns button:focus-visible{outline:2px solid var(--powder);outline-offset:2px}
+@media (max-width:420px){.mentor .parsons li{grid-template-columns:1fr;padding:var(--s2) var(--s3)}.mentor .pbtns{justify-content:flex-end}}
+.mentor .lockline,.modules .locktag{display:flex;align-items:center;gap:var(--s2);margin:0;color:var(--powder);font-size:var(--fs-sec);font-weight:400}
+.modules .locktag{font-weight:600;min-height:var(--hit)}
+.mentor .lockline svg,.modules .locktag svg,.modules .cmhead h3 svg{flex:none;width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.mentor .checkline{border-left:3px solid var(--teal);padding-left:var(--s3)}
+.modules .cmod{margin:0 0 var(--s4)}
+.modules .cmhead{display:grid;grid-template-columns:minmax(0,1fr) 180px 120px;gap:var(--s4);align-items:center;margin:var(--s3) 0 var(--s2);padding:0 var(--s4)}   /* the bar lines up with its lessons' bars */
+.modules .cmhead h3{display:flex;align-items:center;gap:var(--s2);margin:0;font-size:var(--fs-body);font-weight:600}
+.modules .cmhead .meta{margin:var(--s1) 0 0;font-size:var(--fs-sec)}
+.modules .cmod.locked .cmhead h3,.modules .module.locked h4{color:var(--powder)}
+@media (max-width:640px){.modules .cmhead{grid-template-columns:1fr;gap:var(--s2)}}
