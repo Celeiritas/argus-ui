@@ -49,7 +49,7 @@ A course file (`"format": "mentor-course/1"`, [docs/mentor.md](mentor.md#courses
 | C13 | a `write` card without `front_prompt`, `answer` or `eval_rubric`; a Python `answer` that doesn't parse |
 | C9 | with `--online`: a link that isn't http(s), answers 404 or not at all; a DOI (bare, `doi:` or a doi.org link) doi.org doesn't know. A site that refuses robots (401, 403, 429) is a warning: open it yourself |
 
-`python3 scripts/check-deck.py --repo argus-ui=. --online course.json`. The tests run it on `tests/deck-fixtures/good-course.json` and `good-roles.json` (clean), `bad-course.json` (each rule broken once) and `bad-predict.json`, `bad-trace.json`, `bad-parsons.json`, `bad-write.json` (C10 to C13, each broken twice). A code card's code, answer, lines and steps are code, so R1 and R2 skip them.
+`python3 scripts/check-deck.py --repo argus-ui=. --online course.json`. The tests run it on `tests/deck-fixtures/good-course.json` and `good-roles.json` (clean), `bad-course.json` (each rule broken once) and `bad-predict.json`, `bad-trace.json`, `bad-parsons.json`, `bad-write.json` (C10 to C13, each broken twice). A code card's code, answer, lines and steps are code, so R1 and R2 skip them. A code card is Python unless its `lang` says otherwise (as Mentor reads it); a card in another language is reported as not parsed (INFO).
 
 ## Not checked by the script (read it yourself)
 - Every term used in the orientation or a prompt has a term card, or is replaced by plain words.
