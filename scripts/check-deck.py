@@ -216,7 +216,7 @@ def check_course(doc):
                     if item.get('note') is None: add(w, 'WARN', 'C4', 'no note: where does this card come from?')
                     elif note not in notes: add(w, 'ERROR', 'C4', f'note {json.dumps(item.get("note"))} is not one of this lesson\'s')
                     if key == 'tier_1_faded_code_drills': parses(item, notes.get(note), w, add)
-                    if key == 'code_cards' and role in ROLE_RULE: role_fields(item, role, notes.get(note), w, add)
+                    if key == 'code_cards' and role in ROLE_RULE: role_fields(item, role, w, add)
             for lid, (practice, checks) in counts.items():
                 if practice < 2: add(f'{where}: LO {lid}', 'ERROR', 'C4', f'{practice} practice card{"s" * (practice != 1)} (at least 2)')
                 if checks < 1: add(f'{where}: LO {lid}', 'ERROR', 'C4', 'no check item ("check": true)')
@@ -346,21 +346,23 @@ def parses(item, note, where, add):
         try: ast.parse(textwrap.dedent(str(src or '')))
         except SyntaxError as e: add(where, 'ERROR', 'C7', f'{name} is not valid Python (line {e.lineno}: {e.msg})')
 
-def is_python(item, note):
-    path = str(((note or {}).get('source_ref') or {}).get('path') or '')
-    return item.get('lang', 'python' if path.endswith('.py') else None) == 'python'
+def is_python(item):
+    """A code card's language, as Mentor reads it: Python unless its `lang` says otherwise (docs/mentor.md, code cards).
+    (Drills guess from their note's source path instead: parses().)"""
+    return str(item.get('lang') or 'python') == 'python'
 
 def text(x):
     return x if isinstance(x, str) and x.strip() else None
 
-def role_fields(item, role, note, where, add):
+def role_fields(item, role, where, add):
     """C10-C13: what a predict, trace, parsons or write card needs (docs/mentor.md, code cards), and its Python parses.
     predict: code, front_prompt, answer, eval_rubric. trace: code, front_prompt, steps [{line, state}] with each line in
     the code. parsons: front_prompt, 3-12 lines of code (strings) that parse together. write: front_prompt, answer (parses),
     eval_rubric."""
     rule = ROLE_RULE[role]
     bad = lambda msg: add(where, 'ERROR', rule, f'{role} card: {msg}')
-    py = is_python(item, note)
+    py = is_python(item)
+    if not py: add(where, 'INFO', rule, f'not parsed ({item.get("lang")}): only Python is checked')
     def parse(name, src):
         if not py: return
         try: ast.parse(textwrap.dedent(src))
