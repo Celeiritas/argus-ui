@@ -89,6 +89,10 @@ class Registry(unittest.TestCase):
         by = {p['name']: p for p in s['pads']}
         self.assertEqual(by['Generic GameCube Adapter Port 1']['mode'], 'GameCube adapter')
         self.assertTrue(all(p['slot'] is None for p in s['pads']), 'entries without a slot or a usable match are ignored')
+        s = pads.scan(FOUR, self.reg(json.dumps({'slots': [{'slot': 'P3', 'match': {'x': 1}}, {'slot': 'P1', 'match': 'puck'}]})))
+        by = {p['name']: p['slot'] for p in s['pads']}
+        self.assertEqual([n for n, v in by.items() if v == 'P1'], ['OpenPuck SInput'], 'a string match is one pattern, never letter by letter')
+        self.assertNotIn('P3', by.values(), 'a match that is neither a list nor a string is ignored')
 
     def test_example_file_parses_and_has_placeholders_only(self):
         r, problem = pads.registry(os.path.join(R, 'docs', 'pads.example.json'))

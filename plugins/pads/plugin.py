@@ -95,7 +95,9 @@ def slot_for(d, reg):
     if kind(d) != 'real': return None, '', 999
     for i, e in enumerate(reg.get('slots') or []):
         if not isinstance(e, dict) or not e.get('slot'): continue
-        for m in e.get('match') or []:
+        ms = e.get('match')
+        ms = [ms] if isinstance(ms, str) else (ms if isinstance(ms, list) else [])  # "match": "puck" = one pattern, never per letter
+        for m in ms:
             m = str(m).strip().lower()
             if not m: continue
             if re.fullmatch(r'[0-9a-f]{4}:[0-9a-f]{4}', m): hit = m == _ids(d)

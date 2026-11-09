@@ -32,7 +32,7 @@ Optional (`ARGUS_PADS` points elsewhere). Without it every pad shows *No slot*; 
   "wake_hint": "Press a pad's Home or Steam button to wake it."
 }
 ```
-- `slots` in the order the page lists them. The first entry with a matching `match` wins. A match is `vvvv:pppp` (USB ids, exact), `phys:<text>` (part of the pad's USB port path, the `P: Phys=` line: use it when the hub port is the player slot and two adapters share ids), or anything else (part of the name). Case is ignored.
+- `slots` in the order the page lists them. The first entry with a matching `match` wins. A match is `vvvv:pppp` (USB ids, exact), `phys:<text>` (part of the pad's USB port path, the `P: Phys=` line: use it when the hub port is the player slot and two adapters share ids), or anything else (part of the name). Case is ignored. One string instead of a list (`"match": "puck"`) is one match.
 - **Virtual pads never take a slot**, even when their ids match: they are copies of a real pad, which has it.
 - `modes` names ids the built-in list doesn't know (a GameCube adapter, say). `wake_hint` replaces the default empty-state hint.
 - The real map lives only on the server; the repo has placeholders only.
