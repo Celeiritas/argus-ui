@@ -41,6 +41,20 @@ run(async b => {
   const r = await p.request.get(BASE + 'plugins/spartamelee/app.js');
   check(/text\/javascript/.test(r.headers()['content-type']) && r.headers()['access-control-allow-origin'] === '*'
     && /sandbox/.test(r.headers()['content-security-policy'] || ''), 'plugin files: JS type, CORS for the sandbox, CSP sandbox even when opened alone');
+  // caching (4.27.0): validators on every file, 304 on a match, a year only for content-hashed names
+  const glb = await p.request.get(BASE + 'plugins/spartamelee/models/ares.1a2b3c4d.glb'), gh = glb.headers();
+  check(glb.status() === 200 && /^"[0-9a-f]+-[0-9a-f]+"$/.test(gh['etag'] || '') && / GMT$/.test(gh['last-modified'] || ''),
+    'plugin files: the first GET has an ETag and Last-Modified');
+  check(gh['cache-control'] === 'public, max-age=31536000, immutable', 'plugin files: a content-hashed name is kept a year (immutable)');
+  const again = await p.request.get(BASE + 'plugins/spartamelee/models/ares.1a2b3c4d.glb', {headers: {'If-None-Match': gh['etag']}});
+  check(again.status() === 304 && (await again.body()).length === 0 && /sandbox/.test(again.headers()['content-security-policy'] || '')
+    && again.headers()['etag'] === gh['etag'], 'plugin files: If-None-Match answers 304 with no body, still sandboxed');
+  const lm = (await p.request.get(BASE + 'plugins/spartamelee/index.html')).headers()['last-modified'];
+  const since = await p.request.get(BASE + 'plugins/spartamelee/index.html', {headers: {'If-Modified-Since': lm}});
+  check(since.status() === 304, 'plugin files: If-Modified-Since answers 304 for an unchanged file');
+  const cc = async path => (await p.request.get(BASE + 'plugins/spartamelee/' + path)).headers()['cache-control'];
+  check(await cc('index.html') === 'no-cache' && await cc('app.js') === 'no-cache' && await cc('data.json') === 'no-cache',
+    'plugin files: unhashed pages, scripts and JSON are checked every time (the hour for unhashed binaries is in plugin_cache_test.py)');
   const redir = await p.request.get(BASE + 'plugins/spartamelee', {maxRedirects: 0});
   check(redir.status() === 301 && /plugins\/spartamelee\/$/.test(redir.headers()['location']), 'plugins/<id> redirects to plugins/<id>/ so relative URLs work');
 
