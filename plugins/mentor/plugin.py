@@ -29,6 +29,7 @@ def plural(n, one, many=None):
 def line(s):
     # Home's one line: what is waiting to be studied
     if s['due']: return plural(s['due'], 'card') + ' due' + (f" · {s['learn']} to learn" if s['learn'] else '')
+    if s.get('checks'): return plural(s['checks'], 'module check question') + ' ready'
     if s['learn']: return f"{s['learn']} to learn"
     return plural(s['new'], 'new card') + ' waiting' if s['new'] else 'Nothing due'
 
@@ -65,7 +66,8 @@ def _get(path, query):
         if query.get('card'):                    # one Learn card to read again (Lessons view); never a practice card
             return 200, {'card': mentor.one_card(DB, query['card'][0])}
         card, next_due = mentor.next_card(DB, deck, (query.get('extra') or ['0'])[0] == '1')
-        return 200, {'card': card, 'next_due': next_due}
+        # a course lesson that waits for others (4.32) says which, instead of "nothing due"
+        return 200, {'card': card, 'next_due': next_due, 'locked': None if card else mentor.locked_reason(DB, deck)}
     if path == 'stats': return 200, mentor.stats(DB, deck)
     if path == 'ai':                                 # one attempt's AI part: pending, done (similarity, feedback), error, or none
         try: aid = int(query['attempt'][0])

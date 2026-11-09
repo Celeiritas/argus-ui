@@ -40,9 +40,13 @@ from difflib import SequenceMatcher
 
 DB_LOCK = threading.Lock()
 INBOX = os.path.expanduser(os.environ.get('ARGUS_MENTOR_INBOX', '~/.local/share/argus-ui/inbox'))
-TIER = {'term': 3, 'drill': 1, 'explain': 2, 'define': 3, 'orientation': 0, 'teach': 0, 'level0': 0, 'preread': 0}
-# new cards in a lesson unlock in this order; a practice card also waits for its own Learn card (cards.learn_of)
-FUNNEL = {'orientation': 0, 'teach': 1, 'term': 2, 'level0': 3, 'drill': 4, 'preread': 5, 'explain': 6}
+TIER = {'term': 3, 'drill': 1, 'explain': 2, 'define': 3, 'orientation': 0, 'teach': 0, 'level0': 0, 'preread': 0,
+        'predict': 2, 'trace': 2, 'parsons': 1, 'write': 1}
+# new cards in a lesson unlock in this order; a practice card also waits for its own Learn card (cards.learn_of).
+# 4.32: reading code (predict, trace) comes before writing it (parsons, write), as Xie et al. (2019) order them
+FUNNEL = {'orientation': 0, 'teach': 1, 'term': 2, 'predict': 3, 'trace': 4, 'level0': 5, 'drill': 6, 'parsons': 7, 'write': 8,
+          'preread': 9, 'explain': 10}
+CODE_KINDS = ('predict', 'trace', 'parsons', 'write')      # the 4.32 card roles (spec section 5), each its own card kind
 LEARN = ('orientation', 'teach', 'level0', 'preread')
 LEVELS = {1: 'Fill in the endings', 2: 'Fill in the logic', 3: 'Write the body'}
 RUNGS = ('Nudge', "The expert's first move", 'A near example', 'The answer')
@@ -50,7 +54,11 @@ RUNGS = ('Nudge', "The expert's first move", 'A near example', 'The answer')
 MOVE = {'drill': 'Look at what the function already returns and what each name holds by then.',
         'term': 'Name what it does before you name it.',
         'explain': 'Start from what can go wrong, then say why the code prevents it.',
-        'define': 'Say what it is for before you say what it is.'}
+        'define': 'Say what it is for before you say what it is.',
+        'predict': 'Run it in your head one line at a time, and note each name\'s value as it changes.',
+        'trace': 'Keep a small table: one row per line, one column per name.',
+        'parsons': 'Find the first line and the last one first, then fill in the middle.',
+        'write': 'Write what goes in and what comes out first, then the steps between.'}
 WORDS = re.compile(r"[A-Za-z0-9_']+")
 STUCK_WINDOW, LAPSE_WINDOW = 2 * 3600, 7 * 86400
 
@@ -135,13 +143,18 @@ ADDED = [('cards', 'data', "TEXT DEFAULT '{}'"), ('cards', 'ord', 'INTEGER DEFAU
          # 4.29: learning steps (the step a card is at, None once it is in review; relearn = the steps after a lapse),
          # undo (the schedule before a rating, and whether that rating was undone; a log row is never deleted)
          ('sched', 'step', 'INTEGER'), ('sched', 'relearn', 'INTEGER DEFAULT 0'),
-         ('attempts', 'prev_json', 'TEXT'), ('attempts', 'undone', 'INTEGER DEFAULT 0')]
+         ('attempts', 'prev_json', 'TEXT'), ('attempts', 'undone', 'INTEGER DEFAULT 0'),
+         # 4.32: a course lesson's `requires` (the lesson ids in its course that unlock it), JSON
+         ('modules', 'requires', "TEXT DEFAULT '[]'")]
 LOOSE = 'loose'          # the course every lesson in the old format belongs to, one module per project
-# card roles (spec section 5) and the card kind that runs each today; phase 4 adds the rest
+# card roles (spec section 5) and the card kind that runs each; `make` (tasks and the capstone) comes later
 ROLE_KIND = {'term': ('term',), 'recall': ('define', 'term'), 'explain': ('explain',), 'find-bug': ('explain',),
-             'choose-design': ('explain',), 'drill': ('drill',)}
-DEFAULT_ROLE = {'term': 'term', 'drill': 'drill', 'explain': 'explain', 'define': 'recall'}
-LATER_ROLES = ('predict', 'trace', 'parsons', 'write', 'make')
+             'choose-design': ('explain',), 'drill': ('drill',), **{k: (k,) for k in CODE_KINDS}}
+DEFAULT_ROLE = {'term': 'term', 'drill': 'drill', 'explain': 'explain', 'define': 'recall', **{k: k for k in CODE_KINDS}}
+LATER_ROLES = ('make',)
+# a lesson is mastered (and unlocks the lessons that require it) when this share of its practice cards was answered right;
+# a module check passes at the same share (spec section 15.3: module pass 80%)
+PASS = 0.8
 
 def connect(path):
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -223,7 +236,43 @@ def slug(s):
 
 def is_module(doc):
     return isinstance(doc, dict) and any(k in doc for k in ('tier_1_faded_code_drills', 'tier_2_self_explanation_cards',
-                                                             'tier_3_terminology_cards', 'faded_code_drills', 'cta_summary'))
+                                                             'tier_3_terminology_cards', 'faded_code_drills', 'cta_summary',
+                                                             'code_cards'))
+
+def code_card(k, role):
+    """One 4.32 code card (`code_cards` in a lesson, docs/mentor.md) -> (prompt, answer, points, data), or a string saying
+    what is missing. predict: code + the model answer, graded by key ideas; trace: code + the value after each step's line,
+    each step graded by key ideas; parsons: the lines in their right order, graded by position; write: the model code,
+    graded by key ideas (the local AI may add a meaning score in shadow mode, never the rating)."""
+    prompt = str(k.get('front_prompt') or '').strip()
+    if not prompt: return 'needs a front_prompt'
+    data = {'breadcrumb': str(k.get('file_breadcrumb') or ''), 'lang': str(k.get('lang') or 'python')}
+    code = k.get('code') if isinstance(k.get('code'), str) else ''
+    if role in ('predict', 'trace'):
+        if not code.strip(): return 'needs the code to read'
+        data['code'] = code
+    if role in ('predict', 'write'):
+        ans = k.get('answer')
+        if not isinstance(ans, str) or not ans.strip(): return 'needs the model answer'
+        pts = rubric_points(as_list(k.get('eval_rubric')))
+        if not pts and role == 'write': return 'needs eval_rubric key ideas (how a written answer is graded)'
+        pts = pts or [{'idea': ans.strip(), 'any': [ans.strip()]}]      # a predict card without key ideas: its output as one
+        if role == 'write': data['starter'] = str(k.get('starter') or '')
+        return prompt, ans, pts, data
+    if role == 'trace':
+        n, steps = len(code.split('\n')), []
+        for s in as_list(k.get('steps')):
+            if not isinstance(s, dict) or not str(s.get('state') or '').strip() or not isinstance(s.get('line'), int) \
+               or isinstance(s.get('line'), bool) or not 1 <= s['line'] <= n: return 'every step needs a line of the code and its state'
+            steps.append({'line': s['line'], 'state': str(s['state']).strip(), 'accept': [str(a) for a in as_list(s.get('accept'))]})
+        if not steps: return 'needs steps: the value after each line'
+        data['steps'] = [s['line'] for s in steps]
+        pts = [{'idea': f"After line {s['line']}: {s['state']}", 'any': [s['state'], *s['accept']]} for s in steps]
+        return prompt, '\n'.join(f"After line {s['line']}: {s['state']}" for s in steps), pts, data
+    lines = [str(x) for x in as_list(k.get('lines')) if isinstance(x, str) and x.strip()]     # parsons
+    if len(lines) < 3 or len(lines) != len(as_list(k.get('lines'))): return 'needs at least 3 lines, each a line of code'
+    data['lines'] = lines
+    return prompt, '\n'.join(lines), [], data
 
 BLANK = re.compile(r'\{\{\s*BLANK(?:_(\d+))?\s*\}\}')
 
@@ -265,7 +314,7 @@ def import_module(db, doc, mid, source, built_in, course=None, cmodule=None, ord
     tags = {}                      # item id -> (lo, note, role, is_check); a Learn card gets its practice card's lo and note
     def tag(item, kind, iid, learn_id):
         role = str(item.get('role') or DEFAULT_ROLE[kind])
-        if role in LATER_ROLES: notes.append(f'{iid}: role {role} arrives in phase 4'); return False
+        if role in LATER_ROLES: notes.append(f'{iid}: role {role} arrives in a later phase'); return False
         if kind not in ROLE_KIND.get(role, ()): notes.append(f'{iid}: role {role} is not a {kind} card'); role = DEFAULT_ROLE[kind]
         lo, note = str(item.get('lo') or '') or None, str(item.get('note') or '') or None
         if lo and los is not None and lo not in los: notes.append(f"{iid}: LO {lo} is not one of this lesson's"); lo = None
@@ -338,6 +387,17 @@ def import_module(db, doc, mid, source, built_in, course=None, cmodule=None, ord
               'near': {'code': str(near['code']), 'ask': str(near.get('ask') or 'What would break here?')} if near else None}
         cards.append((f'preread-{cid_}', 'preread', str(near.get('ask') or 'What would break here?') if near else '',
                       str(near.get('answer') or '') if near else '', [], pd, 200 + 2 * i, cid_))
+    for i, k in enumerate(as_list(doc.get('code_cards'))):          # 4.32: predict, trace, parsons, write
+        if not isinstance(k, dict): notes.append(f'code card {i + 1}: not a card'); continue
+        kid, role = k.get('id') or f'code_{i + 1:02}', str(k.get('role') or '')
+        if role not in CODE_KINDS and role not in LATER_ROLES:
+            notes.append(f'{kid}: role "{role}" is not one of {", ".join(CODE_KINDS)}'); continue
+        made = code_card(k, role) if role in CODE_KINDS else None
+        if isinstance(made, str): notes.append(f'{kid}: {made}'); continue
+        if not tag(k, role, kid, f'learn-{kid}'): continue
+        prompt, answer_, pts, data = made
+        data.update({'move': str(k.get('expert_move') or move), 'hints': hints_of(k)})
+        cards.append((kid, role, prompt, answer_, pts, data, 300 + i, None))
     keep, ids = set(), {}
     for item_id, kind, prompt, answer, pts, data, o, learn_of in cards:
         cid = f'{mid}:{slug(item_id)}'
@@ -415,6 +475,9 @@ def import_course(db, doc, source, built_in):
             meta = {**(les.get('metadata') if isinstance(les.get('metadata'), dict) else {}), 'project': name}
             meta.setdefault('module_name', str(les.get('name') or les['id']))
             k, nn = import_module(db, {**les, 'metadata': meta}, lid, source, built_in, course=cid, cmodule=cm, ord_=i * 100 + j, los=los, note_ids=nids)
+            # 4.32: the lessons in this course that must reach PASS before this one unlocks
+            db.execute("UPDATE modules SET requires=? WHERE id=?", (json.dumps([slug(f"{cid}--{r}") for r in as_list(les.get('requires'))
+                                                                              if isinstance(r, (str, int))]), lid))
             n += k; notes += [f"{les['id']}: {x}" for x in nn]
     lessons = [r[0] for r in db.execute("SELECT id FROM modules WHERE course=?", (cid,))]
     for old in lessons:
@@ -500,8 +563,12 @@ def word_in(word, ans_tokens):
     if len(word) < 5: return False
     return any(abs(len(t) - len(word)) <= 2 and SequenceMatcher(None, t, word).ratio() >= 0.84 for t in ans_tokens)
 
-def phrase_hit(phrase, ans_tokens):
-    ws = tokens(phrase)
+def code_tokens_words(s):
+    """Words of code or program output (4.32 code cards): like tokens(), but `for`, `in`, `is`, `and`, `or` count, as they do in code."""
+    return [stem(w) for w in norm(s).split()]
+
+def phrase_hit(phrase, ans_tokens, tok=tokens):
+    ws = tok(phrase)
     return bool(ws) and all(word_in(w, ans_tokens) for w in ws)
 
 def rubric_points(items):
@@ -519,23 +586,23 @@ def rubric_points(items):
         if words: pts.append({'idea': idea.strip(), 'auto': words})
     return pts
 
-def point_hit(p, at):
-    if p.get('any'): return any(phrase_hit(k, at) for k in p['any'])
+def point_hit(p, at, tok=tokens):
+    if p.get('any'): return any(phrase_hit(k, at, tok) for k in p['any'])
     words = p.get('auto', [])
     return bool(words) and sum(word_in(w, at) for w in words) >= max(1, math.ceil(len(words) * 0.4))
 
-def grade(card, answer):
+def grade(card, answer, tok=tokens):
     """Returns coverage 0..1, which key ideas were hit/missed, and the features a later learned grader uses."""
     points = json.loads(card['points']) if isinstance(card['points'], str) else card['points']
-    at = set(tokens(answer))
+    at = set(tok(answer))
     hits, missed, per = [], [], []
     for p in points:
-        ok = point_hit(p, at)
+        ok = point_hit(p, at, tok)
         per.append(1 if ok else 0)
         (hits if ok else missed).append(p['idea'])
     total = sum(p.get('weight', 1) for p in points) or 1
     coverage = sum(p.get('weight', 1) for p, h in zip(points, per) if h) / total
-    ref = set(tokens(card['answer']))
+    ref = set(tok(card['answer']))
     overlap = len(at & ref) / (len(ref) or 1)
     features = {'coverage': round(coverage, 3), 'points': per, 'n_points': len(points),
                 'words': len(answer.split()), 'ref_overlap': round(overlap, 3),
@@ -611,6 +678,37 @@ def grade_term(card, text):
     r = SequenceMatcher(None, w, g).ratio()
     if w == g or r >= 0.86: return 1.0
     return 0.5 if set(want) & set(got) - {'the', 'a'} else 0.0
+
+def typed_list(text, n):
+    """A card's per-box answer (a JSON list of strings, as the page sends it), padded to n boxes."""
+    try: got = json.loads(text) if text.strip().startswith('[') else [text]
+    except ValueError: got = [text]
+    return [str(x) for x in as_list(got)][:max(n, 0) or None] + [''] * max(0, n - len(as_list(got)))
+
+def grade_trace(card, text):
+    """A trace card: the value after each step's line, each step graded on its own by the key-idea grader (its state, or an
+    accepted wording). Returns coverage, features, one row per step."""
+    pts, data = json.loads(card['points'] or '[]'), json.loads(card['data'] or '{}')
+    typed = typed_list(text, len(pts))
+    per = [{'n': i + 1, 'line': ln, 'ok': bool(typed[i].strip()) and point_hit(p, set(code_tokens_words(typed[i])), code_tokens_words), 'typed': typed[i],
+            'expected': p['any'][0]} for i, (p, ln) in enumerate(zip(pts, data.get('steps') or [0] * len(pts)))]
+    cov = sum(p['ok'] for p in per) / (len(per) or 1)
+    return cov, {'steps': len(per), 'right': sum(p['ok'] for p in per)}, per
+
+def grade_parsons(card, text):
+    """A Parsons card: exact order, one point per line in its right place (trailing spaces don't matter)."""
+    want = json.loads(card['data'] or '{}').get('lines') or []
+    typed = typed_list(text, len(want))
+    per = [{'n': i + 1, 'ok': typed[i].rstrip() == w.rstrip(), 'typed': typed[i], 'expected': w} for i, w in enumerate(want)]
+    cov = sum(p['ok'] for p in per) / (len(per) or 1)
+    return cov, {'lines': len(per), 'right': sum(p['ok'] for p in per)}, per
+
+def shuffled(lines, seed):
+    """A Parsons card's lines in a mixed order that is never the right one; the same seed gives the same order."""
+    import random
+    order = list(range(len(lines))); random.Random(seed).shuffle(order)
+    if len(set(lines)) > 1 and [lines[i] for i in order] == lines: order = order[1:] + order[:1]
+    return [lines[i] for i in order]
 
 def suggest_rating(coverage, confidence):
     # 1 Again, 2 Hard, 3 Good, 4 Easy. Low confidence nudges a full answer from Easy down to Good.
@@ -759,6 +857,13 @@ def card_payload(db, c, read_only=False):
         out.update({'category': data.get('category', ''), 'rungs': [bool(r) for r in hint_rungs(c)]})
     elif c['kind'] == 'define':
         out.update({'rungs': [bool(r) for r in hint_rungs(c)]})
+    elif c['kind'] in CODE_KINDS:          # 4.32: never the model answer, the trace values or the lines' right order
+        out.update({'breadcrumb': data.get('breadcrumb', ''), 'lang': data.get('lang', 'python'), 'rungs': [bool(r) for r in hint_rungs(c)]})
+        if c['kind'] in ('predict', 'trace'): out['code'] = data.get('code', '')
+        if c['kind'] == 'trace': out['steps'] = data.get('steps', [])
+        if c['kind'] == 'parsons': out['lines'] = shuffled(data.get('lines', []), f"{c['id']}#{c['reps'] or 0}")
+        if c['kind'] == 'write': out['starter'] = data.get('starter', '')
+    if c['kind'] not in LEARN and 'is_check' in c.keys() and c['is_check']: out['check'] = True     # served as a module check
     elif c['kind'] == 'orientation':
         out.update({k: data.get(k) for k in ('files', 'terms', 'bridge')})
     elif c['kind'] == 'teach':
@@ -843,6 +948,76 @@ def buried(db, now):
         rated.setdefault(r['note'], set()).add(r['card_id'])
     return lambda r: bool(r['note'] and rated.get(r['note'], set()) - {r['id']} and r['kind'] not in LEARN and r['step'] is None)
 
+# ---------- mastery, unlock and module checks (spec section 8; 4.32) ----------
+def right_answer(rating, hints):
+    """Answered right, for mastery and module checks: rated Good or Easy, with no hint above rung 2 (spec section 8)."""
+    return (rating or 0) >= 3 and (hints or 0) <= 2
+
+def mastery(db, now=None):
+    """Where each course lesson and course module stands. Loose lessons are never locked and have no module check.
+    A lesson's progress is the share of its practice cards answered right at least once (right_answer); it is mastered
+    at PASS (80%). A module is mastered when all its lessons are; it is locked while a module it `requires` isn't mastered.
+    A lesson is locked while its module is, or while a lesson it `requires` isn't mastered. A module's check items are
+    served once the module is mastered (and not locked): each once; one answered wrong comes back the next day, until the
+    check passes (PASS of its items right, each item's latest answer counting).
+    Returns {'lessons': {id: {...}}, 'modules': {cmodule id: {...}}, 'checks': {check item ids to serve now}}."""
+    now = now or time.time()
+    lessons = {r['id']: dict(r) for r in db.execute("SELECT id, name, course, cmodule, requires FROM modules WHERE course IS NOT NULL AND course<>?", (LOOSE,))}
+    out = {'lessons': {}, 'modules': {}, 'checks': set()}
+    if not lessons: return out
+    latest, right = {}, set()            # card -> its latest rating (not undone); cards ever answered right
+    for r in db.execute("SELECT card_id, rating, hints, at FROM attempts WHERE rating>0 AND COALESCE(undone, 0)=0 ORDER BY id"):
+        latest[r['card_id']] = r
+        if right_answer(r['rating'], r['hints']): right.add(r['card_id'])
+    practice, checks, learn = {}, {}, {}
+    for c in db.execute("SELECT c.id, c.deck, c.kind, c.is_check, s.reps FROM cards c LEFT JOIN sched s ON s.card_id=c.id"):
+        if c['deck'] not in lessons: continue
+        if c['kind'] in LEARN:
+            if not c['is_check']: learn.setdefault(c['deck'], []).append(bool(c['reps']))
+        else: (checks if c['is_check'] else practice).setdefault(c['deck'], []).append(c['id'])
+    for lid, les in lessons.items():
+        cards = practice.get(lid, [])
+        if cards: prog = sum(1 for x in cards if x in right) / len(cards)
+        else: prog = sum(learn.get(lid, [])) / (len(learn.get(lid, [])) or 1)       # a lesson of Learn cards only: read it
+        try: req = [r for r in json.loads(les['requires'] or '[]') if r in lessons and r != lid]
+        except (ValueError, TypeError): req = []
+        out['lessons'][lid] = {'progress': round(prog, 3), 'mastered': prog >= PASS - 1e-9, 'requires': req, 'cmodule': les['cmodule'],
+                               'name': les['name'], 'right': sum(1 for x in cards if x in right), 'cards': len(cards)}
+    mods = {r['id']: dict(r) for r in db.execute("SELECT id, name, course, requires FROM cmodules WHERE course<>?", (LOOSE,))}
+    for mid, mod in mods.items():
+        ls = [x for x in out['lessons'].values() if x['cmodule'] == mid]
+        out['modules'][mid] = {'name': mod['name'], 'lessons': len(ls), 'done': sum(x['mastered'] for x in ls),
+                               'progress': round(sum(x['progress'] for x in ls) / len(ls), 3) if ls else 0.0,
+                               'mastered': bool(ls) and all(x['mastered'] for x in ls)}
+    day0 = day_start(now)
+    for mid, mod in mods.items():
+        try: req = [r for r in json.loads(mod['requires'] or '[]') if r in mods and r != mid]
+        except (ValueError, TypeError): req = []
+        m = out['modules'][mid]
+        m['requires'] = req; m['locked'] = any(not out['modules'][r]['mastered'] for r in req)
+        m['waiting_on'] = [fill(out['modules'][r]['name']) for r in req if not out['modules'][r]['mastered']]
+        items = [i for lid, x in out['lessons'].items() if x['cmodule'] == mid for i in checks.get(lid, [])]
+        ok = [i for i in items if i in latest and right_answer(latest[i]['rating'], latest[i]['hints'])]
+        answered = [i for i in items if i in latest]
+        state = ('none' if not items else 'waiting' if m['locked'] or not m['mastered'] else
+                 ('passed' if len(ok) / len(items) >= PASS - 1e-9 else 'failed') if len(answered) == len(items) else 'ready')
+        m['check'] = {'state': state, 'items': len(items), 'answered': len(answered), 'right': len(ok), 'now': 0}
+        if state in ('ready', 'failed'):
+            serve = [i for i in items if i not in latest or (i not in ok and latest[i]['at'] < day0)]
+            out['checks'].update(serve); m['check']['now'] = len(serve)
+    for lid, x in out['lessons'].items():
+        mod = out['modules'].get(x['cmodule'], {})
+        waiting = [out['lessons'][r]['name'] for r in x['requires'] if not out['lessons'][r]['mastered']]
+        x['locked'] = bool(mod.get('locked')) or bool(waiting)
+        x['waiting_on'] = [fill(n) for n in waiting] or (list(mod.get('waiting_on') or []) if mod.get('locked') else [])
+    return out
+
+def locked_reason(db, deck):
+    """Why a chosen course lesson has no card to study: the lessons (or modules) it waits for, in a sentence; else None."""
+    x = mastery(db)['lessons'].get(deck) if deck else None
+    if not x or not x['locked']: return None
+    return f"This lesson unlocks when you have answered {round(PASS * 100)}% of the cards right in: {', '.join(x['waiting_on'])}."
+
 def next_card(db, deck=None, extra=False):
     scan_inbox(db)
     now = time.time()
@@ -850,8 +1025,11 @@ def next_card(db, deck=None, extra=False):
     w, wargs = deck_where(db, deck)
     if w: q += " WHERE " + w; args += wargs
     hidden = buried(db, now)
+    info = mastery(db, now)
+    locked = {k for k, v in info['lessons'].items() if v['locked']}     # a locked lesson's new cards wait; its reviews go on
     # check items are for module checks, never practice; a buried sibling waits for tomorrow (and holds back nothing)
-    rows = [r for r in db.execute(q, args).fetchall() if not r['is_check'] and not hidden(r)]
+    every = db.execute(q, args).fetchall()
+    rows = [r for r in every if not r['is_check'] and not hidden(r)]
     # a Learn card sent back by stuck detection comes first, before any review
     back = [r for r in rows if r['refresh'] and r['kind'] in LEARN]
     if back: return card_payload(db, back[0]), None
@@ -859,14 +1037,17 @@ def next_card(db, deck=None, extra=False):
     stage, seen = {}, {r['id'] for r in rows if r['reps']}
     for r in rows:
         if r['kind'] in FUNNEL and not r['reps']:
-            stage[r['deck']] = min(stage.get(r['deck'], 9), FUNNEL[r['kind']])
+            stage[r['deck']] = min(stage.get(r['deck'], 99), FUNNEL[r['kind']])
     def ready(r):
-        if r['reps'] or r['due'] is not None: return False
-        if FUNNEL.get(r['kind'], 0) > stage.get(r['deck'], 9): return False
+        if r['reps'] or r['due'] is not None or r['deck'] in locked: return False
+        if FUNNEL.get(r['kind'], 0) > stage.get(r['deck'], 99): return False
         return r['kind'] in LEARN or not r['learn_of'] or r['learn_of'] in seen
     due = sorted((r for r in rows if r['due'] is not None and r['due'] <= now), key=lambda r: r['due'])
-    new = sorted((r for r in rows if ready(r)), key=lambda r: (r['mat'] or 0, r['deck'], r['ord'] or 0, r['id']))
-    pool = due or new
+    order = lambda r: (r['mat'] or 0, r['deck'], r['ord'] or 0, r['id'])
+    new = sorted((r for r in rows if ready(r)), key=order)
+    # a module's check, once all its lessons are mastered: after the reviews due, before new cards (a sibling buried today waits)
+    checks = sorted((r for r in every if r['id'] in info['checks'] and r['kind'] not in LEARN and not hidden(r)), key=order)
+    pool = due or checks or new
     if pool: c = interleave(pool)
     elif extra and [r for r in rows if r['due']]: c = min((r for r in rows if r['due']), key=lambda r: r['due'])   # practise ahead
     else: return None, min((r['due'] for r in rows if r['due']), default=None)
@@ -943,10 +1124,21 @@ def answer(db, card_id, text, confidence, ms, hints=0, reflections=None, skipped
         hits, missed = ([c['answer']], []) if cov >= 0.99 else ([], [c['answer']])
         feats, grader = {'coverage': cov, 'words': len(text.split())}, 'term-A'
         extra = {k: data.get(k, '') for k in ('definition', 'anchor', 'contrast', 'category')}
+    elif c['kind'] in ('trace', 'parsons'):     # 4.32: one row per step or line, as a drill has one per blank
+        cov, feats, per = (grade_trace if c['kind'] == 'trace' else grade_parsons)(c, text)
+        what = (lambda p: f"After line {p['line']}") if c['kind'] == 'trace' else (lambda p: f"Line {p['n']}")
+        hits, missed = [what(p) for p in per if p['ok']], [what(p) for p in per if not p['ok']]
+        grader = c['kind'] + '-A'
+        extra = {'breadcrumb': data.get('breadcrumb', ''), 'rows': per}
+        if c['kind'] == 'trace': extra['code'] = data.get('code', '')
     else:
-        cov, hits, missed, feats = grade(c, text)
+        cov, hits, missed, feats = grade(c, text, code_tokens_words if c['kind'] in CODE_KINDS else tokens)
         grader = 'rubric-A-auto' if feats.get('auto_points') else 'rubric-A'
         extra = {'breadcrumb': data.get('breadcrumb', ''), 'rough': bool(feats.get('auto_points'))}
+        if c['kind'] == 'predict': extra['code'] = data.get('code', '')
+        if c['kind'] == 'write' and data.get('lang', 'python') == 'python' and text.strip():
+            # parsed, never run: Python's own syntax error is shown with the key ideas (it does not change the grade)
+            extra['problem'] = syntax_problem(textwrap.dedent(text)); feats['syntax_ok'] = extra['problem'] is None
     extra['move'] = data.get('move') or MOVE.get(c['kind'], MOVE['define'])
     # slip or mistake (Norman): a blank that was right before, or the same card right at another time, is a slip
     prev = db.execute("SELECT * FROM attempts WHERE card_id=? AND kind=? ORDER BY id DESC LIMIT 1", (card_id, c['kind'])).fetchone()
@@ -970,13 +1162,16 @@ def answer(db, card_id, text, confidence, ms, hints=0, reflections=None, skipped
     att = db.execute("SELECT * FROM attempts WHERE id=?", (cur.lastrowid,)).fetchone()
     srow = db.execute("SELECT * FROM sched WHERE card_id=?", (card_id,)).fetchone()
     now = time.time()
-    plans = {g: plan(db, c, srow, att, g, now) for g in (1, 2, 3, 4)}
-    previews = {g: round((p[2] - now) / DAY, 6) for g, p in plans.items()}      # days until it returns (to the second: steps are minutes)
-    level_after = {g: p[7] for g, p in plans.items()} if c['kind'] == 'drill' else None
+    if c['is_check']:       # a module check item is answered once per check, never scheduled: nothing to preview
+        previews, level_after = {}, None
+    else:
+        plans = {g: plan(db, c, srow, att, g, now) for g in (1, 2, 3, 4)}
+        previews = {g: round((p[2] - now) / DAY, 6) for g, p in plans.items()}      # days until it returns (to the second: steps are minutes)
+        level_after = {g: p[7] for g, p in plans.items()} if c['kind'] == 'drill' else None
     n = len(hits) + len(missed)
     return {'attempt': cur.lastrowid, 'kind': c['kind'], 'coverage': round(cov, 2), 'hits': hits, 'missed': missed,
             'previews': previews, 'level_after': level_after, 'reference': c['answer'], 'suggested': sug, 'hints': hints,
-            'stuck': stuck, 'coach': coach_line(c['kind'], cov, confidence, n, extra), **extra}
+            'stuck': stuck, 'check': bool(c['is_check']), 'coach': coach_line(c['kind'], cov, confidence, n, extra), **extra}
 
 def coach_line(kind, cov, conf, n, extra):
     """At most two sentences: what the result was, then the expert's first move and one place to look (Hattie &
@@ -1002,7 +1197,15 @@ def coach_line(kind, cov, conf, n, extra):
         if cov >= 0.99: return "Right term. Read where it lives in your code, so you'll spot it next time."
         if cov > 0: return f"Close, not the exact term. {move}"
         return f"{move} The term is below: find it in your code first, then in the look-alike."
-    rough = ' (this card checks content words only, so judge for yourself)' if extra.get('rough') else ''
+    if kind == 'trace':
+        if cov >= 0.99: return "Every value right. You can run this code in your head."
+        return f"{k} of {n} values right. {move}"
+    if kind == 'parsons':
+        if cov >= 0.99: return "Every line in its place. Read the whole function once more, top to bottom."
+        return f"{k} of {n} lines in their place. {move}"
+    if kind == 'write' and extra.get('problem'):
+        return f"Python can't read your version yet ({extra['problem']}). The key ideas below are graded anyway."
+    rough =' (this card checks content words only, so judge for yourself)' if extra.get('rough') else ''
     if cov >= 0.99: return f"All {n} key ideas."
     if cov == 0: return f"None of the key ideas yet{rough}. {move}"
     return f"{k} of {n} key ideas{rough}. {move}"
@@ -1029,6 +1232,17 @@ def rate(db, attempt_id, rating, grade_wrong):
             db.commit()
         return {'due': None, 'days': None, 'level': None, 'level_change': 0, 'learn': True}
     if rating not in (1, 2, 3, 4): return None
+    if c and c['is_check']:          # a module check item: counted for the check, never scheduled as practice (spec section 8)
+        with DB_LOCK:
+            srow = db.execute("SELECT * FROM sched WHERE card_id=?", (a['card_id'],)).fetchone()
+            prev = {'sched': {k: srow[k] for k in SCHED_COLS} if srow else None}
+            db.execute("INSERT INTO sched(card_id,reps,lapses,last,due,step,relearn) VALUES(?,1,0,?,NULL,NULL,0) ON CONFLICT(card_id) DO UPDATE SET "
+                       "reps=COALESCE(sched.reps, 0)+1, last=excluded.last, due=NULL, step=NULL", (a['card_id'], now))
+            db.execute("UPDATE attempts SET rating=?, grade_wrong=?, review='check', ivl_before=NULL, ivl_after=NULL, took=?, prev_json=?, "
+                       "undone=0 WHERE id=?", (rating, 1 if grade_wrong else 0, min(a['ms'] or 0, 60_000), json.dumps(prev), attempt_id))
+            db.commit()
+        return {'due': None, 'days': None, 'step': None, 'level': None, 'level_change': 0, 'held': False, 'back': False, 'check': True,
+                'right': right_answer(rating, a['hints'])}
     held, back = False, False
     with DB_LOCK:
         srow = db.execute("SELECT * FROM sched WHERE card_id=?", (a['card_id'],)).fetchone()
@@ -1083,10 +1297,13 @@ def undo(db, attempt_id):
             db.execute("UPDATE sched SET refresh=? WHERE card_id=?", (prev['learn']['refresh'] or 0, prev['learn']['id']))
         db.execute("UPDATE attempts SET undone=1 WHERE id=?", (attempt_id,))
         db.commit()
-    return {'undone': True, 'rating': a['rating'], 'card': practice_card(db, a['card_id'])}
+    c = db.execute(CARD_Q + " WHERE c.id=?", (a['card_id'],)).fetchone()
+    return {'undone': True, 'rating': a['rating'], 'card': card_payload(db, c) if c and c['kind'] not in LEARN else None}
 
-def modules(db):
-    """Lessons for the Lessons view: the CTA summary, what's in them, how far along you are, and the Learn cards to read again."""
+def modules(db, info=None):
+    """Lessons for the Lessons view: the CTA summary, what's in them, how far along you are, and the Learn cards to read again.
+    A course lesson also has its mastery (4.32): progress (share answered right), mastered, locked and what it waits on."""
+    info = info or mastery(db)
     out = []
     counts = db.execute("SELECT c.deck, c.kind, COUNT(*) n, SUM(CASE WHEN s.reps>0 THEN 1 ELSE 0 END) seen, "
                         "SUM(CASE WHEN c.kind='drill' AND s.level=3 THEN 1 ELSE 0 END) top "
@@ -1107,16 +1324,21 @@ def modules(db):
                     'summary': json.loads(fill(m['summary'], as_json=True) or '{}'), 'concepts': json.loads(fill(m['concepts'], as_json=True) or '[]'),
                     'files': json.loads(fill(m['files'], as_json=True) or '[]'), 'cards': cards, 'learn': learn.get(m['id'], []),
                     'to_learn': sum(c['n'] - c['seen'] for k, c in cards.items() if k in LEARN)})
+        x = info['lessons'].get(m['id'])
+        if x: out[-1].update({k: x[k] for k in ('progress', 'mastered', 'locked', 'waiting_on', 'right', 'cards')}, requires=x['requires'])
     return out
 
-def courses(db):
-    """Courses with their modules in order and each module's lesson ids, Loose lessons last; text filled in."""
+def courses(db, info=None):
+    """Courses with their modules in order and each module's lesson ids, Loose lessons last; text filled in. A course module
+    also has its mastery (4.32): lessons mastered, progress, locked and what it waits on, and its check's state."""
+    info = info or mastery(db)
     lessons = {}
     for r in db.execute("SELECT id, cmodule FROM modules ORDER BY ord, at DESC, id"): lessons.setdefault(r['cmodule'], []).append(r['id'])
     los = {r[0]: r[1] for r in db.execute("SELECT course, COUNT(*) FROM los GROUP BY course")}
     out = []
     for c in db.execute("SELECT * FROM courses ORDER BY id=?, at DESC, id", (LOOSE,)).fetchall():
-        mods = [{'id': x['id'], 'name': fill(x['name']), 'requires': json.loads(x['requires'] or '[]'), 'lessons': lessons.get(x['id'], [])}
+        mods = [{'id': x['id'], 'name': fill(x['name']), 'requires': json.loads(x['requires'] or '[]'), 'lessons': lessons.get(x['id'], []),
+                 **{k: v for k, v in info['modules'].get(x['id'], {}).items() if k in ('done', 'progress', 'mastered', 'locked', 'waiting_on', 'check')}}
                 for x in db.execute("SELECT * FROM cmodules WHERE course=? ORDER BY ord, id", (c['id'],))]
         out.append({'id': c['id'], 'name': fill(c['name']), 'summary': fill(c['summary']), 'loose': c['id'] == LOOSE,
                     'modules': mods, 'los': los.get(c['id'], 0)})
@@ -1128,8 +1350,14 @@ def stats(db, deck=None):
     cw, args = deck_where(db, deck)
     w = "WHERE COALESCE(c.is_check, 0)=0" + (" AND " + cw if cw else "")     # check items never wait to be studied
     hidden = buried(db, now)       # a buried sibling is neither due nor new until tomorrow
-    cards = [c for c in db.execute(f"SELECT c.id, c.kind, c.note, s.due, s.reps, s.step FROM cards c LEFT JOIN sched s ON s.card_id=c.id {w}", args)
-             if not hidden(c)]
+    info = mastery(db, now)
+    locked = {k for k, v in info['lessons'].items() if v['locked']}
+    # a locked lesson's cards don't wait to be studied yet (only its reviews, if it was studied before it was locked)
+    cards = [c for c in db.execute(f"SELECT c.id, c.deck, c.kind, c.note, s.due, s.reps, s.step FROM cards c LEFT JOIN sched s ON s.card_id=c.id {w}", args)
+             if not hidden(c) and not (c['deck'] in locked and c['due'] is None)]
+    cw2 = "WHERE c.is_check=1" + (" AND " + cw if cw else "")
+    checks = sum(1 for c in db.execute(f"SELECT c.id, c.kind, c.note, s.step FROM cards c LEFT JOIN sched s ON s.card_id=c.id {cw2}", args)
+                 if c['id'] in info['checks'] and c['kind'] not in LEARN and not hidden(c))
     ids = group_ids(db, deck)
     pats = [i + ':%' for i in ids] if ids is not None else ([deck + ':%'] if deck else [])
     aw = ("WHERE " + " OR ".join("a.card_id LIKE ?" for _ in pats)) if pats else ("WHERE 0" if ids is not None else "")
@@ -1153,11 +1381,12 @@ def stats(db, deck=None):
             'grade_disputes': sum(1 for a in rated if a['grade_wrong']),
             'hints_per_card': round(sum(a['hints'] or 0 for a in week) / len(week), 2) if week else None,
             'sent_back': sum(1 for a in att if a['stuck'] in ('held', 'repeat', 'skipped') and a['at'] >= day0),
-            'modules': modules(db), 'courses': courses(db), 'imports': imports, 'settings': settings(db),
+            'checks': checks, 'pass': PASS,          # module check questions to answer now; the mastery threshold (4.32)
+            'modules': modules(db, info), 'courses': courses(db, info), 'imports': imports, 'settings': settings(db),
             'inbox': INBOX.replace(os.path.expanduser('~'), '~', 1)}
 
 # ---------- the local AI's part (docs/mentor-ai.md): stored with the attempt, shown labelled, not used for the rating ----------
-AI_KINDS = ('explain', 'define')          # written answers; drills and terms are graded exactly already
+AI_KINDS = ('explain', 'define', 'write')     # written answers (4.32: and written code); drills, terms, traces and Parsons are graded exactly
 
 def card_prompt(db, card_id):
     c = db.execute("SELECT prompt FROM cards WHERE id=?", (card_id,)).fetchone()
