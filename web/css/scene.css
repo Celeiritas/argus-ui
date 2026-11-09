@@ -65,7 +65,8 @@ a.realm:hover,.realm.on{border-color:var(--line);background:var(--card)}
 .realm.soon{opacity:.6;cursor:default}
 .realm .dot{position:absolute;left:28px;top:2px;min-width:18px;height:18px;padding:0 4px;border-radius:99px;background:#C93030;color:#fff;font-size:11px;font-weight:600;line-height:18px;text-align:center;box-shadow:0 0 0 2px var(--night)}
 .realms .mute{margin-left:auto}
-/* too many sections for one row (fitRealms in core.js): second lines hidden but still read out, then the weather */
+/* too many sections for one row (fitRealms in core.js): second lines hidden but still read out, then the weather,
+   then smaller marks and padding (hit areas stay 44 px), and last one row that scrolls sideways inside the bar */
 .realms.compact .realm small{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .realms.bare .wx{display:none}.realms.bare .wx + .mute{margin-left:auto}
 .realms.scroll{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}.realms.scroll .realm,.realms.scroll .mute{flex:none}
