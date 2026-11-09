@@ -669,6 +669,7 @@ class Mastery(Base):
         self.assertEqual([(md['locked'], md['done'], md['check']['state']) for md in cs['modules']], [(False, 0, 'waiting'), (True, 0, 'waiting')])
         les = {x['id']: x for x in m.stats(self.db)['modules']}
         self.assertTrue(les[m.slug('demo-server--cache')]['locked']); self.assertEqual(les[m.slug('demo-server--words')]['progress'], 0)
+        self.assertEqual(les[m.slug('demo-server--words')]['cards']['term']['n'], 2, 'the per-kind card counts stay as they were')
 
     def test_loose_lessons_never_locked(self):
         m.load_decks(self.db, os.path.join(R, 'themes', 'leafy-realm', 'decks'))

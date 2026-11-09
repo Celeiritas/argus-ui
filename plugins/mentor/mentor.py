@@ -1199,10 +1199,10 @@ def coach_line(kind, cov, conf, n, extra):
         return f"{move} The term is below: find it in your code first, then in the look-alike."
     if kind == 'trace':
         if cov >= 0.99: return "Every value right. You can run this code in your head."
-        return f"{k} of {n} values right. {move}"
+        return move                      # the verdict above already says how many: the coach says where to look
     if kind == 'parsons':
         if cov >= 0.99: return "Every line in its place. Read the whole function once more, top to bottom."
-        return f"{k} of {n} lines in their place. {move}"
+        return move
     if kind == 'write' and extra.get('problem'):
         return f"Python can't read your version yet ({extra['problem']}). The key ideas below are graded anyway."
     rough =' (this card checks content words only, so judge for yourself)' if extra.get('rough') else ''
@@ -1325,7 +1325,7 @@ def modules(db, info=None):
                     'files': json.loads(fill(m['files'], as_json=True) or '[]'), 'cards': cards, 'learn': learn.get(m['id'], []),
                     'to_learn': sum(c['n'] - c['seen'] for k, c in cards.items() if k in LEARN)})
         x = info['lessons'].get(m['id'])
-        if x: out[-1].update({k: x[k] for k in ('progress', 'mastered', 'locked', 'waiting_on', 'right', 'cards')}, requires=x['requires'])
+        if x: out[-1].update({k: x[k] for k in ('progress', 'mastered', 'locked', 'waiting_on', 'requires')})
     return out
 
 def courses(db, info=None):
