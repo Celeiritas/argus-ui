@@ -80,7 +80,7 @@ A lesson is meant to move between people (and to sit in a public repository), so
 
 Copy [`realm.example.json`](realm.example.json) to `~/.config/leafy/realm.json` and change the values; keys you leave out keep their default, and key case doesn't matter. A missing or broken file means the defaults (`LEAFY_REALM` points Mentor at another file). Unknown `{{NAMES}}` and `{{BLANK_n}}` are left alone. `scripts/check-private.sh` stops a push that names a real home path, host, address or email (see `CLAUDE.md`).
 
-## Keys, learning steps, undo and siblings (4.29.0)
+## Keys, learning steps, undo and siblings (4.31.0)
 Anki's study behaviours, on top of FSRS (spec section 7):
 
 | Key | Where | What it does |
