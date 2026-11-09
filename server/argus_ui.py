@@ -6,7 +6,8 @@
 import json, os, re, socket, subprocess, sys, threading, mimetypes, ipaddress, importlib.util, traceback, types
 from urllib.parse import urlsplit, parse_qs
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from datetime import datetime
+from datetime import datetime, timezone
+from email.utils import formatdate, parsedate_to_datetime
 
 PORT = int(os.environ.get('ARGUS_PORT', 8095))
 BIND = os.environ.get('ARGUS_BIND', '0.0.0.0')          # e.g. 127.0.0.1 to allow only tailscale serve / this machine
@@ -134,6 +135,32 @@ def load_server_plugins():
 PLUGIN_HEADERS = {'Content-Security-Policy': "sandbox allow-scripts allow-pointer-lock allow-popups; frame-ancestors 'self'",
                   'Access-Control-Allow-Origin': '*', 'X-Content-Type-Options': 'nosniff',
                   'Referrer-Policy': 'no-referrer', 'Cross-Origin-Resource-Policy': 'cross-origin'}
+# Caching plugin files (4.27.0): every file carries Last-Modified and an ETag, and a conditional GET answers 304, so a
+# reload re-checks a file instead of downloading it again. A content-hashed name (models/ares.1a2b3c4d.glb) never
+# changes, so it is kept a year; the files that point to those names are checked every time; the rest for an hour.
+HASHED = re.compile(r'\.[0-9a-f]{8}\.[A-Za-z0-9]+$')
+FRESH = re.compile(r'(\.html|\.js|(^|/)plugin\.json|(^|/)assets\.json|(^|/)data/[^/]+\.json)$')
+
+def plugin_cache(rel):
+    """Cache-Control for a plugin file, by its path inside the plugin folder (forward slashes)."""
+    if HASHED.search(rel): return 'public, max-age=31536000, immutable'
+    if FRESH.search(rel): return 'no-cache'
+    return 'max-age=3600'
+
+def not_modified(headers, etag, mtime):
+    """True when the browser's copy is current: If-None-Match names this ETag (or *), or, only when there is no
+    If-None-Match, If-Modified-Since is at or after the file's time (HTTP dates have whole seconds)."""
+    inm = headers.get('If-None-Match')
+    if inm is not None:
+        tags = [t.strip() for t in inm.split(',')]
+        return '*' in tags or etag in (t[2:] if t.startswith('W/') else t for t in tags)
+    ims = headers.get('If-Modified-Since')
+    if not ims: return False
+    try: d = parsedate_to_datetime(ims)
+    except (TypeError, ValueError, IndexError): return False
+    if d.tzinfo is None: d = d.replace(tzinfo=timezone.utc)
+    return int(mtime) <= d.timestamp()
+
 GODS = re.compile(r'^(%s)-' % '|'.join(PKEYS))
 
 # ---------- Alert files (docs/alerts.md) ----------
@@ -411,7 +438,15 @@ class H(BaseHTTPRequestHandler):
         ct = mimetypes.guess_type(f)[0] or 'application/octet-stream'
         if ct.startswith('text/') or ct in ('application/json',): ct += '; charset=utf-8'
         with open(f, 'rb') as fh:
-            return self.out(fh.read(), ct, cache='no-cache' if f.endswith('.html') else 'max-age=300', headers=PLUGIN_HEADERS)
+            st = os.fstat(fh.fileno())              # the file actually opened, so the ETag matches the bytes sent
+            etag = f'"{st.st_mtime_ns:x}-{st.st_size:x}"'
+            headers = {**PLUGIN_HEADERS, 'ETag': etag, 'Last-Modified': formatdate(st.st_mtime, usegmt=True)}
+            cache = plugin_cache(os.path.relpath(f, root).replace(os.sep, '/'))
+            if not_modified(self.headers, etag, st.st_mtime):   # 304: no body, the same validators and sandbox headers
+                self.send_response(304)
+                for k, v in headers.items(): self.send_header(k, v)
+                self.send_header('Cache-Control', cache); self.end_headers(); return
+            return self.out(fh.read(), ct, cache=cache, headers=headers)
 
     # Request headers a server plugin may read (ctx.headers). Behind `tailscale serve` they say who is asking; they can
     # only be trusted when Elaia binds to 127.0.0.1, so a plugin that decides on them asks Janus (docs/leafy-plugin.md).
