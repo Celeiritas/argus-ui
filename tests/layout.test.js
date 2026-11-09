@@ -39,9 +39,26 @@ run(async b => {
     check(bar.row, `${w}: the sections bar stays one row, Mute sounds included (${await lp.locator('#realms .realm').count()} sections${bar.compact ? ', second lines hidden' : ''}${bar.bare ? ', weather hidden' : ''})`);
     if (w === 1024) {
       check(bar.compact, '1024: the pills dropped their second line to fit');
+      const mute = await lp.locator('#mute').boundingBox();
+      check(mute.x >= 0 && mute.x + mute.width <= 1024, '1024: Mute sounds stays on screen (held at the right end when the bar scrolls)');
+      const sc = await lp.locator('.realms').evaluate(bar => ({on: bar.classList.contains('scroll'), over: bar.scrollWidth > bar.clientWidth}));
+      check(sc.on && sc.over, '1024: with every section (fixtures: 8 and more), the bar is one row that scrolls sideways instead of wrapping');
+      check(await noOverflow(lp), '1024: the page itself does not scroll sideways');
+      // the section you are on is scrolled into view: open the last pill's section (past the right edge otherwise)
+      const lastHref = await lp.locator('#realms a.realm').last().getAttribute('href');
+      await lp.goto(new URL(lastHref, BASE).href); await lp.waitForTimeout(800);
+      const vis = await lp.locator('.realms').evaluate(bar => { const on = bar.querySelector('.realm.on'), m = document.getElementById('mute');
+        if (!on) return null; const r = on.getBoundingClientRect(), b = bar.getBoundingClientRect(), mr = m.getBoundingClientRect();
+        return r.left >= b.left - 1 && r.right <= Math.min(b.right, mr.left) + 1; });
+      check(vis === true, `1024: the section you are on is scrolled into view, not under Mute sounds (${lastHref})`);
+      await lp.goto(BASE + 'home'); await lp.locator('.home .places').waitFor(); await lp.waitForTimeout(500);
+      if (await lp.locator('.realms.scroll').count()) {
+        const moved = await lp.locator('.realms').evaluate(async bar => { const x = bar.scrollLeft; bar.dispatchEvent(new WheelEvent('wheel', {deltaY: 120, bubbles: true, cancelable: true})); return bar.scrollLeft !== x || bar.scrollWidth <= bar.clientWidth; });
+        check(moved, '1024: a scrolling bar moves sideways with the mouse wheel');
+      }
       check(await lp.getByRole('link', {name: /Home\s*Overview/}).count() === 1, '1024: a pill whose second line is hidden still reads it out');
       await lp.setViewportSize({width: 1920, height: 1080}); await lp.waitForTimeout(300);
-      check(!(await lp.locator('.realms').evaluate(e => e.classList.contains('compact'))), 'widening the window brings the second lines back');
+      check(!(await lp.locator('.realms').evaluate(e => e.classList.contains('compact') || e.classList.contains('scroll'))), 'widening the window brings the second lines back and ends the sideways scrolling');
     }
     await shot(lp, `layout-${w}-home`);
     check(lp.errors.length === 0, `${w}: no page errors ` + lp.errors.join(' | '));
