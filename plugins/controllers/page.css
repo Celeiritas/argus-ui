@@ -1,0 +1,37 @@
+/* Leafy Controllers (plugins/controllers/page.js). Type 16/14/12, weights 400/600; states are an icon and a word, never colour alone. */
+.controllers{max-width:960px}
+.controllers .ctrlhead{display:flex;flex-wrap:wrap;gap:var(--s3);align-items:flex-start;justify-content:space-between;margin:0 0 var(--s3)}
+.controllers .ctrlhead h3{margin:0}
+.controllers .ctrlsum{margin:var(--s1) 0 0;color:var(--powder);font-size:var(--fs-sec)}
+.controllers .ctrlsum:empty{display:none}
+.controllers .ctrlcheck{min-height:var(--hit)}
+.controllers .ctrllist{list-style:none;margin:0;padding:0}
+.controllers .controller{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:var(--s3);align-items:center;padding:var(--s3) 0;border-top:1px solid var(--line)}
+.controllers .controller:first-child{border-top:0}
+.controllers .slot{display:inline-flex;align-items:center;justify-content:center;min-width:56px;min-height:32px;padding:0 var(--s2);border-radius:8px;background:var(--slate);font-size:var(--fs-sec);font-weight:600}
+.controllers .slot.none{background:none;border:1px dashed var(--line);color:var(--frost);font-size:var(--fs-meta);font-weight:400}
+.controllers .who{min-width:0}
+.controllers .who b{display:block;font-size:var(--fs-body);font-weight:600;overflow-wrap:anywhere}
+.controllers .who .meta{display:block;color:var(--frost);font-size:var(--fs-meta);overflow-wrap:anywhere}
+.controllers .facts{display:flex;flex-wrap:wrap;gap:var(--s2);justify-content:flex-end;list-style:none;margin:0;padding:0}
+.controllers .facts li{display:inline-flex;align-items:center;gap:var(--s1);min-height:28px;padding:0 var(--s2);border-radius:99px;font-size:var(--fs-sec);white-space:nowrap}
+.controllers .facts .mode{border:1px solid var(--powder);font-weight:600}
+.controllers .facts .mode.unknown{border-style:dashed;border-color:var(--frost);font-weight:400;white-space:normal}
+.controllers .facts .kind{color:var(--powder)}
+.controllers .facts .rumble.yes{color:var(--ok)}
+.controllers .facts .rumble.no{color:var(--frost)}
+.controllers .ico{flex:none;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.controllers .ctrlnote{color:var(--powder);font-size:var(--fs-sec);margin:var(--s3) 0 0;overflow-wrap:anywhere}
+/* an old name still in use: a notice (a rule on the left and a line around it, as Mentor's callout), with an icon and the thing to do in bold */
+.controllers .ctrlnote.oldname{display:flex;gap:var(--s2);align-items:flex-start;border:1px solid var(--line);border-left:3px solid var(--powder);border-radius:8px;padding:var(--s3);margin:var(--s3) 0}
+.controllers .ctrlnote.oldname .ico{margin-top:2px}
+.controllers .ctrlnote.oldname ul{list-style:none;margin:0;padding:0;min-width:0}
+.controllers .ctrlnote.oldname li+li{margin-top:var(--s2)}
+.controllers .ctrlnote.oldname b{display:block;color:var(--snow);font-weight:600}
+.controllers .ctrlfoot{color:var(--frost);font-size:var(--fs-meta);margin:var(--s4) 0 0}
+/* phones: slot and name on the first line, the three facts on their own line under them */
+@media (max-width:640px){
+  .controllers{padding:var(--s4)}
+  .controllers .controller{grid-template-columns:auto minmax(0,1fr)}
+  .controllers .facts{grid-column:1/-1;justify-content:flex-start}
+}

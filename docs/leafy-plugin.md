@@ -127,7 +127,7 @@ A server plugin whose id is one of the theme's agent keys and whose manifest say
 
 **Mentor** is the first bundled plugin (`plugins/mentor/`, `"agent": true`): the worked example of a big one. Its database stays where it always was, outside `ctx.data_dir`, so the move kept everyone's history.
 
-**Pads** is a small bundled plugin that is not an agent (`plugins/pads/`, docs/pads.md): its own section and a Home place, read-only, with a Python test that runs without a browser (`tests/pads_test.py`).
+**Controllers** is a small bundled plugin that is not an agent (`plugins/controllers/`, docs/controllers.md): its own section and a Home place, read-only, with a Python test that runs without a browser (`tests/controllers_test.py`). It was called Pads until 4.33.0; a section that changes its id keeps its old address for one release through `MOVED` in `server/argus_ui.py` (a redirect, and an answer on the old `api/<id>/...` that tells a page left open to reload; both off when a plugin of yours has the old id).
 
 Leaving a section loads a new page, so a plugin's timers and listeners end with it; there is no `hide()`.
 

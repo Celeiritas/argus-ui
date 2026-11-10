@@ -18,7 +18,7 @@ mkdir -p "$T/home/.config/argus-ui/plugins"; cp -r "$R"/tests/plugin-fixtures/. 
 cp -r "$R"/tests/bundled-fixtures/. "$T/pkg/bundled/"
 python3 -c "import json,time,sys; json.dump({'sky':'rain','desc':'Light rain','is_day':True,'temp':48,'unit':'F','precip':.6,'clouds':90,'wind':14,'south':False,'at':int(time.time()),'source':'Open-Meteo'}, open(sys.argv[1],'w'))" "$T/home/.cache/argus-ui/sky.json"
 HOME="$T/home" ARGUS_DEV=1 ARGUS_WEATHER=40,-111 ARGUS_STATIC="$T/pkg/static" ARGUS_BUNDLED="$T/pkg/bundled" ARGUS_SYSTEMCTL="$T/fx/fake_systemctl.py" ARGUS_JOURNALCTL="$T/fx/fake_journal.sh" ARGUS_PORT=$PORT \
-  ARGUS_PADS_SYSROOT="$T/fx/pads-sysfs/four" ARGUS_PADS="$T/fx/pads.json" \
+  ARGUS_CONTROLLERS_SYSROOT="$T/fx/controllers-sysfs/four" ARGUS_CONTROLLERS="$T/fx/controllers.json" \
   python3 "$T/pkg/argus_ui.py" > "$T/server.log" 2>&1 & PID=$!
 # a stand-in local model server for tests/mentor-ai.test.js (docs/mentor-ai.md); off for every other check
 MODEL_PORT=${MODEL_PORT:-8098}; python3 "$T/fx/fake_model.py" $MODEL_PORT > "$T/model.log" 2>&1 & MPID=$!; export MODEL_PORT
@@ -52,10 +52,11 @@ if [ -z "$1" ] || [ "$1" = memory ]; then
   echo "== memory model"   # the Memory page's server side, no browser (tests/memory_test.py)
   python3 "$R/tests/memory_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1
 fi
-# Leafy Pads' probe over fixture sysfs trees (tests/pads_test.py; the browser side is tests/pads.test.js)
-if [ -z "$1" ] || [ "$1" = pads ]; then
-  echo "== pads model"
-  python3 "$R/tests/pads_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1
+# Leafy Controllers' probe over fixture sysfs trees, and the old names (pads.json, ARGUS_PADS, <base>/pads) on a real server:
+# tests/controllers_test.py; the browser side is tests/controllers.test.js
+if [ -z "$1" ] || [ "$1" = controllers ]; then
+  echo "== controllers model"
+  python3 "$R/tests/controllers_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1
 fi
 if [ -z "$1" ] || [ "$1" = plugins ]; then
   echo "== plugin cache"   # ETag, Last-Modified, 304 and Cache-Control on raw headers: no browser (tests/plugin_cache_test.py)

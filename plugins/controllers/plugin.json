@@ -1,0 +1,1 @@
+{ "id": "controllers", "name": "Controllers", "subtitle": "Game controllers", "kind": "server", "server": "plugin.py", "page": "page.js", "style": "page.css", "version": "1.1.0" }
