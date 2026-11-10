@@ -16,6 +16,13 @@ _spec = importlib.util.spec_from_file_location('leafy_controllers', os.path.join
 ctl = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(ctl)
 FX = os.path.join(R, 'tests', 'fixtures')
 FOUR, NONE, REG = os.path.join(FX, 'controllers-sysfs', 'four'), os.path.join(FX, 'controllers-sysfs', 'none'), os.path.join(FX, 'controllers.json')
+# the old-name notice word for word, one entry per old name still in use: what to do, then what happens otherwise
+COPY_FILE = {'do': 'Copy pads.json to controllers.json in ~/.config/argus-ui/ on the server.',
+             'why': 'The next release ignores pads.json, so every controller would show No slot.'}
+RENAME_MAP = {'do': 'Rename the setting ARGUS_PADS to ARGUS_CONTROLLERS where the service is set up.',
+              'why': 'The next release ignores ARGUS_PADS, so every controller would show No slot.'}
+RENAME_ROOT = {'do': 'Rename the setting ARGUS_PADS_SYSROOT to ARGUS_CONTROLLERS_SYSROOT where the service is set up.',
+               'why': "The next release ignores ARGUS_PADS_SYSROOT, so the list would come from the machine's real /proc and /sys."}
 
 class Probe(unittest.TestCase):
     def setUp(self):
@@ -57,7 +64,7 @@ class Probe(unittest.TestCase):
         self.assertEqual((self.s['connected'], self.s['virtual']), (3, 1))
         self.assertEqual(ctl.line(self.s), '3 connected · 1 Steam virtual')
         self.assertEqual(self.s['wake_hint'], 'Test hint: press the Home button.')
-        self.assertEqual(self.s['notice'], '', 'no old name in use: nothing to say')
+        self.assertEqual(self.s['notice'], [], 'no old name in use: nothing to say')
 
     def test_no_controllers(self):
         s = ctl.scan(NONE, REG)
@@ -144,7 +151,7 @@ class Parsing(unittest.TestCase):
 
     def test_api(self):
         with mock.patch.dict(os.environ, {'ARGUS_CONTROLLERS_SYSROOT': FOUR, 'ARGUS_CONTROLLERS': REG}):
-            code, r = ctl.get('list', {}, None); self.assertEqual((code, len(r['controllers']), r['notice']), (200, 4, ''))
+            code, r = ctl.get('list', {}, None); self.assertEqual((code, len(r['controllers']), r['notice']), (200, 4, []))
             self.assertEqual(ctl.get('status', {}, None), (200, {'line': '3 connected · 1 Steam virtual'}))
             self.assertEqual(ctl.get('nope', {}, None)[0], 404)
 
@@ -189,12 +196,13 @@ class OldNames(unittest.TestCase):
         self.put('pads.json', 'From pads.json')
         s = ctl.scan(*ctl.where({'ARGUS_PADS_SYSROOT': FOUR}, self.tmp))
         self.assertEqual([(c['slot'], c['label']) for c in s['controllers']][:2], [('P1', 'From pads.json'), ('P2', '')])
-        self.assertEqual(s['notice'], 'Old names still in use: ARGUS_PADS_SYSROOT (now ARGUS_CONTROLLERS_SYSROOT), pads.json (now controllers.json). '
-                                      'This is the last release that reads old names.')
+        self.assertEqual(s['notice'], [RENAME_ROOT, COPY_FILE], 'one entry per old name: the thing to do, and what happens otherwise')
         self.put('controllers.json', 'From controllers.json')          # the copy the owner makes: it counts on the next request
         s = ctl.scan(*ctl.where({'ARGUS_CONTROLLERS_SYSROOT': FOUR}, self.tmp))
-        self.assertEqual((s['controllers'][0]['label'], s['notice']), ('From controllers.json', ''))
-        self.assertEqual(ctl.notice(['pads.json']), 'Old name still in use: pads.json (now controllers.json). This is the last release that reads old names.')
+        self.assertEqual((s['controllers'][0]['label'], s['notice']), ('From controllers.json', []))
+        self.assertEqual(ctl.notice(['pads.json']), [COPY_FILE])
+        self.assertEqual(ctl.notice(['ARGUS_PADS_SYSROOT', 'ARGUS_PADS', 'pads.json']), [RENAME_ROOT, RENAME_MAP, COPY_FILE])
+        self.assertEqual(sorted(ctl.AFTER), sorted(ctl.RENAMED), 'every old name says what happens without it')
 
     def test_api_through_the_old_environment_names(self):
         old = self.put('elsewhere.json', 'From the old setting')
@@ -202,7 +210,7 @@ class OldNames(unittest.TestCase):
         with mock.patch.dict(os.environ, dict(env, ARGUS_PADS_SYSROOT=FOUR, ARGUS_PADS=old), clear=True):
             code, r = ctl.get('list', {}, None)
             self.assertEqual((code, r['controllers'][0]['label']), (200, 'From the old setting'))
-            self.assertIn('ARGUS_PADS (now ARGUS_CONTROLLERS)', r['notice'])
+            self.assertEqual(r['notice'], [RENAME_ROOT, RENAME_MAP])
             self.assertEqual(ctl.get('status', {}, None), (200, {'line': '3 connected · 1 Steam virtual'}), "Home's line stays the same: no nagging there")
 
 class OldNamesOnTheServer(unittest.TestCase):
@@ -217,10 +225,12 @@ class OldNamesOnTheServer(unittest.TestCase):
         bundled, static = os.path.join(cls.tmp, 'bundled'), os.path.join(cls.tmp, 'static'); os.makedirs(static)
         shutil.copytree(os.path.join(R, 'plugins', 'controllers'), os.path.join(bundled, 'controllers'), ignore=shutil.ignore_patterns('__pycache__'))
         with open(os.path.join(static, 'theme.json'), 'w') as f: f.write('{}')
+        with open(os.path.join(static, 'index.html'), 'w') as f: f.write('<!doctype html><title>the page</title><script>const STATE = /*STATE*/null;</script>')
         with socket.socket() as s: s.bind(('127.0.0.1', 0)); cls.port = s.getsockname()[1]
         env = {k: v for k, v in os.environ.items() if not k.startswith('ARGUS_')}
         env.update(HOME=home, USERPROFILE=home, ARGUS_BIND='127.0.0.1', ARGUS_PORT=str(cls.port), ARGUS_STATIC=static, ARGUS_BUNDLED=bundled,
-                   ARGUS_PADS_SYSROOT=FOUR)
+                   ARGUS_PADS_SYSROOT=FOUR,
+                   ARGUS_SYSTEMCTL=sys.executable)   # no units here: any program that prints nothing when asked for them
         cls.log = open(os.path.join(cls.tmp, 'server.log'), 'w')
         cls.proc = subprocess.Popen([sys.executable, os.path.join(R, 'server', 'argus_ui.py')], env=env, stdout=cls.log, stderr=cls.log)
         for _ in range(150):
@@ -248,7 +258,7 @@ class OldNamesOnTheServer(unittest.TestCase):
         code, _, body = self.get('api/controllers/list'); d = json.loads(body)
         self.assertEqual(code, 200)
         self.assertEqual([c['slot'] for c in d['controllers']], ['P1', 'P2', 'Retro', None], 'four controllers through ARGUS_PADS_SYSROOT, slots from pads.json')
-        self.assertIn('ARGUS_PADS_SYSROOT (now ARGUS_CONTROLLERS_SYSROOT)', d['notice']); self.assertIn('pads.json (now controllers.json)', d['notice'])
+        self.assertEqual(d['notice'], [RENAME_ROOT, COPY_FILE])
         self.assertEqual(json.loads(self.get('api/controllers/status')[2])['line'], '3 connected · 1 Steam virtual')
 
     def test_copying_the_file_to_its_new_name_needs_no_restart(self):
@@ -258,7 +268,7 @@ class OldNamesOnTheServer(unittest.TestCase):
         try:
             d = json.loads(self.get('api/controllers/list')[2])
             self.assertEqual(d['controllers'][0]['label'], 'From controllers.json')
-            self.assertNotIn('pads.json', d['notice'])
+            self.assertEqual(d['notice'], [RENAME_ROOT], 'the file line is gone; the setting this server was started with is still old')
         finally: os.remove(new)
 
     def test_old_address_lands_on_the_new_section(self):
@@ -266,11 +276,35 @@ class OldNamesOnTheServer(unittest.TestCase):
         for path, want in (('pads', 'controllers'), ('argus/pads', 'controllers'), ('pads/', '../controllers'),
                            ('argus/pads/anything', '../controllers'), ('pads?from=bookmark', 'controllers?from=bookmark')):
             code, headers, body = self.get(path)
-            self.assertEqual((code, headers.get('location'), body), (301, want, b''), path)
+            self.assertEqual((code, headers.get('location'), body), (302, want, b''), path)
             self.assertEqual(headers.get('cache-control'), 'no-store', 'browsers must not remember the move: the id pads is free again after this release')
 
-    def test_old_api_address_is_gone(self):
-        self.assertEqual(self.get('api/pads/list')[0], 404, 'only the section address moved with a redirect; the page script asks the new api')
+    def test_a_plugin_of_your_own_with_the_old_id_keeps_its_address(self):
+        # the old address is sent on only while nothing lives there: a plugin of your own with the id pads (static, read fresh
+        # on each request, so no restart) gets its section back, and the move is in force again once it is gone
+        mine = os.path.join(self.conf, 'plugins', 'pads'); os.makedirs(mine)
+        with open(os.path.join(mine, 'plugin.json'), 'w') as f: json.dump({'id': 'pads', 'name': 'Synth pads'}, f)
+        with open(os.path.join(mine, 'index.html'), 'w') as f: f.write('<!doctype html><title>Synth pads</title><p>mine</p>')
+        try:
+            for path in ('pads', 'pads/', 'argus/pads'):
+                code, headers, body = self.get(path)
+                self.assertEqual((code, headers.get('location')), (200, None), path + ': the section of the plugin with that id, no redirect')
+                self.assertTrue(body.startswith(b'<!doctype html><title>the page</title>'), path)
+            self.assertEqual(self.get('plugins/pads/')[2], b'<!doctype html><title>Synth pads</title><p>mine</p>')
+            self.assertEqual(self.get('api/pads/list')[0], 404, 'and its api address is not answered for it')
+        finally: shutil.move(mine, os.path.join(self.tmp, 'pads-moved-out'))
+        code, headers, _ = self.get('pads')
+        self.assertEqual((code, headers.get('location')), (302, 'controllers'), 'no plugin has the old id any more: sent on again')
+
+    def test_old_api_address_tells_a_page_left_open_to_reload(self):
+        # a 4.32 page that stayed open across the update still asks api/pads/...: it shows "problem" in place of its list
+        # (its script: ok false -> problem) and "line" under its Home place, so both must say what to do
+        for path in ('api/pads/list', 'api/pads/status', 'argus/api/pads/list'):
+            code, headers, body = self.get(path)
+            self.assertEqual((code, headers.get('content-type'), headers.get('cache-control')), (200, 'application/json', 'no-store'), path)
+            self.assertEqual(json.loads(body), {'ok': False, 'moved': 'controllers', 'line': 'Now called Controllers: reload this page',
+                                                'problem': 'This section is now called Controllers. Reload this page to open it.'}, path)
+        self.assertEqual(self.get('api/nothing/list')[0], 404, 'only a moved id is answered this way')
 
     def test_server_log_names_the_plugin_by_its_new_id(self):
         self.log.flush()

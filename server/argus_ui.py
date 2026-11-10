@@ -510,11 +510,16 @@ class H(BaseHTTPRequestHandler):
             return self.out(json.dumps({'log': log(u) if u in units() else ''}), 'application/json')
         if p.startswith('plugins/'): return self.plugin_file(p[8:])
         first = p.split('/')[0]
-        ids = {x['id'] for x in plugins()}
-        if first in MOVED and first not in ids and MOVED[first] in ids:     # a moved section: an old bookmark lands on the new address
+        live = plugins(); ids = {x['id'] for x in live}
+        moved = lambda old: MOVED.get(old) in ids and old not in ids       # the old id of a moved section, unless a plugin of yours has taken it
+        if moved(first):                                                    # an old bookmark lands on the new address
             q = urlsplit(self.path).query                                   # relative, so it is right at /, at /argus/ and behind a proxy that strips the prefix
-            self.send_response(301); self.send_header('Location', '../' * p.count('/') + MOVED[first] + ('?' + q if q else ''))
-            self.send_header('Cache-Control', 'no-store'); self.send_header('Content-Length', '0'); self.end_headers(); return  # not remembered: the old id is free again later
+            self.send_response(302); self.send_header('Location', '../' * p.count('/') + MOVED[first] + ('?' + q if q else ''))
+            self.send_header('Cache-Control', 'no-store'); self.send_header('Content-Length', '0'); self.end_headers(); return  # for now, and not remembered: the old id is free again later
+        if p.startswith('api/') and moved(pid):                             # a page left open since before the move still asks the old api:
+            name = next(x['name'] for x in live if x['id'] == MOVED[pid])   # it shows "problem" in place of its list and "line" on Home, both true
+            return self.out(json.dumps({'ok': False, 'moved': MOVED[pid], 'line': f'Now called {name}: reload this page',
+                                        'problem': f'This section is now called {name}. Reload this page to open it.'}), 'application/json')
         if p == '' or first in PKEYS or first in PAGES or first in ids: return self.out(page())
         return self.out('not found', 'text/plain', 404)
 

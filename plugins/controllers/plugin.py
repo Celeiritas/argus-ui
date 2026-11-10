@@ -40,11 +40,16 @@ def where(env=None, config=None):
         if not os.path.exists(path) and os.path.exists(was): path = was; old.append('pads.json')
     return sysroot, path, old
 
+# what the person would see once an old name is no longer read (the release after 4.33.0)
+AFTER = {'ARGUS_PADS_SYSROOT': "the list would come from the machine's real /proc and /sys",
+         'ARGUS_PADS': 'every controller would show No slot', 'pads.json': 'every controller would show No slot'}
+
 def notice(old):
-    """One line for the page while a name from before 4.33.0 is still in use; '' when none is."""
-    if not old: return ''
-    return (f"Old name{'s' if len(old) > 1 else ''} still in use: " + ', '.join(f'{o} (now {RENAMED[o]})' for o in old)
-            + '. This is the last release that reads old names.')
+    """For the page, one entry per name from before 4.33.0 that is still in use: {do: what to do, why: what happens otherwise}.
+    [] when none is. pads.json is only looked for in ~/.config/argus-ui/ (where()), so its line can name the folder."""
+    return [{'do': (f'Copy {o} to {RENAMED[o]} in ~/.config/argus-ui/ on the server.' if o == 'pads.json'
+                    else f'Rename the setting {o} to {RENAMED[o]} where the service is set up.'),
+             'why': f'The next release ignores {o}, so {AFTER[o]}.'} for o in old]
 
 def _read(path):
     try:

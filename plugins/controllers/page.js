@@ -8,6 +8,7 @@ leafy.register('controllers', (() => {
     no: '<path d="M4 4l8 8M12 4l-8 8"/>',
     real: '<path d="M6 2v4M10 2v4M4.5 6h7v2.5a3.5 3.5 0 0 1-7 0zM8 12v2"/>',                      // a plug: on a cable or dongle
     copy: '<rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 3.5v-1h-8v8h1"/>',    // a copy of a real controller
+    info: '<circle cx="8" cy="8" r="6"/><path d="M8 7.5V11M8 5v.01"/>',                               // a notice: something to do, nothing is broken
   };
   const icon = k => `<svg class="ico" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">${ICON[k]}</svg>`;
   const KIND = {real: ['real', 'Real'], 'steam-virtual': ['copy', 'Steam virtual'], virtual: ['copy', 'Virtual']};
@@ -41,9 +42,9 @@ leafy.register('controllers', (() => {
     if (!ok || !d) { list.innerHTML = `<div class="empty"><b>No answer from the server</b>The list comes back on its own when Elaia answers again.</div>`; sum.textContent = ''; return; }
     sum.textContent = summary(d);
     let html = '';
-    if (d.problem && d.ok) html += `<p class="ctrlnote" role="status">${api.esc(d.problem)} Slots are not shown until it is fixed.</p>`;
-    /* a name from before the section was renamed (pads.json, ARGUS_PADS) is still in use: say so until the owner switches */
-    if (d.notice) html += `<p class="ctrlnote oldname" role="status">${api.esc(d.notice)}</p>`;
+    if (d.problem && d.ok) html += `<p class="ctrlnote" role="status">${api.esc(d.problem)}. Slots are not shown until it is fixed.</p>`;
+    /* a name from before the section was renamed (pads.json, ARGUS_PADS) is still in use: per name, what to do and what happens otherwise */
+    if (d.notice && d.notice.length) html += `<div class="ctrlnote oldname" role="status">${icon('info')}<ul>${d.notice.map(o => `<li><b>${api.esc(o.do)}</b> ${api.esc(o.why)}</li>`).join('')}</ul></div>`;
     if (!d.ok) html += `<div class="empty"><b>Can't read controllers here</b>${api.esc(d.problem)}</div>`;
     else if (!d.controllers.length) html += `<div class="empty"><b>No controllers connected</b>${api.esc(d.wake_hint)}</div>`;
     else html += `<ul class="ctrllist" aria-label="${plural(d.controllers.length, 'controller')}">${d.controllers.map(c => row(c, api.esc)).join('')}</ul>

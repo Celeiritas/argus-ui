@@ -22,6 +22,12 @@
 .controllers .facts .rumble.no{color:var(--frost)}
 .controllers .ico{flex:none;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .controllers .ctrlnote{color:var(--powder);font-size:var(--fs-sec);margin:var(--s3) 0 0;overflow-wrap:anywhere}
+/* an old name still in use: a notice (a rule on the left and a line around it, as Mentor's callout), with an icon and the thing to do in bold */
+.controllers .ctrlnote.oldname{display:flex;gap:var(--s2);align-items:flex-start;border:1px solid var(--line);border-left:3px solid var(--powder);border-radius:8px;padding:var(--s3);margin:var(--s3) 0}
+.controllers .ctrlnote.oldname .ico{margin-top:2px}
+.controllers .ctrlnote.oldname ul{list-style:none;margin:0;padding:0;min-width:0}
+.controllers .ctrlnote.oldname li+li{margin-top:var(--s2)}
+.controllers .ctrlnote.oldname b{display:block;color:var(--snow);font-weight:600}
 .controllers .ctrlfoot{color:var(--frost);font-size:var(--fs-meta);margin:var(--s4) 0 0}
 /* phones: slot and name on the first line, the three facts on their own line under them */
 @media (max-width:640px){
