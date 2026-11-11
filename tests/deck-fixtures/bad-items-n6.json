@@ -1,0 +1,15 @@
+{
+ "format": "mentor-items/1",
+ "title": "Tea practice items",
+ "disclaimer": "Made-up practice items for tests, not advice.",
+ "sources": {
+  "S1": {
+   "title": "A made-up tea guide",
+   "url": "https://example.org/tea",
+   "read": "2026-11-11"
+  }
+ },
+ "items": [
+  {"id": "tea-bad", "type": "mcq", "status": "unverified", "client_needs": "Tea making", "ncjmm_step": "take-action", "scoring": "zero_one", "max_points": 1, "stem": "Which water suits green tea?", "options": [{"id": "a", "text": "Boiling water", "key": true, "reason": "Why: boiling water.", "src": ["S1"]}, {"id": "b", "text": "Cooled water", "key": true, "reason": "Why: cooled water.", "src": ["S1"]}, {"id": "c", "text": "Milk", "key": false, "reason": "Why: milk.", "src": ["S1"]}]}
+ ]
+}

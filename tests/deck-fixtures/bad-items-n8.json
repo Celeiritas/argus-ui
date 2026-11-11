@@ -1,0 +1,15 @@
+{
+ "format": "mentor-items/1",
+ "title": "Tea practice items",
+ "disclaimer": "Made-up practice items for tests, not advice.",
+ "sources": {
+  "S1": {
+   "title": "A made-up tea guide",
+   "url": "https://example.org/tea",
+   "read": "2026-11-11"
+  }
+ },
+ "items": [
+  {"id": "tea-bad", "type": "case", "status": "unverified", "client_needs": "Tea making", "ncjmm_step": "all", "max_points": 2, "scenario": "A pot of tea.", "items": [{"id": "tea-bad-1", "type": "mcq", "ncjmm_step": "recognize-cues", "scoring": "zero_one", "max_points": 1, "stem": "Pick the better answer.", "options": [{"id": "a", "text": "Wrong answer", "key": false, "reason": "Why: wrong answer.", "src": ["S1"]}, {"id": "b", "text": "Right answer", "key": true, "reason": "Why: right answer.", "src": ["S1"]}]}, {"id": "tea-bad-2", "type": "mcq", "ncjmm_step": "analyze-cues", "scoring": "zero_one", "max_points": 1, "stem": "Pick the better answer.", "options": [{"id": "a", "text": "Wrong answer", "key": false, "reason": "Why: wrong answer.", "src": ["S1"]}, {"id": "b", "text": "Right answer", "key": true, "reason": "Why: right answer.", "src": ["S1"]}]}]}
+ ]
+}

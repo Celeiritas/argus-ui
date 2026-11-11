@@ -5,7 +5,7 @@
 
 Prints one line per finding, `file: card: LEVEL Rn message`, and exits 1 if any is an ERROR.
 Only what the learner reads is checked: code (snippets, canonical code, fades, answers) may name files.
-Courses (`"format": "mentor-course/1"`) also get C1-C13 (C10-C13: the predict, trace, parsons and write cards' fields). --repo NAME=PATH: a clone of the repository a course's code
+Item files (`"format": "mentor-items/1"`) get N1-N8 (docs/mentor-items.md). Courses (`"format": "mentor-course/1"`) also get C1-C13 (C10-C13: the predict, trace, parsons and write cards' fields). --repo NAME=PATH: a clone of the repository a course's code
 references name, so each file and symbol is looked up at its commit (C8). --online: paper links and DOIs must answer (C9)."""
 import ast, http.client, json, os, re, subprocess, sys, textwrap, urllib.error, urllib.parse, urllib.request
 
@@ -390,6 +390,14 @@ def role_fields(item, role, where, add):
         elif not 3 <= len(lines) <= 12: bad(f'{len(lines)} lines (3 to 12)')
         else: parse('lines in order', '\n'.join(lines))
 
+def check_items(doc):
+    """Exam-style item files ("format": "mentor-items/1"): rules N1-N8, all defined in plugins/mentor/items.py
+    (docs/mentor-items.md), so the checker and Mentor's importer share one set of rules."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('leafy_mentor_items', os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'plugins', 'mentor', 'items.py'))
+    mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+    return [(iid or '-', 'ERROR', rule, msg) for iid, rule, msg in mod.validate_doc(doc)]
+
 def files(paths):
     for p in paths:
         if os.path.isdir(p):
@@ -418,7 +426,7 @@ def main(argv):
             print(f'{f}: -: ERROR R0 cannot read: {e}'); errors += 1; continue
         if not isinstance(doc, dict):
             print(f'{f}: -: ERROR R0 not a lesson or deck'); errors += 1; continue
-        for cid, level, rule, msg in (check_course(doc) if is_course(doc) else check(doc)):
+        for cid, level, rule, msg in (check_items(doc) if doc.get('format') == 'mentor-items/1' else check_course(doc) if is_course(doc) else check(doc)):
             print(f'{f}: {cid}: {level} {rule} {msg}')
             errors += level == 'ERROR'; warns += level == 'WARN'
     skipped = f'; {OPTS["links_skipped"]} link{"s" * (OPTS["links_skipped"] != 1)} not checked (add --online)' if OPTS['links_skipped'] else ''
