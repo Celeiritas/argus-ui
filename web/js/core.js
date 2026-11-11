@@ -223,7 +223,10 @@ $('#moreClose').onclick = () => $('#moreSheet').close();
 /* ---------- render ---------- */
 function render() {
   if (!S) return;
-  if (role() !== 'owner' && !LEARNER.includes(placeOf())) { location.replace(url('')); return; }   // not her place: Today
+  // not her place: Today. Her state lists only her places, so an owner's address (Watch, the Throne) is one this page does
+  // not know (here falls back to 'home'): that is not hers either.
+  const unknown = SEG[0] !== '' && SEG[0] !== 'home' && here === 'home';
+  if (role() !== 'owner' && (!LEARNER.includes(placeOf()) || unknown)) { location.replace(url('')); return; }
   const me = S.personas.find(p => p.key === here), name = S.title || 'Elaia';
   const head = (h1, sub, title) => { $('.title h1').textContent = h1; $('#sub').textContent = sub; document.title = `${title} · ${name}`; };
   if (plugin) {
@@ -243,6 +246,9 @@ function render() {
     $('#sub').innerHTML = `Argus · <b>${S.jobs.length}</b> tasks watched · updated ${esc(S.updated)}`;
   }
   drawNav(); askStatus().then(drawNav);
+  // the people file cannot be used (the server keeps its last good copy): one plain line for the owner, on Today and Watch only
+  const pp = $('#peopleProblem'), ppShow = role() === 'owner' && !!S.people_problem && (here === 'home' || (!plugin && !side && !onOlympus));
+  pp.textContent = ppShow ? S.people_problem : ''; pp.hidden = !ppShow;          // textContent: the sentence is never read as HTML
   const by = {}; S.jobs.forEach(j => (by[j.persona] ||= []).push(j));
   const lone = {}; loneAlerts().forEach(a => (lone[a.job.split('-')[0]] ||= []).push(a));   // alerts with no task card of their own
   const shown = S.personas.filter(p => (by[p.key] || lone[p.key] || p.key === only) && !SIDE.includes(p.key));

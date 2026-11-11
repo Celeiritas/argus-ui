@@ -21,7 +21,9 @@ cp -r "$R"/tests/bundled-fixtures/. "$T/pkg/bundled/"
 $PYTHON -c "import json,time,sys; json.dump({'sky':'rain','desc':'Light rain','is_day':True,'temp':48,'unit':'F','precip':.6,'clouds':90,'wind':14,'south':False,'at':int(time.time()),'source':'Open-Meteo'}, open(sys.argv[1],'w'))" "$T/home/.cache/argus-ui/sky.json"
 # the server's own state goes to explicit paths outside HOME (on Windows ~ follows USERPROFILE, so both point at the temp HOME)
 ST="$T/state"; mkdir -p "$ST"; export ARGUS_EVENTS="$ST/events.jsonl"
-HOME="$T/home" USERPROFILE="$T/home" ARGUS_WATCH_STATE="$ST/watch.json" ARGUS_DEV=1 ARGUS_WEATHER=40,-111 ARGUS_STATIC="$T/pkg/static" ARGUS_BUNDLED="$T/pkg/bundled" ARGUS_SYSTEMCTL="$T/fx/fake_systemctl.py" ARGUS_JOURNALCTL="$T/fx/fake_journal.sh" ARGUS_PORT=$PORT \
+# ARGUS_SERVE_UID: this runner counts as Tailscale Serve, so the real identity check runs and a test that sends
+# Tailscale-User-Login itself is believed (no people file: everyone is the owner anyway; docs/people.md)
+HOME="$T/home" USERPROFILE="$T/home" ARGUS_SERVE_UID=$(id -u) ARGUS_WATCH_STATE="$ST/watch.json" ARGUS_DEV=1 ARGUS_WEATHER=40,-111 ARGUS_STATIC="$T/pkg/static" ARGUS_BUNDLED="$T/pkg/bundled" ARGUS_SYSTEMCTL="$T/fx/fake_systemctl.py" ARGUS_JOURNALCTL="$T/fx/fake_journal.sh" ARGUS_PORT=$PORT \
   ARGUS_WATCH_INTERVAL=1 ARGUS_MOUNTINFO="$T/fx/watch/host-good.mountinfo" FAKE_PODMAN_DIR="$T/pod" ARGUS_CONTROLLERS_SYSROOT="$T/fx/controllers-sysfs/four" ARGUS_CONTROLLERS="$T/fx/controllers.json" \
   $PYTHON "$T/pkg/argus_ui.py" > "$T/server.log" 2>&1 & PID=$!
 # a stand-in local model server for tests/mentor-ai.test.js (docs/mentor-ai.md); off for every other check
@@ -77,6 +79,15 @@ fi
 if [ -z "$1" ] || [ "$1" = works ]; then
   echo "== watch works"
   $PYTHON "$R/tests/watch_works_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1
+fi
+# people and roles (docs/people.md): the connection tables and the people file, then every route against each role on a
+# real server; no browser. The Linux run reads the real /proc and says so ("real /proc lookup"); elsewhere it is simulated.
+if [ -z "$1" ] || [ "$1" = people ] || [ "$1" = plugins ]; then
+  echo "== people and roles"
+  for t in identity_test gate_test; do       # the line saying which identity path ran, the summary; everything when it fails
+    st=0; out=$($PYTHON -W ignore::ResourceWarning "$R/tests/$t.py" 2>&1) || st=$?
+    if [ $st = 0 ]; then grep -E "real /proc|identity path|^Ran|^OK|skipped" <<<"$out" || true; else echo "$out"; fail=1; fi
+  done
 fi
 if [ -z "$1" ] || [ "$1" = plugins ]; then
   echo "== plugin cache"   # ETag, Last-Modified, 304 and Cache-Control on raw headers: no browser (tests/plugin_cache_test.py)

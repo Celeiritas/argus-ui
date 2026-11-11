@@ -15,7 +15,7 @@ if [ -e ~/.local/bin/argus-ui ] || [ -d $S/static ]; then
   echo "== previous version kept in $B"
 fi
 cp "$D/argus_ui.py" ~/.local/bin/argus-ui; chmod +x ~/.local/bin/argus-ui
-cp "$D/sky.py" $S/sky.py; cp "$D/watch.py" $D/notify.py $S/; mkdir -p $S/decks   # your own decks go in ~/.local/share/argus-ui/decks (Mentor reads them; its database stays in $S/mentor.db)
+cp "$D/sky.py" $S/sky.py; cp "$D/watch.py" $D/notify.py "$D/identity.py" $S/; mkdir -p $S/decks   # your own decks go in ~/.local/share/argus-ui/decks (Mentor reads them; its database stays in $S/mentor.db)
 cp -r "$D/static" $S/static
 mkdir -p $S/bundled; cp -r "$D/bundled/." $S/bundled/ 2>/dev/null || true   # plugins that ship with Elaia; yours in ~/.config/argus-ui/plugins win on the same id
 # your own sounds live in ~/.config/argus-ui/sfx/ and are added on every install, so a package built from git
@@ -49,11 +49,12 @@ if [ ! -f $U/argus-ui.service.d/bind.conf ] || [ -n "$BIND" ]; then
 fi
 systemctl --user daemon-reload; systemctl --user enable argus-ui >/dev/null 2>&1; systemctl --user restart argus-ui; sleep 2
 echo "== argus-ui $(cat $S/static/VERSION 2>/dev/null): $(systemctl --user is-active argus-ui)"
-curl -s -o /dev/null -w "== page on this machine: HTTP %{http_code}\n" http://127.0.0.1:$PORT/ || true
-curl -s http://127.0.0.1:$PORT/api/sky | python3 -c 'import json,sys; d=json.load(sys.stdin); print("== weather:", d.get("desc") or d.get("reason"), d.get("temp", ""), d.get("unit", ""))' 2>/dev/null || true
+# api/health stays open to everyone: once a people file exists, the page itself answers this machine with 403 (docs/people.md)
+curl -s -o /dev/null -w "== answering on this machine (api/health): HTTP %{http_code}\n" http://127.0.0.1:$PORT/api/health || true
+curl -s http://127.0.0.1:$PORT/api/sky | python3 -c 'import json,sys; d=json.load(sys.stdin); print("== weather:", d.get("desc") or d.get("reason") or "not shown here (with a people file this machine is nobody)", d.get("temp", ""), d.get("unit", ""))' 2>/dev/null || true
 TS=$(tailscale status --json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))' 2>/dev/null)
 if [ -n "$TS" ]; then
-  curl -s -o /dev/null -w "== over Tailscale HTTPS: HTTP %{http_code}  ->  https://$TS/argus/\n" https://$TS/argus/ || echo "== Tailscale HTTPS not answering. Run once: sudo tailscale serve --bg --set-path /argus http://127.0.0.1:$PORT"
+  curl -s -o /dev/null -w "== over Tailscale HTTPS (api/health): HTTP %{http_code}  ->  https://$TS/argus/\n" https://$TS/argus/api/health || echo "== Tailscale HTTPS not answering. Run once: sudo tailscale serve --bg --set-path /argus http://127.0.0.1:$PORT"
 fi
 grep -q '0.0.0.0' $U/argus-ui.service.d/bind.conf 2>/dev/null && echo "== also on your LAN: http://$(hostname):$PORT" || true
 if [ -n "$TAILSCALE_PATH" ]; then sudo tailscale serve --bg --set-path $TAILSCALE_PATH http://127.0.0.1:$PORT && tailscale serve status; fi
