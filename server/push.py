@@ -279,7 +279,7 @@ role_of = lambda person: 'owner' if person == NO_FILE else 'none'
 def owns(d, who):
     """May this person see and change this device row: his own, or (as an owner) a row from before the people file."""
     p = d.get('person')
-    if p == who.get('person'): return True
+    if p == who.get('person') and who.get('role') == 'owner': return True     # the routes are owner-only too; belt and braces
     return p == NO_FILE and who.get('role') == 'owner' and role_of(NO_FILE) == 'owner'
 
 
@@ -440,12 +440,19 @@ class Gate:
             if rec and now - rec[0] < GAPS[rec[1]]:
                 rec[2] = now; return 'repeat'
             self.told[k] = [now, min(rec[1] + 1, len(GAPS) - 1) if rec else 0, now]
+            if kind == 'summary': return 'send'          # once a day: never folded into "N more things", not counted in the hour
             q = self._room(person, now)
             if len(q) >= PER_HOUR or self.folded.get(person):
                 f = self.folded.setdefault(person, {'n': 0, 'kinds': set()}); f['n'] += 1; f['kinds'].add(kind)
                 return 'folded'
             q.append(now)
             return 'send'
+
+    def forget(self, subject):
+        """A repair worked (a `fixed` event): drop the quiet-time records of that thing, so a new breakage later is not held
+        back. Flapping (broke, then recovered by itself) never comes here, so its limit stays as it is."""
+        with self.lock:
+            for k in [k for k in self.told if k[2] == subject]: del self.told[k]
 
     def flush(self, now=None):
         """Once the hour has room again: ONE message per person for everything folded ("3 more things happened")."""
@@ -482,6 +489,7 @@ def to_devices(person, kinds, event, kind):
 def sink(event):
     """notify.register(sink): buzz for broke, needs-yes and summary only, to owners' devices that want that kind."""
     kind = event.get('kind')
+    if kind == 'fixed': gate.forget(str(event.get('subject', '')))   # never buzzes, but resets that thing's quiet time
     if kind not in KINDS or not crypto(): return
     try: devs = load_devices()
     except (OSError, ValueError): return

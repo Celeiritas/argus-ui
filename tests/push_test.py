@@ -710,6 +710,50 @@ class SmallOnes(unittest.TestCase):
         self.assertRegex(push.topic('media'), r'^[A-Za-z0-9_-]{32}$')
 
 
+
+@need
+class RecheckFixes(unittest.TestCase):
+    """R8b section 8 (d) and (h), section 1 row 12: each failed on b950110."""
+    def setUp(self):
+        clean(); self.t = [0.0]; push.clock = lambda: self.t[0]
+        self.real, push.sender = push.sender, Recorder(); push.role_of = lambda p: 'owner' if p == 'owner' else 'none'
+        add_device()
+    def tearDown(self): push.sender = self.real; push.clock = time.monotonic
+
+    def at(self, minute, kind, subject='media'):
+        self.t[0] = minute * 60.0; n = len(push.sender.jobs)
+        push.sink(notify.make(kind, subject, f'{subject} {kind}', ''))
+        return len(push.sender.jobs) > n
+
+    def test_a_repair_that_worked_resets_the_quiet_time(self):
+        sent = []
+        for m in range(0, 24 * 60, 180):                   # a real breakage every 3 hours, his approved repair works 10 min later
+            if self.at(m, 'broke'): sent.append(m)
+            self.at(m + 10, 'fixed')
+        self.assertEqual(sent, list(range(0, 24 * 60, 180)), 'every one of 8 separate breakages, each repaired, buzzes')
+
+    def test_flapping_stays_limited_exactly_as_before(self):
+        sent = []
+        for m in range(0, 24 * 60, 2):                     # breaks every 2 minutes and comes back by itself in between
+            if self.at(m, 'broke'): sent.append(m)
+            self.at(m + 1, 'recovered')
+        self.assertEqual(sent, [0, 30, 90, 210, 450, 690, 930, 1170, 1410], '9 a day')
+
+    def test_the_daily_summary_is_never_folded(self):
+        for i in range(6): self.at(0, 'broke', f'thing-{i}')
+        self.assertEqual(len(push.sender.jobs), 6)
+        self.assertTrue(self.at(1, 'summary', 'daily-summary'), 'the summary goes out at once')
+        self.assertEqual(json.loads(push.sender.jobs[-1]['raw'])['kind'], 'summary')
+        self.assertFalse(self.at(2, 'broke', 'thing-7'), 'the hour is still full of the six (the summary did not count)')
+        self.t[0] = 3601; out = push.gate.flush()
+        self.assertEqual(json.loads(push.sender.jobs[-1]['raw'])['title'], '1 more thing happened. Open Elaia.', 'only thing-7 was folded')
+
+    def test_owns_needs_the_owner_role_on_its_own_rows_too(self):
+        row = {'person': 'learner-two'}
+        self.assertFalse(push.owns(row, {'person': 'learner-two', 'name': 'Learner Two', 'role': 'learner'}))
+        self.assertFalse(push.owns({'person': 'owner'}, {'person': 'owner', 'name': 'L', 'role': 'learner'}))
+        self.assertTrue(push.owns({'person': 'owner-one'}, {'person': 'owner-one', 'name': 'Owner One', 'role': 'owner'}))
+
 if __name__ == '__main__':
     try: unittest.main(verbosity=1)
     finally: shutil.rmtree(TMP, ignore_errors=True)

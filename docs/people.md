@@ -55,7 +55,8 @@ the top of Today and of Watch.
 
 **Do this before you write the people file.** If `trusted` is `false` for your own phone, writing the file would lock you
 out; tell whoever set up the server (see *Locked out* below). Phones that already get Elaia's alerts keep getting them
-afterwards: they count for the owners, and the owner sees them under Phone alerts (docs/phone-alerts.md).
+afterwards: they count for the owners, and the owner sees them under Phone alerts (docs/phone-alerts.md). A people file
+that was never good closes the page to everyone **and stops phone alerts** until it is fixed.
 
 ## The people file
 
