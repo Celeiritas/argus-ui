@@ -163,7 +163,7 @@ function sections() {
   add('olympus', url('olympus'), 'Olympus', icon('olympus'));
   ['controllers', 'spartamelee', 'ariad-node'].forEach(sec);
   PLUGINS.forEach(p => sec(p.id));
-  add('phone', url('phone'), 'Phone alerts', icon('argus'));   // the owner's (visible() leaves it out for a learner): alerts.js
+  add('phone', url('phone'), 'Phone alerts', icon('argus'));   // the owner's (visible() leaves it out for a learner); More sheet only: alerts.js
   (S.links || []).forEach((x, i) => out.push({id: `link-${i}`, kind: 'link', href: x.href, word: x.name, realm: x.what || 'Opens another page', mark: LINK_MARK}));
   (S.soon || []).filter(x => !PLUGINS.some(p => p.name === x.name)).forEach((x, i) => out.push({id: `soon-${i}`, kind: 'soon', word: x.name, realm: `${x.what} · coming later`, mark: BLADES}));
   return out.map(e => ({...e, on: e.id === 'argus' ? !side : e.id === here, count: e.kind ? 0 : needCount(e.id)}));
@@ -191,7 +191,7 @@ function put(el, html) { if (!el || drawn[el.id] === html) return false; drawn[e
 function drawNav() {
   if (!S) return;
   const all = visible(sections()), prim = all.filter(e => PRIMARY.includes(e.id)), more = all.filter(e => !PRIMARY.includes(e.id));
-  put($('#realms'), all.map(pill).join(''));
+  put($('#realms'), all.filter(e => e.id !== 'phone').map(pill).join(''));   // Phone alerts: in the phone's More sheet, not the wide strip (alerts.js)
   const open = more.find(e => e.on);   // you are on a place inside More: the More slot is the current one and names it
   put($('#tabs'), prim.map(tab).join('') + (more.length ? `<button class="tab more${open ? ' on' : ''}" type="button" data-more aria-haspopup="dialog" aria-controls="moreSheet" aria-expanded="false"><span class="tabicon">${MORE_MARK}${badge(sumNeeds(more), 'tabcount')}</span><b>More</b>${open ? `<small>${esc(open.word)}</small><span class="sr">, ${esc(open.word)} is open</span>` : ''}${needSay(sumNeeds(more))}</button>` : ''));
   $('#tabbar').style.setProperty('--slots', prim.length + (more.length ? 1 : 0));

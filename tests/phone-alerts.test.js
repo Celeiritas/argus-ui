@@ -220,7 +220,7 @@ run(async b => {
     await wide.goto(BASE + 'phone'); await wide.evaluate(async () => { await navigator.serviceWorker.register('sw.js'); await navigator.serviceWorker.ready; });
     await wide.reload(); await wide.waitForTimeout(1500); await shot(wide, 'phone-1440');
     check(await wide.locator('#main .pstate').textContent() === 'Alerts are on for this computer', 'on a computer it says computer, not phone');
-    check(/Phone alerts/.test(await wide.locator('#realms').textContent()), '1440: Phone alerts is in the strip');
+    check(!/Phone alerts/.test(await wide.locator('#realms').textContent()), '1440: the wide strip stays as it was (Phone alerts lives in the phone\'s More sheet)');
     await wide.context().close();
 
 

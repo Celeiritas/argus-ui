@@ -36,7 +36,8 @@ These are the steps as you will read them; nothing here needs a terminal.
 5. Choose with the three switches what this phone gets. Each switch changes at once.
 
 On the same page: **Turn off on this phone**, and **Your other devices** with **Remove** for each. At most 8 devices per
-person.
+person. On a computer the page is not in the strip of sections at the top (it would crowd it); open Elaia's address with
+`phone` at the end (`<base>/phone`).
 
 If the page says *Notifications are blocked for this page*, the phone said no earlier; the page lists the three taps that
 allow them again. If it says *This browser cannot do it yet*, add Elaia to the home screen first (the page shows how).
