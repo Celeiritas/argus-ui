@@ -34,6 +34,9 @@ RETRY_AFTER = 24 * 3600     # one automatic try per check in this many seconds, 
 CONFIRM = 2                 # rounds in a row a failure must be seen before it counts (one slow answer is not a breakage)
 BETWEEN_ROUNDS = 3          # a unit starting or stopping for more rounds in a row than this counts as not running
 HOLD = 15 * 60              # after a test read timed out: no read for this long, or until the drive's mount line changes
+READ_FAILED = (1, 2)        # exit codes of `head` and `ls` (GNU and busybox) when the read itself failed; podman's own
+                            # errors (125, 126, 127), a signal (137 ...) or anything else is "could not look", never cannot-read
+NOT_ON_DRIVE = 'not-on-drive'   # dead-copy found through container.mount: its own explanation
 SETTLE = 90                 # seconds a restarted program gets before "the restart did not help"
 BETWEEN = 'between'         # is_active(): starting, reloading or stopping, cannot tell yet
 
@@ -43,6 +46,7 @@ PROGRAM = {   # code -> (what follows "<Title> runs, but ", longer explanation)
     'drive-dropped': ('its drive has dropped out', 'The drive it needs was disconnected and the system marked it as gone.'),
     'drive-readonly': ('its drive is read-only', 'The system stopped writing to the drive it needs, usually after errors.'),
     'dead-copy': ('cannot read its drive', 'The drive was unplugged and came back, but {t} still holds the old connection, so every file it opens fails. Starting {t} again makes it pick the drive up.'),
+    NOT_ON_DRIVE: ('cannot read its drive', 'Inside {t}, the folder for the drive is not on the drive. Most likely {t} was started before the drive was there and holds the empty folder underneath. Starting {t} again makes it pick the drive up.'),
     'cannot-read': ('cannot read its drive', 'The drive looks connected, but a test file inside {t} would not open.'),
     'no-answer': ('does not answer at its web address', 'It is running, but nothing answers at its web address.'),
     'read-hung': ('does not answer when it reads its drive', 'A test read inside {t} did not finish in time. Argus waits 15 minutes, or until the drive changes, before it reads again, so the reads do not pile up.'),
@@ -267,7 +271,7 @@ def _evaluate(c, env, hold=None):
             host = parse_mountinfo(txt)
         inside = parse_mountinfo(out.decode('utf-8', 'replace'))
         if dead_copies(inside, host): return result(c, False, 'dead-copy')
-        if ct.get('mount') and wrong_drive(inside, host, ct['mount'], c['mount']): return result(c, False, 'dead-copy')
+        if ct.get('mount') and wrong_drive(inside, host, ct['mount'], c['mount']): return result(c, False, 'dead-copy', NOT_ON_DRIVE)
         # only now, with the drive present, writable and no dead copy, is a file read
         for k, argv in (('file', ['head', '-c', '4096', '--']), ('dir', ['ls', '-A', '--'])):
             if ct.get(k):
@@ -276,7 +280,8 @@ def _evaluate(c, env, hold=None):
                     return result(c, False, 'read-hung', 'The last test read did not finish; no new read until the drive changes or 15 minutes pass.', held=True)
                 rc, out = env.run(rt + ['exec', ct['name']] + argv + [ct[k]])
                 if rc is None: return result(c, False, 'read-hung', 'The test read took too long.', line=sig)
-                if rc != 0 or not out: return result(c, False, 'cannot-read')     # an empty folder too: what a container sees when it missed its drive
+                if rc in READ_FAILED or (rc == 0 and not out): return result(c, False, 'cannot-read')   # an empty folder too: what a container sees when it missed its drive
+                if rc != 0: return result(c, None, 'cannot-look', f'The test read could not run (exit code {rc}).')   # podman's own trouble, not the drive's
     h = c.get('http')
     for u in [h] if isinstance(h, (str, dict)) else h or []:
         url, want = (u, None) if isinstance(u, str) else (u['url'], u.get('status'))
@@ -294,6 +299,7 @@ def words(c, code, why=''):
     t = c['title']
     if code == 'unit-down': return UNIT_DOWN[0].capitalize(), f'{t} {UNIT_DOWN[0]}', UNIT_DOWN[1]
     if code == 'read-hung': p, e = PROGRAM[code]; return p, f'{t} {p}', e.format(t=t)
+    if code == 'dead-copy' and why == NOT_ON_DRIVE: code = NOT_ON_DRIVE
     if is_drive(c) and code in DRIVE:
         s, e = DRIVE[code]; return s.format(t=t), s.format(t=t), e
     p, e = PROGRAM.get(code, (why or 'cannot do its job', why))
@@ -303,7 +309,7 @@ def words(c, code, why=''):
 # ---------- the loop ----------
 _lock = threading.Lock()
 RESULTS = {}        # id -> public result (what state() shows)
-PREV = {}           # id -> {works, code, since, told, pending, last_try, last_try_trial, between, hold}: saved in STATEFILE
+PREV = {}           # id -> {works, code, since, told, pending, streak, decided, outcome, last_try, last_try_trial, between, hold}: saved
 LAST_STEP = [0.0]
 BAD = {}            # refused check -> why, logged once
 STOP = threading.Event()
@@ -346,6 +352,7 @@ def step(env, settle=SETTLE):
         pub = dict(id=c['id'], title=c['title'], job=c.get('job') or '', unit=c.get('unit') or '', works=r['works'], code=r['code'], at=now,
                    since=iso(PREV.get(c['id'], {}).get('since', now)), fix=bool(c.get('fix')), autofix=c['id'] in auto, drive=is_drive(c))
         pub['reason'], pub['title_line'], pub['detail'] = words(c, r['code'], r.get('why', '')) if r['works'] is False else (r.get('why', ''), '', '')
+        pub['note'] = card_note(c, r, PREV.get(c['id']) or {}, auto)
         with _lock: RESULTS[c['id']] = pub
     with _lock:
         for k in list(RESULTS):
@@ -372,12 +379,15 @@ def track(c, r, now):
 
 
 def handle(c, r, env, auto, trial, now, drive_down, settle, restarted):
-    """Compare with the last known state; raise at most one event for a change. Returns the (maybe re-checked) result."""
+    """Compare with the last known state; raise at most one event for a change. Returns the (maybe re-checked) result.
+    "In a row" means in a row: an unknown round breaks the count, for a new failure and for self-repair alike."""
     id_ = c['id']
     p = PREV.setdefault(id_, {})
-    if r['works'] is None: return r              # unknown never counts as a change
+    if r['works'] is None:                       # unknown never counts as a change, and it breaks "in a row"
+        p.pop('pending', None); p.pop('streak', None)
+        return r
     if r['works'] is True:                       # recovery is immediate
-        p.pop('pending', None)
+        for k in ('pending', 'streak', 'decided', 'outcome'): p.pop(k, None)
         if p.get('works') is True: return r
         was_bad, told = p.get('works') is False, p.get('told', True)
         p.update(works=True, code='ok', since=now, told=False)
@@ -385,36 +395,46 @@ def handle(c, r, env, auto, trial, now, drive_down, settle, restarted):
             t = c['title']
             notify.notify(notify.make('recovered', id_, f'{t} works again', f'{t} can do its job again.', c.get('url', '')))
         return r
+    s = p.get('streak')                          # [code, rounds in a row with exactly this code]
+    p['streak'] = [r['code'], s[1] + 1] if isinstance(s, list) and len(s) == 2 and s[0] == r['code'] and isinstance(s[1], int) else [r['code'], 1]
+    changed = True
     if p.get('works') is not False:              # a new failure counts only once it is seen in CONFIRM rounds in a row
         p['pending'] = p.get('pending', 0) + 1
         if p['pending'] < CONFIRM: return result(c, None, 'pending', 'Saw a problem once; looking again next round.')
         p.update(works=False, code=r['code'], since=now, told=False)
-    elif p.get('code') == r['code']: return r
-    else: p.update(code=r['code'], since=now)
+        p.pop('decided', None); p.pop('outcome', None)
+    elif p.get('code') != r['code']:
+        p.update(code=r['code'], since=now); p.pop('outcome', None); p.pop('decided', None)
+    else: changed = False
     p.pop('pending', None)
     reason, title, detail = words(c, r['code'], r.get('why', ''))
-    if bool(c.get('mount')) and c.get('unit') and r['code'].startswith('drive-') and drive_down.get(c['mount']):
+    if changed and bool(c.get('mount')) and c.get('unit') and r['code'].startswith('drive-') and drive_down.get(c['mount']):
         return r                                 # quiet: the drive's own event already says it; this card still shows the reason
-    p['told'] = True
     fx = c.get('fix')
     say = (fx or {}).get('say') or ' and '.join((fx or {}).get('restart', []))
     url = c.get('url', '')
-    if r['code'] == 'read-hung':                 # its own code: never a restart, a warning
-        notify.notify(notify.make('broke', id_, title, f'{detail} It may come back by itself; if it does not, look at the drive.', url, level='warn'))
-        return r
-    if fx and id_ in auto and r['code'] in REPAIRABLE:
+    if fx and id_ in auto and r['code'] in REPAIRABLE and r['code'] != 'read-hung':
+        # Self-repair decides once per code of a failure, and only after that code was seen CONFIRM rounds in a row, also when
+        # the check was already failing for another reason (a single odd round never restarts anything). Its event waits with it.
+        if p.get('decided') == r['code'] or p['streak'][1] < CONFIRM: return r
+        p['decided'] = r['code']; p['told'] = True
         last = p.get('last_try')
         if isinstance(last, (int, float)) and now - last < RETRY_AFTER:
+            p['outcome'] = 'held'
             done = 'would have restarted' if p.get('last_try_trial') else 'already restarted'
             notify.notify(notify.make('needs-yes', id_, title, f'{detail} Argus {done} {say} by itself at {iso(last)[11:16]}, and it does that only once a day. Restarting {say} should fix it. Waiting for your yes.', url))
             return r
-        p.update(last_try=now, last_try_trial=trial)
+        p.update(last_try=now, last_try_trial=trial, outcome='trial' if trial else 'tried')
         save_prev()                              # the "already tried" mark and its time are on disk BEFORE anything is restarted
         if trial:
             notify.notify(notify.make('needs-yes', id_, title, f'{detail} Argus would have restarted {say} by itself, but it did not: for now it only notes what it would do. Waiting for your yes.', url))
             return r
         return repair(c, r, env, settle, restarted, say, reason, url)
-    if fx:
+    if not changed: return r
+    p['told'] = True
+    if r['code'] == 'read-hung':                 # its own code: never a restart, a warning
+        notify.notify(notify.make('broke', id_, title, f'{detail} It may come back by itself; if it does not, look at the drive.', url, level='warn'))
+    elif fx:
         notify.notify(notify.make('needs-yes', id_, title, f'{detail} Restarting {say} should fix it. Waiting for your yes.'.strip(), url))
     else:
         notify.notify(notify.make('broke', id_, title, f'{detail} This one has no automatic fix.'.strip(), url))
@@ -435,20 +455,38 @@ def repair(c, r, env, settle, restarted, say, reason, url):
         if ok: went.append(u)
         else: log(f'restart of {u} failed: {msg}')
     if not went:
-        notify.notify(notify.make('broke', id_, words(c, r['code'])[1], f'It could not do its job ({reason}). Argus tried to restart {say} by itself, but the restart did not work. It will not try again by itself for a day.', url))
+        p['outcome'] = 'cmdfail'
+        notify.notify(notify.make('broke', id_, words(c, r['code'], r.get('why', ''))[1], f'It could not do its job ({reason}). Argus tried to restart {say} by itself, but the restart did not work. It will not try again by itself for a day.', url))
         return r
     end = env.now() + settle
     r2 = evaluate(c, env)
     while r2['works'] is not True and env.now() < end:
         env.sleep(min(3, max(0.0, end - env.now()))); r2 = evaluate(c, env)
     if r2['works'] is True:
+        for k in ('streak', 'decided', 'outcome'): p.pop(k, None)
         p.update(works=True, code='ok', since=env.now(), told=False)
         notify.notify(notify.make('fixed', id_, f'{c["title"]} was restarted and works again', f'It could not do its job ({reason}). Argus restarted {say} as you allowed, and it works now.', url))
         return r2
+    p['outcome'] = 'nohelp'
     if r2['works'] is False and r2['code'] != r['code']: p['code'] = r2['code']; r = r2
     title, detail = words(c, r['code'], r.get('why', ''))[1:]
     notify.notify(notify.make('broke', id_, title, f'{detail} Argus restarted {say} once, and it did not help. It will not try again by itself for a day.'.strip(), url))
     return r
+
+
+def card_note(c, r, p, auto):
+    """What Argus did about a failed check, for its card (the events file is not on any page yet). '' when there is nothing to
+    say: no fix, the drive is the problem, a hung read, or self-repair may still act next round. Never claims a restart that
+    did not happen."""
+    fx = c.get('fix')
+    if not fx or r['works'] is not False or r['code'].startswith('drive-') or r['code'] == 'read-hung': return ''
+    say = fx.get('say') or ' and '.join(fx.get('restart', []))
+    o = p.get('outcome')
+    if o == 'trial': return f'Argus would have restarted {say} by itself and did not, because for now it only notes what it would do.'
+    if o == 'nohelp': return f'Argus restarted {say} once by itself, and it did not help. It waits for your yes.'
+    if o == 'cmdfail': return f'Argus tried to restart {say} by itself, but the restart did not work. It waits for your yes.'
+    if o is None and c['id'] in auto and r['code'] in REPAIRABLE and p.get('decided') != r['code']: return ''
+    return 'Argus did not restart it and waits for your yes.'
 
 
 def snapshot(interval=60):
@@ -485,7 +523,8 @@ def alert_list(rows, allowed):
         if r['code'] == 'unit-down': msg = 'Not running.'
         elif r['code'] == 'read-hung': msg, level = f"{r['title']} does not answer when it reads its drive.", 'warn'
         elif r['drive']: msg = r['reason'] + '.'
-        else: msg = f"Running, but not working: {r['reason']}"
+        else: msg = f"Running, but not working: {r['reason']}" + ('.' if r.get('note') else '')
+        if r.get('note'): msg += ' ' + r['note']          # what Argus did about it (docs/checks.md, "What the card says")
         out.append(dict(file='watch-' + r['id'], job=r['job'], level=level, message=msg[:300], since=r['since'], link=''))
     return out
 
