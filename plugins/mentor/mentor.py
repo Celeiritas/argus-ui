@@ -156,9 +156,16 @@ LATER_ROLES = ('make',)
 # a module check passes at the same share (spec section 15.3: module pass 80%)
 PASS = 0.8
 
-def connect(path):
+class Conn(sqlite3.Connection):
+    """A database connection that knows whether it reads the inbox (people: only the owner's database does)."""
+    own_inbox = True
+
+def connect(path, inbox=True):
+    """Open (and upgrade) one person's database. inbox=False: this database never imports from the inbox folder
+    (a learner's database holds only their own lessons, docs/mentor.md "People")."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    db = sqlite3.connect(path, check_same_thread=False)
+    db = sqlite3.connect(path, check_same_thread=False, factory=Conn)
+    db.own_inbox = bool(inbox)
     db.row_factory = sqlite3.Row
     db.executescript(SCHEMA)
     for table, col, decl in ADDED:
@@ -166,8 +173,9 @@ def connect(path):
             db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
     ensure_loose(db)
     db.commit()
-    try: os.makedirs(INBOX, exist_ok=True)
-    except OSError: pass
+    if inbox:
+        try: os.makedirs(INBOX, exist_ok=True)
+        except OSError: pass
     return db
 
 def loose_module(project):
@@ -508,6 +516,7 @@ def stamp(iso, mid):
 
 def scan_inbox(db):
     """Import new or changed files from the inbox. Cheap when nothing changed (one directory listing)."""
+    if not getattr(db, 'own_inbox', True): return
     try: entries = [e for e in os.scandir(INBOX) if e.name.endswith('.json') and e.is_file()]
     except OSError: return
     seen = {r['path']: r for r in db.execute("SELECT path, mtime, size FROM imports")}
@@ -841,14 +850,23 @@ def hint_rungs(c, level=None):
     else: ans = c['answer']
     return [h[0] if h else None, move, h[1] if len(h) > 1 else None, ans]
 
-def card_payload(db, c, read_only=False):
-    """What the page needs to ask the question - never the answer (a Learn card is the lesson, so it carries it)."""
+def card_payload(db, c, read_only=False, st=None, tm=None):
+    """What the page needs to ask the question - never the answer (a Learn card is the lesson, so it carries it).
+    4.34: its track, whether the track asks "How sure?" on every card, and teach_id: the Learn card "Teach me first" opens
+    (the card's own, else its lesson's orientation; None when there is nothing to read first)."""
     c = filled(c)
     data = json.loads(c['data'] or '{}')
     mod = db.execute("SELECT name, project FROM modules WHERE id=?", (c['deck'],)).fetchone()
+    st, tm = st or settings(db), tm or track_map(db)
+    track = track_of(tm, c['deck'])
+    teach = c['learn_of'] if c['kind'] not in LEARN else None
+    if c['kind'] not in LEARN and not teach:
+        o = db.execute("SELECT id FROM cards WHERE deck=? AND kind='orientation' AND COALESCE(is_check, 0)=0 ORDER BY ord LIMIT 1", (c['deck'],)).fetchone()
+        teach = o['id'] if o else None
     out = {'id': c['id'], 'deck': c['deck'], 'kind': c['kind'], 'tier': TIER.get(c['kind'], 3), 'prompt': c['prompt'],
            'reps': c['reps'] or 0, 'module': fill(mod['name']) if mod else None, 'project': fill(mod['project']) if mod else None,
-           'learn_of': c['learn_of'], 'refresh': bool(c['refresh']) if 'refresh' in c.keys() else False}
+           'learn_of': c['learn_of'], 'refresh': bool(c['refresh']) if 'refresh' in c.keys() else False,
+           'track': track, 'ask_confidence': track in st['ask_confidence'], 'teach_id': teach}
     if c['kind'] == 'drill':
         lv = card_level(c, c['level'])
         fade = data['fades'][str(lv)]
@@ -917,11 +935,94 @@ def deck_where(db, deck):
     if not ids: return "0", []
     return "c.deck IN (" + ",".join("?" * len(ids)) + ")", ids
 
-# ---------- study settings (the page's settings strip; stored in the database, next to the history they shape) ----------
-SETTINGS = {'bury': True}         # bury siblings: spec section 15.3, on by default
+# ---------- tracks (4.34): what Today pins and the shelf holds ----------
+# A track is what a person picks to study: a plain deck (its id), or every lesson of one project or course ("group:<name>",
+# submenus included: "GAME_RESEARCH › Topics" and "GAME_RESEARCH › Games" are one track), or a lesson without a project
+# (its own id). The ids are ones deck_where() already takes, so a track is studied like any choice in the picker.
+def track_map(db):
+    """{deck or lesson id: track id} for every card's deck in this database."""
+    out = {}
+    for r in db.execute("SELECT id, project FROM modules"):
+        root = (r['project'] or '').split(GROUP_SEP)[0].strip()
+        out[r['id']] = 'group:' + root if root else r['id']
+    for (d,) in db.execute("SELECT DISTINCT deck FROM cards"):
+        out.setdefault(d, d)
+    return out
+
+def tracks(db, names=None):
+    """Every track: [{id, name, lessons}] in a stable order (name). names: plain decks' names {deck id: name}."""
+    tm, mods = track_map(db), {r['id']: r for r in db.execute("SELECT id, name, project FROM modules")}
+    by = {}
+    for d, t in tm.items(): by.setdefault(t, []).append(d)
+    out = []
+    for t, ds in by.items():
+        if t.startswith('group:'): name = fill(mods[ds[0]]['name']) if len(ds) == 1 else fill(t[6:])
+        elif t in mods: name = fill(mods[t]['name'])
+        else: name = fill((names or {}).get(t) or t)
+        out.append({'id': t, 'name': name, 'lessons': sorted(ds)})
+    return sorted(out, key=lambda x: (x['name'].lower(), x['id']))
+
+def track_of(tm, deck):
+    return tm.get(deck, deck)
+
+def scope_of(db, deck):
+    """The track a chosen deck, lesson or group belongs to (a group choice is its own track); None for no choice."""
+    if not deck: return None
+    if deck.startswith('group:'): return 'group:' + deck[6:].split(GROUP_SEP)[0].strip()
+    return track_of(track_map(db), deck)
+
+def new_today(db, tm, now):
+    """{track: practice cards seen for the first time today}: a card counts on the local day of its first rating (not undone)."""
+    out = {}
+    for r in db.execute("SELECT c.deck, MIN(a.at) AS first FROM attempts a JOIN cards c ON c.id=a.card_id WHERE a.rating>0 "
+                        "AND COALESCE(a.undone, 0)=0 AND c.kind NOT IN (?,?,?,?) AND COALESCE(c.is_check, 0)=0 GROUP BY a.card_id", LEARN):
+        if r['first'] >= day_start(now):
+            t = track_of(tm, r['deck']); out[t] = out.get(t, 0) + 1
+    return out
+
+def new_limit(st, track):
+    lim = st['new_per_day']
+    return lim[track] if track in lim else lim.get('*', NEW_PER_DAY)
+
+# ---------- study settings (stored in each person's database, next to the history they shape) ----------
+# bury: siblings wait until tomorrow (spec section 15.3). teach_first: the old order, every practice card after its Learn
+# card (4.34: off; a practice card comes first and its teaching is the feedback). pinned: up to PIN_MAX tracks on Today;
+# shelved: tracks hidden from study and from every count, history kept. new_per_day: {track: n} ("*" = every track),
+# NEW_PER_DAY when not set. goal: {track: one line}, the owner's words. ask_confidence: tracks that ask "How sure?" on
+# every card (others ask on every CONF_EVERY-th card).
+SETTINGS = {'bury': True, 'teach_first': False, 'pinned': [], 'shelved': [], 'new_per_day': {}, 'goal': {}, 'ask_confidence': []}
+PIN_MAX, NEW_PER_DAY, CONF_EVERY = 3, 10, 5
+
+class Refusal(ValueError):
+    """A setting Mentor will not save, with the sentence that says what to do instead."""
+
+def _ids(v):
+    if not isinstance(v, list) or not all(isinstance(x, str) and 0 < len(x) <= 200 for x in v) or len(v) > 200: raise TypeError
+    out = []
+    for x in v:
+        if x not in out: out.append(x)
+    return out
+
+def _merge(old, v, check):
+    """A map setting is merged: {track: value} sets one, {track: null} takes it out again."""
+    if not isinstance(v, dict) or len(v) > 200: raise TypeError
+    out = dict(old)
+    for k, x in v.items():
+        if not isinstance(k, str) or not 0 < len(k) <= 200: raise TypeError
+        if x is None: out.pop(k, None)
+        else: out[k] = check(x)
+    return out
+
+def _count(x):
+    if isinstance(x, bool) or not isinstance(x, int) or not 0 <= x <= 999: raise TypeError
+    return x
+
+def _goal(x):
+    if not isinstance(x, str): raise TypeError
+    return ' '.join(x.split())[:140]
 
 def settings(db):
-    out = dict(SETTINGS)
+    out = {k: (list(v) if isinstance(v, list) else dict(v) if isinstance(v, dict) else v) for k, v in SETTINGS.items()}
     for r in db.execute("SELECT key, value FROM settings"):
         if r['key'] in SETTINGS:
             try: v = json.loads(r['value'])
@@ -930,11 +1031,25 @@ def settings(db):
     return out
 
 def set_settings(db, changes):
-    """Save the known keys with the right type; anything else is ignored. Returns every setting."""
+    """Save the known keys with the right type; anything else is ignored. Returns every setting. A fourth pin raises
+    Refusal (nothing is saved); a value of the wrong type is ignored."""
+    changes = {k: v for k, v in (changes or {}).items() if k in SETTINGS}
     with DB_LOCK:
-        for k, v in (changes or {}).items():
-            if k in SETTINGS and isinstance(v, type(SETTINGS[k])):
-                db.execute("INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (k, json.dumps(v)))
+        cur = settings(db); new = {}
+        for k, v in changes.items():
+            try:
+                if k in ('pinned', 'shelved', 'ask_confidence'): new[k] = _ids(v)
+                elif k == 'new_per_day': new[k] = _merge(cur[k], v, _count)
+                elif k == 'goal': new[k] = _merge(cur[k], v, _goal)
+                elif isinstance(v, type(SETTINGS[k])): new[k] = v
+            except TypeError: pass              # a wrong type is ignored, as for every setting
+        if 'pinned' in new and len(new['pinned']) > PIN_MAX:
+            raise Refusal(f'You can pin {PIN_MAX} tracks. Unpin one first: open the shelf on Today and choose Unpin on the track you need least.')
+        # a track is pinned or shelved, never both: the list sent in this request wins
+        if 'shelved' in new: new['pinned'] = [x for x in new.get('pinned', cur['pinned']) if x not in new['shelved']]
+        if 'pinned' in new: new['shelved'] = [x for x in new.get('shelved', cur['shelved']) if x not in new['pinned']]
+        for k, v in new.items():
+            db.execute("INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (k, json.dumps(v)))
         db.commit()
     return settings(db)
 
@@ -1025,14 +1140,26 @@ def mastery(db, now=None, hidden=None):
     return out
 
 def locked_reason(db, deck):
-    """Why a chosen course lesson has no card to study: the lessons (or modules) it waits for, in a sentence; else None."""
+    """Why a chosen track or course lesson has no card to study: on the shelf, or the lessons (or modules) it waits for,
+    in a sentence; else None."""
+    if deck and scope_of(db, deck) in settings(db)['shelved']:
+        return 'This track is on the shelf. Take it off the shelf (Today, at the bottom) to study it again; its history is kept.'
     x = mastery(db)['lessons'].get(deck) if deck else None
     if not x or not x['locked']: return None
     return f"This lesson unlocks when you have answered {round(PASS * 100)}% of the cards right in: {', '.join(x['waiting_on'])}."
 
-def next_card(db, deck=None, extra=False):
+def next_card(db, deck=None, extra=False, session=False, out=None):
+    """The next card to study: a Learn card sent back first, then reviews due, a module's check, then new cards.
+    4.34: a track on the shelf is never served. Question first (unless the teach_first setting is on): a lesson's new
+    practice cards come without their Learn cards in front, and the teaching arrives as feedback (answer()); a Learn card
+    is served on its own only in a lesson that has nothing else, or when stuck detection sends it back. New practice cards
+    stop at each track's daily limit (new_per_day). session=True (Study 10 minutes): reviews of the pinned tracks first,
+    then other reviews, then new cards from the pinned tracks only (every track off the shelf while nothing is pinned).
+    out (a dict) gets 'held': how many new cards the daily limit holds back for this choice."""
     scan_inbox(db)
     now = time.time()
+    st, tm = settings(db), track_map(db)
+    shelf, pins, first = set(st['shelved']), set(st['pinned']), st['teach_first']
     q, args = CARD_Q, []
     w, wargs = deck_where(db, deck)
     if w: q += " WHERE " + w; args += wargs
@@ -1040,23 +1167,34 @@ def next_card(db, deck=None, extra=False):
     info = mastery(db, now, hidden)
     locked = {k for k, v in info['lessons'].items() if v['locked']}     # a locked lesson's new cards wait; its reviews go on
     # check items are for module checks, never practice; a buried sibling waits for tomorrow (and holds back nothing)
-    every = db.execute(q, args).fetchall()
+    every = [r for r in db.execute(q, args).fetchall() if track_of(tm, r['deck']) not in shelf]
     rows = [r for r in every if not r['is_check'] and not hidden(r)]
     # a Learn card sent back by stuck detection comes first, before any review
     back = [r for r in rows if r['refresh'] and r['kind'] in LEARN]
     if back: return card_payload(db, back[0]), None
-    # funnel: a lesson's cards unlock in FUNNEL order, each practice card after its own Learn card
+    practice = {r['deck'] for r in every if r['kind'] not in LEARN and not r['is_check']}     # lessons with something to answer
+    learn_alone = lambda r: r['kind'] in LEARN and (first or r['deck'] not in practice)
+    # funnel: a lesson's cards unlock in FUNNEL order (teach_first: each practice card after its own Learn card)
     stage, seen = {}, {r['id'] for r in rows if r['reps']}
     for r in rows:
-        if r['kind'] in FUNNEL and not r['reps']:
+        if r['kind'] in FUNNEL and not r['reps'] and (r['kind'] not in LEARN or learn_alone(r)):
             stage[r['deck']] = min(stage.get(r['deck'], 99), FUNNEL[r['kind']])
     def ready(r):
         if r['reps'] or r['due'] is not None or r['deck'] in locked: return False
+        if r['kind'] in LEARN and not learn_alone(r): return False
         if FUNNEL.get(r['kind'], 0) > stage.get(r['deck'], 99): return False
-        return r['kind'] in LEARN or not r['learn_of'] or r['learn_of'] in seen
+        return r['kind'] in LEARN or not first or not r['learn_of'] or r['learn_of'] in seen
     due = sorted((r for r in rows if r['due'] is not None and r['due'] <= now), key=lambda r: r['due'])
     order = lambda r: (r['mat'] or 0, r['deck'], r['ord'] or 0, r['id'])
     new = sorted((r for r in rows if ready(r)), key=order)
+    made = new_today(db, tm, now)
+    room = lambda r: r['kind'] in LEARN or new_limit(st, track_of(tm, r['deck'])) - made.get(track_of(tm, r['deck']), 0) > 0
+    if out is not None: out['held'] = sum(1 for r in new if not room(r))
+    new = [r for r in new if room(r)]
+    if session and pins:
+        mine = lambda r: track_of(tm, r['deck']) in pins
+        due = [r for r in due if mine(r)] or due
+        new = [r for r in new if mine(r)]
     # a module's check, once all its lessons are mastered: after the reviews due, before new cards (mastery leaves out an
     # item buried today, so the course map counts the same)
     checks = sorted((r for r in every if r['id'] in info['checks'] and r['kind'] not in LEARN), key=order)
@@ -1064,7 +1202,7 @@ def next_card(db, deck=None, extra=False):
     if pool: c = interleave(pool)
     elif extra and [r for r in rows if r['due']]: c = min((r for r in rows if r['due']), key=lambda r: r['due'])   # practise ahead
     else: return None, min((r['due'] for r in rows if r['due']), default=None)
-    return card_payload(db, c), None
+    return card_payload(db, c, st=st, tm=tm), None
 
 def hint(db, card_id, rung):
     """One rung of the hint ladder (1-4). Rung 4 is the answer; the page then submits a blank answer with hints=4."""
@@ -1183,6 +1321,17 @@ def answer(db, card_id, text, confidence, ms, hints=0, reflections=None, skipped
         previews = {g: round((p[2] - now) / DAY, 6) for g, p in plans.items()}      # days until it returns (to the second: steps are minutes)
         level_after = {g: p[7] for g, p in plans.items()} if c['kind'] == 'drill' else None
     n = len(hits) + len(missed)
+    # question first (4.34): the card's teaching comes with the result, and counts as read the first time it does
+    teach, teach_new = None, False
+    if c['learn_of'] and not c['is_check']:
+        lr = db.execute(CARD_Q + " WHERE c.id=?", (c['learn_of'],)).fetchone()
+        if lr and lr['kind'] in LEARN and not lr['is_check']:
+            teach, teach_new = card_payload(db, lr, read_only=True), not lr['reps']
+            if teach_new:
+                with DB_LOCK:
+                    db.execute("INSERT INTO sched(card_id,reps,refresh,last) VALUES(?,1,0,?) ON CONFLICT(card_id) DO UPDATE SET reps=1, last=excluded.last",
+                               (lr['id'], now)); db.commit()
+    extra.update({'teach': teach, 'teach_new': teach_new})
     return {'attempt': cur.lastrowid, 'kind': c['kind'], 'coverage': round(cov, 2), 'hits': hits, 'missed': missed,
             'previews': previews, 'level_after': level_after, 'reference': c['answer'], 'suggested': sug, 'hints': hints,
             'stuck': stuck, 'check': bool(c['is_check']), 'coach': coach_line(c['kind'], cov, confidence, n, extra), **extra}
@@ -1367,11 +1516,16 @@ def stats(db, deck=None):
     info = mastery(db, now, hidden)
     locked = {k for k, v in info['lessons'].items() if v['locked']}
     # a locked lesson's cards don't wait to be studied yet (only its reviews, if it was studied before it was locked)
+    st, tm = settings(db), track_map(db)
+    shelf = set(st['shelved'])          # a track on the shelf is in no count (4.34); its history stays
     cards = [c for c in db.execute(f"SELECT c.id, c.deck, c.kind, c.note, s.due, s.reps, s.step FROM cards c LEFT JOIN sched s ON s.card_id=c.id {w}", args)
-             if not hidden(c) and not (c['deck'] in locked and c['due'] is None)]
+             if not hidden(c) and not (c['deck'] in locked and c['due'] is None) and track_of(tm, c['deck']) not in shelf]
+    # question first: a Learn card waits to be read only in a lesson that has nothing to answer (the rest come as feedback)
+    answerable = {c['deck'] for c in db.execute("SELECT DISTINCT deck FROM cards WHERE kind NOT IN (?,?,?,?) AND COALESCE(is_check, 0)=0", LEARN)}
+    to_read = lambda c: c['kind'] in LEARN and not c['reps'] and (st['teach_first'] or c['deck'] not in answerable)
     cw2 = "WHERE c.is_check=1" + (" AND " + cw if cw else "")
-    checks = sum(1 for c in db.execute(f"SELECT c.id, c.kind FROM cards c {cw2}", args)    # buried ones are left out by mastery
-                 if c['id'] in info['checks'] and c['kind'] not in LEARN)
+    checks = sum(1 for c in db.execute(f"SELECT c.id, c.deck, c.kind FROM cards c {cw2}", args)    # buried ones are left out by mastery
+                 if c['id'] in info['checks'] and c['kind'] not in LEARN and track_of(tm, c['deck']) not in shelf)
     ids = group_ids(db, deck)
     pats = [i + ':%' for i in ids] if ids is not None else ([deck + ':%'] if deck else [])
     aw = ("WHERE " + " OR ".join("a.card_id LIKE ?" for _ in pats)) if pats else ("WHERE 0" if ids is not None else "")
@@ -1384,7 +1538,7 @@ def stats(db, deck=None):
     practice = [c for c in cards if c['kind'] not in LEARN]
     week = [a for a in att if a['at'] >= now - 7 * DAY and a['kind'] not in LEARN]
     return {'cards': len(practice), 'new': sum(1 for c in practice if c['due'] is None),
-            'learn': sum(1 for c in cards if c['kind'] in LEARN and not c['reps']),
+            'learn': sum(1 for c in cards if to_read(c)),
             'due': sum(1 for c in practice if c['due'] is not None and c['due'] <= now),
             # cards on their learning steps that come back later today (once its minutes are up a card counts as due instead)
             'steps': sum(1 for c in practice if c['step'] is not None and c['due'] is not None and now < c['due'] < day_start(now) + DAY),
@@ -1397,7 +1551,79 @@ def stats(db, deck=None):
             'sent_back': sum(1 for a in att if a['stuck'] in ('held', 'repeat', 'skipped') and a['at'] >= day0),
             'checks': checks, 'pass': PASS,          # module check questions to answer now; the mastery threshold (4.32)
             'modules': modules(db, info), 'courses': courses(db, info), 'imports': imports, 'settings': settings(db),
-            'inbox': INBOX.replace(os.path.expanduser('~'), '~', 1)}
+            'inbox': INBOX.replace(os.path.expanduser('~'), '~', 1) if getattr(db, 'own_inbox', True) else ''}
+
+# ---------- Today (4.34): the first view, and Elaia's Today card ----------
+SESSION_MIN = 10            # "Study 10 minutes"
+CARD_MS_CAP = 120_000       # a card counts at most 2 minutes toward the week's minutes (a page left open is not study)
+
+def today(db, names=None):
+    """Everything the Today view needs in one answer: every track with its counts and goal (pinned first), the totals
+    the one button studies, the week's minutes (oldest day first, today last) and what tomorrow brings."""
+    scan_inbox(db)
+    now = time.time(); day0 = day_start(now); tomorrow_end = day_start(day0 + 1.5 * DAY) + DAY
+    st, tm = settings(db), track_map(db)
+    shelf, pins = set(st['shelved']), [p for p in st['pinned']]
+    hidden = buried(db, now)
+    info = mastery(db, now, hidden)
+    locked = {k for k, v in info['lessons'].items() if v['locked']}
+    z = lambda: {'cards': 0, 'learned': 0, 'due': 0, 'new': 0, 'soon': 0}
+    per = {}
+    for c in db.execute("SELECT c.id, c.deck, c.kind, c.note, s.due, s.reps, s.step FROM cards c LEFT JOIN sched s ON s.card_id=c.id "
+                        "WHERE COALESCE(c.is_check, 0)=0 AND c.kind NOT IN (?,?,?,?)", LEARN):
+        t = per.setdefault(track_of(tm, c['deck']), z())
+        t['cards'] += 1; t['learned'] += 1 if (c['reps'] or 0) > 0 else 0
+        if hidden(c): continue
+        if c['due'] is not None and c['due'] <= now: t['due'] += 1
+        if c['due'] is None and c['deck'] not in locked: t['new'] += 1
+        if c['due'] is not None and c['due'] < tomorrow_end: t['soon'] += 1
+    last = {}
+    for r in db.execute("SELECT c.deck, MAX(a.at) AS at FROM attempts a JOIN cards c ON c.id=a.card_id GROUP BY c.deck"):
+        t = track_of(tm, r['deck']); last[t] = max(last.get(t, 0), r['at'] or 0)
+    made = new_today(db, tm, now)
+    rows = []
+    for tr in tracks(db, names):
+        t, tid = per.get(tr['id'], z()), tr['id']
+        lim = new_limit(st, tid)
+        rows.append({'id': tid, 'name': tr['name'], 'lessons': len(tr['lessons']), 'goal': st['goal'].get(tid, ''),
+                     'cards': t['cards'], 'learned': t['learned'], 'progress': round(t['learned'] / t['cards'], 3) if t['cards'] else 0.0,
+                     'due': t['due'], 'new': t['new'], 'new_per_day': lim, 'new_today': made.get(tid, 0),
+                     'new_left': min(t['new'], max(0, lim - made.get(tid, 0))), 'soon': t['soon'], 'last': last.get(tid),
+                     'pinned': tid in pins, 'shelved': tid in shelf, 'ask_confidence': tid in st['ask_confidence']})
+    rows.sort(key=lambda r: (not r['pinned'], pins.index(r['id']) if r['pinned'] else 0, r['shelved'], r['name'].lower()))
+    live = [r for r in rows if not r['shelved']]
+    scope = [r for r in live if r['pinned']] or live           # nothing pinned yet: every track off the shelf
+    week = []
+    for i in range(6, -1, -1):
+        d0 = day_start(day0 - i * DAY + 3600); d1 = day_start(d0 + 1.5 * DAY)
+        ms = db.execute("SELECT COALESCE(SUM(MIN(COALESCE(ms, 0), ?)), 0) FROM attempts WHERE at>=? AND at<?", (CARD_MS_CAP, d0, d1)).fetchone()[0]
+        week.append({'day': time.strftime('%Y-%m-%d', time.localtime(d0)), 'minutes': round(ms / 60000)})
+    nxt = db.execute("SELECT c.deck, s.due FROM sched s JOIN cards c ON c.id=s.card_id WHERE s.due>? ORDER BY s.due", (now,)).fetchall()
+    nxt = next((r['due'] for r in nxt if track_of(tm, r['deck']) not in shelf), None)
+    return {'tracks': rows, 'pinned': pins, 'pin_max': PIN_MAX, 'shelf': len([r for r in rows if r['shelved']]),
+            'due': sum(r['due'] for r in live), 'new_left': sum(r['new_left'] for r in scope), 'scope': [r['id'] for r in scope],
+            'tomorrow': sum(r['soon'] for r in live), 'next_due': nxt, 'week': week, 'minutes': SESSION_MIN,
+            'confidence_every': CONF_EVERY, 'teach_first': st['teach_first']}
+
+def track_preview(db, tid, names=None):
+    """Preview on the shelf: a track's size, its history, and its first few questions (never an answer). Changes nothing."""
+    tr = next((t for t in tracks(db, names) if t['id'] == tid), None)
+    if not tr: return None
+    st, tm = settings(db), track_map(db)
+    ds = set(tr['lessons'])
+    kinds, learned, qs = {}, 0, []
+    for c in db.execute(CARD_Q + " WHERE COALESCE(c.is_check, 0)=0 ORDER BY m.at, c.deck, c.ord, c.id"):
+        if c['deck'] not in ds: continue
+        kinds[c['kind']] = kinds.get(c['kind'], 0) + 1
+        if c['kind'] in LEARN: continue
+        learned += 1 if c['reps'] else 0
+        if len(qs) < 3: qs.append(' '.join(BLANK.sub('___', fill(c['prompt'] or '')).split())[:200])
+    att = db.execute("SELECT COUNT(*), MAX(a.at) FROM attempts a JOIN cards c ON c.id=a.card_id WHERE c.deck IN (%s) AND a.rating>0 "
+                     "AND COALESCE(a.undone, 0)=0" % ','.join('?' * len(ds)), list(ds)).fetchone()
+    return {'id': tid, 'name': tr['name'], 'lessons': len(ds), 'goal': st['goal'].get(tid, ''),
+            'cards': sum(n for k, n in kinds.items() if k not in LEARN), 'reading': sum(n for k, n in kinds.items() if k in LEARN),
+            'learned': learned, 'answers': att[0], 'last': att[1], 'questions': qs,
+            'pinned': tid in st['pinned'], 'shelved': tid in st['shelved']}
 
 # ---------- the local AI's part (docs/mentor-ai.md): stored with the attempt, shown labelled, not used for the rating ----------
 AI_KINDS = ('explain', 'define', 'write')     # written answers (4.32: and written code); drills, terms, traces and Parsons are graded exactly
