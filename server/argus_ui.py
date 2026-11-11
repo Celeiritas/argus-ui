@@ -339,9 +339,15 @@ WATCH_INTERVAL = int(os.environ.get('ARGUS_WATCH_INTERVAL', 60))   # seconds bet
 WATCH_ON = os.environ.get('ARGUS_WATCH') != '0' and WATCH_INTERVAL > 0
 
 def watch_restart(u):
-    # the same restart the bolt uses (never for a frozen task), one at a time with the powers
+    # the same restart the bolt uses (never for a frozen task), one at a time with the powers. LOCK is held only for this
+    # one systemctl call (20 s limit); watch.py waits for the program to come back outside it, so the power buttons never wait on that.
     if u in frozen(): return False, 'frozen'
     with LOCK: return sc_ok('restart', '--no-block', u + '.service')
+
+def watch_env():
+    # the watch's own reading of `systemctl is-active`: activating / reloading / deactivating are "cannot tell yet" (watch.unit_state);
+    # the task cards keep their own idea of running
+    return watch.Env(lambda u: watch.unit_state(sc('is-active', u + '.service')), lambda u: u in frozen(), watch_restart)
 
 def state():
     fz = frozen()
@@ -566,5 +572,5 @@ class H(BaseHTTPRequestHandler):
 
 if __name__ == '__main__':
     load_server_plugins()
-    if WATCH_ON: watch.start(watch.Env(lambda u: sc('is-active', u + '.service').strip() == 'active', lambda u: u in frozen(), watch_restart), WATCH_INTERVAL)
+    if WATCH_ON: watch.start(watch_env(), WATCH_INTERVAL)
     ThreadingHTTPServer((BIND, PORT), H).serve_forever()

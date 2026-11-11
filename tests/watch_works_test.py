@@ -65,19 +65,25 @@ class Base(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix='watch-test-')
         self.saved = {m: dict(vars(m)) for m in (watch, notify)}
+        self.sinks = list(notify.SINKS)          # a copy: SINKS is mutated in place below, so restoring vars() alone would not undo it
         watch.CHECKS = os.path.join(self.tmp, 'checks.json'); watch.AUTOFIX = os.path.join(self.tmp, 'auto-fix.json')
         watch.STATEFILE = os.path.join(self.tmp, 'watch.json')
         os.environ['ARGUS_EVENTS'] = os.path.join(self.tmp, 'events.jsonl')
-        watch.RESULTS.clear(); watch.PREV.clear(); watch.BAD.clear()
+        watch.RESULTS.clear(); watch.PREV.clear(); watch.BAD.clear(); watch._AUTOFIX_SAID[0] = None
         self.events = []; notify.SINKS[:] = [self.events.append]
     def tearDown(self):
         for m, d in self.saved.items(): vars(m).update(d)
+        notify.SINKS[:] = self.sinks
         os.environ.pop('ARGUS_EVENTS', None)
         shutil.rmtree(self.tmp, ignore_errors=True)
     def checks(self, *cs):
         with open(watch.CHECKS, 'w', encoding='utf-8') as f: json.dump({'checks': list(cs)}, f)
-    def autofix(self, *ids):
-        with open(watch.AUTOFIX, 'w', encoding='utf-8') as f: json.dump({'ids': list(ids)}, f)
+    def autofix(self, *ids, trial=None):
+        d = {'ids': list(ids)}
+        if trial is not None: d['trial'] = trial
+        with open(watch.AUTOFIX, 'w', encoding='utf-8') as f: json.dump(d, f)
+    def rounds(self, e, n=watch.CONFIRM, **kw):
+        for _ in range(n): watch.step(e, **kw)
     def result(self, id_): return {r['id']: r for r in watch.snapshot()}[id_]
     def kinds(self): return [e['kind'] for e in self.events]
 
@@ -113,7 +119,7 @@ class Incident(Base):
 
     def test_runs_but_cannot_do_its_job(self):
         self.checks(JELLY, ABS, QBT); e = self.env(reads={'/media/Shows/test.mp4'})
-        watch.step(e)
+        self.rounds(e)
         j = self.result('jellyfin')
         self.assertIs(j['works'], False); self.assertEqual(j['code'], 'dead-copy'); self.assertEqual(j['reason'], 'cannot read its drive')
         self.assertTrue(e.is_active('jellyfin'))               # the unit really reads active ...
@@ -142,13 +148,13 @@ class Incident(Base):
         self.assertEqual(self.kinds(), ['needs-yes', 'needs-yes'])
 
     def test_an_empty_auto_fix_file_changes_nothing(self):
-        self.checks(JELLY); self.autofix(); e = self.env(); watch.step(e)
+        self.checks(JELLY); self.autofix(); e = self.env(); self.rounds(e)
         self.assertEqual(e.restarts, []); self.assertEqual(self.kinds(), ['needs-yes'])
         with open(watch.AUTOFIX, 'w') as f: f.write('not json')
-        watch.PREV.clear(); watch.step(self.env()); self.assertEqual(e.restarts, [])
+        watch.PREV.clear(); e = self.env(); self.rounds(e); self.assertEqual(e.restarts, [])
 
     def test_the_view_the_next_round_after_a_yes_is_recovered_once(self):
-        self.checks(JELLY); e = self.env(); watch.step(e)
+        self.checks(JELLY); e = self.env(); self.rounds(e)
         e.inside['jellyfin'] = 'container-good'; e.reads.add('/media/Shows/test.mp4')    # someone restarted it
         watch.step(e); watch.step(e)
         self.assertEqual(self.kinds(), ['needs-yes', 'recovered'])
@@ -156,22 +162,23 @@ class Incident(Base):
         self.assertEqual(e.file_reads()[-1][-1], '/media/Shows/test.mp4')     # the file was read only after the table said fine
 
     def test_auto_fix_restarts_checks_again_and_says_fixed(self):
-        self.checks(JELLY); self.autofix('jellyfin')
+        self.checks(JELLY); self.autofix('jellyfin', trial=False)
         def heal(env): env.inside['jellyfin'] = 'container-good'; env.reads.add('/media/Shows/test.mp4')
-        e = self.env(restart_fixes=heal); watch.step(e)
+        e = self.env(restart_fixes=heal); watch.step(e); self.assertEqual((e.restarts, self.events), ([], []), 'one bad round is not enough')
+        watch.step(e)
         self.assertEqual(e.restarts, ['jellyfin', 'audiobookshelf'])
         self.assertEqual(self.kinds(), ['fixed']); self.assertIn('restarted Jellyfin and Audiobookshelf', self.events[0]['body'])
         watch.step(e); self.assertEqual(self.kinds(), ['fixed'])
         self.assertIs(self.result('jellyfin')['works'], True)
 
     def test_auto_fix_that_does_not_help_is_tried_once_and_says_broke(self):
-        self.checks(JELLY); self.autofix('jellyfin'); e = self.env()
-        watch.step(e, settle=0); watch.step(e, settle=0); watch.step(e, settle=0)
+        self.checks(JELLY); self.autofix('jellyfin', trial=False); e = self.env()
+        for _ in range(4): watch.step(e, settle=0)
         self.assertEqual(e.restarts, ['jellyfin', 'audiobookshelf'], 'one attempt per breakage, not one per round')
         self.assertEqual(self.kinds(), ['broke']); self.assertIn('did not help', self.events[0]['body'])
 
     def test_only_the_approved_ids_are_restarted(self):
-        self.checks(JELLY, ABS); self.autofix('audiobookshelf'); e = self.env(); watch.step(e, settle=0)
+        self.checks(JELLY, ABS); self.autofix('audiobookshelf', trial=False); e = self.env(); self.rounds(e, settle=0)
         self.assertEqual(e.restarts, ['audiobookshelf'])
         self.assertEqual(sorted(x['kind'] for x in self.events), ['broke', 'needs-yes'])
 
@@ -186,7 +193,7 @@ class Drive(Base):
             watch.RESULTS.clear(); watch.PREV.clear(); self.checks(JELLY, ABS)
             e = FakeEnv(host=host, inside={'jellyfin': 'container-good', 'audiobookshelf': 'container-good'}, reads={'/media/Shows/test.mp4', '/audiobooks'},
                         http={'http://127.0.0.1:8096/health': 200})
-            watch.step(e)
+            self.rounds(e)
             self.assertEqual(self.result('jellyfin')['code'], code, host)
             self.assertEqual(e.calls, [], f'{host}: nothing at all is run inside a container, so no file is read')
 
@@ -200,7 +207,7 @@ class Drive(Base):
 
     def test_drive_back_then_the_dead_copies_get_their_own_event(self):
         self.checks(DRIVE, JELLY)
-        e = FakeEnv(host='host-missing', inside={'jellyfin': 'container-dead-shutdown'}); watch.step(e)
+        e = FakeEnv(host='host-missing', inside={'jellyfin': 'container-dead-shutdown'}); self.rounds(e)
         e.host = 'host-good'; watch.step(e)
         self.assertEqual(self.kinds(), ['broke', 'recovered', 'needs-yes'])
         self.assertEqual(self.events[-1]['title'], 'Jellyfin runs, but cannot read its drive')
@@ -214,16 +221,16 @@ class Drive(Base):
         self.assertIsNone(self.result('jellyfin')['works']); self.assertEqual(e.file_reads(), []); self.assertEqual(self.events, [])
 
     def test_unit_down_and_no_answer(self):
-        self.checks(JELLY); e = FakeEnv(active=False); watch.step(e)
+        self.checks(JELLY); e = FakeEnv(active=False); self.rounds(e)
         self.assertEqual(self.events[0]['title'], 'Jellyfin is not running')
         watch.RESULTS.clear(); watch.PREV.clear(); del self.events[:]
-        e = FakeEnv(inside={'jellyfin': 'container-good'}, reads={'/media/Shows/test.mp4'}); watch.step(e)    # runs, drive fine, web address silent
+        e = FakeEnv(inside={'jellyfin': 'container-good'}, reads={'/media/Shows/test.mp4'}); self.rounds(e)    # runs, drive fine, web address silent
         self.assertEqual(self.events[0]['title'], 'Jellyfin runs, but does not answer at its web address')
 
     def test_first_good_round_is_silent_and_a_restart_of_argus_does_not_repeat_an_event(self):
         self.checks(JELLY); e = FakeEnv(inside={'jellyfin': 'container-good'}, reads={'/media/Shows/test.mp4'}, http={'http://127.0.0.1:8096/health': 200})
         watch.step(e); self.assertEqual(self.events, [])
-        e.inside['jellyfin'] = 'container-dead-gone'; watch.step(e); self.assertEqual(self.kinds(), ['needs-yes'])
+        e.inside['jellyfin'] = 'container-dead-gone'; self.rounds(e); self.assertEqual(self.kinds(), ['needs-yes'])
         watch.PREV.clear(); watch.load_prev()                  # the server restarted: state comes back from the file
         watch.step(e); self.assertEqual(self.kinds(), ['needs-yes'])
 
@@ -292,6 +299,278 @@ class Events(unittest.TestCase):
     def test_kinds_and_levels(self):
         with self.assertRaises(ValueError): notify.make('oops', 'x', 'T')
         self.assertEqual([notify.make(k, 'x', 'T')['level'] for k in notify.KINDS], ['alert', 'alert', 'info', 'info', 'info'])
+
+
+GOOD = dict(inside={'jellyfin': 'container-good', 'audiobookshelf': 'container-good', 'qbittorrent': 'container-good'},
+            reads={'/media/Shows/test.mp4', '/audiobooks'}, http={'http://127.0.0.1:8096/health': 200, 'http://127.0.0.1:8080/': 200})
+def good_env(**kw):
+    d = {k: (dict(v) if isinstance(v, dict) else set(v)) for k, v in GOOD.items()}; d.update(kw); return FakeEnv(**d)
+
+
+class SelfRepairLimits(Base):
+    """B1: restarts only for "runs but cannot read its drive", once per check in 24 hours, the mark on disk first, a unit once per round."""
+    def test_b1_no_restart_for_a_slow_web_answer_or_a_unit_that_is_down(self):
+        self.checks(JELLY); self.autofix('jellyfin', trial=False)
+        e = good_env(http={}); self.rounds(e, 3, settle=0)                        # R1 probe P2: the web address is slow
+        self.assertEqual(e.restarts, []); self.assertEqual(self.kinds(), ['needs-yes'])
+        watch.PREV.clear(); del self.events[:]
+        e = good_env(active=False); self.rounds(e, 3, settle=0)                   # R1 probe P3: the unit is not running
+        self.assertEqual(e.restarts, []); self.assertEqual(self.kinds(), ['needs-yes'])
+
+    def test_b1_a_flapping_program_gets_one_restart_in_24_hours(self):
+        self.checks(JELLY); self.autofix('jellyfin', trial=False)
+        def heal(env): env.inside['jellyfin'] = 'container-good'
+        e = good_env(restart_fixes=heal)
+        def breaks(): e.inside['jellyfin'] = 'container-dead-shutdown'; self.rounds(e, settle=0)
+        def works(): e.inside['jellyfin'] = 'container-good'; watch.step(e, settle=0)
+        breaks(); self.assertEqual(e.restarts, ['jellyfin', 'audiobookshelf']); self.assertEqual(self.kinds(), ['fixed'])
+        for _ in range(3): works(); breaks()                                       # R1 probe P4: it keeps flipping
+        watch.PREV.clear(); watch.load_prev(); e.t += 3600; works(); breaks()     # and argus-ui itself restarted in between
+        self.assertEqual(e.restarts, ['jellyfin', 'audiobookshelf'], 'one automatic try per check in 24 hours')
+        self.assertEqual(self.kinds(), ['fixed'] + ['needs-yes', 'recovered'] * 3 + ['needs-yes'])
+        self.assertIn('already restarted Jellyfin and Audiobookshelf by itself', self.events[1]['body'])
+        e.t += 24 * 3600; works(); breaks()
+        self.assertEqual(e.restarts, ['jellyfin', 'audiobookshelf'] * 2, 'a day later it may try again')
+        self.assertEqual(self.kinds()[-2:], ['recovered', 'fixed'])
+
+    def test_b1_the_mark_is_on_disk_before_the_restart(self):
+        self.checks(JELLY); self.autofix('jellyfin', trial=False)
+        seen = []
+        def look(env): seen.append(jload(watch.STATEFILE)['jellyfin'])
+        e = good_env(inside={'jellyfin': 'container-dead-shutdown'}, restart_fixes=look); self.rounds(e, settle=0)   # R1 probe P8
+        self.assertTrue(seen); self.assertEqual(seen[0]['last_try'], e.t); self.assertIs(seen[0]['works'], False)
+
+    def test_b1_a_unit_is_restarted_at_most_once_per_round(self):
+        self.checks(JELLY, ABS); self.autofix('jellyfin', 'audiobookshelf', trial=False)        # both name audiobookshelf (R1 N5)
+        e = good_env(inside={'jellyfin': 'container-dead-shutdown', 'audiobookshelf': 'container-dead-gone'}); self.rounds(e, settle=0)
+        self.assertEqual(sorted(e.restarts), ['audiobookshelf', 'jellyfin'])
+
+    def test_b1_unknown_codes_never_restart(self):
+        self.assertEqual(watch.REPAIRABLE, ('dead-copy', 'cannot-read'))
+
+
+class TrialDay(Base):
+    """S1: note-only is the default; only "trial": false restarts; a file of another shape turns self-repair off."""
+    def test_s1_trial_is_the_default_and_records_the_try(self):
+        self.checks(JELLY); self.autofix('jellyfin'); e = good_env(inside={'jellyfin': 'container-dead-shutdown'})
+        self.rounds(e, 4, settle=0)
+        self.assertEqual(e.restarts, []); self.assertEqual(self.kinds(), ['needs-yes'])
+        self.assertIn('Argus would have restarted Jellyfin and Audiobookshelf by itself, but it did not', self.events[0]['body'])
+        self.assertIn('Waiting for your yes', self.events[0]['body'])
+        saved = jload(watch.STATEFILE)['jellyfin']; self.assertEqual(saved['last_try'], e.t); self.assertIs(saved['last_try_trial'], True)
+        e.inside['jellyfin'] = 'container-good'; watch.step(e); e.inside['jellyfin'] = 'container-dead-gone'; self.rounds(e, settle=0)
+        self.assertEqual(e.restarts, []); self.assertIn('would have restarted', self.events[-1]['body'])   # within the day: no second try
+
+    def test_s1_trial_true_and_false(self):
+        self.checks(JELLY); self.autofix('jellyfin', trial=True); e = good_env(inside={'jellyfin': 'container-dead-shutdown'})
+        self.rounds(e, settle=0); self.assertEqual(e.restarts, [])
+        self.assertEqual(watch.auto_fix(), ({'jellyfin'}, True))
+        self.autofix('jellyfin', trial=False); self.assertEqual(watch.auto_fix(), ({'jellyfin'}, False))
+
+    def test_s1_a_file_of_another_shape_switches_self_repair_off_with_one_log_line(self):
+        said = []; watch.log = said.append
+        for text in ('not json', '["jellyfin"]', '{"ids": ["jellyfin"], "trial": "false"}', '{"ids": "jellyfin"}', '{"ids": ["jellyfin"], "live": true}'):
+            del said[:]; watch._AUTOFIX_SAID[0] = None
+            with open(watch.AUTOFIX, 'w') as f: f.write(text)
+            for _ in range(3): self.assertEqual(watch.auto_fix(), (set(), True), text)
+            self.assertEqual(len(said), 1, (text, said))           # one line, not one per round
+        self.checks(JELLY); e = good_env(inside={'jellyfin': 'container-dead-shutdown'}); self.rounds(e, settle=0)
+        self.assertEqual(e.restarts, []); self.assertNotIn('would have', self.events[0]['body'])
+        os.remove(watch.AUTOFIX); self.assertEqual(watch.auto_fix(), (set(), True))
+
+
+class Starting(Base):
+    """S2: a unit that is starting, reloading or stopping is "cannot tell yet", unless it stays so for more than 3 rounds."""
+    def test_s2_the_words_of_systemctl(self):
+        for w, want in (('active\n', True), ('inactive', False), ('failed', False), ('activating', watch.BETWEEN),
+                        ('reloading', watch.BETWEEN), ('deactivating', watch.BETWEEN), ('', None), ('maintenance', None)):
+            self.assertEqual(watch.unit_state(w), want, w)
+
+    def test_s2_a_starting_program_is_not_down(self):
+        self.checks(JELLY); self.autofix('jellyfin', trial=False); e = good_env(active=watch.BETWEEN)
+        self.rounds(e, 3, settle=0)
+        self.assertEqual(self.events, []); self.assertEqual(e.restarts, []); self.assertIsNone(self.result('jellyfin')['works'])
+        e.up = True; self.rounds(e, 5); self.assertEqual(self.events, [])      # it started: nothing to say
+
+    def test_s2_a_program_that_stays_between_counts_as_not_running(self):
+        self.checks(JELLY); e = good_env(active=watch.BETWEEN)
+        self.rounds(e, 3); self.assertEqual(self.events, [])
+        self.rounds(e, 2)
+        self.assertEqual([(x['kind'], x['title']) for x in self.events], [('needs-yes', 'Jellyfin is not running')])
+
+    def test_s2_the_server_reads_is_active_through_unit_state(self):
+        a = import_server()
+        saved = a.sc
+        try:
+            for word, want in (('activating\n', watch.BETWEEN), ('active\n', True), ('failed\n', False)):
+                a.sc = lambda *x, w=word: w
+                self.assertEqual(a.watch_env().is_active('jellyfin'), want)
+        finally: a.sc = saved
+
+
+class OneSlowAnswer(Base):
+    """S3: a failure must be seen in 2 rounds in a row; recovery is immediate; the count survives a restart of argus-ui."""
+    def test_s3_flapping_raises_nothing(self):
+        self.checks(JELLY); e = good_env()
+        for i in range(6):                                                           # R1 probe P5
+            e.answers['http://127.0.0.1:8096/health'] = 200 if i % 2 == 0 else None; watch.step(e)
+        self.assertEqual(self.events, [])
+
+    def test_s3_two_in_a_row_count_and_the_count_is_saved(self):
+        self.checks(JELLY); e = good_env(); watch.step(e)
+        e.answers.clear(); watch.step(e)
+        self.assertEqual(self.events, []); self.assertEqual(jload(watch.STATEFILE)['jellyfin']['pending'], 1)
+        self.assertEqual(self.result('jellyfin')['code'], 'pending')
+        watch.PREV.clear(); watch.load_prev(); watch.step(e)                         # argus-ui restarted in between
+        self.assertEqual(self.kinds(), ['needs-yes'])
+        e.answers['http://127.0.0.1:8096/health'] = 200; watch.step(e)
+        self.assertEqual(self.kinds(), ['needs-yes', 'recovered'])
+
+
+class HangingRead(Base):
+    """S4: a test read that hangs is not repeated for 15 minutes or until the drive's line changes, and shows as a warning."""
+    def env(self):
+        e = good_env(); orig = e.run
+        def run(argv, timeout=6):
+            if argv[-1] == '/audiobooks': e.calls.append(argv); return None, b''
+            return orig(argv, timeout)
+        e.run = run; return e
+    def reads(self, e): return len([c for c in e.calls if c[-1] == '/audiobooks'])
+
+    def test_s4_a_hanging_read_does_not_pile_up_and_shows_as_a_warning(self):
+        self.checks(ABS); self.autofix('audiobookshelf', trial=False); e = self.env()
+        watch.step(e, settle=0); self.assertEqual(self.reads(e), 1); self.assertEqual(self.events, [])
+        for _ in range(4): e.t += 60; watch.step(e, settle=0)                      # R1 probe P7
+        self.assertEqual(self.reads(e), 1, 'no new read while the first one hung')
+        self.assertEqual([(x['kind'], x['level'], x['title']) for x in self.events], [('broke', 'warn', 'Audiobookshelf does not answer when it reads its drive')])
+        self.assertEqual(e.restarts, [], 'its own code: never a restart')
+        al = watch.alert_list(watch.snapshot(), lambda j: True)
+        self.assertEqual([(a['level'], a['message']) for a in al], [('warn', 'Audiobookshelf does not answer when it reads its drive.')])
+        e.t += 15 * 60; watch.step(e, settle=0); self.assertEqual(self.reads(e), 2, 'after 15 minutes it reads again')
+        e.host = 'host-good-remounted'; watch.step(e, settle=0); self.assertEqual(self.reads(e), 3, 'the drive line changed: it reads again')
+        self.assertEqual(len(self.events), 1)
+        e.run = FakeEnv.run.__get__(e); e.host = 'host-good'; watch.step(e, settle=0)
+        self.assertEqual(self.kinds(), ['broke', 'recovered'])
+
+    def test_s4_the_hold_survives_a_restart_of_argus(self):
+        self.checks(ABS); e = self.env(); watch.step(e)
+        watch.PREV.clear(); watch.load_prev(); e.t += 60; watch.step(e)
+        self.assertEqual(self.reads(e), 1)
+
+
+class StartedBeforeTheDrive(Base):
+    """S5: container.mount: the container's line for that path must sit on the host's device for the check's mount."""
+    QB = dict(QBT, container=dict(name='qbittorrent', mount='/downloads'), http=None)
+    def setUp(self):
+        super().setUp(); self.QB = {k: v for k, v in self.QB.items() if v is not None}
+
+    def test_s5_a_container_that_bound_the_empty_folder_is_a_dead_copy(self):
+        self.checks(self.QB); e = good_env(inside={'qbittorrent': 'container-early'}); self.rounds(e)
+        r = self.result('qbittorrent'); self.assertEqual((r['works'], r['code'], r['reason']), (False, 'dead-copy', 'cannot read its drive'))
+        self.assertEqual(e.file_reads(), [], 'only mount tables are read')
+        self.assertEqual(self.kinds(), ['broke'])
+
+    def test_s5_a_number_given_to_another_drive_is_a_dead_copy(self):
+        self.checks(self.QB); e = good_env(inside={'qbittorrent': 'container-number-reused'}); self.rounds(e)
+        self.assertEqual(self.result('qbittorrent')['code'], 'dead-copy')
+
+    def test_s5_the_right_drive_works(self):
+        self.checks(self.QB); e = good_env(inside={'qbittorrent': 'container-good-downloads'}); self.rounds(e)
+        self.assertIs(self.result('qbittorrent')['works'], True); self.assertEqual(self.events, [])
+
+    def test_s5_refused_without_the_drive_or_with_a_relative_path(self):
+        for ct, mount in ((dict(name='q', mount='/downloads'), None), (dict(name='q', mount='downloads'), '/mnt/media')):
+            c = dict(id='q', title='Q', container=ct)
+            if mount: c['mount'] = mount
+            self.checks(c); self.assertEqual(watch.load_checks()[0], [], c)
+
+
+class QuietRecovery(Base):
+    def test_s6_when_the_drive_returns_only_the_drive_recovers(self):
+        self.checks(DRIVE, JELLY, ABS, QBT); e = good_env(); watch.step(e)        # R1 probe P1
+        e.host = 'host-missing'; self.rounds(e); e.host = 'host-good'; watch.step(e)
+        self.assertEqual([(x['kind'], x['subject']) for x in self.events], [('broke', 'media-drive'), ('recovered', 'media-drive')])
+
+
+class RestartTrouble(Base):
+    def test_s8_a_restart_that_raises_does_not_stop_the_round(self):
+        self.checks(JELLY, ABS); self.autofix('jellyfin', trial=False)               # R1 probe P9
+        e = good_env(inside={'jellyfin': 'container-dead-shutdown', 'audiobookshelf': 'container-good'})
+        def boom(u): raise TimeoutError('systemctl took 20 s')
+        e.restart = boom
+        self.rounds(e, settle=0)
+        self.assertEqual(sorted(r['id'] for r in watch.snapshot()), ['audiobookshelf', 'jellyfin'])
+        self.assertEqual(self.kinds(), ['broke']); self.assertIn('the restart did not work', self.events[0]['body'])
+        self.assertIn('last_try', jload(watch.STATEFILE)['jellyfin'])
+
+    def test_s9_a_restart_gets_90_seconds_and_the_wait_stops_early(self):
+        self.checks(JELLY); self.autofix('jellyfin', trial=False)
+        e = good_env(inside={'jellyfin': 'container-dead-shutdown'}); start = []
+        def slow(env):
+            if not start: start.append(env.t)
+        e.restart_fixes = slow; orig = e.mountinfo
+        def later():
+            if start and e.t - start[0] >= 60: e.inside['jellyfin'] = 'container-good'
+            return orig()
+        e.mountinfo = later
+        self.rounds(e)                                                               # the default settle
+        self.assertEqual(self.kinds(), ['fixed'], 'Jellyfin needed 60 s to start; 20 s would have called it a failure')
+        self.assertLess(e.t - start[0], 70, 'it stopped waiting once it worked')
+
+    def test_s9_the_wait_does_not_hold_the_power_lock(self):
+        a = import_server(); held = []
+        saved = a.sc_ok, a.frozen
+        a.sc_ok = lambda *x: (held.append(('restart', a.LOCK.locked())), (True, ''))[1]
+        a.frozen = lambda: []
+        try:
+            class E(FakeEnv):
+                def restart(self, u): return a.watch_restart(u)
+                def sleep(self, s): held.append(('wait', a.LOCK.locked())); self.t += s
+            self.checks(JELLY); self.autofix('jellyfin', trial=False)
+            self.rounds(E(inside={'jellyfin': 'container-dead-shutdown'}, http={'http://127.0.0.1:8096/health': 200}))
+        finally: a.sc_ok, a.frozen = saved
+        self.assertIn(('restart', True), held); self.assertIn(('wait', False), held); self.assertNotIn(('wait', True), held)
+
+
+class EmptyFolder(Base):
+    def test_s10_an_empty_folder_reads_as_cannot_read(self):
+        self.checks(ABS); e = good_env(); orig = e.run
+        e.run = lambda argv, timeout=6: (0, b'') if argv[-1] == '/audiobooks' else orig(argv, timeout)
+        self.rounds(e); self.assertEqual(self.result('audiobookshelf')['code'], 'cannot-read')
+
+
+class Names(Base):
+    def test_n1_names_may_not_start_with_a_dash(self):
+        for c in (dict(id='a', title='t', unit='-h'), dict(id='a', title='t', mount='/m', container=dict(name='--privileged')),
+                  dict(id='a', title='t', unit='u', fix=dict(restart=['--all']))):
+            self.checks(c); self.assertEqual(watch.load_checks()[0], [], c)
+        self.checks(dict(id='a', title='t', unit='a-b@1.x')); self.assertEqual(len(watch.load_checks()[0]), 1)
+
+
+class Helper(unittest.TestCase):
+    def test_n6_the_test_helper_restores_the_sinks(self):
+        before = list(notify.SINKS)
+        class T(Base):
+            def runTest(self): pass
+        t = T(); t.setUp(); notify.register(lambda e: None); t.tearDown()
+        self.assertEqual(notify.SINKS, before); self.assertIn(notify.file_sink, notify.SINKS)
+
+
+_SERVER = []
+def import_server():
+    """server/argus_ui.py as a module (its watch is this test's watch), with every path in a temp folder."""
+    if _SERVER: return _SERVER[0]
+    import importlib.util
+    tmp = tempfile.mkdtemp(prefix='watch-import-'); os.makedirs(os.path.join(tmp, 'static'))
+    jdump({}, os.path.join(tmp, 'static', 'theme.json'))
+    for k, v in dict(ARGUS_PLUGINS=os.path.join(tmp, 'plugins'), ARGUS_BUNDLED=os.path.join(tmp, 'bundled'), ARGUS_STATIC=os.path.join(tmp, 'static'),
+                     ARGUS_LINKS=os.path.join(tmp, 'links.json'), ARGUS_REGISTRY=os.path.join(tmp, 'agents'), ARGUS_ALERTS=os.path.join(tmp, 'alerts')).items():
+        os.environ.setdefault(k, v)
+    spec = importlib.util.spec_from_file_location('argus_ui_watch_test', os.path.join(R, 'server', 'argus_ui.py'))
+    a = importlib.util.module_from_spec(spec); spec.loader.exec_module(a)
+    assert a.watch is watch
+    import atexit; atexit.register(shutil.rmtree, tmp, True)
+    _SERVER.append(a); return a
 
 
 class RealServer(unittest.TestCase):
