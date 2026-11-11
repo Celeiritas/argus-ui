@@ -10,7 +10,7 @@ permissions:
 jobs:
   browser:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v5
         with:
@@ -18,7 +18,17 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
+      - name: The cryptography package for phone alerts (server/push.py; tests/push_test.py must run, not skip)
+        run: python3 -c "import cryptography" 2>/dev/null || sudo apt-get install -y --no-install-recommends python3-cryptography; python3 -c "import cryptography; print('cryptography', cryptography.__version__)"
+      # Chromium's system packages come from Ubuntu's mirrors. When the runner cannot reach them (seen for hours
+      # on 2026-11-11: only a few font packages were missing, the runner image already had every library), the
+      # browser alone is installed and the run carries a warning. The tests still decide.
       - name: Playwright and Chromium
-        run: npm install --no-audit --no-fund && npx playwright install --with-deps chromium
+        run: |
+          npm install --no-audit --no-fund
+          if ! timeout 600 npx playwright install --with-deps chromium; then
+            echo "::warning title=Ubuntu mirrors unreachable::Chromium was installed without its system packages (some fonts may be missing). The tests below still decide."
+            npx playwright install chromium
+          fi
       - name: tests/run.sh
         run: bash tests/run.sh

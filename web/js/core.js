@@ -9,7 +9,7 @@ const RM = matchMedia('(prefers-reduced-motion: reduce)');      // reduced motio
 const MOUNT = /^\/argus(\/|$)/.test(location.pathname) ? '/argus/' : '/';
 const REST = location.pathname.slice(MOUNT.length - (location.pathname === '/argus' ? 1 : 0)).replace(/^\/+|\/+$/g, '');
 const AGENT_KEYS = (S?.personas || []).map(p => p.key);
-const PAGES = ['olympus', 'home'];                            // sections that are not agents (Today, once called Home: docs/home.md)
+const PAGES = ['olympus', 'home', 'phone'];                   // sections that are not agents (Today, once called Home: docs/home.md; Phone alerts: docs/phone-alerts.md)
 const PLUGINS = S?.plugins || [];                             // LeafyPlugins: each has its own section (docs/leafy-plugin.md)
 // Elaia opens on Today (here = 'home'): the bare address and its old name <base>/home. Watch is Argus's section, <base>/argus;
 // <base>/<agent> is Watch showing one agent's tasks, and <base>/argus/argus Argus's own.
@@ -23,7 +23,7 @@ const url = p => BASE + p;
 // leading /argus either way, so /argus/argus is Watch at both mounts
 const WATCH = '/argus/argus';
 // sections that are not about watching: Argus shrinks to the corner and the section's agent takes the centre
-const SIDE = ['mentor', 'olympus', 'home'];
+const SIDE = ['mentor', 'olympus', 'home', 'phone'];
 const side = SIDE.includes(here) || !!plugin, onOlympus = here === 'olympus';     // Olympus: a playground where the powers act on the scene
 const only = side ? null : here === 'argus' ? (SEG[1] === 'argus' ? 'argus' : null) : here;   // Watch: one agent's tasks, or all (null)
 document.body.classList.toggle('side', side); document.body.classList.toggle('play', onOlympus);
@@ -127,11 +127,87 @@ function askStatus() {
 }
 // Trouble on Watch, counted once everywhere (the bar, Argus's badge, Today's line): tasks that failed, tasks that run but do not
 // do their job (works === false, docs/checks.md), and alert-level alerts that are not already about one of those tasks.
+// Checks with no task card of their own (a media program, a drive: docs/checks.md) count too, once each: the alert the server
+// makes from such a check is that check, not a second thing.
+const jobIs = (j, name) => !!name && (j.job === name || (!!j.base && j.base === name));
+const checksFor = j => (S?.watch || []).filter(w => jobIs(j, w.job));
+const hasCard = w => (S?.jobs || []).some(j => jobIs(j, w.job));
 function trouble() {
   const tasks = (S?.jobs || []).filter(j => j.state === 'failed' || j.works === false);
-  const alerts = (S?.alerts || []).filter(a => a.level === 'alert' && !tasks.some(j => a.job === j.job || (j.base && a.job === j.base)));
-  return {tasks, alerts, n: tasks.length + alerts.length};
+  const checks = (S?.watch || []).filter(w => w.works === false && w.code !== 'read-hung' && !hasCard(w));
+  const alerts = (S?.alerts || []).filter(a => a.level === 'alert' && !checks.some(w => a.file === 'watch-' + w.id) && !tasks.some(j => jobIs(j, a.job)));
+  return {tasks, alerts, checks, n: tasks.length + alerts.length + checks.length};
 }
+// One entry per broken thing, in the page's order: a drive that is gone first (it is the cause: the programs on it are folded into
+// its block), then programs that run but do not work (they have a fix), then failed tasks, then agents' alerts. Each in three plain
+// lines: what is wrong and since when, what Argus did (or would have done), what you can do; and the one fix that checks.json
+// declares, when there is one (docs/home.md "Trouble first"). The "Argus:" line never repeats his name (the label says it).
+const agentOf = w => { const k = (w.job || '').split('-')[0]; return AGENT_KEYS.includes(k) && !SIDE.includes(k) ? k : 'argus'; };
+const agentName = k => (S.personas.find(p => p.key === k) || {name: k}).name;
+const sinceText = t => { const s = since(t); return s ? `since ${s}` : ''; };
+const noArgus = s => String(s || '').replace(/^Argus (\w)/, (m, c) => c.toUpperCase());     // the server's notes begin "Argus ..."
+const CAN = {'drive-missing': 'Plug the drive in again. Programs that use it may need a restart after that.',
+  'drive-dropped': 'Plug the drive in again. Programs that use it may need a restart after that.',
+  'drive-readonly': 'The drive needs a look on the server: it stopped taking writes, usually after errors.',
+  'unit-down': 'Start it again on the server, or read its log there.', 'no-answer': 'Open its web address to see what it says. A restart often helps.'};
+const DRIVE_WAIT = 'Waits for the drive: a restart would not help until it is back.';
+// the server's note after "Argus:"; the trial day's note is said the way a person says it (the program never restarts by itself)
+const noteWords = w => /^Argus would have restarted .* by itself and did not/.test(w.note || '') ? `Today he only notes what he would do: he would have restarted ${w.fix_say}.` : noArgus(w.note);
+function checkItem(w, j) {
+  const agent = j ? j.persona : agentOf(w), gone = /^drive-/.test(w.code), can = !gone && w.fix;
+  const say = w.drive ? (w.title_line || w.reason) : w.code === 'unit-down' ? `${w.title} is not running` : `${w.title} is running but not working`;
+  return {key: 'check-' + w.id, agent, who: `${agentName(agent)} · Watch`, what: w.title_line || `${w.title}: ${w.reason}`, when: sinceText(w.since), say,
+    row: w, unsure: w.unsure || '',
+    did: w.fixing ? `Restarting it now${w.by === 'argus' ? ' by himself, as you allowed' : ', as you asked'}. Looks again for up to 90 seconds and tells you if it helped.`
+      : w.queued ? (w.by === 'argus' ? 'His restart is being sent, as you allowed.' : 'Your restart is being sent.')
+      : gone ? (w.drive ? 'Cannot bring a drive back by himself, so he tells you.' : DRIVE_WAIT) : noteWords(w) || (w.fix ? 'Did not restart it and waits for your yes.' : 'Cannot fix this by himself, so he tells you.'),
+    can: w.fixing || w.queued ? 'Wait a moment: this changes when Argus knows how it went.'
+      : can ? `Hold the button to restart ${w.fix_say} once. Argus looks again for up to 90 seconds and tells you if it helped.` : CAN[w.code] || 'Look at it on the server.',
+    fix: can && !w.fixing && !w.queued && role() === 'owner' ? {id: w.id, label: `Restart ${w.fix_say}`} : null, href: WATCH};
+}
+function taskItem(j) {
+  const why = j.works_reason || j.reason;
+  return {key: 'task-' + j.job, agent: j.persona, who: `${agentName(j.persona)} · Watch`, what: `${j.name} failed${why ? `: ${why}` : ''}`, say: `${j.name} failed`,
+    when: j.last && j.last !== '—' ? `last ran ${j.last}` : '', did: 'Does not restart a failed task by himself.',
+    can: `Read its log on its card, then press ${always(j) ? 'Restart' : 'Run'} to try again.`, fix: null, href: WATCH};
+}
+function alertItem(a) {
+  const k = a.job.split('-')[0], g = S.personas.find(p => p.key === k), name = g ? g.name : k, watch = g && !SIDE.includes(k);
+  return {key: `alert-${a.file || a.job}`, agent: k, who: g ? `${name} · Watch` : a.job, what: a.message, say: a.message, when: sinceText(a.since), of: a.link || 'argus',
+    did: `Passes on what ${name} raised.`, can: a.link ? `Open ${sectionName(a.link)} to deal with it.` : `Look at ${name}'s tasks on Watch.`, fix: null,
+    label: a.link ? `Open ${sectionName(a.link)}` : `Look at ${name} on Watch`, href: a.link ? url(a.link) : watch ? (k === 'argus' ? WATCH + '/argus' : url(k)) : WATCH};
+}
+// how many broken things an entry stands for: itself and the programs folded under its drive
+const weight = it => 1 + (it.folded || 0);
+function troubleItems() {
+  const {tasks, alerts, checks} = trouble(), bad = j => checksFor(j).find(w => w.works === false);
+  let list = [...tasks.filter(bad).map(j => checkItem(bad(j), j)), ...checks.map(w => checkItem(w)), ...tasks.filter(j => !bad(j)).map(taskItem), ...alerts.map(alertItem)];
+  // a drive that is gone is the cause: its block comes first, and programs whose only problem is that drive are one line under it
+  // (a second check of the same drive is folded too: one cause, one block)
+  const drives = list.filter(it => it.row && it.row.drive && it.row.mount).filter((d, i, all) => all.findIndex(x => x.row.mount === d.row.mount) === i);
+  drives.forEach(d => { d.also = []; d.folded = 0;
+    list = list.filter(it => { const w = it.row, fold = it !== d && w && w.mount === d.row.mount && /^drive-/.test(w.code);
+      if (fold) { d.folded++; if (!w.drive) d.also.push(w.title); } return !fold; }); });
+  return [...drives, ...list.filter(it => !drives.includes(it))];
+}
+const troubleLines = it => `<p class="tl"><b>Argus:</b> ${esc(it.did)}</p><p class="tl"><b>You:</b> ${esc(it.can)}</p>`
+  + (it.also && it.also.length ? `<p class="tl"><b>Also waiting for this drive:</b> ${esc(it.also.join(', '))}</p>` : '')
+  + (it.unsure ? `<p class="tl unsure">${esc(it.unsure)}</p>` : '');
+const fixButton = it => it.fix ? `<button type="button" class="fixbtn" data-fix="${esc(it.fix.id)}">${esc(it.fix.label)}</button>` : '';
+function troubleBlock(it) {
+  return `<article class="tblock" data-trouble="${esc(it.key)}" aria-labelledby="t-${esc(it.key)}"><h3 id="t-${esc(it.key)}">${esc(it.what)}</h3>
+    <p class="tw">${esc(it.who)}${it.when ? ` · ${esc(it.when)}` : ''}</p>${troubleLines(it)}${fixButton(it)}</article>`;
+}
+// The owner's yes (POST api/watch/fix): only the fix checks.json declares for that check runs. Press and hold, like every
+// action that changes what runs; the toast says what the server said, and the next refresh shows "Restarting" on the block.
+async function askFix(id) {
+  try {
+    const r = await fetch(url('api/watch/fix'), {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id})});
+    const j = await r.json(); toast(j.msg || (j.ok ? 'Restarting.' : "Couldn't start the fix. Try again in a moment."));
+    setTimeout(refresh, 300); return !!j.ok;
+  } catch (e) { toast("Couldn't reach the server to restart it. Check that it's on, then try again."); return false; }
+}
+function wireFixes() { $$('#main button[data-fix]:not(.hold)').forEach(b => holdConfirm(b, () => askFix(b.dataset.fix))); }
 // what needs you in a place: a number when it is known, true when the place needs you but gives no number, 0 when nothing
 function needCount(id) {
   if (id === 'argus') return trouble().n;
@@ -163,6 +239,7 @@ function sections() {
   add('olympus', url('olympus'), 'Olympus', icon('olympus'));
   ['controllers', 'spartamelee', 'ariad-node'].forEach(sec);
   PLUGINS.forEach(p => sec(p.id));
+  add('phone', url('phone'), 'Phone alerts', icon('argus'));   // the owner's (visible() leaves it out for a learner); More sheet only: alerts.js
   (S.links || []).forEach((x, i) => out.push({id: `link-${i}`, kind: 'link', href: x.href, word: x.name, realm: x.what || 'Opens another page', mark: LINK_MARK}));
   (S.soon || []).filter(x => !PLUGINS.some(p => p.name === x.name)).forEach((x, i) => out.push({id: `soon-${i}`, kind: 'soon', word: x.name, realm: `${x.what} · coming later`, mark: BLADES}));
   return out.map(e => ({...e, on: e.id === 'argus' ? !side : e.id === here, count: e.kind ? 0 : needCount(e.id)}));
@@ -190,7 +267,7 @@ function put(el, html) { if (!el || drawn[el.id] === html) return false; drawn[e
 function drawNav() {
   if (!S) return;
   const all = visible(sections()), prim = all.filter(e => PRIMARY.includes(e.id)), more = all.filter(e => !PRIMARY.includes(e.id));
-  put($('#realms'), all.map(pill).join(''));
+  put($('#realms'), all.filter(e => e.id !== 'phone').map(pill).join(''));   // Phone alerts: in the phone's More sheet, not the wide strip (alerts.js)
   const open = more.find(e => e.on);   // you are on a place inside More: the More slot is the current one and names it
   put($('#tabs'), prim.map(tab).join('') + (more.length ? `<button class="tab more${open ? ' on' : ''}" type="button" data-more aria-haspopup="dialog" aria-controls="moreSheet" aria-expanded="false"><span class="tabicon">${MORE_MARK}${badge(sumNeeds(more), 'tabcount')}</span><b>More</b>${open ? `<small>${esc(open.word)}</small><span class="sr">, ${esc(open.word)} is open</span>` : ''}${needSay(sumNeeds(more))}</button>` : ''));
   $('#tabbar').style.setProperty('--slots', prim.length + (more.length ? 1 : 0));
@@ -236,6 +313,8 @@ function render() {
     if (!$('#hero').hidden) $('#hero').src = plugin.icon ? url(`plugins/${plugin.id}/${plugin.icon}`) : `static/icons/${god || plugin.id}.png`;
   } else if (here === 'home') {
     head(name, home.greet().join(' · '), 'Today'); $('#hero').hidden = true;
+  } else if (here === 'phone') {
+    head('Phone alerts', 'Argus · what makes your phone buzz', 'Phone alerts'); $('#hero').hidden = true;
   } else if (side && !onOlympus) {
     const w = WORDS[here] || {}; head(w.word || me.name, w.realm ? `${w.realm} · ${me.domain}` : me.domain, w.word || me.name);
     $('#hero').src = `static/icons/${here}.png`;
@@ -249,32 +328,46 @@ function render() {
   // the people file cannot be used (the server keeps its last good copy): one plain line for the owner, on Today and Watch only
   const pp = $('#peopleProblem'), ppShow = role() === 'owner' && !!S.people_problem && (here === 'home' || (!plugin && !side && !onOlympus));
   pp.textContent = ppShow ? S.people_problem : ''; pp.hidden = !ppShow;          // textContent: the sentence is never read as HTML
+  phoneAlerts.hint();                                                            // Today's one quiet line about phone alerts (alerts.js)
   const by = {}; S.jobs.forEach(j => (by[j.persona] ||= []).push(j));
   const lone = {}; loneAlerts().forEach(a => (lone[a.job.split('-')[0]] ||= []).push(a));   // alerts with no task card of their own
-  const shown = S.personas.filter(p => (by[p.key] || lone[p.key] || p.key === only) && !SIDE.includes(p.key));
+  const rows = {}; (S.watch || []).filter(w => !hasCard(w)).forEach(w => (rows[agentOf(w)] ||= []).push(w));   // checks with no card: compact rows
+  const shown = S.personas.filter(p => (by[p.key] || lone[p.key] || rows[p.key] || p.key === only) && !SIDE.includes(p.key));
   const chip = (k, label, href) => `<a href="${href}" class="${only === k ? 'on' : ''}" ${only === k ? 'aria-current="page"' : ''}>${esc(label)}</a>`;
   $('#nav').innerHTML = chip(null, 'All', WATCH) + shown.map(p => chip(p.key, p.name, p.key === 'argus' ? WATCH + '/argus' : url(p.key))).join('');
   if (plugin) { look.retarget(); return leafy.show(plugin); }
   if (onOlympus) { look.retarget(); return playground.show(); }
   if (here === 'home') { look.retarget(); return home.show(); }
+  if (here === 'phone') { look.retarget(); return phoneAlerts.show(); }
   // trouble first: failed (or alerted), then running, then ok, then the rest; groups ordered by their worst card
   const rank = j => j.state === 'failed' || j.works === false || alertsFor(j).some(a => a.level === 'alert') ? 0 : j.state === 'running' ? 1 : j.state === 'ok' ? 2 : 3;
-  const worst = p => Math.min(4, ...(by[p.key] || []).map(rank), ...(lone[p.key] || []).map(a => a.level === 'alert' ? 0 : 2));
+  const worst = p => Math.min(4, ...(by[p.key] || []).map(rank), ...(lone[p.key] || []).map(a => a.level === 'alert' ? 0 : 2), ...(rows[p.key] || []).map(w => w.works === false ? 0 : 2));
   const list = (only ? shown.filter(p => p.key === only) : shown).map((p, i) => [p, i]).sort((a, b) => worst(a[0]) - worst(b[0]) || a[1] - b[1]).map(x => x[0]);
-  $('#main').innerHTML = list.map(p => {
+  // Trouble first: one block per broken thing, above the groups (docs/home.md "Trouble first"); "What happened lately" at the end
+  const items = only ? troubleItems().filter(it => it.agent === only) : troubleItems();
+  const tn = items.reduce((t, it) => t + weight(it), 0);       // the programs folded under a drive count too, as on the bar
+  const top = items.length ? `<section class="trouble" aria-labelledby="trouble-h"><h2 id="trouble-h">${tn === 1 ? 'One thing needs a look' : `${tn} things need a look`}</h2>${items.map(troubleBlock).join('')}</section>` : '';
+  const end = only ? '' : `<section class="lately" aria-labelledby="lately-h"><h2 id="lately-h">What happened lately</h2><div id="lately">${lately.html || '<p class="quiet">Loading…</p>'}</div></section>`;
+  $('#main').innerHTML = top + (list.map(p => {
     const js = (by[p.key] || []).map((j, i) => [j, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(x => x[0]), ls = lone[p.key] || [];
+    const cr = (rows[p.key] || []).map((w, i) => [w, i]).sort((a, b) => (a[0].works === false ? 0 : 1) - (b[0].works === false ? 0 : 1) || a[1] - b[1]).map(x => x[0]);
     const c = s => js.filter(j => j.state === s).length, na = (S.alerts || []).filter(a => a.level === 'alert' && a.job.split('-')[0] === p.key).length;
     const counts = (na ? [`<span class="failed">${na} alert${na === 1 ? '' : 's'}</span>`] : []).concat(['failed', 'running', 'frozen'].filter(s => c(s)).map(s => `<span class="${s}">${c(s)} ${s}</span>`)).concat(`${js.length} task${js.length === 1 ? '' : 's'}`).join(' · ');
     return `<section class="persona" aria-labelledby="h-${p.key}"><a class="ph" href="${p.key === 'argus' ? WATCH + '/argus' : url(p.key)}"><img src="static/icons/${p.key}.png" alt=""><div><h2 id="h-${p.key}">${esc(p.name)}</h2><div class="dom">${esc(p.domain)}</div></div><div class="counts">${counts}</div></a>
-      ${js.length || ls.length ? `<div class="grid">${ls.map(alertCard).join('')}${js.map(card).join('')}</div>` : `<div class="empty"><b>No ${esc(p.name)} tasks yet</b>Background jobs named <code>${esc(p.key)}-…</code> appear here on their own, so you can watch and run them. <a href="https://github.com/Celeiritas/argus-ui#which-jobs-show-up">Learn how to add a task</a></div>`}</section>`;
-  }).join('') || `<div class="empty"><b>No tasks found</b>Argus shows systemd --user jobs whose names start with an agent's key. <a href="https://github.com/Celeiritas/argus-ui#which-jobs-show-up">Learn how to add a task</a></div>`;
+      ${cr.length ? `<ul class="crows" aria-label="${esc(p.name)}: checks">${cr.map(checkRow).join('')}</ul>` : ''}
+      ${js.length || ls.length ? `<div class="grid">${ls.map(alertCard).join('')}${js.map(card).join('')}</div>` : cr.length ? '' : `<div class="empty"><b>No ${esc(p.name)} tasks yet</b>Background jobs named <code>${esc(p.key)}-…</code> appear here on their own, so you can watch and run them. <a href="https://github.com/Celeiritas/argus-ui#which-jobs-show-up">Learn how to add a task</a></div>`}</section>`;
+  }).join('') || `<div class="empty"><b>No tasks found</b>Argus shows systemd --user jobs whose names start with an agent's key. <a href="https://github.com/Celeiritas/argus-ui#which-jobs-show-up">Learn how to add a task</a></div>`) + end;
+  if (!only) askLately();
+  wireFixes();
   $$('.card.frozen').forEach(addStone);
   if (armed) arm(armed, true);
   look.retarget();
+  satellite.place(items);
 }
 /* ---------- alert files (docs/alerts.md): an agent's message on its task's card, or a card of its own ---------- */
 const alertsFor = j => (S.alerts || []).filter(a => a.job === j.job || (j.base && a.job === j.base));
-const loneAlerts = () => (S.alerts || []).filter(a => !S.jobs.some(j => alertsFor(j).includes(a)));
+// alerts with no task card; an alert the server made from a check is shown as that check's row instead (checkRow)
+const loneAlerts = () => (S.alerts || []).filter(a => !S.jobs.some(j => alertsFor(j).includes(a)) && !(S.watch || []).some(w => a.file === 'watch-' + w.id));
 function sectionName(id) {
   return (S.personas.find(p => p.key === id) || PLUGINS.find(p => p.id === id) || {name: id === 'olympus' ? 'Olympus' : id}).name;
 }
@@ -294,13 +387,44 @@ function alertCard(a) {
 }
 // A task's card. Words: "frozen" (Medusa's stone), Pause / Resume, and Run for a task that starts and ends, Restart for an
 // always-on one (as the server's bolt does). Pause sits apart from Run (24 px), so a thumb can't hit the wrong one.
-const always = j => j.next === 'always on';
+const always = j => typeof j.restarts === 'boolean' ? j.restarts : j.next === 'always on';   // the server says (api/state `restarts`); an older one did not
+// Every check is on Watch while it works too (docs/checks.md): on its task's card as one line, or as a compact row of its own
+// under the agent that owns it (a check whose job has no card: a media program, a drive).
+function worksLine(j) {
+  const rs = checksFor(j); if (!rs.length || j.works !== true) return '';
+  const w = rs[0];
+  return `<p class="worksline"><b>${w.again ? 'Works again' : 'Works'}</b>${w.since ? ` · ${esc(sinceText(w.since))}` : ''}${rs.length > 1 ? ` · ${rs.length} checks` : ''}</p>`;
+}
+function checkRow(w) {
+  const st = w.fixing ? ['busy', 'Restarting…'] : w.works === true ? ['ok', w.again ? 'Works again' : 'Works']
+    : w.works === false ? ['bad', w.drive ? w.reason : w.code === 'unit-down' ? 'Not running' : `Running, but not working: ${w.reason}`]
+    : ['unknown', `Not known yet${w.reason ? `: ${w.reason}` : ''}`];
+  return `<li class="crow ${st[0]}" data-check="${esc(w.id)}"><span class="cdot" aria-hidden="true"></span><span class="cw"><b>${esc(w.title)}</b><span>${esc(st[1])}${w.since && !w.fixing ? ` · ${esc(sinceText(w.since))}` : ''}</span></span></li>`;
+}
+// "What happened lately": the newest 10 events (api/events) as plain sentences, each with a relative and an exact time.
+const lately = {html: '', at: 0, since: ''};
+function ago(t) {
+  const d = new Date(t), s = (Date.now() - d) / 1000; if (isNaN(d)) return '';
+  const n = (v, w) => `${v} ${w}${v === 1 ? '' : 's'} ago`;
+  return s < 60 ? 'just now' : s < 3600 ? n(Math.floor(s / 60), 'minute') : s < 86400 ? n(Math.floor(s / 3600), 'hour') : n(Math.floor(s / 86400), 'day');
+}
+const exact = t => { const d = new Date(t); return isNaN(d) ? '' : d.toLocaleString([], {weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'}); };
+function latelyHtml(evs, sinceAt) {
+  if (!evs.length) return `<p class="quiet">Nothing has happened since ${esc(exact(sinceAt) || 'the server started')}.</p>`;
+  return `<ol class="events">${evs.map(e => `<li class="ev ${e.level === 'alert' ? 'bad' : e.level === 'warn' ? 'warn' : 'good'}"><p class="et">${esc(e.title)}</p>${e.body ? `<p class="eb">${esc(e.body)}</p>` : ''}<p class="ew"><time datetime="${esc(e.at)}">${esc(ago(e.at))}</time> · ${esc(exact(e.at))}</p></li>`).join('')}</ol>`;
+}
+async function askLately() {
+  if (Date.now() - lately.at < 10000) return; lately.at = Date.now();
+  try { const r = await fetch(url('api/events?limit=10'), {cache: 'no-store'}); const j = await r.json(); lately.html = latelyHtml(j.events || [], j.since); }
+  catch (e) { lately.html = '<p class="quiet">Could not load what happened. It tries again with the next refresh.</p>'; lately.at = 0; }
+  const el = $('#lately'); if (el && el.innerHTML !== lately.html) el.innerHTML = lately.html;
+}
 function card(j) {
   const fz = j.state === 'frozen', al = alertsFor(j), lvl = al.some(a => a.level === 'alert') ? 'alerted' : al.length ? 'warned' : '';
   const go = always(j) ? 'Restart' : 'Run', why = (j.state === 'failed' || j.works === false) && (j.works_reason || j.reason);   // why, when the server says
   return `<article class="card ${fz ? 'frozen' : ''} ${lvl}${j.works === false ? ' notworking' : ''}" data-job="${esc(j.job)}" data-state="${j.state}" data-canfreeze="${j.canfreeze}" data-canrun="${j.canrun !== false}" aria-label="${esc(j.job)}, ${fz ? 'frozen (paused)' : j.state}">
    <div class="top"><div><div class="job">${esc(j.name)}</div><div class="unit">${esc(j.job)}${j.runs > 1 ? ` · latest of ${j.runs} runs` : ''}</div></div><span class="pill ${j.state}">${fz ? 'frozen' : j.state}</span></div>
-   ${why ? `<p class="why"><b>${j.works === false && j.state !== 'failed' ? 'Running, but not working' : 'Why'}:</b> ${esc(why)}</p>` : ''}
+   ${why ? `<p class="why"><b>${j.works === false && j.state !== 'failed' ? 'Running, but not working' : 'Why'}:</b> ${esc(why)}</p>` : worksLine(j)}
    <dl><dt>Last</dt><dd title="${esc(j.last)}">${esc(j.last)}</dd><dt>Mem</dt><dd>${j.mem}</dd><dt>Next</dt><dd title="${esc(j.next)}">${esc(j.next)}</dd><dt>Wrote</dt><dd>${j.wrote}</dd>${fz ? `<dt>Frozen</dt><dd class="wide">since ${esc(j.frozen_at)}</dd>` : ''}</dl>
    ${j.notes ? `<p class="notes">${esc(j.notes)}</p>` : ''}${al.map(alertNote).join('')}
    <div class="actions"><details data-log="${esc(j.job)}"><summary>Show log</summary><pre>Loading…</pre></details>
@@ -314,7 +438,7 @@ function addStone(c) {
   s.innerHTML = `<svg viewBox="0 0 100 60" preserveAspectRatio="none"><path d="M8 0 L14 12 L10 22 L18 34 M60 0 L56 10 L64 18 L58 30 L66 44 M92 60 L86 48 L90 40 L82 30 M30 60 L34 50 L28 42" stroke="#22302a" stroke-width=".7" fill="none" opacity=".6" vector-effect="non-scaling-stroke"/></svg>`;
   c.prepend(s);
 }
-async function refresh() { if (busy) return; try { const r = await fetch(url('api/state'), {cache: 'no-store'}); S = await r.json(); const open = $$('details[open]').map(d => d.dataset.log); render(); open.forEach(k => { const d = $(`details[data-log="${CSS.escape(k)}"]`); if (d) { d.open = true; loadLog(d); } }); } catch (e) {} }
+async function refresh() { if (busy || $('.hold.holding,.hold[aria-busy],.hold.hold-armed')) return;   /* never redraw a button that is being held or armed (click twice) */ try { const r = await fetch(url('api/state'), {cache: 'no-store'}); S = await r.json(); const open = $$('details[open]').map(d => d.dataset.log); render(); open.forEach(k => { const d = $(`details[data-log="${CSS.escape(k)}"]`); if (d) { d.open = true; loadLog(d); } }); } catch (e) {} }
 async function post(what, job) { const r = await fetch(url('api/' + what), {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({job})}); return r.json(); }
 async function loadLog(d) { try { const r = await fetch(url('api/log/' + encodeURIComponent(d.dataset.log))); const j = await r.json(); $('pre', d).textContent = j.log || 'Nothing logged yet.'; } catch (e) { $('pre', d).textContent = "Couldn't load the log. Close and reopen it to try again."; } }
 document.addEventListener('toggle', e => { if (e.target.matches('details[data-log]') && e.target.open) loadLog(e.target); }, true);
@@ -329,7 +453,7 @@ document.addEventListener('click', e => {
 /* ---------- Argus eyes: follow the pointer, glare at a failed task, calm when all is well ---------- */
 const look = (() => {
   const A = $('#argus'), svg = $('svg[viewBox="0 0 234 234"]', A), eyes = $$('.eye', svg).map(g => ({iris: $('.iris', g), max: +g.dataset.max, cx: +g.dataset.cx, cy: +g.dataset.cy}));
-  let pointer = null, lastMove = 0, target = null, wander = {x: 0, y: 0, t: 0}, cur = eyes.map(() => [0, 0]), watched = null;   // watched: kept in view ahead of the pointer
+  let pointer = null, lastMove = 0, target = null, wander = {x: 0, y: 0, t: 0}, cur = eyes.map(() => [0, 0]), watched = null, fixed = null;   // watched: kept in view ahead of the pointer; fixed: what is wrong (satellite)
   let lastInput = performance.now(), dozeAfter = 60000, drowsy = false, alarmed = false;   // a minute with no input and nothing wrong: he dozes (docs/fx.md "At rest")
   function aim(px, py) {
     const m = svg.getScreenCTM(); if (!m) return;
@@ -348,13 +472,13 @@ const look = (() => {
     // A learner does not get him at all: no badge, no words about the owner's tasks, no chime, no way into Watch.
     const owner = role() === 'owner'; A.hidden = !owner; A.tabIndex = owner && side ? 0 : -1;
     if (!owner) { A.removeAttribute('aria-label'); alarmed = false; lastBad = null; return; }
-    const {tasks: bad, alerts: up, n} = trouble();
-    target = $('.card[data-state="failed"]') || $('.card.alerted') || $('.card.notworking');
+    const {tasks: bad, alerts: up, checks: ck, n} = trouble();
+    target = $(".tblock") || $('.card[data-state="failed"]') || $('.card.alerted') || $('.card.notworking');
     alarmed = n > 0; A.classList.toggle('glare', alarmed); A.classList.toggle('calm', !n);
     $('#alarm').hidden = !n; $('#alarmN').textContent = n > 1 ? n : '';
     const fl = bad.filter(j => j.state === 'failed'), nw = bad.filter(j => j.state !== 'failed');
     const say = n ? [fl.length && `${fl.length} task${fl.length === 1 ? '' : 's'} failed: ${fl.map(j => j.job).join(', ')}`, nw.length && `${nw.length} running but not working: ${nw.map(j => j.job).join(', ')}`,
-      up.length && `${up.length} alert${up.length === 1 ? '' : 's'}: ${up.map(a => `${a.job}, ${a.message}`).join('; ')}`].filter(Boolean).join('. ') : 'all tasks well';
+      ck.length && `${ck.length} not working: ${ck.map(w => w.title).join(", ")}`, up.length && `${up.length} alert${up.length === 1 ? '' : 's'}: ${up.map(a => `${a.job}, ${a.message}`).join('; ')}`].filter(Boolean).join('. ') : 'all tasks well';
     A.setAttribute('aria-label', side ? `Argus: ${say}. Open the watch page` : `Argus, the watchman: ${say}`);
     if (lastBad !== null && n > lastBad) alarmChime();               // a short alarm only when something newly fails
     lastBad = n;
@@ -376,6 +500,7 @@ const look = (() => {
     if (!drowsy && !RM.matches && !alarmed && !drag && !watched && !gaze && t - lastInput > dozeAfter) { drowsy = true; A.classList.add('drowsy'); }   // never while something failed or is held
     if (drag) aim(drag.x, drag.y);                                   // he watches whatever you carry
     else if (watched?.isConnected) { const r = watched.getBoundingClientRect(); aim(r.left + r.width / 2, r.top + r.height / 2); }   // a button being held
+    else if (fixed?.isConnected) { const r = fixed.getBoundingClientRect(); aim(r.left + r.width / 2, r.top + r.height / 2); }   // something is wrong: not the pointer
     else if (gaze) aim(gaze.x, gaze.y);
     else if (pointer && t - lastMove < 2500) aim(...pointer);
     else if (target) { const r = target.getBoundingClientRect(); aim(r.left + r.width / 2, r.top + r.height / 2); }
@@ -397,5 +522,109 @@ const look = (() => {
     if (RM.matches) return;
     [A, side && $('#hero')].filter(e => e && !e.hidden && e.offsetWidth).forEach(e => e.animate(MOVES[kind], {duration: kind === 'nod' ? 700 : 420, easing: 'ease-in-out'}));
   }
-  return {retarget, react, watch: el => { watched = el || null; }, doze: ms => { dozeAfter = ms; }};   // doze: how long before he dozes (tests shorten it)
+  return {retarget, react, watch: el => { watched = el || null; }, fix: el => { fixed = el || null; }, doze: ms => { dozeAfter = ms; }};   // doze: how long before he dozes (tests shorten it)
 })();
+
+/* ---------- the satellite eye: one of Argus's eyes leaves him and glares at what is wrong (docs/home.md "The satellite eye") ---------- */
+// On Watch, when something is wrong, a copy of his red eye (his own markup, nothing new drawn) travels once (750 ms, fx.travel) from
+// his face to the top-right corner of the first trouble block and stays there; his red eye shows shut meanwhile, and his other eyes
+// look at that block, not at the pointer (look.fix). The glare pulses 4 times (4.8 s), then holds still. Several broken things: a
+// small "2 more" under it. The block keeps a gutter on its right, so the eye never covers its words or its button. When the block is
+// scrolled out of view, an edge marker (44 px, an arrow) brings it back. Reduced motion: no travel, no pulse, the eye is just there.
+// The eye is aria-hidden; one polite sentence says the same, once per change. When the trouble ends the eye flies home and the
+// sentence says so. Only the owner, only on Watch.
+const satellite = (() => {
+  const A = $('#argus'), red = $('svg .eye.red', A);
+  const live = document.createElement('p'); live.className = 'sr'; live.id = 'satSay'; live.setAttribute('aria-live', 'polite'); document.body.append(live);
+  const edge = document.createElement('button'); edge.type = 'button'; edge.id = 'satEdge'; edge.className = 'satedge'; edge.hidden = true;
+  edge.setAttribute('aria-label', 'Scroll to what needs a look'); document.body.append(edge);
+  let key = null, keys = new Set(), count = 0, at = null, seen = null, shrink = 0;   // the block it glares at, every trouble key, where it sat, the observer
+  const say = t => { live.textContent = t; };
+  const base = it => (it ? it.say : 'Something is wrong').replace(/[.\s]+$/, '');
+  const plural = n => `${n} more thing${n === 1 ? ' needs' : 's need'} a look`;
+  function eye() {                                            // a copy of his red eye in a small frame, its iris turned down-left onto the block
+    const g = red.cloneNode(true); g.classList.remove('red'); $('.iris', g).setAttribute('transform', 'translate(-2.2 1.4)');
+    return `<svg viewBox="90.2 64.1 28 28" aria-hidden="true">${g.outerHTML}</svg>`;
+  }
+  const centre = el => { const r = el.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; };
+  // The edge marker, shown only while the block is out of view. The pill "Look" for 5 seconds after it appears or after the set
+  // of trouble changes; then an arrow-only round button of 44 px (same name), so it does not sit on a control for long.
+  function full() { edge.classList.remove('small'); clearTimeout(shrink); shrink = setTimeout(() => { edge.classList.add('small'); spot(); }, 5000); spot(); }
+  // It never rests on a control (W3): after every scroll, resize and change of size it takes the first spot down the right edge (up
+  // from the bottom bar when the block is below) where it touches no button, link or other control, 4 px clear. Nowhere free: it
+  // waits out of sight until a spot frees up on the next scroll.
+  const CONTROLS = 'a[href],button,summary,input,select,textarea,[role=button],[role=link],[tabindex]:not([tabindex="-1"])';
+  function spot() {
+    if (edge.hidden) return;
+    const vw = document.documentElement.clientWidth, w = edge.offsetWidth || (edge.classList.contains('small') ? 44 : 84), h = 44, x = vw - 16 - w;
+    const bar = $('#tabbar'), barTop = bar && bar.offsetHeight && getComputedStyle(bar).display !== 'none' ? bar.getBoundingClientRect().top : innerHeight;
+    const rs = $$(CONTROLS).filter(e => e !== edge && !edge.contains(e)).map(e => e.getBoundingClientRect())
+      .filter(r => r.width && r.height && r.bottom > 0 && r.top < innerHeight && r.right > x - 4 && r.left < x + w + 4);
+    const free = y => rs.every(r => r.bottom <= y - 4 || r.top >= y + h + 4), up = !edge.classList.contains('down'), lo = 12, hi = barTop - h - 12;
+    for (let i = 0; i <= hi - lo; i += 4) {
+      const y = up ? lo + i : hi - i;
+      if (free(y)) { edge.style.top = `${y}px`; edge.style.bottom = ''; edge.classList.remove('nospot'); return; }
+    }
+    edge.classList.add('nospot');
+  }
+  let spotAt = 0; const respot = () => { cancelAnimationFrame(spotAt); spotAt = requestAnimationFrame(spot); };
+  addEventListener('scroll', respot, {passive: true}); addEventListener('resize', respot);
+  function edgeFor(block, changed) {
+    seen?.disconnect(); seen = null;
+    if (!block || !('IntersectionObserver' in window)) { edge.hidden = true; clearTimeout(shrink); return; }
+    if (changed && !edge.hidden) full();
+    seen = new IntersectionObserver(([e]) => {
+      if (e.isIntersecting) { edge.hidden = true; clearTimeout(shrink); return; }
+      const up = e.boundingClientRect.top < 0, bar = $('#tabbar'), barH = bar && bar.offsetHeight && getComputedStyle(bar).display !== 'none' ? bar.offsetHeight : 0;
+      edge.classList.toggle('up', up); edge.classList.toggle('down', !up); edge.style.top = up ? '12px' : ''; edge.style.bottom = up ? '' : `${barH + 12}px`;
+      edge.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${up ? 'M12 5 5 13h4v6h6v-6h4z' : 'M12 19 5 11h4V5h6v6h4z'}" fill="currentColor"/></svg><span>Look</span>`;
+      if (edge.hidden) { edge.hidden = false; full(); } else spot();   // it appears: the full pill first
+    }, {threshold: .25});
+    seen.observe(block);
+  }
+  edge.onclick = () => { const b = $('#main .tblock.eyed'); if (!b) return; b.scrollIntoView({block: 'center', behavior: RM.matches ? 'auto' : 'smooth'}); ($('button,a', b) || b).focus?.({preventScroll: true}); };
+  function home() {                                           // the trouble ended: the eye flies back from where it sat, and his own opens again
+    const back = () => { A.classList.remove('sat-out'); };
+    if (!at || RM.matches || A.hidden) return back();
+    const tmp = document.createElement('span'); tmp.className = 'sat flying'; tmp.innerHTML = eye();
+    const [x, y] = centre(red), w = 44; tmp.style.cssText = `position:fixed;left:${x - w / 2}px;top:${y - w / 2}px;width:${w}px;height:${w}px`;
+    $('#fx').append(tmp);
+    fx.travel(tmp, [at[0] - scrollX, at[1] - scrollY], {ms: 700, scale: 1}).then(() => { tmp.remove(); back(); });
+  }
+  // called by render() on Watch with the trouble items in the page's order (the blocks are already in #main)
+  function place(items) {
+    const blocks = !side && role() === 'owner' && !A.hidden ? $$('#main .tblock') : [], first = blocks[0] || null;
+    look.fix(first);
+    if (!first) {
+      edgeFor(null);
+      // "All is well" only when nothing is broken AND Argus could look at everything: a broken check whose round was unknown or whose
+      // result is stale is not well (W2). Then nothing changes: no sentence, the eye does not fly home, his red eye stays out.
+      if (key !== null && !doubt()) { key = null; keys = new Set(); count = 0; say('All is well again: nothing on Watch needs a look.'); home(); }
+      return;
+    }
+    const now = new Set(blocks.map(b => b.dataset.trouble)), k = first.dataset.trouble, it = items.find(i => i.key === k);
+    const total = items.reduce((t, i) => t + weight(i), 0), more = total - 1;
+    first.classList.add('eyed');
+    const sat = document.createElement('span'); sat.className = 'sat'; sat.setAttribute('aria-hidden', 'true');
+    sat.innerHTML = eye() + (more ? `<span class="satn">${more} more</span>` : '');
+    first.append(sat); A.classList.add('sat-out');
+    const r = sat.getBoundingClientRect(); at = [r.left + r.width / 2 + scrollX, r.top + 22 + scrollY];
+    const grew = [...now].filter(x => !keys.has(x)), gone = [...keys].some(x => !now.has(x));
+    if (key === null && !keys.size) {                         // trouble starts: travel once from his face, pulse, say it
+      sat.classList.add('glaring'); fx.travel($('svg', sat), centre(red));
+      say(`${base(it)}${more ? `, and ${plural(more)}` : ''}.`);
+    } else if (grew.length || total > count) {                // something else broke too: one new pulse where it stands, and say it
+      const nw = items.find(i => i.key === grew[grew.length - 1]) || it;
+      sat.classList.add('glaring');
+      say(`${base(nw)}. Now ${total} things need a look.`);
+    } else if (gone || k !== key || total !== count) {                           // something left and others remain: the new count, no pulse
+      say(`${base(it)}${more ? `, and ${plural(more)}` : ''}.`);
+    }
+    const changed = grew.length > 0 || gone || total !== count;
+    key = k; keys = now; count = total;
+    edgeFor(first, changed);
+  }
+  return {place, get key() { return key; }};
+})();
+// the server has started again and not finished its first round: what it shows is the saved state, so "All is well" waits for it
+const doubt = () => S?.watch_ready === false;

@@ -97,10 +97,12 @@ def no_people():
 
 # ---- every route of the server, from H.get() and H.do_POST() (and what each should answer per role) ----
 G, P = 'GET', 'POST'
+PUSH = 0 if a.push.crypto() else 503         # phone alerts without the cryptography package: 503 for each POST
 ROUTES = [  # (verb, path, what it is, owner, learner, none)
     (G, '', 'the page (Today)', 200, 200, 'page'),
     (G, 'argus', 'the page at an agent address (Watch)', 200, 200, 'page'),
     (G, 'olympus', 'the page at a section address (Olympus)', 200, 200, 'page'),
+    (G, 'phone', 'the page at Phone alerts (the page sends a learner to Today)', 200, 200, 'page'),
     (G, 'closed', "the page at an owner's plugin section", 200, 200, 'page'),
     (G, 'heracles', "the page at the learner's plugin section", 200, 200, 'page'),
     (G, 'spartamelee/sub', 'the page at a nested section address', 200, 200, 'page'),
@@ -113,7 +115,9 @@ ROUTES = [  # (verb, path, what it is, owner, learner, none)
     (G, 'api/whoami', 'who the server thinks you are', 200, 200, 200),
     (G, 'api/state', 'the state (cut down for a learner)', 200, 200, 403),
     (G, 'api/sky', 'the weather', 200, 200, 403),
+    (G, 'api/push/status', 'phone alerts: available, this person\'s devices', 200, 403, 403),
     (G, 'api/log/hermes-secretsort', 'a program log', 200, 403, 403),
+    (G, 'api/events', "what happened lately: the watch's events (4.40.0)", 200, 403, 403),
     (G, 'api/pads/list', "a moved section's old api", 200, 403, 403),
     (G, 'api/nothing', 'an unknown api', 404, 403, 403),
     (G, 'plugins/heracles/page.js', 'files of a plugin that opens a path to learners', 200, 200, 'page'),
@@ -130,11 +134,18 @@ ROUTES = [  # (verb, path, what it is, owner, learner, none)
     (P, 'api/thaw', 'thaw a task', 200, 403, 403),
     (P, 'api/bolt', 'restart / run a task', 200, 403, 403),
     (P, 'api/run', 'run a task', 200, 403, 403),
+    (P, 'api/watch/fix', "the owner's yes to a check's declared fix (4.40.0; no id here: 400)", 400, 403, 403),
     (P, 'api/heracles/answer', 'a plugin POST opened to learners', 200, 200, 403),
     (P, 'api/heracles/wipe', 'a plugin POST not opened', 200, 403, 403),
     (P, 'api/quiet/note', 'a plugin POST opened to learners (no who)', 200, 200, 403),
     (P, 'api/closed/act', 'a plugin POST, no "roles"', 200, 403, 403),
     (P, 'api/nothing', 'an unknown POST', 404, 403, 403),
+    # phone alerts (docs/phone-alerts.md): the body is checked first, so the owner's answer to this test's body is the same
+    # with or without a login: 400 (no device in it) or 404 (no such device); 503 where the cryptography package is missing
+    (P, 'api/push/subscribe', 'phone alerts: turn on (also needs a trusted request)', PUSH or 400, 403, 403),
+    (P, 'api/push/kinds', 'phone alerts: what buzzes on a device', PUSH or 404, 403, 403),
+    (P, 'api/push/forget', 'phone alerts: remove a device', PUSH or 404, 403, 403),
+    (P, 'api/push/test', 'phone alerts: one test buzz (also needs a trusted request)', PUSH or 404, 403, 403),
 ]
 
 class Base(unittest.TestCase):

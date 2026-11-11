@@ -8,6 +8,8 @@
 set -e
 PYTHON=${PYTHON:-python3}; export PYTHON
 R=$(cd "$(dirname "$0")/.." && pwd); T=$(mktemp -d); PORT=${PORT:-8097}
+# phone alerts (docs/phone-alerts.md): tests/phone-alerts.test.js runs a fake push service here; the server may send only to it
+PUSH_PORT=${PUSH_PORT:-8099}; export PUSH_PORT
 export NODE_PATH="${NODE_PATH:-$R/node_modules:$(npm root -g 2>/dev/null)}"
 TH=${THEME:-leafy-realm}; bash "$R/scripts/build.sh" $TH >/dev/null; V=$(cat "$R/VERSION")
 mkdir -p "$T/pod" "$T/pkg" "$T/home/.cache/argus-ui" "$T/fx"; tar xzf "$R/dist/argus-ui-$V-$TH.tar.gz" -C "$T/pkg"
@@ -24,7 +26,7 @@ ST="$T/state"; mkdir -p "$ST"; export ARGUS_EVENTS="$ST/events.jsonl"
 # ARGUS_SERVE_UID: this runner counts as Tailscale Serve, so the real identity check runs and a test that sends
 # Tailscale-User-Login itself is believed (no people file: everyone is the owner anyway; docs/people.md)
 HOME="$T/home" USERPROFILE="$T/home" ARGUS_SERVE_UID=$(id -u) ARGUS_WATCH_STATE="$ST/watch.json" ARGUS_DEV=1 ARGUS_WEATHER=40,-111 ARGUS_STATIC="$T/pkg/static" ARGUS_BUNDLED="$T/pkg/bundled" ARGUS_SYSTEMCTL="$T/fx/fake_systemctl.py" ARGUS_JOURNALCTL="$T/fx/fake_journal.sh" ARGUS_PORT=$PORT \
-  ARGUS_WATCH_INTERVAL=1 ARGUS_MOUNTINFO="$T/fx/watch/host-good.mountinfo" FAKE_PODMAN_DIR="$T/pod" ARGUS_CONTROLLERS_SYSROOT="$T/fx/controllers-sysfs/four" ARGUS_CONTROLLERS="$T/fx/controllers.json" \
+  ARGUS_SUMMARY=0 ARGUS_PUSH_TEST_ORIGIN="http://127.0.0.1:$PUSH_PORT" ARGUS_WATCH_INTERVAL=1 ARGUS_MOUNTINFO="$T/fx/watch/host-good.mountinfo" FAKE_PODMAN_DIR="$T/pod" ARGUS_CONTROLLERS_SYSROOT="$T/fx/controllers-sysfs/four" ARGUS_CONTROLLERS="$T/fx/controllers.json" \
   $PYTHON "$T/pkg/argus_ui.py" > "$T/server.log" 2>&1 & PID=$!
 # a stand-in local model server for tests/mentor-ai.test.js (docs/mentor-ai.md); off for every other check
 MODEL_PORT=${MODEL_PORT:-8098}; $PYTHON "$T/fx/fake_model.py" $MODEL_PORT > "$T/model.log" 2>&1 & MPID=$!; export MODEL_PORT
@@ -83,6 +85,8 @@ fi
 if [ -z "$1" ] || [ "$1" = works ]; then
   echo "== watch works"
   $PYTHON "$R/tests/watch_works_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1
+  echo "== watch routes"   # the owner's yes from the page, api/events, count, restarts, podman's events off (tests/watch_routes_test.py)
+  $PYTHON -W ignore::ResourceWarning "$R/tests/watch_routes_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1
 fi
 # people and roles (docs/people.md): the connection tables and the people file, then every route against each role on a
 # real server; no browser. The Linux run reads the real /proc and says so ("real /proc lookup"); elsewhere it is simulated.
@@ -92,6 +96,13 @@ if [ -z "$1" ] || [ "$1" = people ] || [ "$1" = plugins ]; then
     st=0; out=$($PYTHON -W ignore::ResourceWarning "$R/tests/$t.py" 2>&1) || st=$?
     if [ $st = 0 ]; then grep -E "real /proc|identity path|^Ran|^OK|skipped" <<<"$out" || true; else echo "$out"; fail=1; fi
   done
+fi
+# phone alerts (server/push.py, server/summary.py): RFC 8291 / 8292, the host rule, a fake push service, the sink, the daily
+# summary and the routes; no browser (tests/push_test.py). In CI it fails, never skips, when the cryptography package is missing.
+if [ -z "$1" ] || [ "$1" = phone-alerts ] || [ "$1" = push ]; then
+  echo "== phone alerts"
+  st=0; out=$($PYTHON -W ignore::ResourceWarning "$R/tests/push_test.py" 2>&1) || st=$?
+  if [ $st = 0 ]; then grep -E "^Ran|^OK|skipped|mode 600" <<<"$out" || true; else echo "$out"; fail=1; fi
 fi
 if [ -z "$1" ] || [ "$1" = plugins ]; then
   echo "== plugin cache"   # ETag, Last-Modified, 304 and Cache-Control on raw headers: no browser (tests/plugin_cache_test.py)

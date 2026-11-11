@@ -14,6 +14,7 @@
 <link rel="stylesheet" href="static/css/argus.css?v=__V__">
 <link rel="stylesheet" href="static/css/scene.css?v=__V__">
 <link rel="stylesheet" href="static/css/olympus.css?v=__V__">
+<link rel="stylesheet" href="static/css/alerts.css?v=__V__">
 </head>
 <body>
 <div id="scene" aria-hidden="true">
@@ -76,6 +77,8 @@
 <nav class="chips" aria-label="Agents"><span id="nav" style="display:contents"></span></nav>
 <!-- The owner only, on Today and Watch: the people file cannot be used (docs/people.md). Hidden for everyone else: no space. -->
 <p class="people-problem" id="peopleProblem" role="status" hidden></p>
+<!-- The owner only, on Today: phone alerts could be on here and are off on this device (alerts.js, docs/phone-alerts.md). -->
+<p class="phone-hint" id="phoneHint" hidden></p>
 <main id="main"></main>
 <!-- On a phone (under 600 px) the sections sit in a bar at the bottom, in thumb reach: Today, Watch, Study, Approvals, More.
      More opens a sheet with the other places. core.js drawNav() fills both from one list (docs/home.md "Finding your way"). -->
@@ -98,6 +101,7 @@
 <script src="static/js/powers.js?v=__V__"></script>
 <script src="static/js/olympus.js?v=__V__"></script>
 <script src="static/js/plugins.js?v=__V__"></script>
+<script src="static/js/alerts.js?v=__V__"></script>
 <script src="static/js/home.js?v=__V__"></script>
 <script src="static/js/main.js?v=__V__"></script>
 </body></html>

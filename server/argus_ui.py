@@ -23,6 +23,8 @@ sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)), os.path.expanduser('
 import sky          # weather for the background scene (sky.py; fetched server-side, cached 20 min)
 import watch        # "works, not just runs": checks.json, the mount table, one event per change (watch.py, docs/checks.md)
 import identity     # who is asking: Tailscale Serve's login (trusted only from Serve's own connection) and the people file (docs/people.md)
+import push, summary  # phone alerts (Web Push) and the daily summary (docs/phone-alerts.md)
+import notify       # the events file those changes go to (notify.py); api/events reads it for Watch's "What happened lately"
 SHARE = os.path.expanduser('~/.local/share/argus-ui')
 
 def load_theme():
@@ -34,7 +36,7 @@ FROZEN = f'{REG}/frozen.json'
 PERSONAS = [(a['key'], a['name'], a.get('domain', '')) for a in THEME.get('agents', [])] or [('argus', 'Argus', 'Watchman · monitoring')]
 NEVER_FREEZE = set(THEME.get('never_freeze', ['argus-ui']))
 PKEYS = [p[0] for p in PERSONAS]
-PAGES = ['olympus', 'home']      # sections that are not agents: the Olympus playground, Home (docs/home.md)
+PAGES = ['olympus', 'home', 'phone']   # sections that are not agents: the Olympus playground, Home (docs/home.md), Phone alerts (docs/phone-alerts.md)
 MOVED = {'pads': 'controllers'}  # sections that changed their address: <base>/pads still lands on Controllers (4.33.0, for one release)
 
 # ---------- LeafyPlugins (docs/leafy-plugin.md) ----------
@@ -51,7 +53,7 @@ LINKS = os.path.expanduser(os.environ.get('ARGUS_LINKS', '~/.config/argus-ui/lin
 BUNDLED = os.path.expanduser(os.environ.get('ARGUS_BUNDLED', '~/.local/share/argus-ui/bundled'))
 PLUGIN_ID = re.compile(r'^[a-z][a-z0-9-]{0,31}$')
 RESERVED = {'api', 'static', 'plugins', 'play', 'all', 'argus', 'sw.js', 'manifest.webmanifest',   # 'play' means Olympus in the page
-            'state', 'sky', 'health', 'log', 'freeze', 'thaw', 'bolt', 'run', 'whoami'}                     # built-in api/<name> routes
+            'state', 'sky', 'health', 'log', 'freeze', 'thaw', 'bolt', 'run', 'whoami', 'push', 'events', 'watch'}   # built-in api/<name> routes
 mimetypes.add_type('text/javascript', '.js'); mimetypes.add_type('text/javascript', '.mjs')
 mimetypes.add_type('model/gltf-binary', '.glb'); mimetypes.add_type('application/json', '.json')
 mimetypes.add_type('application/wasm', '.wasm')
@@ -305,7 +307,7 @@ def has_timer(u):
 
 def info(u, fz):
     p = props(u + '.service', 'Result', 'ActiveState', 'ExecMainExitTimestamp', 'ExecMainStartTimestamp',
-              'MemoryPeak', 'IOWriteBytes', 'Description')
+              'MemoryPeak', 'IOWriteBytes', 'Description', 'Type')
     timer = has_timer(u)
     t = props(u + '.timer', 'NextElapseUSecRealtime', 'ActiveState') if timer else {}
     if u in fz: state = 'frozen'
@@ -322,6 +324,7 @@ def info(u, fz):
                 last=when(p.get('ExecMainExitTimestamp') or p.get('ExecMainStartTimestamp', '')) or '—',
                 next=nxt, mem=hb(p.get('MemoryPeak')), wrote=hb(p.get('IOWriteBytes')),
                 notes=reg.get('notes', '') or p.get('Description', ''), canfreeze=u not in NEVER_FREEZE, canrun=True,
+                restarts=bolt_verb(timer, p.get('Type')) == 'restart',     # its button says Restart (always on) or Run: bolt()'s own choice
                 frozen_at=fz.get(u, {}).get('at', ''), base=base if reg.get('transient') is True and base != u else '',
                 started=started(p.get('ExecMainStartTimestamp', '')))
 
@@ -371,7 +374,7 @@ def state():
                 title=THEME.get('title', 'Argus'), subtitle=THEME.get('subtitle', 'tasks'),
                 personas=[dict(key=k, name=n, domain=d) for k, n, d in PERSONAS],
                 soon=THEME.get('coming_soon', []), links=links(),
-                plugins=[plugin_view(p) for p in ps], watch=[{k: v for k, v in w.items() if k not in ('title_line',)} for w in ws],
+                plugins=[plugin_view(p) for p in ps], watch=ws, watch_ready=not WATCH_ON or watch.ready(),   # until its first round: the saved rows
                 alerts=sorted(alerts(set(PKEYS) | set(PAGES) | {p['id'] for p in ps}) + watch.alert_list(ws, lambda j: bool(GODS.match(j) and ALERT_JOB.match(j))), key=lambda a: (a['since'], a['file'])))
 
 def state_for(who, people_problem=None):
@@ -417,10 +420,14 @@ def freeze(u):
         if not ok: return False, f'{verb} {unit} failed: {err[:120]}'
     return True, 'frozen'
 
+def bolt_verb(timer, type_):
+    # Zeus: a timer/oneshot agent gets Run (start); an always-on service gets Restart. One rule for the bolt and for api/state.
+    return 'start' if timer or type_ == 'oneshot' else 'restart'
+
 def bolt(u):
-    # Zeus: a timer/oneshot agent gets Run; an always-on service gets Restart. Frozen agents must be thawed first.
+    # Frozen agents must be thawed first.
     if u in frozen(): return False, 'frozen - thaw it first'
-    verb = 'start' if has_timer(u) or props(u + '.service', 'Type').get('Type') == 'oneshot' else 'restart'
+    verb = bolt_verb(has_timer(u), props(u + '.service', 'Type').get('Type'))
     ok, err = sc_ok(verb, '--no-block', u + '.service')
     if not ok: return False, f'{verb} failed: {err[:120]}'
     return True, 'struck - running now' if verb == 'start' else 'struck - restarted'
@@ -625,9 +632,10 @@ class H(BaseHTTPRequestHandler):
                 if path != 'status': return self.deny(500, 'plugin error')
         if verb == 'get' and path == 'status':        # reserved: Home's line (+ needs, a verb-first action), or null; never an error
             d = r[1] if r and 200 <= r[0] < 300 and isinstance(r[1], dict) else {}
-            line, act = d.get('line'), d.get('action')
-            return self.out(json.dumps({'line': str(line)[:160] if line else None, 'needs': bool(line) and d.get('needs') is True,
-                                        'action': str(act)[:32] if line and act else ''}), 'application/json')
+            line, act, n = d.get('line'), d.get('action'), d.get('count')
+            out = {'line': str(line)[:160] if line else None, 'needs': bool(line) and d.get('needs') is True, 'action': str(act)[:32] if line and act else ''}
+            if line and isinstance(n, int) and not isinstance(n, bool) and n >= 0: out['count'] = min(n, 9999)   # how many wait (the bar shows "2")
+            return self.out(json.dumps(out), 'application/json')
         if not r: return self.deny(404, 'not found')
         self.out(r[2], 'application/json', r[0])
 
@@ -658,6 +666,9 @@ class H(BaseHTTPRequestHandler):
             with open(f, 'rb') as fh: return self.out(fh.read(), 'application/manifest+json' if p.endswith('manifest') else 'text/javascript')
         if p == 'api/state': return self.out(json.dumps(state_for(self.who, self.people[2])), 'application/json')
         if p == 'api/sky': return self.out(json.dumps(sky.current()), 'application/json')
+        if p == 'api/push/status':                          # the owner's (need()); never an endpoint or a key of a device
+            return self.out(json.dumps(push.status(self.who, self.trusted, parse_qs(urlsplit(self.path).query).get('device', [''])[0])), 'application/json')
+        if p == 'api/events': return self.events(parse_qs(urlsplit(self.path).query, keep_blank_values=True))   # the owner's (the role gate: every api/ route not listed)
         if p.startswith('api/log/'):
             u = p[8:]
             return self.out(json.dumps({'log': log(u) if u in units() else ''}), 'application/json')
@@ -675,6 +686,28 @@ class H(BaseHTTPRequestHandler):
                                         'problem': f'This section is now called {name}. Reload this page to open it.'}), 'application/json')
         if p == '' or first in PKEYS or first in PAGES or first in ids: return self.out(page(state_for(self.who, self.people[2])))
         return self.out('not found', 'text/plain', 404)
+
+    EVENT_KEYS = ('id', 'at', 'kind', 'subject', 'title', 'body', 'url', 'level')
+
+    def events(self, q):
+        # api/events?limit=N: the newest events of the watch (notify.py), newest first, at most 100 (default 10). `since`: when the
+        # server started, so an empty list can say "Nothing has happened since ...". Only the event's own fields go out, as text.
+        raw = (q.get('limit') or ['10'])[0]
+        if not (raw.isascii() and raw.isdigit() and 1 <= len(raw) <= 4): return self.deny(400, 'limit must be a whole number from 1 to 100')   # '²' is a digit to isdigit(), not to int()
+        n = max(1, min(100, int(raw)))
+        evs = [{k: str(e.get(k) or '') for k in self.EVENT_KEYS} for e in notify.read_events(n)]
+        return self.out(json.dumps({'events': evs, 'since': STARTED.astimezone().isoformat(timespec='seconds')}), 'application/json')
+
+    def watch_fix(self, body):
+        # POST api/watch/fix {"id": "<check id>"}: the owner's yes from the page (docs/checks.md "Your yes from the page"). Only the
+        # fix that checks.json declares for that check runs, through the watch's own repair(); no unit name is taken from the request.
+        # Checked and queued under the powers' lock; the restart itself takes that lock again only for its one systemctl call.
+        id_ = body.get('id')
+        if not isinstance(id_, str) or not watch.ID.match(id_): return self.deny(400, 'There is no check with that name. Reload the page.')
+        try:
+            with LOCK: ok, code, msg = watch.ask_fix(id_, frozen(), WATCH_ON)
+        except Exception: ok, code, msg = False, 500, 'Argus could not start the fix. Try again in a moment.'
+        return self.out(json.dumps({'ok': ok, 'msg': msg}), 'application/json', code)
 
     def deny(self, code, msg): return self.out(json.dumps({'ok': False, 'msg': msg}), 'application/json', code)
 
@@ -700,6 +733,11 @@ class H(BaseHTTPRequestHandler):
         except Exception: return self.deny(400, 'bad json')
         if not isinstance(body, dict): return self.deny(400, 'bad json')
         if p.startswith('api/') and pid in SERVER_PLUGINS: return self.plugin_call(pid, 'post', rest, body)   # after every check above
+        if p in ('api/push/subscribe', 'api/push/kinds', 'api/push/forget', 'api/push/test'):   # phone alerts, the owner's (need())
+            try: code, obj = push.route(p[9:], body, self.who, self.trusted)
+            except Exception: return self.deny(500, 'server error')
+            return self.out(json.dumps(obj), 'application/json', code)
+        if p == 'api/watch/fix': return self.watch_fix(body)
         u = str(body.get('job', ''))
         actions = {'api/freeze': freeze, 'api/thaw': thaw, 'api/bolt': bolt, 'api/run': bolt}
         if p not in actions: return self.deny(404, 'not found')
@@ -713,4 +751,7 @@ class H(BaseHTTPRequestHandler):
 if __name__ == '__main__':
     load_server_plugins()
     if WATCH_ON: watch.start(watch_env(), WATCH_INTERVAL)
+    push.start(lambda person: push.role_in(PEOPLE.current(), person),      # phone alerts: owners' devices only (docs/phone-alerts.md)
+               lambda s: next((w.get('title', '') for w in watch.snapshot(WATCH_INTERVAL or 60) if w.get('id') == s), ''))
+    summary.start(lambda: watch.snapshot(WATCH_INTERVAL or 60))            # the daily summary, its own small thread
     ThreadingHTTPServer((BIND, PORT), H).serve_forever()

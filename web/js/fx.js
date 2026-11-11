@@ -90,5 +90,16 @@ const fx = (() => {
   }
   // Zeus's bolt from the top of the screen to the target
   function bolt(target) { if (RM.matches) return still; const [x, y] = where(target); boltFx(x, y); return new Promise(ok => setTimeout(ok, 700)); }
-  return {burst, motes, glint, pieces, bolt};
+  // one element, already standing where it ends, flies in once from a point on the screen along a lifted curve, a little larger at
+  // the start (Argus's satellite eye leaving him for a broken card, core.js). One shot, never looped. Reduced motion: it is just there.
+  function travel(el, from, {ms = 750, lift = 40, scale = 1.6} = {}) {
+    if (RM.matches || !el.isConnected) return still;
+    const [x0, y0] = where(from), [x1, y1] = where(el), dx = x0 - x1, dy = y0 - y1, steps = [];
+    for (let k = 0; k <= 6; k++) {
+      const t = k / 6, u = 1 - t, arc = Math.sin(t * Math.PI) * lift;
+      steps.push({transform: `translate(${(dx * u).toFixed(1)}px,${(dy * u - arc).toFixed(1)}px) scale(${(scale + (1 - scale) * t).toFixed(3)})`});
+    }
+    return played([el.animate(steps, {duration: ms, easing: 'cubic-bezier(.3,.1,.3,1)'})]);
+  }
+  return {burst, motes, glint, pieces, bolt, travel};
 })();
