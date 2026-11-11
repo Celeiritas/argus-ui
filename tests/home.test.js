@@ -22,7 +22,7 @@ run(async b => {
   await need('deploy waiting').waitFor({timeout: 5000});
   const n = await p.locator('.needlist .need').count();
   check((await p.locator('#needs-h').textContent()).trim() === `${n} things need you`, `one line says the state in words ("${(await p.locator('#needs-h').textContent()).trim()}")`);
-  const task = p.locator('.need[data-key^="task-"]');           // one row per broken thing (4.39.0): what, since, what Argus did, what you can do
+  const task = p.locator('.need[data-key^="task-"]');           // one row per broken thing (4.40.0): what, since, what Argus did, what you can do
   const t1 = (await p.locator('.need').first().textContent()).replace(/\s+/g, ' ');
   check(/rename failed/.test(t1) && await p.locator('.need').first().locator('a.go').textContent() === 'Look at it on Watch', 'the failed thing comes first, with "Look at it on Watch": ' + t1);
   check(/Argus: Does not restart a failed task by himself\./.test(t1) && /You: Read its log on its card, then press Run to try again\./.test(t1), 'in plain words: what Argus did and what you can do');

@@ -77,7 +77,7 @@ run(async b => {
   await shot(ph, 'layout-phone-watch');
 
   const ls = await page(b, 844, 390); await ls.goto(BASE + 'argus'); await ls.locator('.card').first().waitFor();
-  const lead = await ls.evaluate(() => (document.querySelector('#main .tblock') ? '.tblock' : '.card'));   // trouble first (4.39.0): the first broken block, else a card
+  const lead = await ls.evaluate(() => (document.querySelector('#main .tblock') ? '.tblock' : '.card'));   // trouble first (4.40.0): the first broken block, else a card
   check((await box(ls, '.argus')).w <= 96 && (await box(ls, lead)).y < 390, `phone on its side: Argus shrinks and the first ${lead === '.tblock' ? 'trouble block' : 'task card'} shows on the first screen`);
   check(await noOverflow(ls), 'phone on its side: no sideways scrolling');
 });

@@ -12,7 +12,7 @@ opens on: the bare address `<base>/`, and `<base>/home`, its old address, which 
    every task in trouble, every alert, and each section that needs you (its `count`, else one). It is the heading of the list:
 3. **The rows that need you**, the failed thing first. Each row has the place's mark, who it is from (the plain word and the
    realm's name, e.g. *Approvals · Zeus*), one sentence, and one verb-first button that goes there:
-   - **one row per broken thing on Watch** (4.39.0, see "Trouble first" below): a program that runs but cannot do its job,
+   - **one row per broken thing on Watch** (4.40.0, see "Trouble first" below): a program that runs but cannot do its job,
      a check with no task card of its own (a media program, a drive), a failed task, each with the same three plain lines as on
      Watch and, when checks.json declares a fix, the same press-and-hold button (**Restart Jellyfin**) beside **Look at it on
      Watch**
@@ -81,7 +81,7 @@ in the Open row.
   sentence and the cards make one column, with no sideways scrolling at 360 px.
 - Each part sits on one quiet panel so it reads over the scene.
 
-## Trouble first (4.39.0)
+## Trouble first (4.40.0)
 The owner reads this page mostly on a phone and is not a programmer. When something is wrong, the page says **what is wrong, what
 Argus did, and what you can do**, before anything else, on Watch and on Today. `troubleItems()` in `web/js/core.js` makes one entry
 per broken thing, in this order: programs that run but cannot do their job (they have a fix), checks with no task card, failed
@@ -117,7 +117,7 @@ card.
 its body) with a relative and an exact time (*12 minutes ago · Wed, Nov 11, 4:50 AM*, an HTML `<time>`). With none:
 *Nothing has happened since <the time the server started>.*
 
-## The satellite eye (4.39.0)
+## The satellite eye (4.40.0)
 The owner's words: the pointer still draws Argus's eyes while something is red; he should grow a satellite red eye that travels to
 the broken card and glares at it. On Watch (owner only), `satellite` in `web/js/core.js`:
 - **One eye leaves him.** A copy of his own red eye (his markup, cloned: no new drawing) travels once, 750 ms along a lifted
@@ -128,7 +128,7 @@ the broken card and glares at it. On Watch (owner only), `satellite` in `web/js/
 - **It never covers anything**: the block keeps a 60 px gutter on its right for it (44 px eye). Checked at 360x800, 412x915 and
   1440x900.
 - **Several broken things**: it goes to the first in the page's order, and a small *1 more* / *2 more* under it says how many
-  others there are (they are all listed in the panel). **Every new one is noticed** (4.39.0 review): the page keeps the set of
+  others there are (they are all listed in the panel). **Every new one is noticed** (4.40.0 review): the page keeps the set of
   broken things, not only the first; when the set grows, the eye pulses once more where it stands (no travel) and the sentence
   says the new one with the count (*Extra is running but not working. Now 3 things need a look.*); when one leaves and others
   remain, the sentence says the new count, without a pulse. Reduced motion: the words only.

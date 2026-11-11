@@ -6,7 +6,7 @@ const T = path.dirname(process.env.FIXTURES), HOME = path.join(T, 'home'), FX = 
 const CHECKS = path.join(HOME, '.config/argus-ui/checks.json'), EVENTS = process.env.ARGUS_EVENTS;   // tests/run.sh sets it, outside HOME
 if (!EVENTS) throw new Error('ARGUS_EVENTS is not set (tests/run.sh sets it)');
 const mi = name => fs.copyFileSync(path.join(FX, 'watch', name + '.mountinfo'), path.join(POD, 'jellyfin.mountinfo'));
-const card = p => p.locator('.crow.bad', {hasText: 'Running, but not working'});   // a check with no task card of its own: a compact row (4.39.0)
+const card = p => p.locator('.crow.bad', {hasText: 'Running, but not working'});   // a check with no task card of its own: a compact row (4.40.0)
 // a failure counts after 2 one-second rounds in a row (docs/checks.md): ask the page again until the card count is what we wait for
 const until = async (p, n) => { for (let i = 0; i < 20; i++) { await p.evaluate(() => refresh()); await p.waitForTimeout(500); if (await card(p).count() === n) return; } };
 run(async b => {

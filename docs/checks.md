@@ -60,7 +60,7 @@ Everything is read without sudo. **Time limits, per kind of call:** a look or a 
 
 ## What state() shows
 `watch`: one entry per check, `{id, title, job, unit, works, code, reason, note, since, fix, fix_say, autofix, drive, title_line, detail, again, fixing}`
-(4.39.0: `fix_say` the words for what its fix restarts, `title_line` the event-style sentence, `again` true while it works again after
+(4.40.0: `fix_say` the words for what its fix restarts, `title_line` the event-style sentence, `again` true while it works again after
 a failure, `queued` true while a fix is asked for and its restart not yet sent, `fixing` true once the restart has really been sent and
 Argus looks again, `mount`, `looked` the time of the last round with a real verdict, `unsure` a sentence when that is not this round).
 `since` is when its state last changed (the first round it was seen, until then).
@@ -82,7 +82,7 @@ A failed check that has a `fix` also says what Argus did about it (`note` in `wa
 | Argus restarted it and it did not help | *Argus restarted the media player once by itself, and it did not help. It waits for your yes.* |
 | The restart command itself failed | *Argus tried to restart the media player by itself, but the restart did not work. It waits for your yes.* |
 | Self-repair may still act next round (the first round of *cannot read its drive*) | nothing yet |
-| You pressed the fix on the page and it did not help (4.39.0) | *You restarted the media player at 4:52 AM, and it did not help.* |
+| You pressed the fix on the page and it did not help (4.40.0) | *You restarted the media player at 4:52 AM, and it did not help.* |
 | You pressed it and the restart command failed | *You asked for a restart of the media player at 4:52 AM, but the restart did not work.* |
 
 A whole card then reads, for example, *Running, but not working: cannot read its drive. Argus did not restart it and waits for your yes.* A check without a `fix`, a drive that is missing (the drive's own card says it) and a test read that hangs keep their text as it is.
@@ -127,7 +127,7 @@ Self-repair is for one situation only: **the program runs, but cannot read its d
 - **One try per check in 24 hours.** The time of the last try (real or trial) is saved in `~/.local/state/argus-ui/watch.json` **before** the restart command runs, and it is kept when the program works again and when the server restarts. A second breakage inside that day raises `needs-yes` and says when Argus last tried.
 - **The try:** the same `systemctl --user restart --no-block` as the bolt, for each unit in `fix.restart`, never a frozen one, and each unit at most once per round even when two checks name it. Then Argus checks again every 3 seconds for up to **90 seconds** (it stops as soon as the program works) and raises `fixed` or `broke`. That wait does not hold the lock the page's power buttons use. A restart command that hangs or fails counts as *the restart did not work* (a `broke` event); the round still finishes and saves its state.
 
-## Your yes from the page (4.39.0)
+## Your yes from the page (4.40.0)
 `POST api/watch/fix` with `{"id": "<check id>"}` (JSON only, the usual POST checks) is the owner's yes, from the hold button on Watch
 or Today. **It runs exactly the fix that checks.json declares for that check and nothing else**: the id is looked up in the checks
 file; no unit name is taken from the request. It is refused, with one plain sentence in `msg`, when:
@@ -153,7 +153,7 @@ restarted the media player at 4:52 AM, and it did not help.*). The card then end
 works again before the round, nothing is restarted (the usual `recovered` event). Self-repair does not restart it again right
 after you did. Only the owner sees the button (the server's role table comes with sign-in, docs/home.md "Who sees what").
 
-## What happened lately: api/events (4.39.0)
+## What happened lately: api/events (4.40.0)
 `GET api/events?limit=N` → `{"events": [...], "since": "<when the server started>"}`: the newest events from the events file, newest
 first, 10 by default, at most 100 (a limit that is not 1 to 4 ASCII digits, an empty one included: 400; `0` gives 1). Each event carries only its own fields
 (`id, at, kind, subject, title, body, url, level`, as text); a damaged line is skipped. Watch shows the newest 10.
