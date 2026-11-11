@@ -13,6 +13,12 @@ def load(name):
     with open(os.path.join(FIX, name), encoding='utf-8') as f: return json.load(f)
 GOOD = load('good-items.json')
 ITEMS = {i['id']: i for i in GOOD['items']}
+# the good file keeps one item per kind; the other scoring rules are the same items with another rule
+_sp = copy.deepcopy(ITEMS['tea-sata']); _sp.update(id='tea-sata-pick', scoring='zero_one', pick=3)
+_d01 = copy.deepcopy(ITEMS['tea-drop']); _d01.update(id='tea-drop-01', scoring='zero_one', max_points=3); del _d01['pairs']
+_m01 = copy.deepcopy(ITEMS['tea-matrix']); _m01.update(id='tea-matrix-01', scoring='zero_one', max_points=3); _m01['rows'][2]['keys'] = ['hot']
+ALL = GOOD['items'] + [_sp, _d01, _m01]
+ITEMS.update({i['id']: i for i in ALL})
 
 def pts(item_id, picks):
     r = it.score(ITEMS[item_id], {'picks': picks})
@@ -45,8 +51,8 @@ class Scoring(unittest.TestCase):
         for name, picks, want in [('both', {'d1': 'a', 'd2': 'a'}, 1), ('first only', {'d1': 'a', 'd2': 'b'}, 0),
                                   ('second only', {'d1': 'b', 'd2': 'a'}, 0), ('neither', {'d1': 'b', 'd2': 'b'}, 0),
                                   ('the unpaired list alone', {'d3': 'a'}, 1), ('everything', {'d1': 'a', 'd2': 'a', 'd3': 'a'}, 2)]:
-            with self.subTest(name): self.assertEqual(pts('tea-drop-rationale', picks), (want, 2))
-        rows = it.score(ITEMS['tea-drop-rationale'], {'picks': {'d1': 'a', 'd2': 'a'}})['per_part']
+            with self.subTest(name): self.assertEqual(pts('tea-drop', picks), (want, 2))
+        rows = it.score(ITEMS['tea-drop'], {'picks': {'d1': 'a', 'd2': 'a'}})['per_part']
         self.assertEqual([r['credit'] for r in rows if r['part'] == 'p1'], [1])
         self.assertEqual([r['credit'] for r in rows if r['part'] in ('d1', 'd2')], [0, 0])     # the pair carries the point
 
@@ -54,14 +60,14 @@ class Scoring(unittest.TestCase):
         for name, picks, want in [('all right', {'r1': 'hot', 'r2': 'cool', 'r3': 'hot'}, 3), ('lists work', {'r1': ['hot']}, 1),
                                   ('two ticks in a row', {'r1': ['hot', 'cool'], 'r2': 'cool'}, 1), ('wrong column', {'r1': 'milk'}, 0),
                                   ('unknown column', {'r1': 'nope'}, 0), ('unknown row', {'zz': 'hot'}, 0), ('empty', {}, 0)]:
-            with self.subTest(name): self.assertEqual(pts('tea-matrix', picks), (want, 3))
-        row = [r for r in it.score(ITEMS['tea-matrix'], {'picks': {'r1': ['hot', 'cool']}})['per_part'] if r['part'] == 'r1'][0]
+            with self.subTest(name): self.assertEqual(pts('tea-matrix-01', picks), (want, 3))
+        row = [r for r in it.score(ITEMS['tea-matrix-01'], {'picks': {'r1': ['hot', 'cool']}})['per_part'] if r['part'] == 'r1'][0]
         self.assertEqual((row['credit'], row['note']), (0, 'too many picks'))
 
     def test_matrix_plus_minus_per_row(self):
         for name, picks, want in [('all right', {'r1': 'hot', 'r2': 'cool', 'r3': ['hot', 'milk']}, 4), ('half of the multi row', {'r3': 'milk'}, 1),
                                   ('right plus wrong in a row', {'r3': ['hot', 'milk', 'cool']}, 1), ('wrong never goes below 0 and not into other rows', {'r1': ['cool', 'milk'], 'r2': 'cool'}, 1)]:
-            with self.subTest(name): self.assertEqual(pts('tea-matrix-multi', picks), (want, 4))
+            with self.subTest(name): self.assertEqual(pts('tea-matrix', picks), (want, 4))
 
     def test_bowtie(self):
         full = {'condition': 'a', 'actions': ['a', 'b'], 'parameters': ['a', 'b']}
@@ -83,17 +89,37 @@ class Scoring(unittest.TestCase):
         case = ITEMS['tea-case']
         self.assertEqual(it.score(case, {'items': {}})['points'], 0)
         resp = {'items': {'tea-case-1': {'picks': ['a', 'b', 'c']}, 'tea-case-3': {'picks': 'b'}, 'tea-case-5': {'picks': 'b'},
-                          'tea-case-2': {'picks': {'d1': 'a', 'd2': 'a', 'd3': 'a'}}}}
+                          'tea-case-2': {'picks': {'d1': 'a'}}}}
         r = it.score(case, resp)
-        self.assertEqual((r['points'], r['max']), (3 + 2 + 1 + 1, case['max_points']))
+        self.assertEqual((r['points'], r['max']), (1 + 1 + 1 + 1, case['max_points']))
         self.assertEqual(list(r['per_step']), list(it.STEPS))
-        self.assertEqual(r['per_step']['recognize-cues'], {'points': 3, 'max': 3})
+        self.assertEqual(r['per_step']['recognize-cues'], {'points': 1, 'max': 2})      # two right picks and one wrong
+        self.assertEqual(r['per_step']['analyze-cues'], {'points': 1, 'max': 1})
+        self.assertEqual(r['per_step']['evaluate-outcomes'], {'points': 0, 'max': 1})
         self.assertEqual([p['part'] for p in r['per_part']], [f'tea-case-{n}' for n in range(1, 7)])
         self.assertEqual(it.score(case, None)['points'], 0)
         self.assertEqual(it.score(case, {'items': 'nonsense'})['points'], 0)
 
+    def test_order_free_case_per_step_and_per_part(self):
+        c = copy.deepcopy(ITEMS['tea-case']); c['order'] = 'free'
+        c['items'] = list(reversed(c['items']))[:4]                                      # steps 6, 5, 4, 3
+        extra = copy.deepcopy(c['items'][0]); extra['id'] = 'tea-case-x'; c['items'].append(extra)     # a second item on step 6
+        c['max_points'] = sum(i['max_points'] for i in c['items'])
+        self.assertEqual(it.validate(c, GOOD['sources']), [])
+        r = it.score(c, {'items': {'tea-case-6': {'picks': {'r1': 'hot'}}, 'tea-case-x': {'picks': {'r1': 'hot'}}, 'tea-case-4': {'picks': 'b'}}})
+        self.assertEqual([p['part'] for p in r['per_part']], ['tea-case-6', 'tea-case-5', 'tea-case-4', 'tea-case-3', 'tea-case-x'])
+        self.assertEqual(r['per_step'], {'prioritize-hypotheses': {'points': 0, 'max': 1}, 'generate-solutions': {'points': 1, 'max': 1},
+                                         'take-action': {'points': 0, 'max': 1}, 'evaluate-outcomes': {'points': 2, 'max': 2}})
+        self.assertEqual((r['points'], r['max']), (3, 5))
+
+    def test_score_leaves_the_item_alone(self):
+        for item in ALL:
+            before = copy.deepcopy(item)
+            it.score(item, {'picks': 'a', 'items': {'x': {}}}); it.score(item, None)
+            self.assertEqual(item, before, item['id'])
+
     def test_bad_responses_never_raise(self):
-        for item in GOOD['items']:
+        for item in ALL:
             for resp in (None, 5, 'x', [], {}, {'picks': None}, {'picks': 5}, {'picks': [[]]}, {'picks': {'a': {'b': 1}}}, {'picks': {'condition': [{}]}},
                          {'picks': [None, {}]}, {'items': 5}, {'items': {'x': 1}}, {'picks': float('nan')}):
                 with self.subTest(item=item['id'], resp=str(resp)):
@@ -120,7 +146,7 @@ class Scoring(unittest.TestCase):
         with self.assertRaises(it.ItemError): it.score('nope', {})
 
     def test_max_points_matches_the_most_score_can_award(self):
-        for item in GOOD['items']:
+        for item in ALL:
             self.assertEqual(it.max_points(item), item['max_points'], item['id'])
         perfect = {'tea-mcq': 'b', 'tea-sata': ['a', 'b', 'c']}
         for k, v in perfect.items(): self.assertEqual(pts(k, v), (ITEMS[k]['max_points'],) * 2)
@@ -134,7 +160,8 @@ class Rating(unittest.TestCase):
             ('100 % with a hint', (3, 3, 1000, 1), 'good'), ('100 % unknown time', (3, 3, None, 0), 'good'), ('100 % unknown hints', (3, 3, 1000, None), 'good'),
             ('nothing to score', (0, 0, 1, 0), 'again'), ('negative max', (1, -1, 1, 0), 'again'), ('not numbers', ('a', 'b', 1, 0), 'again'),
             ('more than max counts as full', (5, 3, 1000, 0), 'easy'), ('negative points', (-2, 3, 1000, 0), 'again'),
-            ('bool is not a number', (True, True, 1, 0), 'again'), ('nan', (float('nan'), 3, 1, 0), 'again')]:
+            ('bool is not a number', (True, True, 1, 0), 'again'), ('nan', (float('nan'), 3, 1, 0), 'again'),
+            ('negative time is unknown', (3, 3, -5, 0), 'good'), ('zero time is unknown', (3, 3, 0, 0), 'good'), ('1 ms', (3, 3, 1, 0), 'easy')]:
             with self.subTest(name): self.assertEqual(it.to_rating(*args), want)
         self.assertEqual(it.RATINGS, ('again', 'hard', 'good', 'easy'))
 
@@ -144,39 +171,64 @@ class Rules(unittest.TestCase):
     def test_the_good_fixture_is_clean_and_covers_every_type(self):
         self.assertEqual(it.validate_doc(GOOD), [])
         self.assertEqual({i['type'] for i in GOOD['items']}, set(it.TYPES))
-        self.assertEqual({i['scoring'] for i in GOOD['items'] if 'scoring' in i}, {'zero_one', 'plus_minus', 'rationale'})
-        for i in GOOD['items']: self.assertEqual(it.validate(i, GOOD['sources']), [], i['id'])
+        self.assertEqual({i['scoring'] for i in ALL if 'scoring' in i}, {'zero_one', 'plus_minus', 'rationale'})
+        for i in ALL: self.assertEqual(it.validate(i, GOOD['sources']), [], i['id'])
 
-    def test_each_bad_fixture_fires_its_rule(self):
+    def test_each_bad_fixture_fires_exactly_its_rule(self):
         for n in range(1, 9):
-            doc = load(f'bad-items-n{n}.json')
-            with self.subTest(rule=f'N{n}'): self.assertIn(f'N{n}', self.rules(doc))
+            with self.subTest(rule=f'N{n}'): self.assertEqual(self.rules(load(f'bad-items-n{n}.json')), [f'N{n}'])
 
     def mut(self, fn):
         d = copy.deepcopy(GOOD); fn(d); return d
 
     def test_single_breaks(self):
+        def at(i): return lambda d: next(x for x in d['items'] if x['id'] == i)
+        mcq, sata, drop, mat, bow, tre, cas = (at(i) for i in ('tea-mcq', 'tea-sata', 'tea-drop', 'tea-matrix', 'tea-bowtie', 'tea-trend', 'tea-case'))
         cases = [
             ('N1', lambda d: d.__setitem__('format', 'mentor-items/0')), ('N1', lambda d: d.pop('disclaimer')), ('N1', lambda d: d.__setitem__('items', [])),
-            ('N2', lambda d: d['items'][0].pop('client_needs')), ('N2', lambda d: d['items'][0].__setitem__('ncjmm_step', 'guess')),
-            ('N2', lambda d: d['items'][0].__setitem__('type', 'essay')), ('N2', lambda d: d['items'][0].pop('stem')),
-            ('N2', lambda d: d['items'][0].pop('max_points')), ('N2', lambda d: d['items'][7].pop('exhibit')),
-            ('N2', lambda d: d['items'][2].__setitem__('template', 'no marks')), ('N2', lambda d: d['items'][8].__setitem__('scoring', 'zero_one')),
-            ('N2', lambda d: d['items'][3].__setitem__('pairs', [])), ('N2', lambda d: d['items'][2].pop('pairs')),
-            ('N3', lambda d: d['items'][1]['options'][0].pop('id')), ('N3', lambda d: d['items'][4]['rows'][1].__setitem__('id', 'r1')),
-            ('N3', lambda d: d['items'][8]['items'][0].__setitem__('id', 'tea-mcq')),
-            ('N4', lambda d: d['items'][4]['rows'][0].pop('reason')), ('N4', lambda d: d['items'][6]['actions']['options'][3].__setitem__('reason', ' ')),
-            ('N5', lambda d: d['items'][0]['options'][0].pop('src')), ('N5', lambda d: d['sources']['S1'].pop('url')),
+            ('N2', lambda d: mcq(d).pop('client_needs')), ('N2', lambda d: mcq(d).__setitem__('ncjmm_step', 'guess')),
+            ('N2', lambda d: mcq(d).__setitem__('type', 'essay')), ('N2', lambda d: mcq(d).pop('stem')),
+            ('N2', lambda d: mcq(d).pop('max_points')), ('N2', lambda d: tre(d).pop('exhibit')),
+            ('N2', lambda d: drop(d).__setitem__('template', 'no marks')), ('N2', lambda d: cas(d).__setitem__('scoring', 'zero_one')),
+            ('N2', lambda d: drop(d).__setitem__('pairs', [])), ('N2', lambda d: drop(d).pop('pairs')),
+            ('N2', lambda d: cas(d).pop('max_points')),
+            ('N3', lambda d: sata(d)['options'][0].pop('id')), ('N3', lambda d: mat(d)['rows'][1].__setitem__('id', 'r1')),
+            ('N3', lambda d: cas(d)['items'][0].__setitem__('id', 'tea-mcq')),
+            ('N3', lambda d: cas(d)['items'][1].__setitem__('id', 'tea-case-1')),
+            ('N4', lambda d: mat(d)['rows'][0].pop('reason')), ('N4', lambda d: bow(d)['actions']['options'][2].__setitem__('reason', ' ')),
+            ('N5', lambda d: mcq(d)['options'][0].pop('src')), ('N5', lambda d: d['sources']['S1'].pop('url')),
             ('N5', lambda d: d['sources'].clear()),
-            ('N6', lambda d: d['items'][0]['options'][0].__setitem__('key', True)), ('N6', lambda d: d['items'][6]['actions']['options'][2].__setitem__('key', True)),
-            ('N6', lambda d: d['items'][4]['rows'][0].__setitem__('keys', ['hot', 'cool'])), ('N6', lambda d: d['items'][9].__setitem__('pick', 2)),
-            ('N6', lambda d: [o.__setitem__('key', False) for o in d['items'][1]['options']]),
-            ('N7', lambda d: d['items'][1].__setitem__('max_points', 4)), ('N7', lambda d: d['items'][2].__setitem__('max_points', 3)),
-            ('N7', lambda d: d['items'][8].__setitem__('max_points', 1)),
-            ('N8', lambda d: d['items'][8]['items'].pop()), ('N8', lambda d: d['items'][8]['items'].append(copy.deepcopy(d['items'][8]['items'][0]))),
+            ('N6', lambda d: mcq(d)['options'][0].__setitem__('key', True)), ('N6', lambda d: bow(d)['actions']['options'][2].__setitem__('key', True)),
+            ('N6', lambda d: mat(d)['rows'][0].__setitem__('keys', ['nope'])),
+            ('N6', lambda d: [o.__setitem__('key', False) for o in sata(d)['options']]),
+            ('N6', lambda d: [o.__setitem__('key', True) for o in sata(d)['options']]),
+            ('N7', lambda d: sata(d).__setitem__('max_points', 4)), ('N7', lambda d: drop(d).__setitem__('max_points', 3)),
+            ('N7', lambda d: cas(d).__setitem__('max_points', 1)),
+            ('N8', lambda d: cas(d)['items'].pop()), ('N8', lambda d: cas(d)['items'].append(copy.deepcopy(cas(d)['items'][0]))),
         ]
-        for rule, fn in cases:
-            with self.subTest(rule=rule, n=cases.index((rule, fn))): self.assertIn(rule, self.rules(self.mut(fn)))
+        for n, (rule, fn) in enumerate(cases):
+            with self.subTest(rule=rule, n=n): self.assertIn(rule, self.rules(self.mut(fn)))
+
+    def test_a_pick_count_on_a_zero_one_select_all(self):
+        d = copy.deepcopy(GOOD); s = next(x for x in d['items'] if x['id'] == 'tea-sata'); s.update(scoring='zero_one', pick=2)
+        self.assertIn('N6', self.rules(d))
+        s['pick'] = 3
+        self.assertEqual(self.rules(d), [])
+
+    def test_a_case_without_max_points_is_refused(self):
+        c = copy.deepcopy(ITEMS['tea-case']); del c['max_points']
+        problems = it.validate(c, GOOD['sources'])
+        self.assertTrue(any('max_points' in p for p in problems), problems)
+        with self.assertRaises(it.ItemError): it.score(c, {})
+        d = self.mut(lambda d: next(x for x in d['items'] if x['id'] == 'tea-case').pop('max_points'))
+        self.assertEqual(self.rules(d), ['N2'])
+
+    def test_duplicate_ids_inside_one_case_are_refused_by_validate_and_score(self):
+        c = copy.deepcopy(ITEMS['tea-case']); c['items'][1]['id'] = c['items'][0]['id']
+        self.assertTrue(any('same id' in p for p in it.validate(c, GOOD['sources'])), it.validate(c))
+        with self.assertRaises(it.ItemError): it.score(c, {})
+        c['order'] = 'free'
+        with self.assertRaises(it.ItemError): it.score(c, {'items': {'tea-case-1': {'picks': 'a'}}})
 
     def test_a_case_may_say_its_order_is_free(self):
         d = copy.deepcopy(GOOD); c = [i for i in d['items'] if i['type'] == 'case'][0]
@@ -206,11 +258,12 @@ class Checker(unittest.TestCase):
         p = subprocess.run([sys.executable, '-B', os.path.join(R, 'scripts', 'check-deck.py'), os.path.join(FIX, name)], capture_output=True, text=True, encoding='utf-8')
         return p.returncode, p.stdout
 
-    def test_good_file_passes_and_each_bad_file_is_refused(self):
+    def test_good_file_passes_and_each_bad_file_is_refused_for_exactly_its_rule(self):
         self.assertEqual(self.run_checker('good-items.json')[0], 0)
         for n in range(1, 9):
             code, out = self.run_checker(f'bad-items-n{n}.json')
-            with self.subTest(rule=f'N{n}'): self.assertEqual(code, 1); self.assertIn(f'ERROR N{n} ', out)
+            fired = {line.split(' ERROR ')[1].split(' ')[0] for line in out.splitlines() if ' ERROR ' in line}
+            with self.subTest(rule=f'N{n}'): self.assertEqual(code, 1); self.assertEqual(fired, {f'N{n}'})
 
 if __name__ == '__main__':
     unittest.main()

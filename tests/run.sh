@@ -42,10 +42,12 @@ if [ -z "$1" ] || [ "$1" = mentor ]; then
     out=$(python3 "$R/scripts/check-deck.py" "$R/tests/deck-fixtures/bad-${r%%:*}.json") && { echo "FAIL bad-${r%%:*}.json passed"; fail=1; }
     grep -q "ERROR ${r##*:} " <<<"$out" || { echo "FAIL the checker missed ${r##*:} in bad-${r%%:*}.json"; echo "$out"; fail=1; }
   done
-  # 4.34: exam-style item files (docs/mentor-items.md): one bad fixture per rule N1-N8, refused for that rule
+  # 4.34: exam-style item files (docs/mentor-items.md): one small bad fixture per rule N1-N8, refused for exactly that rule
   for n in 1 2 3 4 5 6 7 8; do
     out=$(python3 "$R/scripts/check-deck.py" "$R/tests/deck-fixtures/bad-items-n$n.json") && { echo "FAIL bad-items-n$n.json passed"; fail=1; }
     grep -q "ERROR N$n " <<<"$out" || { echo "FAIL the checker missed N$n in bad-items-n$n.json"; echo "$out"; fail=1; }
+    other=$(grep " ERROR N" <<<"$out" | grep -v "ERROR N$n " || true)     # each bad file breaks its own rule and no other
+    [ -z "$other" ] || { echo "FAIL bad-items-n$n.json also fires another rule"; echo "$other"; fail=1; }
   done
   # the good course's code references resolve in this repository at their commit
   out=$(python3 "$R/scripts/check-deck.py" --repo argus-ui="$R" "$R/tests/deck-fixtures/good-course.json") || { echo "$out"; fail=1; }

@@ -247,14 +247,14 @@ def _num(x):
 
 def to_rating(points, max, ms, hints):
     """The memory-schedule rating for a score: under 50 % "again"; 50 % up to under 100 % "hard"; 100 % "good"; 100 %
-    with no hint in under 120 000 ms "easy". Not a number, or nothing to score: "again". (mentor.py calls them 1 to 4.)"""
+    with no hint in under 120 000 ms "easy" (a time of 0 or less means the timer did not run: it counts as unknown). Not a number, or nothing to score: "again". (mentor.py calls them 1 to 4.)"""
     p, m = _num(points), _num(max)
     if p is None or m is None or m <= 0: return 'again'
     p = min(max_(p, 0), m)
     if p * 2 < m: return 'again'
     if p < m: return 'hard'
     t, h = _num(ms), _num(hints)
-    return 'easy' if h == 0 and t is not None and t < EASY_MS else 'good'
+    return 'easy' if h == 0 and t is not None and 0 < t < EASY_MS else 'good'
 
 def max_(a, b):      # to_rating's own argument is called max, as the brief writes it
     return a if a > b else b
@@ -410,6 +410,7 @@ def _case(item, sources, who, seen):
     add = lambda rule, msg: out.append((rule, f'{who}: {msg}'))
     items = item.get('items')
     if item.get('scoring') is not None: add('N2', 'a case is scored item by item and has no scoring of its own.')
+    if _int(item.get('max_points')) is None: add('N2', 'has no max_points (a whole number).')
     if not _s(item.get('scenario')): add('N2', 'has no scenario.')
     if not isinstance(items, list) or not _dl(items) or len(_dl(items)) != len(items):
         add('N8', 'needs "items", a list of the case\'s items.'); return out
@@ -418,6 +419,8 @@ def _case(item, sources, who, seen):
     steps = [i.get('ncjmm_step') for i in items]
     if not free and steps != list(STEPS): add('N8', 'its items must follow the six steps in order: ' + ', '.join(STEPS) + '.')
     elif free and any(s not in STEPS for s in steps): add('N8', 'every item of a case needs one of the six steps as ncjmm_step.')
+    ids = [i.get('id') for i in items if _s(i.get('id'))]
+    if len(set(ids)) != len(ids): add('N3', 'two of its items have the same id (answers are stored by item id).')
     for i in items:
         if i.get('type') == 'case': add('N8', 'a case cannot contain another case.'); continue
         out += _problems(i, sources, True, seen)

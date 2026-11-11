@@ -14,7 +14,7 @@ Mentor is a study aid. Every file carries a `disclaimer` that every screen must 
  "items": [ ... ]}
 ```
 
-`sources` is an object of `{id: {title, url, read}}`; `read` is the date a person read the page (`YYYY-MM-DD`). Fields such as `org` or `page_date` may be added and are ignored.
+`sources` is an object of `{id: {title, url, read}}`; `url` and `read` are required, `title` is optional. `read` is the date a person read the page (`YYYY-MM-DD`). Fields such as `org` or `page_date` may be added and are ignored.
 
 ### Fields on every item
 | Field | Meaning |
@@ -26,7 +26,7 @@ Mentor is a study aid. Every file carries a `disclaimer` that every screen must 
 | `ncjmm_step` | one of `recognize-cues`, `analyze-cues`, `prioritize-hypotheses`, `generate-solutions`, `take-action`, `evaluate-outcomes`; a bow-tie or a case may say `all` |
 | `stem` | the question (a case has `scenario` instead) |
 | `scoring` | the rule that applies: `zero_one`, `plus_minus` or `rationale` (see the table; a case has none) |
-| `max_points` | a whole number, equal to what `score` can award |
+| `max_points` | a whole number, equal to what `score` can award (a case too: the sum of its items) |
 
 Every **option, row, list, column and slot has its own `id`**. Answers are stored by id, never by position, so a screen may shuffle freely. Every option and row has a `reason` (right ones and wrong ones) and `src` (a list of ids in `sources`). Optional on any item: `subcategory`, `review_notes`.
 
@@ -115,19 +115,20 @@ items = importlib.util.module_from_spec(spec); spec.loader.exec_module(items)
 
 Returns `{"points": int, "max": int, "per_part": [...]}`; a case adds `"per_step": {step: {"points", "max"}}` (only steps that appear). Each `per_part` row:
 `{"part": ..., "pick": ..., "credit": int, "correct": bool|None, "reason": ..., "note": ... (optional)}`
+- A note `no picks` means the response was an object without `picks` (a note `no response` means it was not an object at all).
 - `part` names where it belongs: `options`; a drop-down list id or pair id; a matrix row id; `condition`, `actions` or `parameters`; or `response` for a problem with the whole response.
 - There is a row for every pick and for every right option that was missed (`pick` is `None`, `note` is `missed`, `reason` is that right option's id). `reason` is the id of the option (or, for a matrix, the row) whose `reason` the screen should show next to the pick.
-- `credit` is what the row earned: +1, 0 or -1 (plus/minus). `points` = the sum of the credits, but never below 0 (and not above `max`). A rationale pair is a row of its own (`of` lists its lists) and carries the point; the two list rows then show `credit` 0 with their own `correct`.
+- `credit` is what the row earned: +1, 0 or -1 (plus/minus). `points` = the sum of the credits, but never below 0 (and not above `max`). A rationale pair is a row of its own (`of` lists its lists) and carries the point; the two list rows then show `credit` 0 with their own `correct`. The pair row has `reason: None` and no reason of its own: the reasons to show come from the two list rows.
 - A matrix row's `pick` is the list of ticked column ids.
 - A case's `per_part` has one row per item: `{"part": item id, "step", "credit", "max", "per_part": [that item's rows]}`.
 
 **Bad responses never raise.** Decided and tested: a missing or wrong-type response or `picks` scores 0 (note `no response`); an id that is not an option (or a list/row/column that does not exist) is ignored, with no credit and no penalty (note `unknown option`); a pick that is not text is ignored; a repeated pick counts once (note `repeated pick`); more picks than allowed (a bow-tie group, a one-answer question, a matrix row under `zero_one`, a `zero_one` select-all) earns nothing for that group, row or item (note `too many picks`). A broken **item** raises `items.ItemError` (a `ValueError`), because guessing would hand out wrong marks. All numbers are whole numbers.
 
 ### `to_rating(points, max, ms, hints) -> "again" | "hard" | "good" | "easy"`
-Under 50 % again; 50 % up to under 100 % hard; 100 % good; 100 % with no hint (`hints == 0`) in under 120 000 ms easy (exactly 120 000 ms is good). Unknown time or hints cannot earn easy. Not numbers, or `max <= 0`: again. The words are Mentor's own four ratings (`mentor.py` stores them as 1 to 4; the page shows Again, Hard, Good, Easy). Compared in exact fractions, so 49.9 % (499 of 1000) is again.
+Under 50 % again; 50 % up to under 100 % hard; 100 % good; 100 % with no hint (`hints == 0`) in under 120 000 ms easy (exactly 120 000 ms is good). Unknown time or hints cannot earn easy. A time of 0 or less counts as unknown too (a timer that did not run must not give a free easy), so 0 ms is good, 1 ms is easy. Not numbers, or `max <= 0`: again. The words are Mentor's own four ratings (`mentor.py` stores them as 1 to 4; the page shows Again, Hard, Good, Easy). Compared in exact fractions, so 49.9 % (499 of 1000) is again.
 
 ### `validate(item, sources=None) -> list[str]`
-Every problem as one plain sentence; empty means fine. Pass the file's `sources` to check `src` ids too. `validate_doc(doc)` checks a whole file and returns `(item id or None, rule, sentence)`. `max_points(item)` gives what `score` can award.
+Every problem as one plain sentence; empty means fine. Pass the file's `sources` to check `src` ids too: **an importer must pass them**, or a dangling `src` is accepted. `validate_doc(doc)` checks a whole file and returns `(item id or None, rule, sentence)`. `max_points(item)` gives what `score` can award.
 
 ## Checker rules N1 to N8
 `python scripts/check-deck.py file.json` runs these on any file whose `format` is `mentor-items/1` (lesson and course rules are untouched). Messages read `file: item id: ERROR Nx sentence`.
@@ -136,7 +137,7 @@ Every problem as one plain sentence; empty means fine. Pass the file's `sources`
 |---|---|
 | N1 | the file: wrong `format`, no `disclaimer`, no items |
 | N2 | an item's own fields and shape: id, type, status, `client_needs`, `ncjmm_step`, stem, `scoring` that does not fit the type, no `max_points`, a template that does not mark each list once, a trend without exhibit or `answer_type` |
-| N3 | ids: two items with one id in the file; an option, list, row, column or pair with no id or a repeated one |
+| N3 | ids: two items with one id in the file, or two items of one case with the same id (answers are stored by item id); an option, list, row, column or pair with no id or a repeated one |
 | N4 | an option or row with no `reason` |
 | N5 | an option or row with no `src`; a `src` id that is not in `sources`; a source with no `url` or no `read` date |
 | N6 | the answer key: no right answer; a select-all with all options right; a multiple-choice item without exactly one; a bow-tie group whose right options differ from its `pick`; a matrix key outside the columns, or two keys under `zero_one`; a `zero_one` select-all whose `pick` is not the number of right options |
