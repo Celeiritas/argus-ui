@@ -46,19 +46,34 @@ A check with only `mount` is a **drive check**: it speaks for the drive, and pro
 1. Frozen by Medusa: paused on purpose, `works` is unknown.
 2. The unit is active.
 3. **The mount table first.** The drive must be mounted, not read-only and not `shutdown`. **No file is read on a drive that fails this**; a check that names a `file` or `dir` without a `mount` is refused.
-4. The container's own mount table: a line that carries `shutdown` (or `emergency_ro`), or a block device the host no longer has, is a **dead copy**; so is a `container.mount` line that is missing or sits on another device than the host's drive (a container started before the drive was mounted binds the empty folder underneath). Only if there is none, the named file is read.
+4. The container's own mount table: a line that carries `shutdown` (or `emergency_ro`), or a block device the host no longer has, is a **dead copy**; so is a `container.mount` line that is missing or sits on another device than the host's drive (a container started before the drive was mounted binds the empty folder underneath; its card gets the same words, its explanation says that story instead of "unplugged and came back"). Only if there is none, the named file is read.
+   **Which answers of the test read count as "cannot read its drive":** only exit code 1 or 2 (what `head` and `ls`, GNU and busybox, return when the read itself fails, for example *Input/output error*), or exit 0 with nothing read (an empty file or folder). Any other exit code is the container runtime's own trouble, not the drive's: 125, 126, 127 (podman could not run the command: the container is stopping, a lock timed out, the command is missing), a signal such as 137, or anything unexpected. Those make the check **unknown** (`cannot-look`), so they never raise an event and never restart anything.
 5. The http address answers.
 
 Everything is read without sudo. **Time limits, per kind of call:** a look or a read inside a container and an http call get 6 seconds each; `systemctl --user is-active` and `systemctl --user restart --no-block` go through the server's own 20-second limit (the same as the page's power buttons). The loop runs in its own thread, and `state()` only reads the last results, so one hung check cannot block the page. Results that stop refreshing show as unknown. A check that cannot be run (the list of mounts is unreadable, the container is not reachable) is **unknown**, which never raises an event.
 
 ### When something counts
-- **A failure counts once it is seen in 2 rounds in a row.** One slow answer is not a breakage: after one bad round the check shows `works: null` with code `pending`, and nothing is raised or restarted. Getting better counts at once. The count is saved with the rest of the state, so a restart of the server does not reset it.
+- **A failure counts once it is seen in 2 rounds in a row.** One slow answer is not a breakage: after one bad round the check shows `works: null` with code `pending`, and nothing is raised or restarted. *In a row* means it: an unknown round in between (the container could not be looked into, the unit was starting) starts the count again, so fail, unknown, fail is not two. Getting better counts at once. The count is saved with the rest of the state, so a restart of the server does not reset it.
+- **Self-repair waits for its own 2 rounds.** A program that already counts as broken for one reason (its web address is silent) and then shows *cannot read its drive* is not restarted on that one round: the code that self-repair acts on must itself be seen in 2 rounds in a row, with no unknown round in between. For a check that self-repair may act on, the event waits with it, so the owner gets one event that says what was done; for every other check, a change of reason raises its event at once.
 - **A unit that is starting is not down.** `systemctl is-active` saying `activating`, `reloading` or `deactivating` means "cannot tell yet": no verdict, no event, no restart. A unit that stays in one of those for more than 3 rounds in a row counts as not running (a program that crashes and starts again in a loop looks like that). This is the watch's own reading; the task cards keep theirs.
 - **A test read that hangs** (no answer in 6 seconds) is not repeated for 15 minutes, or until the host's mount line for its drive changes (unplugged and back, re-mounted), so reads cannot pile up. Rounds without a read count as still hanging, so after 2 rounds the check shows a `warn` note on its card, *Media player does not answer when it reads its drive*, and raises one `broke` event with level `warn`. It has its own code (`read-hung`), so it never leads to a restart.
 
 ## What state() shows
-`watch`: one entry per check, `{id, title, job, unit, works, code, reason, since, fix, autofix, drive}`.
+`watch`: one entry per check, `{id, title, job, unit, works, code, reason, note, since, fix, autofix, drive}`.
 `works` is `true`, `false` or `null` (unknown). `reason` is the plain phrase: *cannot read its drive*, *its drive is not connected*, *does not answer at its web address*. Each task card the checks name also gets `works` and `works_reason`. A failed check with a `job` adds an alert (same as an alert file: the card note, Argus's glare and the badge), worded *Running, but not working: cannot read its drive*.
+
+### What the card says about a restart
+The events file is not shown on any page yet, so a failed check that has a `fix` also says on its card what Argus did about it (`note` in `watch`). It never claims a restart that did not happen, and it promises no button:
+
+| Situation | Added to the card |
+|---|---|
+| Trial day, where a restart would have happened | *Argus would have restarted the media player by itself and did not, because for now it only notes what it would do.* |
+| Not on the self-repair list, a reason self-repair does not act on, or the try of the day already used | *Argus did not restart it and waits for your yes.* |
+| Argus restarted it and it did not help | *Argus restarted the media player once by itself, and it did not help. It waits for your yes.* |
+| The restart command itself failed | *Argus tried to restart the media player by itself, but the restart did not work. It waits for your yes.* |
+| Self-repair may still act next round (the first round of *cannot read its drive*) | nothing yet |
+
+A whole card then reads, for example, *Running, but not working: cannot read its drive. Argus did not restart it and waits for your yes.* A check without a `fix`, a drive that is missing (the drive's own card says it) and a test read that hangs keep their text as it is.
 
 ## Events
 `server/notify.py` takes events: `{id, at, kind, subject, title, body, url, level}`.
