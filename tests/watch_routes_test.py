@@ -6,7 +6,7 @@
   * api/events (newest first, at most 100), api/watch/fix (refusals and one real fix), api/<id>/status passing `count`,
     `restarts` on each task, and podman called with --events-backend=none (a real server in its own process)
   * the seams with phone alerts (4.40): one buzz for a gone drive that names the programs on it, no buzz for what the owner's own
-    press caused a moment ago, the daily summary saying who restarted it"""
+    press caused a moment ago, the daily summary saying who restarted it; a server restart during a repair (R1)"""
 import json, os, shutil, socket, subprocess, sys, tempfile, threading, time, unittest, urllib.error, urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -552,6 +552,88 @@ class PhoneSeams(Base):
         s = summary.compose(ev, rows, now)
         self.assertEqual(s['title'], 'Yesterday: 2 things stopped working, and all work again')
         self.assertEqual(s['body'], 'You restarted Backups from the page, and it works now. Argus restarted Jellyfin as you allowed, and it works now. Nothing waits for you.')
+
+
+class RepairLostInARestart(Base):
+    """R7c R1: the server restarts while a repair runs (a deploy inside the 90 seconds). The repair's thread dies with it and its
+    outcome never arrives. The row then says what is known, never "Did not restart it": the restart was sent."""
+    def setUp(self):
+        super().setUp()
+        for x in (watch.PENDING, watch.FIXING, watch.ASKED): x.clear()
+        self.gate = threading.Event()
+
+    def held(self, **kw):
+        e = good_env(inside={'jellyfin': 'container-dead-shutdown'}, **kw)
+        def slow(sec): self.gate.wait(10); e.t += sec      # the 90-second look waits here until the "old process" is gone
+        e.sleep = slow; watch.JOIN = 0.3
+        return e
+
+    def restart_the_server(self):
+        t = watch.RUNNING.get('jellyfin'); self.assertIsNotNone(t, 'the repair is running')
+        self.gate.set(); t.join(10)                            # the old thread ends; its outcome is lost with the old process
+        watch.RESULTS.clear(); watch.PREV.clear()
+        for x in (watch.PENDING, watch.FIXING, watch.ASKED, watch.RUNNING, watch.SENT, watch.OUTCOMES, watch.INFLIGHT, watch.BY): x.clear()
+        watch.WAKE.clear(); watch.load_prev(); watch.LOOP[0] = True; watch.LAST_STEP[0] = 0.0
+
+    def test_r1_his_own_press(self):
+        self.checks(dict(JELLY, http=None)); e = self.held(); self.rounds(e, settle=90)
+        self.assertTrue(watch.ask_fix('jellyfin', now=e.t)[0]); t0 = e.t
+        watch.step(e, settle=90)
+        j = self.result('jellyfin'); self.assertEqual((j['fixing'], j['by']), (True, 'owner')); self.assertEqual(j['note'], '', 'while it runs: the page says "Restarting it now"')
+        self.restart_the_server()
+        want = f'You restarted Jellyfin and Audiobookshelf at {watch.clock(t0)}, but Argus himself was restarted before he could see whether it helped.'
+        j = self.result('jellyfin')
+        self.assertIs(j['works'], False); self.assertEqual(j['note'], want, 'before the first round after the start (saved rows)')
+        self.assertFalse(j['fixing']); self.assertFalse(j['queued'])
+        e.t += 30; watch.step(e, settle=0)
+        self.assertEqual(self.result('jellyfin')['note'], want, 'and after it, while it still does not work')
+        self.assertEqual(self.kinds(), ['needs-yes'], 'no event is made up for the lost try')
+        self.assertFalse(watch.ask_fix('jellyfin', now=t0 + 60)[0], 'the 2-minute rule holds across the restart')
+        e.inside['jellyfin'] = 'container-good'; e.t += 30; watch.step(e, settle=0)
+        self.assertEqual(self.kinds(), ['needs-yes', 'recovered'], 'when it works again, the usual recovered event')
+
+    def test_r1_his_own_repair(self):
+        self.checks(dict(JELLY, http=None)); self.autofix('jellyfin', trial=False)
+        e = self.held(); self.rounds(e, settle=90)
+        t0 = watch.PREV['jellyfin']['last_try']
+        self.assertEqual(self.result('jellyfin')['note'], '', 'while it runs: the page says "Restarting it now by himself"')
+        self.restart_the_server()
+        want = (f'Argus restarted Jellyfin and Audiobookshelf by himself at {watch.clock(t0)}, but was restarted himself before he could '
+                'see whether it helped. It waits for your yes.')
+        self.assertEqual(self.result('jellyfin')['note'], want)
+        n = len(e.restarts); e.t += 30; watch.step(e, settle=0)
+        self.assertEqual(self.result('jellyfin')['note'], want)
+        self.assertEqual(len(e.restarts), n, 'he does not try again by himself (once a day)')
+
+
+class ServerRestartDuringRepair(Routes):
+    """R7c R1 on a real server: the owner's restart is sent, then the server restarts during its 90-second look."""
+    def test_1_events_newest_first_and_capped(self): pass
+    def test_2_status_passes_count(self): pass
+    def test_3_each_task_says_whether_its_button_restarts(self): pass
+    def test_4_podman_is_called_with_events_off(self): pass
+    def test_5_fix_refusals(self): pass
+    def test_6_the_owner_fix_runs_once_and_works_again(self): pass
+
+    def test_9_the_block_says_his_restart_was_sent(self):
+        self.wait_for(lambda: self.row('jellyfin').get('works') is False)
+        self.assertEqual(self.post('api/watch/fix', {'id': 'jellyfin'})[0], 200)
+        self.wait_for(lambda: os.path.exists(os.path.join(self.fx, 'restarts.log')), 10)       # sent; the 90-second look begins
+        self.wait_for(lambda: self.row('jellyfin').get('fixing') is True, 10)
+        cls = type(self); cls.proc.terminate(); cls.proc.wait(10)
+        cls.proc = subprocess.Popen([sys.executable, os.path.join(R, 'server', 'argus_ui.py')], env=cls.env, stdout=cls.log, stderr=cls.log)
+        self.wait_for(lambda: self.state_or_none() and self.state_or_none()['watch_ready'] is True, 30)
+        j = self.row('jellyfin')
+        self.assertIs(j['works'], False); self.assertFalse(j['fixing']); self.assertFalse(j['queued'])
+        self.assertRegex(j['note'], r'^You restarted Jellyfin and Audiobookshelf at \d{1,2}:\d\d [AP]M, but Argus himself was restarted before he could see whether it helped\.$')
+        self.assertNotIn('Did not restart it', j['note']); self.assertNotIn('did not restart it', j['note'])
+        with open(self.events, encoding='utf-8') as f: mine = [json.loads(l) for l in f if '"jellyfin"' in l]
+        self.assertEqual([e['kind'] for e in mine], ['needs-yes'], 'no event is made up for the lost try')
+        code, d = self.post('api/watch/fix', {'id': 'jellyfin'}); self.assertEqual(code, 409); self.assertIn('Give it 2 minutes', d['msg'])
+
+    def state_or_none(self):
+        try: return self.get('api/state')[1]
+        except OSError: return None
 
 
 if __name__ == '__main__':

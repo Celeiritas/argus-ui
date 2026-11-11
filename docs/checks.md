@@ -90,6 +90,12 @@ A failed check that has a `fix` also says what Argus did about it (`note` in `wa
 | Self-repair may still act next round (the first round of *cannot read its drive*) | nothing yet |
 | You pressed the fix on the page and it did not help (4.40.0) | *You restarted the media player at 4:52 AM, and it did not help.* |
 | You pressed it and the restart command failed | *You asked for a restart of the media player at 4:52 AM, but the restart did not work.* |
+| The server restarted during your restart's 90-second look (a deploy), so its outcome never came (4.40.0) | *You restarted the media player at 4:52 AM, but Argus himself was restarted before he could see whether it helped.* |
+| The same during Argus's own repair | *Argus restarted the media player by himself at 4:52 AM, but was restarted himself before he could see whether it helped. It waits for your yes.* |
+
+While a restart runs, the note is empty: the page says *Restarting it now …* from the row's `fixing` / `queued`. The try is saved
+(`outcome` in watch.json) before its restart is sent, which is how a restart of the server in between is told apart from no restart
+at all; no event is written for such a lost try, and the next real change raises its usual event (`recovered` when it works again).
 
 A whole card then reads, for example, *Running, but not working: cannot read its drive. Argus did not restart it and waits for your yes.* A check without a `fix`, a drive that is missing (the drive's own card says it) and a test read that hangs keep their text as it is.
 

@@ -671,6 +671,7 @@ def owner_fix(c, seen, env, settle, restarted, now):
     if p.get('works') is not False and seen['works'] is False:       # not yet counted as broken: count it now, so no second event follows
         p.update(works=False, code=seen['code'], why=seen.get('why', ''), since=now, told=True); p.pop('pending', None); p.pop('again', None)
     p['decided'] = seen['code']          # self-repair does not restart it again right after you did
+    p['outcome'] = 'owner-sent'          # until its outcome arrives; a server restart before that loses the repair (card_note says so)
     save_prev()                          # the try and its time are on disk before anything is restarted
     reason = words(c, seen['code'], seen.get('why', ''))[0] if seen['works'] is False else 'it was not working'
     start_repair(c, seen, env, settle, restarted, fix_say(c), reason, c.get('url', ''), by='owner')
@@ -687,9 +688,15 @@ def card_note(c, r, p, auto):
     at = clock(p['owner_try']) if isinstance(p.get('owner_try'), (int, float)) else ''
     if o == 'owner-nohelp': return f'You restarted {say} at {at}, and it did not help.'
     if o == 'owner-cmdfail': return f'You asked for a restart of {say} at {at}, but the restart did not work.'
+    running = c['id'] in FIXING or c['id'] in RUNNING      # the page says "Restarting it now" from the row's fixing / queued
+    if o == 'owner-sent':                                  # sent, and its outcome never came: the server restarted during the 90 seconds
+        return '' if running else f'You restarted {say} at {at}, but Argus himself was restarted before he could see whether it helped.'
     if r['code'].startswith('drive-'): return ''
     if o == 'trial': return f'Argus would have restarted {say} by itself and did not, because for now it only notes what it would do.'
     if o == 'nohelp': return f'Argus restarted {say} once by itself, and it did not help. It waits for your yes.'
+    if o == 'tried':                                       # his own repair: saved before it starts, replaced when it ends
+        last = clock(p['last_try']) if isinstance(p.get('last_try'), (int, float)) else ''
+        return '' if running else f'Argus restarted {say} by himself at {last}, but was restarted himself before he could see whether it helped. It waits for your yes.'
     if o == 'cmdfail': return f'Argus tried to restart {say} by itself, but the restart did not work. It waits for your yes.'
     if o is None and c['id'] in auto and r['code'] in REPAIRABLE and p.get('decided') != r['code']: return ''
     return 'Argus did not restart it and waits for your yes.'
