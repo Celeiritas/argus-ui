@@ -7,8 +7,9 @@
   * the host rule: only known push services, never a look-alike, user-info, another port, http, an IP address or a redirect;
   * a fake push service on 127.0.0.1 inside this test: 201, 410 removes the device, 500 then 201 retried once, a timeout;
   * the sink's rules: kinds, owners only, 30 minutes, 6 an hour with the one folded message;
-  * the daily summary: its words for a calm day, a repaired thing, a waiting yes; once a day across a restart; the 4-hour
-    rule; off with ARGUS_SUMMARY=0;
+  * the daily summary: its words for a calm day, a repaired thing (by Argus or by the owner from the page), a waiting yes; once
+    a day across a restart; the 4-hour rule; off with ARGUS_SUMMARY=0;
+  * no buzz for what the owner's own press on the page caused in the last 2 minutes (4.40, `by` and `pressed`);
   * the routes on a real server: a learner gets 403, an untrusted request cannot turn alerts on or test, no answer holds an
     endpoint or a key, the files are mode 600 (Linux).
 Nothing leaves this machine: every message goes to the fake service. The `cryptography` package is needed; without it the
@@ -365,6 +366,18 @@ class Sink(unittest.TestCase):
         self.t[0] += 3601; push.gate.flush()
         self.assertEqual(json.loads(push.sender.jobs[-1]['raw'])['title'], '1 more thing happened. Open Elaia.')
 
+    def test_his_own_press_does_not_buzz_for_two_minutes(self):
+        did = add_device()[0]
+        mine = lambda ago: dict(self.ev('broke', 'media'), by='owner', pressed=datetime.fromtimestamp(time.time() - ago).astimezone().isoformat(timespec='seconds'))
+        push.sink(mine(95))
+        self.assertEqual(push.sender.jobs, [], 'his restart from the page did not help, 95 s after his press: the page says so, no buzz')
+        push.sink(dict(self.ev('broke', 'media'), by='argus'))
+        self.assertEqual(self.kinds_sent(), [('broke', did)], "Argus's own repair that did not help: it buzzes")
+        push.sink(mine(150))
+        self.assertEqual(len(push.sender.jobs), 1, 'later than 2 minutes it is an ordinary broke (here held by the 30 minutes)')
+        self.t[0] += 31 * 60; push.sink(mine(150))
+        self.assertEqual(len(push.sender.jobs), 2, 'and buzzes once the quiet time allows')
+
     def test_registered_through_notify(self):
         add_device(); push.start(push.role_of)
         try:
@@ -401,6 +414,19 @@ class Summary(unittest.TestCase):
         back = summary.compose([self.e('recovered', 'backup', 1), self.e('broke', 'backup', 2)], self.ROWS, self.NOW)
         self.assertEqual(back['title'], 'Yesterday: 1 thing stopped working, and it works again')
         self.assertEqual(back['body'], 'Backups came back by itself. Nothing waits for you.')
+
+    def test_a_restart_he_did_from_the_page(self):
+        mine = lambda kind, s, h: dict(self.e(kind, s, h), by='owner')
+        s = summary.compose([mine('fixed', 'media', 3), self.e('needs-yes', 'media', 4)], self.ROWS, self.NOW)
+        self.assertEqual(s['title'], 'Yesterday: 1 thing stopped working, you fixed it')
+        self.assertEqual(s['body'], 'You restarted Media player from the page, and it works now. Nothing waits for you.')
+        both = summary.compose([mine('fixed', 'media', 3), dict(self.e('fixed', 'backup', 3), by='argus'), self.e('needs-yes', 'media', 4),
+                                self.e('needs-yes', 'backup', 5)], self.ROWS, self.NOW)
+        self.assertEqual(both['title'], 'Yesterday: 2 things stopped working, and all work again')
+        self.assertEqual(both['body'], 'You restarted Media player from the page, and it works now. Argus restarted Backups as you allowed, '
+                                       'and it works now. Nothing waits for you.')
+        old = summary.compose([self.e('fixed', 'media', 3), self.e('needs-yes', 'media', 4)], self.ROWS, self.NOW)
+        self.assertIn('Argus restarted Media player as you allowed', old['body'], 'an event without `by` (before 4.40): Argus did it')
 
     def test_a_waiting_yes(self):
         rows = [dict(r, works=False) if r['id'] == 'media' else r for r in self.ROWS]
@@ -650,6 +676,22 @@ class LockScreenWords(unittest.TestCase):
             m = json.loads(push.message(notify.make('needs-yes', 'x', 'Backups is not running', 'Restarting it should fix it.')))
             self.assertEqual(m['title'], 'Needs your yes: Backups is not running', 'no name known: the watch title, never cut')
         finally: push.name_of = lambda s: ''
+
+
+class OwnPress(unittest.TestCase):
+    """4.40: an event his own press on the page caused (watch.py writes `by` and `pressed`) does not buzz for 2 minutes."""
+    def ev(self, **kw): return dict(notify.make('broke', 'media', 'Media player runs, but cannot read its drive', ''), **kw)
+
+    def test_the_rule(self):
+        t = 1_800_000_000.0
+        at = lambda s: datetime.fromtimestamp(s).astimezone().isoformat(timespec='seconds')
+        self.assertTrue(push.own_press(self.ev(by='owner', pressed=at(t - 100)), now=t))
+        self.assertTrue(push.own_press(self.ev(by='owner', pressed=at(t)), now=t + 119))
+        self.assertFalse(push.own_press(self.ev(by='owner', pressed=at(t)), now=t + 121), 'after 2 minutes: an ordinary event')
+        self.assertFalse(push.own_press(self.ev(by='argus', pressed=at(t)), now=t), 'only the owner\'s own press')
+        self.assertFalse(push.own_press(self.ev(), now=t), 'an event of 4.39 (no `by`)')
+        for bad in (None, '', 'yesterday', 5):
+            self.assertFalse(push.own_press(self.ev(by='owner', pressed=bad), now=t), repr(bad))
 
 
 @need

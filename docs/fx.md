@@ -20,6 +20,7 @@ A *target* is an element or a point `[x, y]` on the screen. Each call returns a 
 | `fx.burst(target, {colors, n, spread, size, shape, fall, ms})` | pieces fly out from a point and fade. `shape`: `dot`, `leaf`, `rock`, `spark` | a small "yes": a key idea you got (Mentor's olive leaves), a delivery that arrived |
 | `fx.motes(from, to, {color, n, ms, lift})` | a ribbon of glowing motes swirls along a lifted curve (after SoulSeed's heal swirl) | something moved from one place to another: a parcel to its shelf, a snapshot into its jar |
 | `fx.glint(element, {color})` | one sheen sweeps across the element | "this changed since you last looked" |
+| `fx.travel(element, from, {ms, lift, scale})` | the element, already where it ends, flies in once from a point (or element) along a lifted curve; one shot, never looped; reduced motion: it is just there | Argus's satellite eye leaving him for a broken block (docs/home.md) |
 | `fx.pieces(element, {colors, cols, rows, ms})` | the element's area breaks into chunks that fall away; the element stays | something was taken down or rolled back |
 | `fx.bolt(target)` | Zeus's bolt from the top of the screen, with a flash and sparks | Zeus acting: a deploy approved, a task run |
 

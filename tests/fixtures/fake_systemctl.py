@@ -15,11 +15,13 @@ elif cmd=='show':
     if not u.get('timer'): print('LoadState=not-found'); sys.exit()
     print('LoadState=loaded'); print('NextElapseUSecRealtime=Sun 2026-10-25 04:00:00 MDT' if u.get('timer_on') else 'NextElapseUSecRealtime='); print('ActiveState='+('active' if u.get('timer_on') else 'inactive'))
   else:
-    for k in ['Result','ActiveState','ExecMainExitTimestamp','ExecMainStartTimestamp','MemoryPeak','IOWriteBytes','Description']: print(f'{k}={u.get(k,"")}')
+    for k in ['Result','ActiveState','ExecMainExitTimestamp','ExecMainStartTimestamp','MemoryPeak','IOWriteBytes','Description','Type']: print(f'{k}={u.get(k,"")}')
 elif cmd=='is-enabled':
   base,kind=a[1].rsplit('.',1); u=U[base]; print('enabled' if u.get(kind+'_en') else 'disabled')
 elif cmd=='is-active':
   base,kind=a[1].rsplit('.',1); print(U[base].get('ActiveState','inactive'))
+elif cmd=='restart':      # written down, so a test can count the restarts (tests/watch_routes_test.py)
+  open(os.path.join(os.path.dirname(F),'restarts.log'),'a').write(' '.join(a[1:])+'\n')
 elif cmd in('stop','start','enable','disable'):
   for unit in a[1:]:
     base,kind=unit.rsplit('.',1); u=U[base]
