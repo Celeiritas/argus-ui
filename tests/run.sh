@@ -88,7 +88,7 @@ fi
 # real server; no browser. The Linux run reads the real /proc and says so ("real /proc lookup"); elsewhere it is simulated.
 if [ -z "$1" ] || [ "$1" = people ] || [ "$1" = plugins ]; then
   echo "== people and roles"
-  for t in identity_test gate_test; do       # the line saying which identity path ran, the summary; everything when it fails
+  for t in identity_test gate_test mentor_gate_test; do       # the line saying which identity path ran, the summary; everything when it fails
     st=0; out=$($PYTHON -W ignore::ResourceWarning "$R/tests/$t.py" 2>&1) || st=$?
     if [ $st = 0 ]; then grep -E "real /proc|identity path|^Ran|^OK|skipped" <<<"$out" || true; else echo "$out"; fail=1; fi
   done
