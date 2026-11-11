@@ -1,5 +1,8 @@
-"""End to end with the real Mentor plugin (plugins/mentor, its "roles" and its `who`): a learner reaches her own study routes
-and nothing else; the owner reaches everything (docs/people.md).
+"""End to end with the real Mentor plugin (plugins/mentor, its "roles" and its `who`), docs/people.md: a learner reaches her
+own study routes (every route Mentor declares for learners) and no other route; the owner sees every person in `learners` and
+may study as the learner in `today`; a stranger gets nothing; and when the people file that ARGUS_PEOPLE names goes away
+(the server keeps its last good copy and still calls her a learner), Mentor refuses her (503) and writes nothing into the
+owner's database (4.38, review R4b F1).
 
     python3 tests/mentor_gate_test.py -v        (tests/run.sh runs it under "== people and roles")
 
@@ -85,6 +88,26 @@ class MentorGate(unittest.TestCase):
         code, d = self.req('GET', 'api/mentor/learners', 'owner@example.com')
         self.assertEqual((code, d['me'], sorted(p['id'] for p in d['people'])), (200, 'owner-one', ['learner-two', 'owner-one']))
         self.assertEqual(self.req('GET', 'api/mentor/today?learner=learner-two', 'owner@example.com')[1]['learner']['id'], 'learner-two')
+
+    def test_zz_people_file_gone_learner_refused(self):
+        """Runs last (it moves the people file away and back). R4b F1 through the real server and identity path."""
+        L = 'learner@example.com'
+        self.assertEqual(self.req('GET', 'api/mentor/today', L)[1]['learner']['id'], 'learner-two')
+        self.req('GET', 'api/mentor/today', 'owner@example.com')        # mentor.db is bound to the owner
+        import contextlib, sqlite3
+        db = os.path.join(SHARE, 'mentor.db')
+        def count():
+            with contextlib.closing(sqlite3.connect(db)) as c: return c.execute("SELECT COUNT(*) FROM attempts").fetchone()[0]
+        before = count()
+        aside = PEOPLE + '.set-aside'; os.replace(PEOPLE, aside)
+        try:
+            code, d = self.req('GET', 'api/mentor/next', L)
+            self.assertEqual(code, 503, f'the file is gone: she is refused, never made the owner ({d})')
+            self.assertNotIn(HOME, json.dumps(d), 'no path of the server in what she reads')
+            code, d = self.req('POST', 'api/mentor/answer', L, {'card': 'ai-coding:x', 'text': 'an answer'})
+            self.assertIn(code, (403, 503), f'her answer is not taken ({code} {d})')
+            self.assertEqual(count(), before, "nothing was written into the owner's database")
+        finally: os.replace(aside, PEOPLE)
 
     def test_stranger_gets_nothing(self):
         for verb, path in (('GET', 'api/mentor/today'), ('POST', 'api/mentor/answer'), ('GET', 'api/mentor/status')):

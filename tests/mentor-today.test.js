@@ -103,7 +103,12 @@ run(async b => {
     for (let i = 0; i < 6; i++) { const {card} = await api(p, 'next?session=1&' + L); if (!card) break;
       const a = await api(p, 'answer', {learner: 'learner-two', card: card.id, text: '', think: true}); await api(p, 'rate', {learner: 'learner-two', attempt: a.attempt, rating: 3}); }
     await p.goto(BASE + 'mentor'); await p.waitForTimeout(900);
-    check(/All done for today\./.test(await p.locator('.go').textContent()) && /Next: /.test(await p.locator('#golist').textContent()), 'all done: it says so, with when the next card comes: ' + (await p.locator('.go').textContent()).replace(/\s+/g, ' ').trim());
+    check(/All done for now\./.test(await p.locator('.go').textContent()) && /later today/.test(await p.locator('#golist').textContent()) && /Next: /.test(await p.locator('#golist').textContent()),
+      'all done while cards come back later today: "All done for now.", with when the next card comes: ' + (await p.locator('.go').textContent()).replace(/\s+/g, ' ').trim());
+    await p.route('**/api/mentor/today*', async r => { const res = await r.fetch(); const j = await res.json(); j.later = 0; r.fulfill({json: j}); });   // nothing more due today
+    await p.goto(BASE + 'mentor'); await p.waitForTimeout(900);
+    check(/All done for today\./.test(await p.locator('.go h2').textContent()), 'nothing more due today: "All done for today."');
+    await p.unroute('**/api/mentor/today*'); await p.goto(BASE + 'mentor'); await p.waitForTimeout(900);
     check(await p.locator('#mpanel .primary').count() === 0 && await p.locator('#go10').count() === 0, 'and the big primary button goes away');
     check(/started/.test(await p.locator('.tcard small').textContent()) && !/learned/.test(await p.locator('#mpanel').textContent()), 'a card answered once is "started", not "learned"');
     await shot(p, 'mentor-all-done-412');
@@ -126,6 +131,12 @@ run(async b => {
     check((await api(lp, 'learners')).people.map(x => x.id).join() === 'learner-two' && (await api(lp, 'today?learner=owner-one')).learner.id === 'learner-two',
       "with her own login she is always herself: learner=owner-one is ignored");
     check(await lp.locator('#toToday2').count() === 1, 'her empty Lessons view points to Today');
+    // while Mentor refuses her (the list of people cannot be read; tests/mentor_people_test.py makes the real case), the page
+    // shows Mentor's own sentence, not the shell's "didn't load"
+    const rf = await page(b, 412, 915, LEARNER);
+    await rf.route('**/api/mentor/learners*', r => r.fulfill({status: 503, json: {ok: false, msg: 'The list of people cannot be read right now. Ask the owner.'}}));
+    await rf.goto(BASE + 'mentor'); await rf.waitForTimeout(1000);
+    check(/The list of people cannot be read right now\. Ask the owner\./.test(await rf.locator('#mrefused').textContent()) && rf.errors.length === 0, "a refusal shows Mentor's sentence");
     check(await lp.locator('ol.steps').count() === 0 && !/mentor_inbox|Claude Code|adding a lesson/.test(await lp.locator('details.about').textContent()), "a learner never sees the owner's steps for adding a lesson");
     await shot(lp, 'mentor-learner-lessons-412');
 

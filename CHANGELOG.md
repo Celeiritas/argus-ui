@@ -11,9 +11,11 @@
   - A self-rated answer stores coverage 0.0, never empty, so a rollback to an older Mentor still reads every count.
   - A learner's lesson folder is read again under her database's lock: no lost ratings when a file changes while she studies.
   - `mentor.db` belongs to a person id stored in it, not to the order of lines in the people file. A second owner gets her own database; a renamed owner id is logged and handed over.
-  - The role comes from the people file, never from what the server says alone. The people file fails closed in every case the server's own reader refuses: no name, an unknown role, an id used twice, or logins that are not a list.
+  - The role comes from the people file, never from what the server says alone. The people file is refused as a whole when an entry has no name, an unknown role, an id used twice or logins that are not a list, and when it is nested too deeply. A file that `ARGUS_PEOPLE` names but that is gone, or a dead link, counts as unusable, not as "no file" (the path is read as the server reads it). While it is unusable, a learner is refused with a sentence that names no path, and only the person `mentor.db` belongs to may open it. Mentor never decides by itself that someone is the owner. The server alone refuses a few more cases (one login twice, no owner with a login); the smaller role still counts.
+  - `mentor.db` goes to another owner only when exactly one owner is in the file. A learner's `stats` carries no folder name.
+  - While Mentor refuses someone (the list of people cannot be read), the page shows that sentence instead of a page that did not load.
   - **Teach me first** counts as help: at most *Hard* is suggested, and a drill does not move up a level.
-  - When everything is done, Today says *All done for today. Next: ...*, with no big button; **Study a little more** brings cards forward.
+  - When everything is done, Today says *All done for now.* while a card comes back later today, else *All done for today.*, with when the next card comes and no big button; **Study a little more** brings cards forward.
   - A card answered once is *started*, not *learned*.
   - "Who is studying?" and the open shelf sit on cards.
   - A learner never sees the owner's steps for adding a lesson; the owner sees the person's real folder.

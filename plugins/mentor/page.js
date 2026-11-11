@@ -95,6 +95,12 @@
   async function show(el, api) {
     ROOT = el; API = api; FX = api && api.fx || null; ARGUS = api && api.argus || null;                     // called once; there is no refresh(), so Mentor keeps its own state
     try { M.people = await get('learners'); } catch (e) { M.people = null; }
+    // Mentor refuses this person right now (the list of people cannot be read): say its own sentence, nothing else (4.38)
+    if (M.people && M.people.ok === false) {
+      ROOT.innerHTML = `<section class="persona practice mentor" aria-label="Mentor"><div class="panel done" role="status"><p class="kicker">Not available right now</p>
+        <p class="coach" id="mrefused">${esc(M.people.msg || 'Mentor cannot open your lessons right now.')}</p></div></section>`;
+      return;
+    }
     if (M.people && M.learner && (M.people.role !== 'owner' || !M.people.people.some(x => x.id === M.learner))) { M.learner = null; save('mentor-learner', null); }
     const [{decks}, s] = await Promise.all([get('decks'), get('stats')]);
     M.decks = decks; M.stats = s; M.modules = s.modules || [];
@@ -680,13 +686,13 @@
           ${x.shelved ? `<button type="button" data-unshelve="${esc(x.id)}">Take off the shelf<span class="sr">: ${esc(x.name)}</span></button>` : `<button type="button" data-shelve="${esc(x.id)}">Shelve<span class="sr"> ${esc(x.name)}</span></button>`}
           <button type="button" data-preview="${esc(x.id)}" aria-expanded="false" aria-controls="pv-${esc(x.id)}">Preview<span class="sr"> ${esc(x.name)}</span></button></div>
         <div class="pview" id="pv-${esc(x.id)}" hidden></div></li>`;
-    // everything done today (4.38): say so, with the next date, and no big button; "Study a little more" really asks for
+    // everything done (4.38): "for now" while a card comes back later today, "for today" when nothing more is due today; "Study a little more" really asks for
     // the next cards early (next?extra=1), so it is offered only when some card is scheduled
     const go = waiting ? `<section class="go" aria-labelledby="go-h"><h2 id="go-h" class="sr">Study now</h2>
         <button type="button" class="primary gobtn" id="go10">Study ${t.minutes} minutes</button>
         <p class="meta" id="golist">${esc(waiting)}${pins.length ? ', from your pinned tracks first' : ''}</p>
         ${pins.length ? '' : `<p class="help">Nothing is pinned yet, so a session mixes every track that is not on the shelf, with ${plural(t.new_left, 'new card')} at most today. Pin up to ${t.pin_max} tracks under Shelf to choose what you study.</p>`}</section>`
-      : `<section class="go done" aria-labelledby="go-h"><h2 id="go-h" class="lesson-title">All done for today.</h2>
+      : `<section class="go done" aria-labelledby="go-h"><h2 id="go-h" class="lesson-title">${t.later ? 'All done for now.' : 'All done for today.'}</h2>
         <p class="meta" id="golist">${t.later ? `${plural(t.later, 'card')} come${t.later === 1 ? 's' : ''} back later today. ` : ''}${t.next_due ? `Next: ${esc(when(t.next_due))}.` : 'Nothing is scheduled to come back yet.'}</p>
         ${t.next_due ? `<button type="button" id="goMore" aria-describedby="morehelp">Study a little more</button><p class="help" id="morehelp">Brings the next cards forward instead of waiting for them.</p>` : ''}</section>`;
     $('#mpanel').innerHTML = `<div class="today enter">

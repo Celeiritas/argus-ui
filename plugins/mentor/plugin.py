@@ -22,7 +22,9 @@ PENDING = set()                       # (database path, attempt) whose AI part i
 class Book:
     """One person's database and its lock. One request at a time on one SQLite connection: two at once (the page asks for
     decks and stats together) could read each other's rows. Every call is a few milliseconds, so nobody waits noticeably.
-    Two people's requests never wait for each other. Everything that touches .db holds .lock, the reload of a learner's
+    Two people wait on each other only for milliseconds (holder() reads mentor.db under the owner's lock on every request,
+    and the server runs one POST at a time); the local model is awaited outside every lock. Everything that touches .db
+    holds .lock, the reload of a learner's
     lesson folder included (it writes cards)."""
     def __init__(self, path, dirs, inbox, reload=False):
         self.path, self.dirs, self.lock, self.sig, self.reload = path, dirs, threading.Lock(), None, reload
@@ -74,21 +76,33 @@ def fresh(b):
 
 def holder():
     """Whose history mentor.db is (4.38): the person id stored in mentor.db itself, so the order of lines in the people file
-    never decides it. The first open under a people file stores the first owner; if the stored id has left the file, the
-    first owner takes mentor.db over, the stored id is updated and one line is logged. None without a people file (the
-    one person there is, the owner, has mentor.db, as before people)."""
+    never decides it. The first open under a people file stores the first owner. If the stored id has left the file and
+    exactly one owner is in it, that owner takes mentor.db over (the stored id is updated, one line logged); with two
+    owners or more it stays with its stored id and nobody gets it until an owner fixes the file (one line logged; R4b
+    S-a). None without a people file (the one person there is, the owner, has mentor.db, as before people)."""
     ps, problem = learners.people()
     if not learners.from_file(): return None
     ob = book_for(None)
     with ob.lock:
         stored, first = mentor.meta(ob.db, 'person'), learners.owner_id()
         if stored in {p['id'] for p in ps}: return stored
+        owners = [p['id'] for p in ps if p['role'] == 'owner']
+        if stored and len(owners) != 1:
+            learners.log_once(f'mentor.db belongs to "{stored}", who is not in {learners.FILE}; with {len(owners)} owners it goes to '
+                              f'nobody until the file names "{stored}" again (or keeps one owner)')
+            return stored
         if stored: learners.log_once(f'mentor.db belonged to "{stored}", who is no longer in {learners.FILE}; it is now "{first}"\'s')
         mentor.set_meta(ob.db, 'person', first)
         return first
 
+def stored():
+    """The person id written in mentor.db (None before any people file was read), never changed here."""
+    ob = book_for(None)
+    with ob.lock: return mentor.meta(ob.db, 'person')
+
 def studying(who, requested, write=False):
-    return learners.studying(who, requested, write=write, holder=holder())
+    h = holder()
+    return learners.studying(who, requested, write=write, holder=h, stored=h or stored())
 
 def plural(n, one, many=None):
     return f'{n} {one if n == 1 else (many or one + "s")}'
@@ -117,7 +131,8 @@ def deck_names(b):
 
 def get(path, query, ctx, who=None):
     try:
-        if path == 'learners': return 200, learners.listing(who, holder())
+        if path == 'learners':
+            h = holder(); return 200, learners.listing(who, h, h or stored())
         person = studying(who, (query.get('learner') or [None])[0])
     except learners.Refused as e: return refused(e)
     if path == 'ai' and not query.get('attempt'):          # may ask the model server: outside the lock
@@ -170,7 +185,7 @@ def _get(b, person, path, query):
         return 200, {'card': card, 'next_due': next_due, 'locked': None if card else mentor.locked_reason(db, deck)}
     if path == 'stats':          # a learner's own lesson folder, for the owner's "adding a lesson" line (never shown to a learner)
         r = mentor.stats(db, deck)
-        if b.reload: r['deck_folder'] = b.dirs[0].replace(os.path.expanduser('~'), '~', 1).replace('\\', '/')
+        if b.reload and person['my_role'] == 'owner': r['deck_folder'] = learners.shown(b.dirs[0])
         return 200, r
     if path == 'today': return 200, {**mentor.today(db, deck_names(b)), 'learner': {k: person[k] for k in ('id', 'name', 'role')}}
     if path == 'track':                          # Preview: one track's size, history and a few questions; nothing is scheduled

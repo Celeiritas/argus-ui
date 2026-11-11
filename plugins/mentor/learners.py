@@ -13,8 +13,14 @@ Standard library only; the file is read again when it changes.
 """
 import json, os, re, sys
 
-FILE = os.path.expanduser(os.environ.get('ARGUS_PEOPLE', '~/.config/argus-ui/people.json'))
+# the path exactly as the server reads it (server/argus_ui.py): ARGUS_PEOPLE when set and not empty, else the default.
+# When ARGUS_PEOPLE names a file, that file must be there: missing, it is unusable (the server keeps its last good copy
+# and still names people), never "no people file". A link whose target is gone is unusable the same way (4.38, R4b F1).
+FILE = os.path.expanduser(os.environ.get('ARGUS_PEOPLE') or '~/.config/argus-ui/people.json')
+MUST_EXIST = bool(os.environ.get('ARGUS_PEOPLE'))
 YOU = {'id': 'owner', 'name': 'You', 'role': 'owner'}
+# what a learner reads when the people file cannot be used: never a path on the server (4.38, R4b S-b)
+GENERAL = 'The list of people cannot be read right now. Ask the owner.'
 _cache = [None, None]               # (mtime, size) when last read, and (people, problem)
 _told = set()
 
@@ -26,6 +32,11 @@ class Refused(Exception):
 def ident(s):
     """A person's id: lower case, letters a-z and digits kept, every run of anything else one "-" (safe in a file name)."""
     return re.sub(r'[^a-z0-9]+', '-', str(s or '').lower()).strip('-')[:40]
+
+def shown(path, home=None):
+    """A path as a sentence may name it: ~/... under the home folder (the server's identity.shown())."""
+    home, path = os.path.normpath(home or os.path.expanduser('~')), os.path.normpath(path)
+    return '~' + path[len(home):].replace(os.sep, '/') if home and path.startswith(home + os.sep) else path
 
 def log_once(msg):
     if msg not in _told:
@@ -53,10 +64,12 @@ def _read():
         if not any(p['role'] == 'owner' for p in out): raise ValueError('it names no owner')
         return out, ''
     except FileNotFoundError:
-        return [dict(YOU, logins=[])], ''
-    except (OSError, ValueError, TypeError) as e:
-        log_once(f'{FILE}: {e} (read as "no file"; changes are refused until it is fixed)')
-        return [dict(YOU, logins=[])], f'{FILE} cannot be read ({e}). Fix it on the server, then try again.'
+        if not MUST_EXIST and not os.path.islink(FILE): return [dict(YOU, logins=[])], ''      # truly no people file
+        e = 'it is not there' + (' (a link whose target is gone)' if os.path.islink(FILE) else '')
+    except RecursionError: e = 'it is nested too deeply'      # as the server's reader: unusable, not an error for everyone
+    except (OSError, ValueError, TypeError) as x: e = str(x)
+    log_once(f'{FILE}: {e} (read as "no file"; changes are refused until it is fixed)')
+    return [dict(YOU, logins=[])], f'{shown(FILE)} cannot be read ({e}). Fix it on the server, then try again.'
 
 def people():
     """Every person, and the problem with the file ('' when it is fine or absent). Read again when the file changes."""
@@ -71,31 +84,33 @@ def owner_id():
 
 def from_file():
     """True when a people file was read; False with no file or a file that cannot be read (one person: the owner)."""
-    return os.path.isfile(FILE) and not people()[1]
+    return not people()[1] and os.path.isfile(FILE)
 
 def find(pid):
     return next((p for p in people()[0] if p['id'] == pid), None)
 
-def studying(who, requested=None, write=False, holder=None):
+def studying(who, requested=None, write=False, holder=None, stored=None):
     """The person whose lessons and progress this request reads or writes: {id, name, role, owner_db}. A learner is always
     themself; an owner (or a request the server told nothing about: who is None) may name anyone with `requested`.
     holder: whose history mentor.db is (plugin.holder(); None = the first owner, or the one person when there is no file).
     The role comes from the people file Mentor reads itself, never from `who` alone: a person the file does not know is
     refused, and the smaller of the two roles counts (4.38). With no people file every `who` but role none is the owner.
-    Raises Refused: 403 for nobody (role none) or a stranger, 404 for an id that is not in the file, 503 for a write while
-    the file is broken."""
+    Mentor never decides by itself that someone is the owner (4.38, R4b F1): when the server names a person and Mentor has
+    no usable people file (missing where ARGUS_PEOPLE points, a dead link, unreadable), a learner is refused, and an owner
+    is let in only as the person mentor.db belongs to (`stored`, the id written in it); anybody else is refused too.
+    Raises Refused: 403 for nobody (role none) or a stranger, 404 for an id that is not in the file, 503 while the file
+    cannot be used (a learner reads a general sentence, never a path)."""
     ps, problem = people()
-    if write and problem: raise Refused(503, problem)
-    first = holder if holder and find(holder) else owner_id()
-    if who is None: me = find(first)                                  # not told: the owner, as before people existed
+    role = who.get('role') if isinstance(who, dict) else None
+    if who is not None and role not in ('owner', 'learner'): raise Refused(403, 'Mentor is only for the people in the people file. Ask the owner to add you.')
+    if problem and (role == 'learner' or write): raise Refused(503, GENERAL if role == 'learner' else problem)
+    first = holder or owner_id()        # whose mentor.db is; nobody's while that id is not in the file (two owners, plugin.holder())
+    if who is None: me = find(first) or find(owner_id())              # not told: the owner, as before people existed
     else:
-        role = who.get('role') if isinstance(who, dict) else None
-        if role not in ('owner', 'learner'): raise Refused(403, 'Mentor is only for the people in the people file. Ask the owner to add you.')
         if not from_file():
-            # no people file: everybody let in is the one person, the owner. A people file that cannot be read fails closed
-            # for anyone the server calls a learner (it cannot tell whose lessons are hers)
-            if role == 'learner' and os.path.isfile(FILE): raise Refused(503, problem or f'{FILE} cannot be read. Ask the owner to fix it.')
-            me = find(first)
+            if role == 'learner': raise Refused(503, GENERAL)          # the server has people, Mentor cannot read them
+            if problem and (not stored or ident(who.get('person')) != stored): raise Refused(503, problem)
+            me = find(first)            # no people file: the one person, the owner; or, while it is unusable, mentor.db's own
         else:
             me = find(ident(who.get('person')))
             if me is None: raise Refused(403, 'Mentor does not know you yet. Ask the owner to add you to the people file.')
@@ -107,9 +122,9 @@ def studying(who, requested=None, write=False, holder=None):
     else: p = me
     return {'id': p['id'], 'name': p['name'], 'role': p['role'], 'owner_db': p['id'] == first, 'me': me['id'], 'my_role': me['role']}
 
-def listing(who, holder=None):
+def listing(who, holder=None, stored=None):
     """GET api/mentor/learners: {me, role, people: [{id, name, role}]}; a learner sees only their own entry."""
-    me = studying(who, holder=holder)
+    me = studying(who, holder=holder, stored=stored)
     ps, problem = people()
     rows = [{'id': p['id'], 'name': p['name'], 'role': p['role']} for p in ps]
     if me['my_role'] == 'learner': rows = [r for r in rows if r['id'] == me['me']]
