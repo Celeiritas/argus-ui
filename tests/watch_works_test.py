@@ -70,7 +70,8 @@ class Base(unittest.TestCase):
         watch.STATEFILE = os.path.join(self.tmp, 'watch.json')
         os.environ['ARGUS_EVENTS'] = os.path.join(self.tmp, 'events.jsonl')
         watch.RESULTS.clear(); watch.PREV.clear(); watch.BAD.clear(); watch._AUTOFIX_SAID[0] = None
-        for x in (watch.PENDING, watch.FIXING, watch.ASKED, watch.RUNNING, watch.SENT, watch.OUTCOMES, watch.INFLIGHT): x.clear()
+        for x in (watch.PENDING, watch.FIXING, watch.ASKED, watch.RUNNING, watch.SENT, watch.OUTCOMES, watch.INFLIGHT, watch.BY): x.clear()
+        watch.LOOP[0] = False
         watch.WAKE.clear()
         self.events = []; notify.SINKS[:] = [self.events.append]
     def tearDown(self):

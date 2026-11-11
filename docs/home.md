@@ -91,11 +91,14 @@ the groups) and as a **row** on Today, with three plain lines:
 1. **What is wrong and since when**, with whose it is: *Jellyfin runs, but cannot read its drive* · *Mnemosyne · Watch · since 4:50 AM*
 2. **Argus:** what he did, or would have done (the check's `note`, docs/checks.md), without repeating his name: *Did not restart it
    and waits for your yes.* A program whose drive is gone: *Waits for the drive: a restart would not help until it is back.* Queued:
-   *Restarts it in a moment, as you asked*; once the restart is really sent: *Restarting it now, as you asked. Looks again for up to
+   *Your restart is being sent.* (his own: *His restart is being sent, as you allowed.*); once it is really sent: *Restarting it now,
+   as you asked* (his own repair: *Restarting it now by himself, as you allowed*)*. Looks again for up to
    90 seconds and tells you if it helped.* When Argus could not look again: one more line, *Argus has not been able to look again
    since 5:52 AM.*
 3. **You:** what you can do: *Hold the button to restart Jellyfin once. Argus looks again for up to 90 seconds and tells you if it
    helped.* A drive that is gone says to plug it in again; a failed task says to read its log and press Run.
+
+The trial day's note reads *Today he only notes what he would do: he would have restarted Jellyfin.*
 
 **A drive that is gone comes first**: its block is the first (the eye goes to the cause), and the programs whose only problem is
 that drive (and a second check of the same drive) are one line under it, *Also waiting for this drive: Jellyfin, Audiobookshelf*, in place of a block each, on Watch and
@@ -132,13 +135,20 @@ the broken card and glares at it. On Watch (owner only), `satellite` in `web/js/
   broken things, not only the first; when the set grows, the eye pulses once more where it stands (no travel) and the sentence
   says the new one with the count (*Extra is running but not working. Now 3 things need a look.*); when one leaves and others
   remain, the sentence says the new count, without a pulse. Reduced motion: the words only.
-- **Out of view**: when the block is scrolled away, an edge marker appears (top right; above the bottom bar if the block is below): the pill *Look* with an arrow for 5 seconds after it appears or after the set of trouble changes, then an arrow-only round button of 44 px with the same name (*Scroll to what needs a look*), so it does not rest on a control. A tap scrolls back to the block. Reduced motion: it changes without a transition.
+- **Out of view**: when the block is scrolled away, an edge marker appears on the right edge (from the top; from the bottom bar up if
+  the block is below): the pill *Look* with an arrow for 5 seconds after it appears or after the set of trouble changes, then an
+  arrow-only round button of 44 px with the same name (*Scroll to what needs a look*). **It never rests on a control**: after every
+  scroll and resize it takes the first spot down that edge where it touches no button, link or other control (4 px clear); where
+  there is none, it waits out of sight until there is. Checked by a scroll sweep at 360 and 412 px (0 % of every control covered). A
+  tap scrolls back to the block. Reduced motion: it changes without a transition.
 - **His other eyes look at that block, not at the pointer**, while anything is red (`look.fix`). Carrying a bolt and holding a
   button still come first.
 - **Said once**: the eye is `aria-hidden`; one polite live sentence says the same, once per change (*Jellyfin is running but not
   working, and 1 more thing needs a look.*). When the trouble ends the eye flies home and the sentence says *All is well again:
-  nothing on Watch needs a look.* **Only when Argus could look at everything**: while a broken check's round was unknown (podman
-  could not look inside) or its result is stale, the server keeps it broken (docs/checks.md), and the page never says all is well,
-  never turns the alarm off and never sends the eye home while any check is unknown, stale or seen once only.
+  nothing on Watch needs a look.* **Not across a restart of the server**: until the server's first round after a start has finished
+  (`watch_ready: false`), it serves the saved verdicts (a known breakage stays broken) and the page does not say all is well or send
+  the eye home. A check that cannot be looked into while nothing is broken does not keep Argus red: the server itself keeps a known
+  breakage broken through unknown and stale rounds (docs/checks.md), so a real recovery calms him, his badge goes and his name says
+  all is well.
 - **Reduced motion**: no travel and no pulse; the eye is simply at the block.
 - A learner never sees any of it (no Watch, no eye, no fix buttons, no rows about the owner's programs).

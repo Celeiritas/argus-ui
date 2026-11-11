@@ -5,7 +5,7 @@
   * the owner's yes: ask_fix() refuses in plain words, or queues exactly the declared fix, which the loop runs through repair()
   * api/events (newest first, at most 100), api/watch/fix (refusals and one real fix), api/<id>/status passing `count`,
     `restarts` on each task, and podman called with --events-backend=none (a real server in its own process)."""
-import json, os, shutil, socket, subprocess, sys, tempfile, time, unittest, urllib.error, urllib.request
+import json, os, shutil, socket, subprocess, sys, tempfile, threading, time, unittest, urllib.error, urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from watch_works_test import Base, FakeEnv, JELLY, ABS, QBT, DRIVE, GOOD, good_env, put, jload, jdump, R, FX, WFX
@@ -94,10 +94,10 @@ class OwnerYes(Base):
         e = self.broken()
         self.autofix('jellyfin', trial=False)                    # even with self-repair on, it does not restart again right after you
         self.assertTrue(watch.ask_fix('jellyfin', now=e.t)[0])
-        watch.step(e, settle=6)
+        t0 = e.t; watch.step(e, settle=6)                       # the restart is sent at t0; the 6 s look comes after it
         self.assertEqual(e.restarts, ['jellyfin', 'audiobookshelf'])
         self.assertEqual(self.kinds(), ['needs-yes', 'broke'])
-        at = watch.clock(e.t)
+        at = watch.clock(t0)
         self.assertRegex(at, r'^\d{1,2}:\d\d [AP]M$', 'a time as the page writes it')
         self.assertIn(f'You restarted Jellyfin and Audiobookshelf at {at}, and it did not help.', self.events[-1]['body'])
         j = self.result('jellyfin'); self.assertIs(j['works'], False)
@@ -158,6 +158,41 @@ class KnownBrokenStays(Base):
         self.assertIsNone(d['works']); self.assertEqual(d['code'], 'stale')
 
 
+class AfterAStart(Base):
+    """W3 N1: between a server start and the end of its first round, state() shows the saved verdicts, never an empty list."""
+    def test_a_known_breakage_is_there_before_the_first_round(self):
+        self.checks(JELLY, DRIVE)
+        watch.PREV.update({'jellyfin': {'works': False, 'code': 'dead-copy', 'since': time.time() - 600, 'looked': time.time() - 70}})
+        watch.LOOP[0] = True; watch.LAST_STEP[0] = 0.0
+        rows = {r['id']: r for r in watch.snapshot()}
+        j = rows['jellyfin']
+        self.assertIs(j['works'], False); self.assertEqual(j['reason'], 'cannot read its drive')
+        self.assertRegex(j['unsure'], r'^Argus has not been able to look again since \d{1,2}:\d\d [AP]M\.$')
+        self.assertIsNone(rows['media-drive']['works'], 'nothing known about it yet: unknown, not trouble')
+        self.assertFalse(watch.ready())
+
+    def test_without_the_loop_there_are_no_rows(self):
+        self.checks(JELLY); watch.LOOP[0] = False; watch.LAST_STEP[0] = 0.0
+        self.assertEqual(watch.snapshot(), [])
+
+
+class SelfRepairShows(Base):
+    """W3 N3: while Argus's own repair runs, its row is the confirmed failure, says it restarts, and says who (him)."""
+    def test_his_own_repair_is_published_as_a_failure_being_fixed_by_him(self):
+        self.checks(JELLY); self.autofix('jellyfin', trial=False)
+        gate = threading.Event(); e = good_env(inside={'jellyfin': 'container-dead-shutdown'})
+        def slow(sec): gate.wait(5); e.t += sec
+        e.sleep = slow; watch.JOIN = 0.3
+        self.rounds(e, settle=30)                                 # round 2 confirms the failure and starts his repair
+        t = watch.RUNNING.get('jellyfin'); self.assertIsNotNone(t, 'his repair runs in its thread')
+        j = self.result('jellyfin')
+        self.assertIs(j['works'], False, 'the confirmed failure, not the pending row of the round before')
+        self.assertEqual((j['fixing'], j['by']), (True, 'argus'))
+        gate.set(); t.join(5); watch.step(e, settle=0)
+        self.assertEqual(self.result('jellyfin')['by'], '')
+        self.assertEqual(e.restarts, ['jellyfin', 'audiobookshelf'])
+
+
 class DriveGone(Base):
     """W2 point 4: a program whose drive is gone is not promised a fix; its event is true on a lock screen."""
     def test_no_yes_is_asked_and_no_restart_promised(self):
@@ -213,7 +248,7 @@ class Routes(unittest.TestCase):
                           dict(QBT, container=dict(QBT['container'], runtime=pod), http=None, unit=None)]}, os.path.join(t, 'checks.json'))
         with socket.socket() as s: s.bind(('127.0.0.1', 0)); cls.port = s.getsockname()[1]
         env = server_env(t, cls.port); env['ARGUS_SYSTEMCTL'] = sysctl
-        cls.events = env['ARGUS_EVENTS']; cls.fx = fx
+        cls.events = env['ARGUS_EVENTS']; cls.fx = fx; cls.env = env
         cls.log = open(os.path.join(t, 'server.log'), 'w')
         cls.proc = subprocess.Popen([sys.executable, os.path.join(R, 'server', 'argus_ui.py')], env=env, stdout=cls.log, stderr=cls.log)
         for _ in range(150):
@@ -355,6 +390,34 @@ class TwoFixes(Routes):
         # the drive check's last real look keeps moving while both repairs above are still waiting (they do not heal here)
         a = self.row('media-drive').get('looked'); time.sleep(3.5); b = self.row('media-drive').get('looked')
         self.assertTrue(a and b and b > a, f'looked {a} -> {b}')
+
+
+class ServerRestart(Routes):
+    """W3 N1 on a real server: Jellyfin is broken, the server starts again with a slow first round (3 s per podman call). Its very
+    first answer already shows Jellyfin broken (from watch.json), and says the first round has not finished."""
+    def test_1_events_newest_first_and_capped(self): pass
+    def test_2_status_passes_count(self): pass
+    def test_3_each_task_says_whether_its_button_restarts(self): pass
+    def test_4_podman_is_called_with_events_off(self): pass
+    def test_5_fix_refusals(self): pass
+    def test_6_the_owner_fix_runs_once_and_works_again(self): pass
+
+    def test_9_a_restart_never_shows_an_empty_watch(self):
+        self.wait_for(lambda: self.row('jellyfin').get('works') is False)
+        time.sleep(1.5)                                           # one more round, so watch.json holds it
+        cls = type(self); cls.proc.terminate(); cls.proc.wait(10)
+        cls.proc = subprocess.Popen([sys.executable, os.path.join(R, 'server', 'argus_ui.py')], env=dict(cls.env, FAKE_PODMAN_DELAY='3'), stdout=cls.log, stderr=cls.log)
+        first = None
+        for _ in range(150):
+            try: first = self.get('api/state')[1]; break
+            except OSError: time.sleep(.1)
+        self.assertIsNotNone(first, 'the server came back')
+        self.assertIs(first['watch_ready'], False, 'its first round has not finished')
+        j = {w['id']: w for w in first['watch']}.get('jellyfin', {})
+        self.assertIs(j.get('works'), False, f'Jellyfin is still shown broken, not missing: {first["watch"]}')
+        self.assertTrue(j.get('unsure'))
+        self.wait_for(lambda: self.get('api/state')[1]['watch_ready'] is True, 30)
+        self.assertIs(self.row('jellyfin')['works'], False)
 
 
 if __name__ == '__main__':

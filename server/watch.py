@@ -320,6 +320,7 @@ _lock = threading.Lock()
 RESULTS = {}        # id -> public result (what state() shows)
 PREV = {}           # id -> {works, code, since, told, pending, streak, decided, outcome, last_try, last_try_trial, between, hold}: saved
 LAST_STEP = [0.0]
+LOOP = [False]      # the loop was started (start()); without it there are no rows at all, as before
 BAD = {}            # refused check -> why, logged once
 STOP = threading.Event()
 WAKE = threading.Event()    # set to start the next round now (the owner pressed a fix on the page)
@@ -329,6 +330,7 @@ RUNNING = {}        # check id -> the thread of its repair (the restart and the 
 SENT = set()        # check ids whose restart has really been sent: only now the page says "Restarting it now"
 OUTCOMES = {}       # check id -> a finished repair, applied to the saved state by the loop's own thread (apply_done)
 INFLIGHT = set()    # units being restarted or settling right now: two restarts of one unit never overlap
+BY = {}             # check id -> 'argus' (self-repair, as allowed) or 'owner' (asked on the page), while its fix is queued or runs
 JOIN = 2.0          # seconds a round waits for repairs it started (a quick one is judged in the same round; tests' fake time)
 ASKED = {}          # check id -> when the owner last asked for its fix (the 2-minute rule)
 OWNER_GAP = 120     # seconds between two fixes of one check: a restart gets time to work before the next is allowed
@@ -385,12 +387,13 @@ def step(env, settle=SETTLE):
         if not mine:
             try: r = handle(c, r, env, auto, trial, now, drive_down, settle, restarted)
             except Exception as e: log(f'check {id_}: handling the result failed: {e}')
-        if id_ in RUNNING: started.append(id_)
+        if id_ in RUNNING: started.append((id_, r))
         else: final[id_] = r
     end = time.monotonic() + JOIN
-    for id_ in started:
+    for id_, r in started:
         t = RUNNING.get(id_)
         if t: t.join(max(0.0, end - time.monotonic()))
+        final[id_] = r       # still running: the failure it repairs is published (works false), with "fixing" or "queued"
     final.update(apply_done())
     for c in checks:
         id_ = c['id']
@@ -554,7 +557,7 @@ def start_repair(c, r, env, settle, restarted, say, reason, url, by='argus'):
         with _lock: OUTCOMES[id_] = o; RUNNING.pop(id_, None)
         WAKE.set()                                # the loop applies it at once
     t = threading.Thread(target=run, name=f'argus-fix-{id_}', daemon=True)
-    with _lock: FIXING.add(id_); RUNNING[id_] = t
+    with _lock: FIXING.add(id_); RUNNING[id_] = t; BY[id_] = by
     t.start()
 
 
@@ -565,7 +568,7 @@ def apply_done():
     for id_, o in done.items():
         try: out[id_] = apply_repair(o)
         except Exception as e: log(f'check {id_}: applying the repair failed: {e}')
-        with _lock: FIXING.discard(id_); SENT.discard(id_)
+        with _lock: FIXING.discard(id_); SENT.discard(id_); BY.pop(id_, None)
     return out
 
 
@@ -666,6 +669,7 @@ def snapshot(interval=60):
     """The results for state(): a list. A result that has not been refreshed for a while is shown as unknown."""
     now = time.time()
     with _lock: rows = [dict(v) for v in RESULTS.values()]
+    if LOOP[0] and not LAST_STEP[0]: rows = saved_rows(now)       # no round finished since the start yet: what the last run knew, not "nothing"
     for v in rows:
         if now - v['at'] > 3 * interval + 30:
             if v['works'] is False:                     # known broken: it stays so, and says when Argus last could look
@@ -674,7 +678,21 @@ def snapshot(interval=60):
         v.pop('at', None); v.pop('_looked', None)
         v['fixing'] = v['id'] in SENT                   # its restart has been sent: "Restarting it now" (api/watch/fix, self-repair)
         v['queued'] = v['id'] in FIXING and v['id'] not in SENT    # asked for, not yet sent
+        v['by'] = BY.get(v['id'], 'owner' if v['id'] in FIXING else '') if v['fixing'] or v['queued'] else ''
     return sorted(rows, key=lambda v: v['id'])
+
+
+def saved_rows(now):
+    """Rows from the saved state (watch.json), for the seconds between a server start and the end of its first round. A check
+    that was known not to work stays so (with "Argus has not been able to look again since ..."); everything else is unknown."""
+    rows = []
+    for c in load_checks()[0]:
+        try: rows.append(publish(c, result(c, None, 'starting', 'Argus is starting; the first look is on its way.'), auto_fix_ids(), now))
+        except Exception as e: log(f'check {c.get("id")}: no saved row: {e}')
+    return rows
+
+
+def ready(): return LAST_STEP[0] > 0     # the first round after the start has finished (state() says so to the page)
 
 
 def attach(jobs, rows):
@@ -708,7 +726,7 @@ def alert_list(rows, allowed):
 
 def start(env, interval=60, settle=SETTLE):
     """Run the loop in its own daemon thread. A round that fails is logged and the loop carries on."""
-    load_prev()
+    load_prev(); LOOP[0] = True
     def loop():
         while not STOP.is_set():
             try: step(env, settle)

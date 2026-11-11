@@ -40,7 +40,8 @@ run(async b => {
   fs.writeFileSync(CHECKS, JSON.stringify({checks: [
     {id: 'jellyfin', title: 'Jellyfin', job: 'mnemosyne-jellyfin', mount: '/mnt/media', container: {name: 'jellyfin', file: '/media/a.mp4', runtime: pod}, fix: {restart: ['jellyfin'], say: 'Jellyfin'}},
     {id: 'media-drive', title: 'The media drive', job: 'mnemosyne-media-drive', mount: '/mnt/media'},
-    {id: 'hermes-media-drive', title: 'Media on its drive', job: 'hermes-media', mount: '/mnt/media'}]}));
+    {id: 'hermes-media-drive', title: 'Media on its drive', job: 'hermes-media', mount: '/mnt/media'},
+    {id: 'downloader', title: 'Downloader', job: 'hermes-downloader', container: {name: 'downloader', runtime: pod}}]}));   // never looked into: unknown all along (W3 N2)
   // Element.animate is watched, so the test sees the eye's one travel (its length) without racing it
   const spy = () => { const a = Element.prototype.animate; window.__trips = []; Element.prototype.animate = function (k, o) { if (this.closest?.('.sat')) window.__trips.push({ms: typeof o === 'number' ? o : o?.duration, it: o?.iterations || 1}); return a.call(this, k, o); }; };
   try {
@@ -106,6 +107,26 @@ run(async b => {
         await q.evaluate(() => scrollTo(0, document.body.scrollHeight)); await q.waitForTimeout(300); await shot(q, 'W-watch-lately-412-night');
         await q.evaluate(() => scrollTo(0, 0));
       }
+      if (w !== 1440) {        // W3: a scroll sweep in 40 px steps, twice (the pill, then the 44 px arrow): no control is ever under the marker
+        let worst = {f: 0}, shown = 0;
+        for (const pass of [0, 1]) {
+          const H = await q.evaluate(() => document.documentElement.scrollHeight - innerHeight);
+          for (let y = 0; y <= H; y += 40) {
+            await q.evaluate(v => scrollTo(0, v), y); await q.waitForTimeout(70);
+            const c = await q.evaluate(() => { const e = document.getElementById('satEdge'); if (e.hidden || getComputedStyle(e).display === 'none') return null;
+              const m = e.getBoundingClientRect(); let f = 0, t = '';
+              for (const x of document.querySelectorAll('a[href],button,summary,input,select,textarea,[role=button],[role=link]')) { if (x === e || e.contains(x)) continue;
+                const r = x.getBoundingClientRect(); if (!r.width || !r.height) continue;
+                const ov = Math.max(0, Math.min(r.right, m.right) - Math.max(r.left, m.left)) * Math.max(0, Math.min(r.bottom, m.bottom) - Math.max(r.top, m.top));
+                if (ov / (r.width * r.height) > f) { f = ov / (r.width * r.height); t = (x.getAttribute('aria-label') || x.textContent).trim().slice(0, 30); } }
+              return {f, t, w: Math.round(m.width)}; });
+            if (c) { shown++; if (c.f > worst.f) worst = {...c, y}; }
+          }
+          if (!pass) await q.waitForTimeout(5200);
+        }
+        check(shown > 10 && worst.f === 0, `${w}: scroll sweep, the marker shown at ${shown} steps, covers 0 % of every control (worst ${Math.round(worst.f * 100)} %${worst.t ? ` of ${worst.t} at ${worst.y}` : ''})`);
+        if (w === 412) { await q.evaluate(() => scrollTo(0, 1400)); await q.waitForTimeout(200); await shot(q, 'W3-watch-edge-sweep-412-night'); }
+      }
       if (w !== 1440) await q.close();
     }
     await shot(p, 'W-watch-trouble-1440-night');
@@ -129,11 +150,21 @@ run(async b => {
     fs.renameSync(JA, JM);
     for (let i = 0; i < 30 && held; i++) { await p.evaluate(() => refresh()); await p.waitForTimeout(400); held = await p.evaluate(() => !!(S.watch.find(w => w.id === 'jellyfin') || {}).unsure); }
     check(!held && await p.evaluate(() => window.__trips.length) === trips0, 'Argus looks again: the sentence goes, still no new travel');
-    // the page's own guard: nothing red left, but a row is unknown or stale: the page stays as it was
-    await p.evaluate(() => { busy = true; S.jobs.forEach(j => { if (j.state === 'failed') j.state = 'ok'; j.works = j.works === false ? null : j.works; });
-      S.watch.forEach(w => { if (w.works === false) { w.works = null; w.code = 'stale'; } }); S.alerts = []; render(); });
-    const g = await p.evaluate(() => [document.querySelectorAll('.tblock').length, document.getElementById('argus').classList.contains('glare'), document.getElementById('argus').classList.contains('sat-out'), document.getElementById('satSay').textContent, window.__trips.length]);
-    check(g[0] === 0 && g[1] && g[2] && !/All is well/.test(g[3]) && g[4] === trips0, `no trouble left but a row is stale: no "All is well", the alarm and the eye stay out, no travel (${JSON.stringify(g)})`);
+    // W3 N1, the page side: the server has just started again (watch_ready false) and sends no rows yet: no "All is well", the eye
+    // does not fly home, his alarm is not switched off by a missing list (the server side: tests/watch_routes_test.py ServerRestart)
+    await p.evaluate(() => { busy = true; S.watch_ready = false; S.watch = []; S.jobs.forEach(j => { if (j.state === 'failed') j.state = 'ok'; j.works = null; }); S.alerts = []; render(); });
+    const g = await p.evaluate(() => [document.querySelectorAll('.tblock').length, document.getElementById('argus').classList.contains('sat-out'), document.getElementById('satSay').textContent, window.__trips.length]);
+    check(g[0] === 0 && g[1] && !/All is well/.test(g[2]) && g[3] === trips0, `the server is starting (watch_ready false): no "All is well", the eye stays out, no travel (${JSON.stringify(g)})`);
+    // W3 N4: the words while a fix is queued or runs, by him or by you, and on the trial day
+    await p.evaluate(() => { S.watch_ready = true; }); await p.evaluate(() => { busy = false; }); await p.evaluate(() => refresh()); await p.waitForTimeout(800);
+    const argusLine = async edit => { await p.evaluate(e => { busy = true; const w = S.watch.find(x => x.id === 'jellyfin'); Object.assign(w, e); render(); }, edit);
+      return (await p.locator('.tblock[data-trouble="check-jellyfin"] .tl').first().textContent()).replace(/\s+/g, ' ').trim(); };
+    const w1 = await argusLine({queued: true, fixing: false, by: 'owner'}), w2 = await argusLine({queued: true, fixing: false, by: 'argus'});
+    const w3 = await argusLine({queued: false, fixing: true, by: 'argus'}), w4 = await argusLine({queued: false, fixing: true, by: 'owner'});
+    const w5 = await argusLine({queued: false, fixing: false, by: '', note: 'Argus would have restarted Jellyfin by itself and did not, because for now it only notes what it would do.'});
+    check(w1 === 'Argus: Your restart is being sent.' && w2 === 'Argus: His restart is being sent, as you allowed.', `queued: "${w1}" / "${w2}"`);
+    check(w3 === 'Argus: Restarting it now by himself, as you allowed. Looks again for up to 90 seconds and tells you if it helped.' && /^Argus: Restarting it now, as you asked\./.test(w4), `restarting: by him "${w3}", by you "${w4}"`);
+    check(w5 === 'Argus: Today he only notes what he would do: he would have restarted Jellyfin.', 'the trial day: ' + w5);
     await p.evaluate(() => { busy = false; }); await p.evaluate(() => refresh()); await p.waitForTimeout(800);
     // W2 point 3: a second and a third thing break while one is shown: a new pulse each time, and the count said again
     const pulsing = () => p.evaluate(() => { const s = document.querySelector('.sat'); return s && s.classList.contains('glaring') && s.querySelector('svg').getAnimations().length > 0; });
@@ -185,6 +216,11 @@ run(async b => {
       const d = await p.evaluate(() => [document.querySelector('.tblock.eyed')?.dataset.trouble, [...document.querySelectorAll('.tblock')].map(b => b.dataset.trouble), document.querySelector('.trouble').textContent.replace(/\s+/g, ' ')]);
       check(/^check-(media-drive|hermes-media-drive)$/.test(d[0]) && !d[1].includes('check-jellyfin') && d[1].filter(k => /drive/.test(k)).length === 1 && /Also waiting for this drive: .*Jellyfin/.test(d[2]), `one block for the drive, first, with the eye; Jellyfin (and the drive's second check) folded under it (${d[1].join(', ')})`);
       check(!/waits for your yes/i.test(d[2]) && !/Restart Jellyfin/.test(d[2]) && /a restart would not help until it is back|Cannot bring a drive back/.test(d[2]), 'no "waits for your yes" and no restart button while the drive is gone');
+      const also = await p.evaluate(() => (([...document.querySelectorAll('.tblock .tl')].find(e => /Also waiting/.test(e.textContent)) || {}).textContent || '').replace(/^Also waiting for this drive:\s*/, ''));
+      check(/Jellyfin/.test(also) && !/drive/i.test(also), `"Also waiting for this drive:" names programs only (${also})`);
+      const heading = parseInt(await p.locator('#trouble-h').textContent(), 10) || 1, spoken = await p.locator('#satSay').textContent();
+      const sn = /Now (\d+) things/.test(spoken) ? +RegExp.$1 : /and (\d+) more/.test(spoken) ? +RegExp.$1 + 1 : 1;
+      check(sn === heading, `the spoken count equals the heading's (${sn} = ${heading}): ${spoken}`);
       await shot(p, 'W2-watch-drive-gone-1440-night');
     } finally { fs.writeFileSync(HG, good); }
     check(await until(p, '.tblock[data-trouble$="media-drive"]', false), 'the drive is back: its block goes');
@@ -194,6 +230,8 @@ run(async b => {
     await p.waitForTimeout(900);
     check(await p.locator('.sat').count() === 0 && !await p.evaluate(() => document.getElementById('argus').classList.contains('sat-out')), 'the eye has come home');
     check(/All is well again/.test(await p.locator('#satSay').textContent()), 'and the sentence says so: ' + await p.locator('#satSay').textContent());
+    const calm = await p.evaluate(() => { const A = document.getElementById('argus'); return [A.classList.contains('glare'), document.getElementById('alarm').hidden, A.getAttribute('aria-label'), (S.watch.find(w => w.id === 'downloader') || {}).works]; });
+    check(!calm[0] && calm[1] && /all tasks well/.test(calm[2]) && calm[3] === null, `a real recovery with another check still unknown: no glare, no badge, his name says all well (${JSON.stringify(calm)})`);
     check(/Works again/.test(await p.locator('.crow[data-check="jellyfin"]').textContent()), 'the row says "Works again"');
     await shot(p, 'W-watch-allwell-1440-night');
     check(p.errors.length === 0, 'no page errors ' + p.errors.join(' | '));

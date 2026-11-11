@@ -61,9 +61,15 @@ Everything is read without sudo. **Time limits, per kind of call:** a look or a 
 ## What state() shows
 `watch`: one entry per check, `{id, title, job, unit, works, code, reason, note, since, fix, fix_say, autofix, drive, title_line, detail, again, fixing}`
 (4.40.0: `fix_say` the words for what its fix restarts, `title_line` the event-style sentence, `again` true while it works again after
-a failure, `queued` true while a fix is asked for and its restart not yet sent, `fixing` true once the restart has really been sent and
+a failure, `queued` true while a fix is asked for and its restart not yet sent, `by` (`owner` or `argus`: who asked for it),
+`fixing` true once the restart has really been sent and
 Argus looks again, `mount`, `looked` the time of the last round with a real verdict, `unsure` a sentence when that is not this round).
 `since` is when its state last changed (the first round it was seen, until then).
+
+**After a start of the server**, until its first round has finished, `watch` holds the saved verdicts from
+`~/.local/state/argus-ui/watch.json` (a check known not to work stays so, with the "not been able to look" sentence; the rest is
+unknown, code `starting`), never an empty list, and `state()` says `watch_ready: false`. **While Argus's own repair runs**, its row
+is the confirmed failure (`works: false`) with `fixing` and `by: "argus"`.
 
 **A known breakage stays known.** A check whose last known verdict is "not working" keeps being published as not working, with its
 last code and reason, through a round where Argus cannot look (unknown: podman could not look inside, the unit is starting) and when

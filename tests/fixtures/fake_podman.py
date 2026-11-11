@@ -5,6 +5,7 @@
 import os, sys
 a = sys.argv[1:]
 d = os.environ['FAKE_PODMAN_DIR']
+if os.environ.get('FAKE_PODMAN_DELAY'): __import__('time').sleep(float(os.environ['FAKE_PODMAN_DELAY']))   # a slow first round after a start
 flags = []                         # podman's own options before `exec` (--events-backend=none), written to calls.log for the tests
 while a and a[0].startswith('--'): flags.append(a.pop(0))
 with open(os.path.join(d, 'calls.log'), 'a') as f: f.write(' '.join(flags + a) + '\n')

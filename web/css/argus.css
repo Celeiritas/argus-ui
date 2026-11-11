@@ -243,3 +243,4 @@ dialog .confirm{border-color:var(--danger);color:var(--danger)}
 .need .nacts .fixbtn+.go{background:transparent;color:var(--snow);border:1px solid var(--line)}   /* with a fix beside it, the link to Watch is the quieter of the two */
 .satedge.small{width:var(--hit);padding:0;justify-content:center}.satedge.small span{display:none}   /* after 5 s: an arrow-only round button, same name (W2) */
 .tl.unsure{color:var(--run)}   /* Argus could not look again: said, so a stale page never reads as all well */
+.satedge.nospot{display:none}   /* no spot free of controls on the right edge right now: it waits (core.js spot) */

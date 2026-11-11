@@ -151,14 +151,16 @@ const CAN = {'drive-missing': 'Plug the drive in again. Programs that use it may
   'drive-readonly': 'The drive needs a look on the server: it stopped taking writes, usually after errors.',
   'unit-down': 'Start it again on the server, or read its log there.', 'no-answer': 'Open its web address to see what it says. A restart often helps.'};
 const DRIVE_WAIT = 'Waits for the drive: a restart would not help until it is back.';
+// the server's note after "Argus:"; the trial day's note is said the way a person says it (the program never restarts by itself)
+const noteWords = w => /^Argus would have restarted .* by itself and did not/.test(w.note || '') ? `Today he only notes what he would do: he would have restarted ${w.fix_say}.` : noArgus(w.note);
 function checkItem(w, j) {
   const agent = j ? j.persona : agentOf(w), gone = /^drive-/.test(w.code), can = !gone && w.fix;
   const say = w.drive ? (w.title_line || w.reason) : w.code === 'unit-down' ? `${w.title} is not running` : `${w.title} is running but not working`;
   return {key: 'check-' + w.id, agent, who: `${agentName(agent)} · Watch`, what: w.title_line || `${w.title}: ${w.reason}`, when: sinceText(w.since), say,
     row: w, unsure: w.unsure || '',
-    did: w.fixing ? 'Restarting it now, as you asked. Looks again for up to 90 seconds and tells you if it helped.'
-      : w.queued ? 'Restarts it in a moment, as you asked (the restart before it is still being sent).'
-      : gone ? (w.drive ? 'Cannot bring a drive back by himself, so he tells you.' : DRIVE_WAIT) : noArgus(w.note) || (w.fix ? 'Did not restart it and waits for your yes.' : 'Cannot fix this by himself, so he tells you.'),
+    did: w.fixing ? `Restarting it now${w.by === 'argus' ? ' by himself, as you allowed' : ', as you asked'}. Looks again for up to 90 seconds and tells you if it helped.`
+      : w.queued ? (w.by === 'argus' ? 'His restart is being sent, as you allowed.' : 'Your restart is being sent.')
+      : gone ? (w.drive ? 'Cannot bring a drive back by himself, so he tells you.' : DRIVE_WAIT) : noteWords(w) || (w.fix ? 'Did not restart it and waits for your yes.' : 'Cannot fix this by himself, so he tells you.'),
     can: w.fixing || w.queued ? 'Wait a moment: this changes when Argus knows how it went.'
       : can ? `Hold the button to restart ${w.fix_say} once. Argus looks again for up to 90 seconds and tells you if it helped.` : CAN[w.code] || 'Look at it on the server.',
     fix: can && !w.fixing && !w.queued && role() === 'owner' ? {id: w.id, label: `Restart ${w.fix_say}`} : null, href: WATCH};
@@ -176,16 +178,16 @@ function alertItem(a) {
     label: a.link ? `Open ${sectionName(a.link)}` : `Look at ${name} on Watch`, href: a.link ? url(a.link) : watch ? (k === 'argus' ? WATCH + '/argus' : url(k)) : WATCH};
 }
 // how many broken things an entry stands for: itself and the programs folded under its drive
-const weight = it => 1 + (it.also ? it.also.length : 0);
+const weight = it => 1 + (it.folded || 0);
 function troubleItems() {
   const {tasks, alerts, checks} = trouble(), bad = j => checksFor(j).find(w => w.works === false);
   let list = [...tasks.filter(bad).map(j => checkItem(bad(j), j)), ...checks.map(w => checkItem(w)), ...tasks.filter(j => !bad(j)).map(taskItem), ...alerts.map(alertItem)];
   // a drive that is gone is the cause: its block comes first, and programs whose only problem is that drive are one line under it
   // (a second check of the same drive is folded too: one cause, one block)
   const drives = list.filter(it => it.row && it.row.drive && it.row.mount).filter((d, i, all) => all.findIndex(x => x.row.mount === d.row.mount) === i);
-  drives.forEach(d => { d.also = [];
+  drives.forEach(d => { d.also = []; d.folded = 0;
     list = list.filter(it => { const w = it.row, fold = it !== d && w && w.mount === d.row.mount && /^drive-/.test(w.code);
-      if (fold) d.also.push(w.title); return !fold; }); });
+      if (fold) { d.folded++; if (!w.drive) d.also.push(w.title); } return !fold; }); });
   return [...drives, ...list.filter(it => !drives.includes(it))];
 }
 const troubleLines = it => `<p class="tl"><b>Argus:</b> ${esc(it.did)}</p><p class="tl"><b>You:</b> ${esc(it.can)}</p>`
@@ -471,7 +473,6 @@ const look = (() => {
     const owner = role() === 'owner'; A.hidden = !owner; A.tabIndex = owner && side ? 0 : -1;
     if (!owner) { A.removeAttribute('aria-label'); alarmed = false; lastBad = null; return; }
     const {tasks: bad, alerts: up, checks: ck, n} = trouble();
-    if (!n && lastBad > 0 && doubt()) return;                        // nothing red, but a broken check could not be looked at: stay as he was (W2)
     target = $(".tblock") || $('.card[data-state="failed"]') || $('.card.alerted') || $('.card.notworking');
     alarmed = n > 0; A.classList.toggle('glare', alarmed); A.classList.toggle('calm', !n);
     $('#alarm').hidden = !n; $('#alarmN').textContent = n > 1 ? n : '';
@@ -537,7 +538,7 @@ const satellite = (() => {
   const live = document.createElement('p'); live.className = 'sr'; live.id = 'satSay'; live.setAttribute('aria-live', 'polite'); document.body.append(live);
   const edge = document.createElement('button'); edge.type = 'button'; edge.id = 'satEdge'; edge.className = 'satedge'; edge.hidden = true;
   edge.setAttribute('aria-label', 'Scroll to what needs a look'); document.body.append(edge);
-  let key = null, keys = new Set(), at = null, seen = null, shrink = 0;   // the block it glares at, every trouble key, where it sat, the observer
+  let key = null, keys = new Set(), count = 0, at = null, seen = null, shrink = 0;   // the block it glares at, every trouble key, where it sat, the observer
   const say = t => { live.textContent = t; };
   const base = it => (it ? it.say : 'Something is wrong').replace(/[.\s]+$/, '');
   const plural = n => `${n} more thing${n === 1 ? ' needs' : 's need'} a look`;
@@ -548,7 +549,26 @@ const satellite = (() => {
   const centre = el => { const r = el.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; };
   // The edge marker, shown only while the block is out of view. The pill "Look" for 5 seconds after it appears or after the set
   // of trouble changes; then an arrow-only round button of 44 px (same name), so it does not sit on a control for long.
-  function full() { edge.classList.remove('small'); clearTimeout(shrink); shrink = setTimeout(() => edge.classList.add('small'), 5000); }
+  function full() { edge.classList.remove('small'); clearTimeout(shrink); shrink = setTimeout(() => { edge.classList.add('small'); spot(); }, 5000); spot(); }
+  // It never rests on a control (W3): after every scroll, resize and change of size it takes the first spot down the right edge (up
+  // from the bottom bar when the block is below) where it touches no button, link or other control, 4 px clear. Nowhere free: it
+  // waits out of sight until a spot frees up on the next scroll.
+  const CONTROLS = 'a[href],button,summary,input,select,textarea,[role=button],[role=link],[tabindex]:not([tabindex="-1"])';
+  function spot() {
+    if (edge.hidden) return;
+    const vw = document.documentElement.clientWidth, w = edge.offsetWidth || (edge.classList.contains('small') ? 44 : 84), h = 44, x = vw - 16 - w;
+    const bar = $('#tabbar'), barTop = bar && bar.offsetHeight && getComputedStyle(bar).display !== 'none' ? bar.getBoundingClientRect().top : innerHeight;
+    const rs = $$(CONTROLS).filter(e => e !== edge && !edge.contains(e)).map(e => e.getBoundingClientRect())
+      .filter(r => r.width && r.height && r.bottom > 0 && r.top < innerHeight && r.right > x - 4 && r.left < x + w + 4);
+    const free = y => rs.every(r => r.bottom <= y - 4 || r.top >= y + h + 4), up = !edge.classList.contains('down'), lo = 12, hi = barTop - h - 12;
+    for (let i = 0; i <= hi - lo; i += 4) {
+      const y = up ? lo + i : hi - i;
+      if (free(y)) { edge.style.top = `${y}px`; edge.style.bottom = ''; edge.classList.remove('nospot'); return; }
+    }
+    edge.classList.add('nospot');
+  }
+  let spotAt = 0; const respot = () => { cancelAnimationFrame(spotAt); spotAt = requestAnimationFrame(spot); };
+  addEventListener('scroll', respot, {passive: true}); addEventListener('resize', respot);
   function edgeFor(block, changed) {
     seen?.disconnect(); seen = null;
     if (!block || !('IntersectionObserver' in window)) { edge.hidden = true; clearTimeout(shrink); return; }
@@ -558,7 +578,7 @@ const satellite = (() => {
       const up = e.boundingClientRect.top < 0, bar = $('#tabbar'), barH = bar && bar.offsetHeight && getComputedStyle(bar).display !== 'none' ? bar.offsetHeight : 0;
       edge.classList.toggle('up', up); edge.classList.toggle('down', !up); edge.style.top = up ? '12px' : ''; edge.style.bottom = up ? '' : `${barH + 12}px`;
       edge.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${up ? 'M12 5 5 13h4v6h6v-6h4z' : 'M12 19 5 11h4V5h6v6h4z'}" fill="currentColor"/></svg><span>Look</span>`;
-      if (edge.hidden) { edge.hidden = false; full(); }       // it appears: the full pill first
+      if (edge.hidden) { edge.hidden = false; full(); } else spot();   // it appears: the full pill first
     }, {threshold: .25});
     seen.observe(block);
   }
@@ -579,7 +599,7 @@ const satellite = (() => {
       edgeFor(null);
       // "All is well" only when nothing is broken AND Argus could look at everything: a broken check whose round was unknown or whose
       // result is stale is not well (W2). Then nothing changes: no sentence, the eye does not fly home, his red eye stays out.
-      if (key !== null && !doubt()) { key = null; keys = new Set(); say('All is well again: nothing on Watch needs a look.'); home(); }
+      if (key !== null && !doubt()) { key = null; keys = new Set(); count = 0; say('All is well again: nothing on Watch needs a look.'); home(); }
       return;
     }
     const now = new Set(blocks.map(b => b.dataset.trouble)), k = first.dataset.trouble, it = items.find(i => i.key === k);
@@ -593,18 +613,18 @@ const satellite = (() => {
     if (key === null && !keys.size) {                         // trouble starts: travel once from his face, pulse, say it
       sat.classList.add('glaring'); fx.travel($('svg', sat), centre(red));
       say(`${base(it)}${more ? `, and ${plural(more)}` : ''}.`);
-    } else if (grew.length) {                                 // something else broke too: one new pulse where it stands, and say it
-      const nw = items.find(i => i.key === grew[grew.length - 1]);
+    } else if (grew.length || total > count) {                // something else broke too: one new pulse where it stands, and say it
+      const nw = items.find(i => i.key === grew[grew.length - 1]) || it;
       sat.classList.add('glaring');
       say(`${base(nw)}. Now ${total} things need a look.`);
-    } else if (gone || k !== key) {                           // something left and others remain: the new count, no pulse
+    } else if (gone || k !== key || total !== count) {                           // something left and others remain: the new count, no pulse
       say(`${base(it)}${more ? `, and ${plural(more)}` : ''}.`);
     }
-    const changed = grew.length > 0 || gone;
-    key = k; keys = now;
+    const changed = grew.length > 0 || gone || total !== count;
+    key = k; keys = now; count = total;
     edgeFor(first, changed);
   }
   return {place, get key() { return key; }};
 })();
-// a row Argus could not judge this round: unknown (could not look), stale (not looked at for a while) or seen once (pending)
-const doubt = () => (S?.watch || []).some(w => w.works === null && w.code !== 'paused');
+// the server has started again and not finished its first round: what it shows is the saved state, so "All is well" waits for it
+const doubt = () => S?.watch_ready === false;

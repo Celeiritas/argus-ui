@@ -374,7 +374,7 @@ def state():
                 title=THEME.get('title', 'Argus'), subtitle=THEME.get('subtitle', 'tasks'),
                 personas=[dict(key=k, name=n, domain=d) for k, n, d in PERSONAS],
                 soon=THEME.get('coming_soon', []), links=links(),
-                plugins=[plugin_view(p) for p in ps], watch=ws,
+                plugins=[plugin_view(p) for p in ps], watch=ws, watch_ready=not WATCH_ON or watch.ready(),   # until its first round: the saved rows
                 alerts=sorted(alerts(set(PKEYS) | set(PAGES) | {p['id'] for p in ps}) + watch.alert_list(ws, lambda j: bool(GODS.match(j) and ALERT_JOB.match(j))), key=lambda a: (a['since'], a['file'])))
 
 def state_for(who, people_problem=None):
