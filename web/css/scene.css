@@ -107,7 +107,7 @@ header{grid-template-areas:"title argus tools"}.title{grid-area:title}.argus{gri
    Watch page's Argus shrinks to 96 px so the first card shows sooner. Nothing sits behind the bar: the page and the scene end above it. */
 .tabbar{display:none}
 @media (max-width:599.98px){
- :root{--tabh:68px}
+ :root{--tabh:72px}
  .realms{display:none}
  body{padding-bottom:calc(var(--tabh) + env(safe-area-inset-bottom,0px))}
  #scene{bottom:calc(var(--tabh) + env(safe-area-inset-bottom,0px))}
@@ -117,7 +117,7 @@ header{grid-template-areas:"title argus tools"}.title{grid-area:title}.argus{gri
   padding:0 max(env(safe-area-inset-right,0px),var(--s1)) env(safe-area-inset-bottom,0px) max(env(safe-area-inset-left,0px),var(--s1));
   background:rgb(22 27 33 / .97);border-top:1px solid var(--line)}
 }
-.tab{all:unset;box-sizing:border-box;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;min-width:var(--hit);min-height:var(--tabh,68px);padding:var(--s1) 2px;color:var(--powder);text-align:center;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.tab{all:unset;box-sizing:border-box;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:1px;min-width:var(--hit);min-height:var(--tabh,72px);padding:6px 2px var(--s1);color:var(--powder);text-align:center;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .tab .tabicon{position:relative;display:block;width:26px;height:26px;margin-bottom:2px}
 .tab .tabicon img,.tab .tabicon svg{width:26px;height:26px;display:block;transition:transform var(--t2)}
 .tab b{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-sec);font-weight:600;line-height:1.2;color:var(--powder)}
