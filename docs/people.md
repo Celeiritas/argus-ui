@@ -110,6 +110,7 @@ Everything is the owner's unless it is listed as open below.
 | `api/state` | everything | her role, name and the places she may open only: no tasks, alerts, links, watch rows | refused |
 | `api/sky` (weather) | yes | yes | refused |
 | Program logs (`api/log/...`), Freeze, Thaw, Restart, Run | yes | refused | refused |
+| What happened lately (`api/events`), the fix of a check (`POST api/watch/fix`, docs/checks.md) | yes | refused | refused |
 | Phone alerts (`api/push/...`, the page `<base>/phone`, docs/phone-alerts.md) | yes; turning on and testing also need a trusted request | refused (the page sends her to Today) | refused |
 | A plugin's `api/<id>/<path>` | yes | only paths its `plugin.json` opens to learners (`"roles"`, docs/leafy-plugin.md) | refused |
 | A plugin's files (`plugins/<id>/...`) | yes | only a server plugin that opens at least one path to learners | the small private page |
