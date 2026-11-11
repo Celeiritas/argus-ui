@@ -19,7 +19,9 @@ mkdir -p "$T/home/.config/argus-ui/plugins"; cp -r "$R"/tests/plugin-fixtures/. 
 # and bundled ones, as an install puts them next to Elaia (an agent-claiming plugin, and a demo-server that yours replaces)
 cp -r "$R"/tests/bundled-fixtures/. "$T/pkg/bundled/"
 $PYTHON -c "import json,time,sys; json.dump({'sky':'rain','desc':'Light rain','is_day':True,'temp':48,'unit':'F','precip':.6,'clouds':90,'wind':14,'south':False,'at':int(time.time()),'source':'Open-Meteo'}, open(sys.argv[1],'w'))" "$T/home/.cache/argus-ui/sky.json"
-HOME="$T/home" ARGUS_DEV=1 ARGUS_WEATHER=40,-111 ARGUS_STATIC="$T/pkg/static" ARGUS_BUNDLED="$T/pkg/bundled" ARGUS_SYSTEMCTL="$T/fx/fake_systemctl.py" ARGUS_JOURNALCTL="$T/fx/fake_journal.sh" ARGUS_PORT=$PORT \
+# the server's own state goes to explicit paths outside HOME (on Windows ~ follows USERPROFILE, so both point at the temp HOME)
+ST="$T/state"; mkdir -p "$ST"; export ARGUS_EVENTS="$ST/events.jsonl"
+HOME="$T/home" USERPROFILE="$T/home" ARGUS_WATCH_STATE="$ST/watch.json" ARGUS_DEV=1 ARGUS_WEATHER=40,-111 ARGUS_STATIC="$T/pkg/static" ARGUS_BUNDLED="$T/pkg/bundled" ARGUS_SYSTEMCTL="$T/fx/fake_systemctl.py" ARGUS_JOURNALCTL="$T/fx/fake_journal.sh" ARGUS_PORT=$PORT \
   ARGUS_WATCH_INTERVAL=1 ARGUS_MOUNTINFO="$T/fx/watch/host-good.mountinfo" FAKE_PODMAN_DIR="$T/pod" ARGUS_CONTROLLERS_SYSROOT="$T/fx/controllers-sysfs/four" ARGUS_CONTROLLERS="$T/fx/controllers.json" \
   $PYTHON "$T/pkg/argus_ui.py" > "$T/server.log" 2>&1 & PID=$!
 # a stand-in local model server for tests/mentor-ai.test.js (docs/mentor-ai.md); off for every other check
