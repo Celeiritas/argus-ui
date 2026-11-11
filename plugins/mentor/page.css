@@ -172,3 +172,73 @@
 .modules .cmhead .meta{margin:var(--s1) 0 0;font-size:var(--fs-sec)}
 .modules .cmod.locked .cmhead h3,.modules .module.locked h4{color:var(--powder)}
 @media (max-width:640px){.modules .cmhead{grid-template-columns:1fr;gap:var(--s2)}}
+.mentor [hidden]{display:none !important}   /* a view hides the picker, the counts and the bar it does not use */
+/* 4.38: Who is studying?, Today (one button, pinned tracks, the week, the shelf), the 10-minute bar and its summary,
+   question first (Teach me first, the lesson card as feedback), think-it mode. Same type roles and 44 px targets */
+.mentor button.link{background:none;border:0;color:var(--powder);text-decoration:underline;text-underline-offset:3px;min-height:var(--hit);min-width:var(--hit);padding:0 var(--s2);font-size:var(--fs-sec);font-weight:600;cursor:pointer}
+.mentor button.link:focus-visible{outline:2px solid var(--powder);outline-offset:2px}
+.mentor .who{margin:var(--s2) 0 0;padding:var(--s1) var(--s4);background:var(--card);border:1px solid var(--line);border-radius:12px}   /* on a card: never straight on the scene (4.38) */
+.mentor .wholine{display:flex;flex-wrap:wrap;align-items:center;gap:0 var(--s2);margin:0;font-size:var(--fs-body);color:var(--powder)}
+.mentor .wholine b{color:var(--snow);font-weight:600}
+.mentor .wholist{list-style:none;display:flex;flex-wrap:wrap;gap:var(--s2);padding:0;margin:var(--s2) 0 0}
+.mentor .wholist button{min-height:var(--hit);padding:0 var(--s4)}
+.mentor .wholist button[aria-current="true"]{border-color:var(--teal);background:var(--card)}
+.mentor .wholist small{color:var(--powder);font-size:var(--fs-meta)}
+.mentor .links{display:flex;flex-wrap:wrap;gap:0 var(--s3);margin:var(--s2) 0 0}
+.mentor .links .link{padding-left:0}
+.mentor .today{display:flex;flex-direction:column;gap:var(--s6);margin-top:var(--s2)}
+.mentor .today .go{display:flex;flex-direction:column;align-items:flex-start;gap:var(--s2);padding:var(--s4) var(--s6);background:var(--card);border:1px solid var(--teal);border-radius:12px}
+.mentor .today .gobtn{min-height:56px;padding:0 var(--s6);font-size:var(--fs-h2);font-weight:600}
+.mentor .today .go .meta,.mentor .today .go .help{margin:0}
+.mentor .pins{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:var(--s4)}
+.mentor .tcard{display:flex;flex-direction:column;gap:var(--s2);padding:var(--s4);background:var(--card);border:1px solid var(--line);border-radius:12px;min-width:0}
+.mentor .tcard h3{margin:0;font-size:var(--fs-body);font-weight:600;overflow-wrap:anywhere}
+.mentor .tcard .goal{margin:0;color:var(--snow);font-size:var(--fs-sec)}
+.mentor .tcard .meta{margin:0}
+.mentor .tcard button{margin-top:auto;min-height:var(--hit);align-self:flex-start}
+.mentor .tprog{display:flex;flex-direction:column;gap:var(--s1)}.mentor .tprog .lpbar{flex:none;display:block}.mentor .tprog small{color:var(--powder);font-size:var(--fs-meta)}
+.mentor .week{padding:var(--s3) var(--s4);background:var(--card);border:1px solid var(--line);border-radius:12px}
+.mentor .week h3{margin:0 0 var(--s2)}
+.mentor .dots{list-style:none;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:var(--s1);padding:0;margin:0;max-width:420px}
+.mentor .dots li{display:flex;flex-direction:column;align-items:center;gap:var(--s1)}
+.mentor .dots small{color:var(--powder);font-size:var(--fs-meta)}
+.mentor .dot{display:block;width:20px;height:20px;border-radius:50%;border:2px solid var(--line);box-sizing:border-box}
+.mentor .dot.d1{border-color:var(--teal);background:radial-gradient(circle,var(--teal) 30%,transparent 32%)}
+.mentor .dot.d2{border-color:var(--teal);background:radial-gradient(circle,var(--teal) 55%,transparent 57%)}
+.mentor .dot.d3{border-color:var(--teal);background:var(--teal)}
+.mentor details.shelf>summary{min-height:var(--hit);display:flex;align-items:center;cursor:pointer;color:var(--snow);font-size:var(--fs-body);font-weight:600;padding:0 var(--s4);background:var(--card);border:1px solid var(--line);border-radius:12px}
+.mentor details.shelf[open]{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:0 0 var(--s2)}   /* the help and the labels sit on the card, not on the scene (4.38) */
+.mentor details.shelf[open]>summary{border:0;border-bottom:1px solid var(--line);border-radius:12px 12px 0 0}
+.mentor details.shelf>.help,.mentor details.shelf>h3.label{margin:var(--s3) var(--s4)}
+.mentor details.shelf>.tlist{margin:0 var(--s2) var(--s4)}
+.mentor .tlist{list-style:none;margin:0 0 var(--s4);padding:0;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.mentor .trow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--s2) var(--s4);align-items:center;padding:var(--s2) var(--s4);border-top:1px solid var(--line)}
+.mentor .trow:first-child{border-top:0}
+.mentor .trow h4{margin:0;font-size:var(--fs-body);font-weight:600;overflow-wrap:anywhere}.mentor .trow .meta{margin:0;font-size:var(--fs-sec)}
+.mentor .tacts{display:flex;flex-wrap:wrap;gap:var(--s2);justify-content:flex-end}
+.mentor .tacts button{min-height:var(--hit);padding:0 var(--s3)}
+.mentor .pview{grid-column:1/-1;border-left:3px solid var(--powder);padding:0 0 0 var(--s3);margin:0 0 var(--s2)}
+.mentor .pview .pq{margin:0;padding-left:var(--s6)}.mentor .pview .pq li{margin:0 0 var(--s1);overflow-wrap:anywhere}
+@media (max-width:640px){.mentor .trow{grid-template-columns:1fr}.mentor .tacts{justify-content:flex-start}.mentor .today .go{padding:var(--s4)}.mentor .today .gobtn{width:100%}}
+.mentor .tbar{margin:var(--s2) 0 var(--s3)}
+.mentor .tfill{height:6px;background:var(--line);border-radius:3px;overflow:hidden}
+.mentor .tfill span{display:block;height:100%;width:0;background:var(--teal);transition:width 1s linear}
+.mentor .tbar.full .tfill span{background:var(--ok)}
+.mentor .tleft{margin:var(--s1) 0 0;color:var(--powder);font-size:var(--fs-meta)}
+.mentor .taught{border:1px solid var(--line);border-left:3px solid var(--teal);border-radius:8px;padding:var(--s3) var(--s4);margin:var(--s4) 0;background:var(--card)}
+.mentor .taught h4{margin:0 0 var(--s1);font-size:var(--fs-body);font-weight:600}
+.mentor .taught .label:first-child{margin-top:0}.mentor .taught .defs{margin-bottom:0}
+@keyframes mentor-enter{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.mentor .enter,.mentor .summary{animation:mentor-enter .22s ease-out}
+@media (prefers-reduced-motion:reduce){.mentor .enter,.mentor .summary{animation:none}.mentor .tfill span{transition:none}}
+/* 4.38: "All done for today", and two old small targets (review N7): the rating's save button and "grade was wrong" */
+.mentor .today .go.done{border-color:var(--line)}
+.mentor .today .go.done .lesson-title{margin:0}
+.mentor .today .go.done button{min-height:var(--hit)}
+.mentor #rateBtn,.mentor #replayNext{min-height:var(--hit)}
+.mentor details.report label.check{display:flex;align-items:center;gap:var(--s2);min-height:var(--hit);cursor:pointer}
+.mentor details.report label.check input{width:20px;height:20px;flex:none}
+.mentor .empty .row{margin-top:var(--s3)}
+/* the Lessons view's "About Mentor" and "Where these lessons come from" sit on cards too, never straight on the scene */
+.modules details.about,.modules details.srcs{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:0 var(--s4)}
+.modules details.about[open],.modules details.srcs[open]{padding-bottom:var(--s3)}

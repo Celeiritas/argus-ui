@@ -1,102 +1,227 @@
 # Mentor as a bundled server plugin (docs/leafy-plugin.md, docs/mentor.md): the Learn section and api/mentor/...
 # The study logic is mentor.py next to this file; this is only the door between Elaia's server and it.
-# The database stays where Mentor has always kept it (~/.local/share/argus-ui/mentor.db, or ARGUS_MENTOR_DB),
-# not in ctx.data_dir, so moving Mentor into a plugin moved no one's review history.
+# The owner's database stays where Mentor has always kept it (~/.local/share/argus-ui/mentor.db, or ARGUS_MENTOR_DB),
+# not in ctx.data_dir, so moving Mentor into a plugin moved no one's review history. Since 4.38 every other person in the
+# people file (learners.py) has a database of their own next to it, mentor-<id>.db, holding only their own lessons
+# (~/.local/share/argus-ui/decks-<id>/): never the theme's decks, never the inbox.
 import importlib.util, os, threading
 
-_spec = importlib.util.spec_from_file_location('leafy_mentor', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mentor.py'))
-mentor = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(mentor)    # by path: an old installed mentor.py can't shadow it
-_spec = importlib.util.spec_from_file_location('leafy_mentor_assist', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'assist.py'))
-assist = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(assist)    # the optional local AI (docs/mentor-ai.md)
+def _load(name, file):
+    spec = importlib.util.spec_from_file_location(name, os.path.join(os.path.dirname(os.path.abspath(__file__)), file))
+    mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)      # by path: an old installed copy can't shadow it
+    return mod
+mentor = _load('leafy_mentor', 'mentor.py')
+assist = _load('leafy_mentor_assist', 'assist.py')            # the optional local AI (docs/mentor-ai.md)
+learners = _load('leafy_mentor_learners', 'learners.py')      # who is studying (the people file)
 
 SHARE = os.path.expanduser('~/.local/share/argus-ui')
-DB, DECK_DIRS = None, []
-# One request at a time on Mentor's single SQLite connection: two at once (the page asks for decks and stats together)
-# could read each other's rows. Every call is a few milliseconds, so nobody waits noticeably.
-ONE = threading.Lock()
+DB, DECK_DIRS, THEME_DECKS = None, [], None
 AI = threading.Semaphore(1)           # the local model answers one attempt at a time; the rest wait their turn in their threads
-PENDING = set()                       # attempts whose AI part is still being worked out
+PENDING = set()                       # (database path, attempt) whose AI part is still being worked out
+
+class Book:
+    """One person's database and its lock. One request at a time on one SQLite connection: two at once (the page asks for
+    decks and stats together) could read each other's rows. Every call is a few milliseconds, so nobody waits noticeably.
+    Two people wait on each other only for milliseconds (holder() reads mentor.db under the owner's lock on every request,
+    and the server runs one POST at a time); the local model is awaited outside every lock. Everything that touches .db
+    holds .lock, the reload of a learner's
+    lesson folder included (it writes cards)."""
+    def __init__(self, path, dirs, inbox, reload=False):
+        self.path, self.dirs, self.lock, self.sig, self.reload = path, dirs, threading.Lock(), None, reload
+        self.db = mentor.connect(path, inbox=inbox)
+    def load(self, always=False):
+        """Load the deck folders; a learner's folder again whenever a file in it was added or changed (no restart).
+        The caller holds self.lock."""
+        sig = []
+        for d in self.dirs:
+            try: sig += sorted((e.name, e.stat().st_mtime, e.stat().st_size) for e in os.scandir(d) if e.name.endswith('.json'))
+            except OSError: pass
+        if always or sig != self.sig:
+            for d in self.dirs: mentor.load_decks(self.db, d)
+            self.sig = sig
+
+BOOKS = {}                            # database path -> Book
+BOOKS_LOCK = threading.Lock()
+ONE = None                            # the owner's lock (as before people); kept for code that still names it
+
+def owner_path():
+    return os.environ.get('ARGUS_MENTOR_DB', f'{SHARE}/mentor.db')
 
 def init(ctx):
-    global DB, DECK_DIRS
-    DECK_DIRS = [os.path.join(ctx.theme_dir, 'decks'), os.environ.get('ARGUS_DECKS', f'{SHARE}/decks')]   # the theme's + your own
-    DB = mentor.connect(os.environ.get('ARGUS_MENTOR_DB', f'{SHARE}/mentor.db'))
-    for d in DECK_DIRS: mentor.load_decks(DB, d)
+    global DB, DECK_DIRS, THEME_DECKS, ONE
+    THEME_DECKS = os.path.join(ctx.theme_dir, 'decks')
+    DECK_DIRS = [THEME_DECKS, os.environ.get('ARGUS_DECKS', f'{SHARE}/decks')]   # the theme's + your own
+    BOOKS.clear()
+    b = book_for(None)
+    DB, ONE = b.db, b.lock
+
+def book_for(person):
+    """The Book of the person studying (learners.studying()); None = the owner, as before people existed. A learner's
+    lesson folder is (re)loaded by fresh(), under the Book's lock."""
+    if person is None or person['owner_db']: path, dirs, inbox = owner_path(), DECK_DIRS, True
+    else:
+        path = os.path.join(os.path.dirname(owner_path()) or '.', f"mentor-{person['id']}.db")
+        dirs, inbox = [os.path.join(SHARE, f"decks-{person['id']}")], False      # their own lessons only
+    with BOOKS_LOCK:
+        b = BOOKS.get(path)
+        if b is None:
+            b = BOOKS[path] = Book(path, dirs, inbox, reload=not inbox)
+            if inbox:
+                for d in dirs: mentor.load_decks(b.db, d)        # the owner's decks: once at start, as before
+    return b
+
+def fresh(b):
+    """A learner's lesson folder, read again if a file changed. Call it holding b.lock (it writes on the connection)."""
+    if b.reload: b.load()
+
+def holder():
+    """Whose history mentor.db is (4.38): the person id stored in mentor.db itself, so the order of lines in the people file
+    never decides it. The first open under a people file stores the first owner. If the stored id has left the file and
+    exactly one owner is in it, that owner takes mentor.db over (the stored id is updated, one line logged); with two
+    owners or more it stays with its stored id and nobody gets it until an owner fixes the file (one line logged; R4b
+    S-a). None without a people file (the one person there is, the owner, has mentor.db, as before people)."""
+    ps, problem = learners.people()
+    if not learners.from_file(): return None
+    ob = book_for(None)
+    with ob.lock:
+        stored, first = mentor.meta(ob.db, 'person'), learners.owner_id()
+        if stored in {p['id'] for p in ps}: return stored
+        owners = [p['id'] for p in ps if p['role'] == 'owner']
+        if stored and len(owners) != 1:
+            learners.log_once(f'mentor.db belongs to "{stored}", who is not in {learners.FILE}; with {len(owners)} owners it goes to '
+                              f'nobody until the file names "{stored}" again (or keeps one owner)')
+            return stored
+        if stored: learners.log_once(f'mentor.db belonged to "{stored}", who is no longer in {learners.FILE}; it is now "{first}"\'s')
+        mentor.set_meta(ob.db, 'person', first)
+        return first
+
+def stored():
+    """The person id written in mentor.db (None before any people file was read), never changed here."""
+    ob = book_for(None)
+    with ob.lock: return mentor.meta(ob.db, 'person')
+
+def studying(who, requested, write=False):
+    h = holder()
+    return learners.studying(who, requested, write=write, holder=h, stored=h or stored())
 
 def plural(n, one, many=None):
     return f'{n} {one if n == 1 else (many or one + "s")}'
 
 def line(s):
-    # Home's one line: what is waiting to be studied
+    # the old one line (before Today): what is waiting to be studied. Kept for anything that still reads it
     if s['due']: return plural(s['due'], 'card') + ' due' + (f" · {s['learn']} to learn" if s['learn'] else '')
     if s.get('checks'): return plural(s['checks'], 'module check question') + ' ready'
     if s['learn']: return f"{s['learn']} to learn"
     return plural(s['new'], 'new card') + ' waiting' if s['new'] else 'Nothing due'
 
-def get(path, query, ctx):
-    if path == 'ai' and not query.get('attempt'): return 200, assist.status()     # may ask the model server: outside the lock
-    with ONE: return _get(path, query)
+def status(t):
+    """Elaia's Today card (and Home's line): "6 due" with the action "Study 10 minutes", per person."""
+    if t['due']: ln = f"{t['due']} due"
+    elif t['new_left']: ln = f"{plural(t['new_left'], 'new card')} waiting"
+    else: ln = 'Nothing due today'
+    return {'line': ln, 'needs': bool(t['due']), 'action': 'Study 10 minutes' if t['due'] or t['new_left'] else ''}
 
-def post(path, body, ctx):
-    with ONE: code, r = _post(path, body)
-    # the rubric has answered; the local AI's part (if it is on) follows in a thread and the page asks for it (GET ai?attempt=)
-    if code == 200 and path == 'answer' and r.get('attempt') and r.get('kind') in mentor.AI_KINDS and str(body.get('text', '')).strip():
+def refused(e):
+    return e.code, {'ok': False, 'msg': str(e)}
+
+def deck_names(b):
+    out = {}
+    for d in b.dirs: out.update({x['id']: x['name'] for x in mentor.deck_list(d)})
+    return out
+
+def get(path, query, ctx, who=None):
+    try:
+        if path == 'learners':
+            h = holder(); return 200, learners.listing(who, h, h or stored())
+        person = studying(who, (query.get('learner') or [None])[0])
+    except learners.Refused as e: return refused(e)
+    if path == 'ai' and not query.get('attempt'):          # may ask the model server: outside the lock
+        return 200, assist.status() if person['role'] == 'owner' else {'enabled': False, 'owner_only': True, 'problem': ''}
+    b = book_for(person)
+    with b.lock:
+        fresh(b)
+        return _get(b, person, path, query)
+
+def post(path, body, ctx, who=None):
+    if not isinstance(body, dict): return 400, {'ok': False, 'msg': 'bad request'}
+    try: person = studying(who, body.get('learner'), write=True)
+    except learners.Refused as e: return refused(e)
+    b = book_for(person)
+    with b.lock:
+        fresh(b)
+        code, r = _post(b, person, path, body)
+    # the rubric has answered; the local AI's part (if it is on) follows in a thread and the page asks for it (GET ai?attempt=).
+    # Only when the person studying is an owner: a learner's answer never starts it (docs/mentor-ai.md, "Who it runs for")
+    if (code == 200 and path == 'answer' and r.get('attempt') and r.get('kind') in mentor.AI_KINDS and person['role'] == 'owner'
+            and str(body.get('text', '')).strip()):
         c = assist.config()
         if c['enabled'] and not c['problem']:
-            r['ai_pending'] = True; PENDING.add(r['attempt'])
-            threading.Thread(target=judge, args=(r['attempt'], str(body.get('card', '')), r.get('reference') or '', str(body.get('text', ''))[:2000]), daemon=True).start()
+            r['ai_pending'] = True; PENDING.add((b.path, r['attempt']))
+            threading.Thread(target=judge, args=(b, r['attempt'], str(body.get('card', '')), r.get('reference') or '', str(body.get('text', ''))[:2000]), daemon=True).start()
     return code, r
 
-def judge(attempt, card, reference, text):
+def judge(b, attempt, card, reference, text):
     try:
-        with ONE: prompt = mentor.card_prompt(DB, card)
+        with b.lock: prompt = mentor.card_prompt(b.db, card)
         with AI: res = assist.judge(prompt, reference, text)
-        with ONE: mentor.set_ai(DB, attempt, res)
-    finally: PENDING.discard(attempt)
+        with b.lock: mentor.set_ai(b.db, attempt, res)
+    finally: PENDING.discard((b.path, attempt))
 
-def _get(path, query):
+def _get(b, person, path, query):
+    db = b.db
     deck = (query.get('deck') or [None])[0] or None
     if path == 'decks':
         decks = []
-        for d in DECK_DIRS: decks += mentor.deck_list(d)
+        for d in b.dirs: decks += mentor.deck_list(d)
         return 200, {'decks': decks}
     if path == 'next':
         if query.get('replay'):                  # one practice card asked again (replaying the session's mistakes)
-            return 200, {'card': mentor.practice_card(DB, query['replay'][0])}
-        if query.get('card'):                    # one Learn card to read again (Lessons view); never a practice card
-            return 200, {'card': mentor.one_card(DB, query['card'][0])}
-        card, next_due = mentor.next_card(DB, deck, (query.get('extra') or ['0'])[0] == '1')
-        # a course lesson that waits for others (4.32) says which, instead of "nothing due"
-        return 200, {'card': card, 'next_due': next_due, 'locked': None if card else mentor.locked_reason(DB, deck)}
-    if path == 'stats': return 200, mentor.stats(DB, deck)
-    if path == 'ai':                                 # one attempt's AI part: pending, done (similarity, feedback), error, or none
+            return 200, {'card': mentor.practice_card(db, query['replay'][0])}
+        if query.get('card'):                    # one Learn card to read again (Lessons view, Teach me first); never a practice card
+            return 200, {'card': mentor.one_card(db, query['card'][0])}
+        session = (query.get('session') or ['0'])[0] == '1'     # Study 10 minutes: due first, new cards from the pinned tracks
+        card, next_due = mentor.next_card(db, deck, (query.get('extra') or ['0'])[0] == '1', session=session)
+        # a course lesson that waits for others (4.32), or a track on the shelf, says why instead of "nothing due"
+        return 200, {'card': card, 'next_due': next_due, 'locked': None if card else mentor.locked_reason(db, deck)}
+    if path == 'stats':          # a learner's own lesson folder, for the owner's "adding a lesson" line (never shown to a learner)
+        r = mentor.stats(db, deck)
+        if b.reload and person['my_role'] == 'owner': r['deck_folder'] = learners.shown(b.dirs[0])
+        return 200, r
+    if path == 'today': return 200, {**mentor.today(db, deck_names(b)), 'learner': {k: person[k] for k in ('id', 'name', 'role')}}
+    if path == 'track':                          # Preview: one track's size, history and a few questions; nothing is scheduled
+        t = mentor.track_preview(db, (query.get('id') or [''])[0], deck_names(b))
+        return (200, t) if t else (404, {'ok': False, 'msg': 'There is no track with that id here.'})
+    if path == 'ai':                             # one attempt's AI part: pending, done (similarity, feedback), error, or none
         try: aid = int(query['attempt'][0])
-        except (ValueError, TypeError): return 400, {'ok': False, 'msg': 'bad attempt'}
-        if aid in PENDING: return 200, {'state': 'pending'}
-        d = mentor.get_ai(DB, aid)
+        except (ValueError, TypeError, KeyError): return 400, {'ok': False, 'msg': 'bad attempt'}
+        if (b.path, aid) in PENDING: return 200, {'state': 'pending'}
+        d = mentor.get_ai(db, aid)
         return 200, {'state': 'none'} if not d else {'state': 'error', 'error': d['error']} if 'error' in d else {'state': 'done', **d}
-    if path == 'status':                         # Home: the line, and "needs you" with a verb-first action when cards are due
-        s = mentor.stats(DB)
-        return 200, {'line': line(s), 'needs': bool(s['due']), 'action': f"Study {plural(s['due'], 'due card')}" if s['due'] else ''}
+    if path == 'status':                         # Elaia's Today card and Home: the line, "needs you", a verb-first action
+        return 200, status(mentor.today(db, deck_names(b)))
     return 404, {'ok': False, 'msg': 'not found'}
 
-def _post(path, body):
+def _post(b, person, path, body):
+    db = b.db
     try:
         if path == 'answer' and body.get('hint'):     # one rung of the hint ladder; no attempt is written yet
-            r = mentor.hint(DB, str(body.get('card', '')), int(body['hint']))
+            r = mentor.hint(db, str(body.get('card', '')), int(body['hint']))
         elif path == 'answer':
             text = str(body.get('text', ''))[:2000]
             conf = body.get('confidence'); conf = int(conf) if conf in (1, 2, 3, 4, '1', '2', '3', '4') else None
             ms = int(body.get('ms') or 0)
-            r = mentor.answer(DB, str(body.get('card', '')), text, conf, max(0, min(ms, 3_600_000)),
-                              int(body.get('hints') or 0), body.get('reflections') or [], bool(body.get('skipped')))
+            r = mentor.answer(db, str(body.get('card', '')), text, conf, max(0, min(ms, 3_600_000)),
+                              int(body.get('hints') or 0), body.get('reflections') or [], bool(body.get('skipped')), think=body.get('think') is True,
+                              taught=body.get('taught') is True)
         elif path == 'rate':
-            r = mentor.rate(DB, int(body.get('attempt') or 0), int(body.get('rating') or 0), bool(body.get('grade_wrong')))
+            r = mentor.rate(db, int(body.get('attempt') or 0), int(body.get('rating') or 0), bool(body.get('grade_wrong')))
         elif path == 'undo':                          # Ctrl+Z: the page's last rating this session; {'undone': False} if not undoable
-            r = mentor.undo(DB, int(body.get('attempt') or 0))
-        elif path == 'settings':                      # the settings strip: known keys with the right type only
-            r = {'settings': mentor.set_settings(DB, {k: v for k, v in body.items() if k in mentor.SETTINGS})}
+            r = mentor.undo(db, int(body.get('attempt') or 0))
+        elif path == 'settings':                      # known keys with the right type only; a track's goal is the owner's to set
+            keys = set(mentor.SETTINGS) - ({'goal'} if person['my_role'] != 'owner' else set())
+            r = {'settings': mentor.set_settings(db, {k: v for k, v in body.items() if k in keys})}
         else: return 404, {'ok': False, 'msg': 'not found'}
+    except mentor.Refusal as e: return 400, {'ok': False, 'msg': str(e)}
     except (ValueError, TypeError): return 400, {'ok': False, 'msg': 'bad request'}
     if r is None: return 400, {'ok': False, 'msg': 'unknown card or attempt'}
     return 200, {'ok': True, **r}

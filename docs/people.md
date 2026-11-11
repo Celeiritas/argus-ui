@@ -68,7 +68,9 @@ One file on the server, never in git: `~/.config/argus-ui/people.json` (`ARGUS_P
 ```
 
 - `name`: shown on the page. `id` is optional: without it, the name in lower case with every run of other characters
-  turned into one `-` ("Learner Two" becomes `learner-two`). Mentor keeps each person's progress under this id.
+  turned into one `-` ("Learner Two" becomes `learner-two`). Mentor keeps each person's progress under this id. The
+  owner on the first line inherits the Mentor history that existed before there were people (`mentor.db`): put the person
+  who studied until now first. After that, the order of the lines never moves anyone's history (docs/mentor.md).
 - `role`: `owner` or `learner`. Two owners are fine.
 - `logins`: the Tailscale logins of that person (as `api/whoami` shows them). Upper and lower case do not matter.
 - The server reads the file again whenever it changes: adding a person needs no restart.

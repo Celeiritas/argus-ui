@@ -262,7 +262,7 @@ class Upgrade429(Upgrade):
         self.assertEqual([self.count(f"SELECT COUNT(*) FROM {t}") for t in ('cards', 'sched', 'attempts')], [3, 2, 4])
         self.assertEqual(self.count("SELECT COUNT(*) FROM sched WHERE step IS NOT NULL"), 0, 'a card from before steps stays in review')
         self.assertEqual(self.count("SELECT COUNT(*) FROM attempts WHERE undone=1"), 0)
-        self.assertEqual(m.settings(self.db), {'bury': True})
+        self.assertEqual(m.settings(self.db), m.SETTINGS)
 
 class Card(Base):
     """Two plain cards, answered and rated through the same calls the page makes."""
@@ -430,7 +430,7 @@ class Bury(Base):
         self.assertEqual(self.read_learn()['id'], sib)
 
     def test_setting_off(self):
-        self.assertEqual(m.set_settings(self.db, {'bury': False}), {'bury': False})
+        self.assertEqual(m.set_settings(self.db, {'bury': False})['bury'], False)
         first, sib = self.rate_first()
         self.assertEqual(self.read_learn()['id'], sib)
         m.set_settings(self.db, {'bury': True})
@@ -451,9 +451,9 @@ class Bury(Base):
         self.assertEqual(m.stats(self.db, self.deck)['new'], 2)
 
     def test_settings_ignore_unknown_and_wrong_types(self):
-        self.assertEqual(m.set_settings(self.db, {'bury': 'no', 'other': 1}), {'bury': True})
+        self.assertEqual(m.set_settings(self.db, {'bury': 'no', 'other': 1, 'pinned': 'x', 'new_per_day': {'a': -1}})['bury'], True)
         self.assertEqual(self.count("SELECT COUNT(*) FROM settings"), 0)
-        self.assertEqual(m.stats(self.db)['settings'], {'bury': True})
+        self.assertEqual(m.stats(self.db)['settings'], m.SETTINGS)
 
 _spec = importlib.util.spec_from_file_location('check_deck', os.path.join(R, 'scripts', 'check-deck.py'))
 cd = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(cd)
@@ -598,6 +598,7 @@ class Mastery(Base):
     def setUp(self):
         super().setUp(); self.db = m.connect(self.path)
         m.set_settings(self.db, {'bury': False})          # bury siblings is tested in Bury; here every card of a note today
+        m.set_settings(self.db, {'teach_first': True})    # the 4.32 order, Learn cards in front (question first: tests/mentor_today_test.py)
         with open(ROLES, encoding='utf-8') as fh: doc = json.load(fh)
         with m.DB_LOCK: m.import_course(self.db, doc, ROLES, False)
     def right(self, cid, rating=3, hints=0):

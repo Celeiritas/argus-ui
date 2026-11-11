@@ -60,6 +60,10 @@ if [ -z "$1" ] || [ "$1" = mentor ]; then
   grep -q "INFO C8" <<<"$out" && { echo "FAIL a reference was not checked"; echo "$out"; fail=1; }
   echo "== mentor model"   # courses, Loose lessons, the review log: no browser (tests/mentor_model_test.py)
   $PYTHON "$R/tests/mentor_model_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1
+  echo "== mentor people"  # 4.38: who is studying, one database per person, the AI fence (tests/mentor_people_test.py)
+  $PYTHON "$R/tests/mentor_people_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1
+  echo "== mentor today"   # 4.38: tracks, pin and shelf, question first, the daily new limit (tests/mentor_today_test.py)
+  $PYTHON "$R/tests/mentor_today_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1
 fi
 if [ -z "$1" ] || [ "$1" = mentor ] || [ "$1" = items ]; then
   echo "== mentor items"   # exam-style items: scoring, ratings, rules N1-N8, no browser (tests/items_test.py)
@@ -84,7 +88,7 @@ fi
 # real server; no browser. The Linux run reads the real /proc and says so ("real /proc lookup"); elsewhere it is simulated.
 if [ -z "$1" ] || [ "$1" = people ] || [ "$1" = plugins ]; then
   echo "== people and roles"
-  for t in identity_test gate_test; do       # the line saying which identity path ran, the summary; everything when it fails
+  for t in identity_test gate_test mentor_gate_test; do       # the line saying which identity path ran, the summary; everything when it fails
     st=0; out=$($PYTHON -W ignore::ResourceWarning "$R/tests/$t.py" 2>&1) || st=$?
     if [ $st = 0 ]; then grep -E "real /proc|identity path|^Ran|^OK|skipped" <<<"$out" || true; else echo "$out"; fail=1; fi
   done

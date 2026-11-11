@@ -1,1 +1,3 @@
-{ "id": "mentor", "kind": "server", "agent": true, "server": "plugin.py", "page": "page.js", "style": "page.css", "version": "1.0.0" }
+{ "id": "mentor", "kind": "server", "agent": true, "server": "plugin.py", "page": "page.js", "style": "page.css", "version": "1.1.0",
+  "roles": {"get": {"decks": "learner", "next": "learner", "stats": "learner", "ai": "learner", "status": "learner", "today": "learner", "track": "learner", "learners": "learner"},
+            "post": {"answer": "learner", "rate": "learner", "undo": "learner", "settings": "learner"}} }
