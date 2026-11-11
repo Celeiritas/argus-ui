@@ -2,13 +2,21 @@
 // shelf), the timed session and its summary, think-it on a phone and typing on a wide screen, reduced motion, 375 px.
 // It studies as "Learner Two" (a placeholder person in a people file inside the throwaway HOME), so the owner's database,
 // which tests/mentor.test.js walks through next, is only read. The people file is taken away again at the end.
-const {BASE, check, page, noOverflow, shot, run} = require('./lib');
+// Since #45 the server tells Mentor who is asking: tests/run.sh starts it as Tailscale Serve, so a browser that sends
+// Tailscale-User-Login is that person (docs/people.md), and with a people file a request without a listed login has no
+// person and is refused. Every page here comes in with the owner's or the learner's login, as tests/people.test.js does.
+const {BASE, check, noOverflow, shot, run} = require('./lib');
 const fs = require('fs'), path = require('path');
 const HOME = path.join(path.dirname(process.env.FIXTURES), 'home');
 const PEOPLE = path.join(HOME, '.config', 'argus-ui', 'people.json');
 const LDECKS = path.join(HOME, '.local', 'share', 'argus-ui', 'decks-learner-two');
 const api = (p, what, body) => body ? p.request.post(BASE + 'api/mentor/' + what, {data: body}).then(r => r.json()) : p.request.get(BASE + 'api/mentor/' + what).then(r => r.json());
 const L = 'learner=learner-two';
+const OWNER = 'owner@example.com', LEARNER = 'learner@example.com';
+const page = async (b, w = 1440, h = 900, login = OWNER, extra = {}) => {
+  const ctx = await b.newContext({viewport: {width: w, height: h}, extraHTTPHeaders: {'Tailscale-User-Login': login, 'X-Forwarded-For': '192.0.2.20'}, ...extra});
+  const p = await ctx.newPage(); p.errors = []; p.on('pageerror', e => p.errors.push(String(e))); return p;
+};
 const small = async (p, sel) => (await p.locator(sel).evaluateAll(els => els.filter(e => e.offsetParent && e.getBoundingClientRect().height < 44).map(e => e.textContent.trim().slice(0, 30))));
 run(async b => {
   fs.mkdirSync(path.dirname(PEOPLE), {recursive: true});
@@ -110,12 +118,14 @@ run(async b => {
     await p.locator('[data-view=modules]').click(); await p.waitForTimeout(900);
     check(await p.locator('#toToday2').count() === 1 && /Your questions are on Today/.test(await p.locator('.empty').textContent()), 'no lessons: the view points to Today');
     check(/decks-learner-two/.test(await p.locator('details.about').textContent()) && !/<id>/.test(await p.locator('details.about').textContent()), "the owner sees the person's real lesson folder");
-    // ... and a learner (the server will say so; here its answer is faked) never sees the owner's steps
-    const lp = await page(b, 412, 915);
-    await lp.route('**/api/mentor/learners*', r => r.fulfill({json: {me: 'learner-two', role: 'learner', people: [{id: 'learner-two', name: 'Learner Two', role: 'learner'}], problem: ''}}));
-    await lp.addInitScript(() => { try { localStorage.setItem('mentor-view', 'modules'); } catch (e) {} });
+    // ... and Learner Two on her own phone (her own login) sees her name, no picker, and never the owner's steps
+    const lp = await page(b, 412, 915, LEARNER);
+    await lp.addInitScript(() => { try { localStorage.setItem('mentor-view', 'modules'); localStorage.setItem('mentor-learner', 'owner-one'); } catch (e) {} });
     await lp.goto(BASE + 'mentor'); await lp.waitForTimeout(1200);
     check(await lp.locator('#whoBtn').count() === 0 && /Learner Two/.test(await lp.locator('#mwho').textContent()), 'a learner sees her name and no picker');
+    check((await api(lp, 'learners')).people.map(x => x.id).join() === 'learner-two' && (await api(lp, 'today?learner=owner-one')).learner.id === 'learner-two',
+      "with her own login she is always herself: learner=owner-one is ignored");
+    check(await lp.locator('#toToday2').count() === 1, 'her empty Lessons view points to Today');
     check(await lp.locator('ol.steps').count() === 0 && !/mentor_inbox|Claude Code|adding a lesson/.test(await lp.locator('details.about').textContent()), "a learner never sees the owner's steps for adding a lesson");
     await shot(lp, 'mentor-learner-lessons-412');
 
@@ -130,7 +140,7 @@ run(async b => {
     const box = q.locator('#qform input.blank, #qform textarea#ans').first(); await box.fill('context manager'); await q.keyboard.press('Control+Enter'); await q.waitForTimeout(800);
     check(+(await q.locator('input[name=rate]:checked').inputValue()) <= 2, 'after Teach me first Mentor suggests at most Hard');
     check(q.errors.length === 0 && w.errors.length === 0 && lp.errors.length === 0, 'no page errors ' + [...q.errors, ...w.errors, ...lp.errors].join(' | '));
-    const rm = await b.newPage({viewport: {width: 375, height: 760}, reducedMotion: 'reduce'});
+    const rm = await page(b, 375, 760, OWNER, {reducedMotion: 'reduce'});
     await rm.addInitScript(() => { try { localStorage.setItem('mentor-learner', 'learner-two'); } catch (e) {} });
     await rm.goto(BASE + 'mentor'); await rm.waitForTimeout(900);
     check(await noOverflow(rm), 'Today fits 375 px without sideways scrolling');
