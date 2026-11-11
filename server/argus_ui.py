@@ -668,7 +668,7 @@ class H(BaseHTTPRequestHandler):
         if p == 'api/sky': return self.out(json.dumps(sky.current()), 'application/json')
         if p == 'api/push/status':                          # the owner's (need()); never an endpoint or a key of a device
             return self.out(json.dumps(push.status(self.who, self.trusted, parse_qs(urlsplit(self.path).query).get('device', [''])[0])), 'application/json')
-        if p == 'api/events': return self.events(parse_qs(urlsplit(self.path).query))   # the owner's (the role gate: every api/ route not listed)
+        if p == 'api/events': return self.events(parse_qs(urlsplit(self.path).query, keep_blank_values=True))   # the owner's (the role gate: every api/ route not listed)
         if p.startswith('api/log/'):
             u = p[8:]
             return self.out(json.dumps({'log': log(u) if u in units() else ''}), 'application/json')
@@ -693,7 +693,7 @@ class H(BaseHTTPRequestHandler):
         # api/events?limit=N: the newest events of the watch (notify.py), newest first, at most 100 (default 10). `since`: when the
         # server started, so an empty list can say "Nothing has happened since ...". Only the event's own fields go out, as text.
         raw = (q.get('limit') or ['10'])[0]
-        if not raw.isdigit(): return self.deny(400, 'limit must be a whole number')
+        if not (raw.isascii() and raw.isdigit() and 1 <= len(raw) <= 4): return self.deny(400, 'limit must be a whole number from 1 to 100')   # '²' is a digit to isdigit(), not to int()
         n = max(1, min(100, int(raw)))
         evs = [{k: str(e.get(k) or '') for k in self.EVENT_KEYS} for e in notify.read_events(n)]
         return self.out(json.dumps({'events': evs, 'since': STARTED.astimezone().isoformat(timespec='seconds')}), 'application/json')

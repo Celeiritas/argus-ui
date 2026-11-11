@@ -323,8 +323,13 @@ LAST_STEP = [0.0]
 BAD = {}            # refused check -> why, logged once
 STOP = threading.Event()
 WAKE = threading.Event()    # set to start the next round now (the owner pressed a fix on the page)
-PENDING = set()     # check ids the owner asked to fix (api/watch/fix); the loop runs each on its next round, in its own thread
-FIXING = set()      # check ids whose fix runs right now (the restart and the wait after it)
+PENDING = set()     # check ids the owner asked to fix (api/watch/fix); the loop starts each on its next round
+FIXING = set()      # check ids with a fix asked for or running (queued until its restart is sent, see SENT)
+RUNNING = {}        # check id -> the thread of its repair (the restart and the wait after it): it never holds the loop
+SENT = set()        # check ids whose restart has really been sent: only now the page says "Restarting it now"
+OUTCOMES = {}       # check id -> a finished repair, applied to the saved state by the loop's own thread (apply_done)
+INFLIGHT = set()    # units being restarted or settling right now: two restarts of one unit never overlap
+JOIN = 2.0          # seconds a round waits for repairs it started (a quick one is judged in the same round; tests' fake time)
 ASKED = {}          # check id -> when the owner last asked for its fix (the 2-minute rule)
 OWNER_GAP = 120     # seconds between two fixes of one check: a restart gets time to work before the next is allowed
 
@@ -348,43 +353,79 @@ def save_prev():
 def iso(ts): return datetime.fromtimestamp(ts).astimezone().isoformat(timespec='seconds')
 
 
+def clock(ts):
+    """'5:49 AM', the way the rest of the page writes a time, on every system (%-I does not exist on Windows)."""
+    return datetime.fromtimestamp(ts).strftime('%I:%M %p').lstrip('0')
+
+
 def step(env, settle=SETTLE):
-    """One round over every check. Raises events on changes. Safe to call from a test with a fake Env."""
+    """One round over every check. Raises events on changes. Safe to call from a test with a fake Env.
+    A repair (Argus's own or the one the owner asked for) runs in its own thread, so its wait never holds this loop: every other
+    check keeps its round. The round waits up to JOIN seconds for repairs it started; a longer one is judged when it ends."""
     checks, bad = load_checks()
     for name, why in bad:
         if BAD.get(name) != why: BAD[name] = why; log(f'ignored check {name}: {why}')
     auto, trial = auto_fix()
     now = env.now()
+    apply_done()          # repairs that ended since the last round: their events and saved state first
     drive_down = {}       # mount -> True while a drive check of its own is failing (its dependents stay quiet)
     results = [track(c, evaluate(c, env, hold_of(c['id'])), now) for c in checks]
     for c, r in zip(checks, results):
         if not c.get('unit') and c.get('mount') and r['works'] is False: drive_down[c['mount']] = True
     restarted = set()     # units restarted this round: each at most once, also when two checks name it
     with _lock: asked = set(PENDING); PENDING.clear()
+    final, started = {}, []
     for c, r in zip(checks, results):
-        mine = None       # the fix the owner asked for runs first, in place of this round's judgement (it writes its own event)
-        if c['id'] in asked:
+        id_ = c['id']
+        if id_ in RUNNING: continue                  # its repair is still looking: no judgement this round, its row stays as it was
+        mine = False      # the fix the owner asked for runs in place of this round's judgement (it writes its own event)
+        if id_ in asked:
             try: mine = owner_fix(c, r, env, settle, restarted, now)
-            except Exception as e: log(f'check {c["id"]}: the fix you asked for failed to run: {e}')
-            finally:
-                with _lock: FIXING.discard(c['id'])
-        if mine: r = mine
-        else:
+            except Exception as e: log(f'check {id_}: the fix you asked for failed to start: {e}')
+        if not mine:
             try: r = handle(c, r, env, auto, trial, now, drive_down, settle, restarted)
-            except Exception as e: log(f'check {c["id"]}: handling the result failed: {e}')
-        p = PREV.get(c['id'], {})
-        pub = dict(id=c['id'], title=c['title'], job=c.get('job') or '', unit=c.get('unit') or '', works=r['works'], code=r['code'], at=now,
-                   since=iso(p.get('since', now)), fix=bool(c.get('fix')), fix_say=fix_say(c), autofix=c['id'] in auto, drive=is_drive(c),
-                   again=r['works'] is True and bool(p.get('again')))
-        pub['reason'], pub['title_line'], pub['detail'] = words(c, r['code'], r.get('why', '')) if r['works'] is False else (r.get('why', ''), '', '')
-        pub['note'] = card_note(c, r, PREV.get(c['id']) or {}, auto)
-        with _lock: RESULTS[c['id']] = pub
+            except Exception as e: log(f'check {id_}: handling the result failed: {e}')
+        if id_ in RUNNING: started.append(id_)
+        else: final[id_] = r
+    end = time.monotonic() + JOIN
+    for id_ in started:
+        t = RUNNING.get(id_)
+        if t: t.join(max(0.0, end - time.monotonic()))
+    final.update(apply_done())
+    for c in checks:
+        id_ = c['id']
+        with _lock: last = RESULTS.get(id_)
+        if id_ not in final and last: pub = dict(last, at=now)     # still repairing: as it was, and not stale
+        else: pub = publish(c, final.get(id_) or results[checks.index(c)], auto, now)
+        with _lock: RESULTS[id_] = pub
     with _lock:
         for k in list(RESULTS):
             if k not in {c['id'] for c in checks}: del RESULTS[k]
-    with _lock: FIXING.difference_update(asked)      # a fix asked for a check that left checks.json in between
+        FIXING.difference_update(k for k in asked if k not in RUNNING)     # asked for a check that left checks.json, or nothing ran
     LAST_STEP[0] = now
     save_prev()
+
+
+def publish(c, r, auto, now):
+    """The row state() shows for one check. A check whose last KNOWN verdict is "not working" stays so through a round where Argus
+    could not look (unknown): an unknown round never counts as a change, so it does not change what the page says either. It says
+    when Argus last could look. A check that worked and goes unknown is not turned into trouble ('paused' is on purpose)."""
+    p = PREV.get(c['id'], {})
+    unsure = ''
+    if r['works'] is None and p.get('works') is False and r['code'] != 'paused':
+        r = result(c, False, p.get('code') or 'cannot-look', p.get('why', ''))
+        unsure = looked_line(p.get('looked'))
+    pub = dict(id=c['id'], title=c['title'], job=c.get('job') or '', unit=c.get('unit') or '', mount=c.get('mount') or '', works=r['works'],
+               code=r['code'], at=now, since=iso(p.get('since', now)), fix=bool(c.get('fix')), fix_say=fix_say(c), autofix=c['id'] in auto,
+               drive=is_drive(c), again=r['works'] is True and bool(p.get('again')), unsure=unsure, _looked=p.get('looked'),
+               looked=iso(p['looked']) if isinstance(p.get('looked'), (int, float)) else '')
+    pub['reason'], pub['title_line'], pub['detail'] = words(c, r['code'], r.get('why', '')) if r['works'] is False else (r.get('why', ''), '', '')
+    pub['note'] = card_note(c, r, p, auto)
+    return pub
+
+
+def looked_line(ts):
+    return f'Argus has not been able to look again since {clock(ts)}.' if isinstance(ts, (int, float)) else 'Argus has not been able to look again for a while.'
 
 
 def hold_of(id_):
@@ -401,6 +442,7 @@ def track(c, r, now):
     else: p.pop('between', None)
     if r['code'] == 'read-hung' and 'line' in r: p['hold'] = [r['line'], now + HOLD]   # a fresh timeout, not a held round
     if r['works'] is True: p.pop('hold', None)
+    if r['works'] is not None: p['looked'] = now     # the last round with a real verdict (said when it cannot look again)
     p.setdefault('since', now)                   # 'works since': the first round it was seen, until its state changes
     return r
 
@@ -428,10 +470,10 @@ def handle(c, r, env, auto, trial, now, drive_down, settle, restarted):
     if p.get('works') is not False:              # a new failure counts only once it is seen in CONFIRM rounds in a row
         p['pending'] = p.get('pending', 0) + 1
         if p['pending'] < CONFIRM: return result(c, None, 'pending', 'Saw a problem once; looking again next round.')
-        p.update(works=False, code=r['code'], since=now, told=False); p.pop('again', None)
+        p.update(works=False, code=r['code'], why=r.get('why', ''), since=now, told=False); p.pop('again', None)
         p.pop('decided', None); p.pop('outcome', None)
     elif p.get('code') != r['code']:
-        p.update(code=r['code'], since=now); p.pop('outcome', None); p.pop('decided', None)
+        p.update(code=r['code'], why=r.get('why', ''), since=now); p.pop('outcome', None); p.pop('decided', None)
     else: changed = False
     p.pop('pending', None)
     reason, title, detail = words(c, r['code'], r.get('why', ''))
@@ -449,18 +491,21 @@ def handle(c, r, env, auto, trial, now, drive_down, settle, restarted):
         if isinstance(last, (int, float)) and now - last < RETRY_AFTER:
             p['outcome'] = 'held'
             done = 'would have restarted' if p.get('last_try_trial') else 'already restarted'
-            notify.notify(notify.make('needs-yes', id_, title, f'{detail} Argus {done} {say} by itself at {iso(last)[11:16]}, and it does that only once a day. Restarting {say} should fix it. Waiting for your yes.', url))
+            notify.notify(notify.make('needs-yes', id_, title, f'{detail} Argus {done} {say} by itself at {clock(last)}, and it does that only once a day. Restarting {say} should fix it. Waiting for your yes.', url))
             return r
         p.update(last_try=now, last_try_trial=trial, outcome='trial' if trial else 'tried')
         save_prev()                              # the "already tried" mark and its time are on disk BEFORE anything is restarted
         if trial:
             notify.notify(notify.make('needs-yes', id_, title, f'{detail} Argus would have restarted {say} by itself, but it did not: for now it only notes what it would do. Waiting for your yes.', url))
             return r
-        return repair(c, r, env, settle, restarted, say, reason, url)
+        start_repair(c, r, env, settle, restarted, say, reason, url)
+        return r
     if not changed: return r
     p['told'] = True
     if r['code'] == 'read-hung':                 # its own code: never a restart, a warning
         notify.notify(notify.make('broke', id_, title, f'{detail} It may come back by itself; if it does not, look at the drive.', url, level='warn'))
+    elif r['code'].startswith('drive-') and not is_drive(c):     # its drive is gone or read-only: no restart helps, no yes is asked
+        notify.notify(notify.make('broke', id_, title, f'{detail} Argus waits for the drive: a restart would not help until it is back.', url))
     elif fx:
         notify.notify(notify.make('needs-yes', id_, title, f'{detail} Restarting {say} should fix it. Waiting for your yes.'.strip(), url))
     else:
@@ -469,40 +514,79 @@ def handle(c, r, env, auto, trial, now, drive_down, settle, restarted):
 
 
 def repair(c, r, env, settle, restarted, say, reason, url, by='argus'):
-    """The approved restart, once: each unit at most once per round, never a frozen one. A restart call that hangs or raises
-    counts as a restart that did not work. Then up to `settle` seconds for the program to work again (stops early).
-    by='owner': the owner pressed the fix on the page (owner_fix). The same restart and the same wait; the event says it was
-    his restart, and the card's note keeps the time ("You restarted it at 10:42 and it did not help")."""
-    id_, p = c['id'], PREV[c['id']]
-    mine = by == 'owner'
-    at = iso(env.now())[11:16]
-    went = []
-    for u in c['fix']['restart']:
-        if u in restarted: went.append(u); continue          # another check restarted it this round
-        if env.is_frozen(u): continue
-        restarted.add(u)
-        try: ok, msg = env.restart(u)
-        except Exception as e: ok, msg = False, f'{type(e).__name__}: {e}'
-        if ok: went.append(u)
-        else: log(f'restart of {u} failed: {msg}')
-    if not went:
+    """The approved restart, once: each unit at most once per round, never a frozen one, never while another fix is restarting the
+    same unit. A restart call that hangs or raises counts as a restart that did not work. Then up to `settle` seconds for the
+    program to work again (it stops early). It runs in its own thread (start_repair): it changes no saved state and raises no
+    event itself, it returns what happened, and the loop's thread applies that (apply_repair).
+    by='owner': the owner pressed the fix on the page (owner_fix); the same restart and the same wait, his words in the event."""
+    id_, mine, went = c['id'], [], []
+    try:
+        for u in c['fix']['restart']:
+            frozen = env.is_frozen(u)
+            with _lock:
+                if u in restarted or u in INFLIGHT: went.append(u); continue    # restarted this round already, or being restarted now
+                if frozen: continue
+                restarted.add(u); INFLIGHT.add(u); mine.append(u)
+            try: ok, msg = env.restart(u)
+            except Exception as e: ok, msg = False, f'{type(e).__name__}: {e}'
+            if ok: went.append(u)
+            else: log(f'restart of {u} failed: {msg}')
+        out = dict(c=c, r=r, by=by, say=say, reason=reason, url=url, at=env.now())
+        if not went: return dict(out, kind='cmdfail')
+        with _lock: SENT.add(id_)                 # from now on the page says "Restarting it now" (and the 90 seconds start)
+        end = env.now() + settle
+        r2 = evaluate(c, env)
+        while r2['works'] is not True and env.now() < end:
+            env.sleep(min(3, max(0.0, end - env.now()))); r2 = evaluate(c, env)
+        if r2['works'] is True: return dict(out, kind='fixed', r=r2, done=env.now())
+        return dict(out, kind='nohelp', r=r2 if r2['works'] is False and r2['code'] != r['code'] else r)
+    finally:
+        with _lock: INFLIGHT.difference_update(mine)
+
+
+def start_repair(c, r, env, settle, restarted, say, reason, url, by='argus'):
+    """Start repair() for one check in a short-lived thread of its own (one per check id at a time)."""
+    id_ = c['id']
+    def run():
+        try: o = repair(c, r, env, settle, restarted, say, reason, url, by)
+        except Exception as e:
+            log(f'check {id_}: the repair failed: {e}'); o = dict(c=c, r=r, by=by, say=say, reason=reason, url=url, at=env.now(), kind='cmdfail')
+        with _lock: OUTCOMES[id_] = o; RUNNING.pop(id_, None)
+        WAKE.set()                                # the loop applies it at once
+    t = threading.Thread(target=run, name=f'argus-fix-{id_}', daemon=True)
+    with _lock: FIXING.add(id_); RUNNING[id_] = t
+    t.start()
+
+
+def apply_done():
+    """In the loop's thread: apply every repair that ended (its saved state, its one event). -> {check id: its result}."""
+    with _lock: done = dict(OUTCOMES); OUTCOMES.clear()
+    out = {}
+    for id_, o in done.items():
+        try: out[id_] = apply_repair(o)
+        except Exception as e: log(f'check {id_}: applying the repair failed: {e}')
+        with _lock: FIXING.discard(id_); SENT.discard(id_)
+    return out
+
+
+def apply_repair(o):
+    c, r, say, reason, url = o['c'], o['r'], o['say'], o['reason'], o['url']
+    id_, mine, at = c['id'], o['by'] == 'owner', clock(o['at'])
+    p = PREV.setdefault(id_, {})
+    if o['kind'] == 'cmdfail':
         p['outcome'] = 'owner-cmdfail' if mine else 'cmdfail'
         tried = (f'You asked Argus to restart {say} at {at}, but the restart did not work.' if mine else
                  f'Argus tried to restart {say} by itself, but the restart did not work. It will not try again by itself for a day.')
         notify.notify(notify.make('broke', id_, words(c, r['code'], r.get('why', ''))[1], f'It could not do its job ({reason}). {tried}', url))
         return r
-    end = env.now() + settle
-    r2 = evaluate(c, env)
-    while r2['works'] is not True and env.now() < end:
-        env.sleep(min(3, max(0.0, end - env.now()))); r2 = evaluate(c, env)
-    if r2['works'] is True:
+    if o['kind'] == 'fixed':
         for k in ('streak', 'decided', 'outcome', 'pending'): p.pop(k, None)
-        p.update(works=True, code='ok', since=env.now(), told=False, again=True)
+        p.update(works=True, code='ok', since=o['done'], looked=o['done'], told=False, again=True)
         did = f'You restarted {say} from the page at {at}, and it works now.' if mine else f'Argus restarted {say} as you allowed, and it works now.'
         notify.notify(notify.make('fixed', id_, f'{c["title"]} was restarted and works again', f'It could not do its job ({reason}). {did}', url))
-        return r2
+        return o['r']
     p['outcome'] = 'owner-nohelp' if mine else 'nohelp'
-    if r2['works'] is False and r2['code'] != r['code']: p['code'] = r2['code']; r = r2
+    if r['works'] is False and r['code'] != p.get('code'): p.update(code=r['code'], why=r.get('why', ''))
     title, detail = words(c, r['code'], r.get('why', ''))[1:]
     did = f'You restarted {say} at {at}, and it did not help.' if mine else f'Argus restarted {say} once, and it did not help. It will not try again by itself for a day.'
     notify.notify(notify.make('broke', id_, title, f'{detail} {did}'.strip(), url))
@@ -533,28 +617,31 @@ def ask_fix(id_, frozen=(), on=True, now=None):
     p = PREV.get(id_) or {}
     tries = [ASKED.get(id_), p.get('owner_try'), None if p.get('last_try_trial') else p.get('last_try')]
     last = max([t for t in tries if isinstance(t, (int, float))] or [0])
-    if now - last < OWNER_GAP or id_ in PENDING or id_ in FIXING:
-        return False, 409, f'A restart of {fix_say(c)} started at {iso(last)[11:16]}. Give it 2 minutes, then try again if it still does not work.'
+    if now - last < OWNER_GAP or id_ in PENDING or id_ in FIXING or id_ in RUNNING:
+        return False, 409, f'A restart of {fix_say(c)} started at {clock(last)}. Give it 2 minutes, then try again if it still does not work.'
     with _lock: ASKED[id_] = now; PENDING.add(id_); FIXING.add(id_)
     WAKE.set()
     return True, 200, f'Restarting {fix_say(c)}. Argus looks again for up to {SETTLE} seconds and tells you how it went.'
 
 
 def owner_fix(c, seen, env, settle, restarted, now):
-    """Run the fix the owner asked for (ask_fix), in the loop's thread, in place of handle() for this round. `seen` is what the
-    check found this round. Returns the result for the card, or None when nothing was restarted (it works again by now, or another
-    check restarted its units this round): then handle() judges the round as usual."""
-    if seen['works'] is True:
-        log(f'check {c["id"]}: works again before the fix you asked for ran; nothing restarted'); return None
-    if set(c['fix']['restart']) & restarted: return None
-    p = PREV.setdefault(c['id'], {})
+    """Start the fix the owner asked for (ask_fix), from the loop's thread, in place of handle() for this round. `seen` is what the
+    check found this round. -> True when its repair started (in its own thread), False when nothing was restarted (it works again
+    by now, or another check restarted its units this round): then handle() judges the round as usual."""
+    id_ = c['id']
+    if seen['works'] is True or set(c['fix']['restart']) & restarted:
+        if seen['works'] is True: log(f'check {id_}: works again before the fix you asked for ran; nothing restarted')
+        with _lock: FIXING.discard(id_)
+        return False
+    p = PREV.setdefault(id_, {})
     p['owner_try'] = now
     if p.get('works') is not False and seen['works'] is False:       # not yet counted as broken: count it now, so no second event follows
-        p.update(works=False, code=seen['code'], since=now, told=True); p.pop('pending', None); p.pop('again', None)
+        p.update(works=False, code=seen['code'], why=seen.get('why', ''), since=now, told=True); p.pop('pending', None); p.pop('again', None)
     p['decided'] = seen['code']          # self-repair does not restart it again right after you did
     save_prev()                          # the try and its time are on disk before anything is restarted
     reason = words(c, seen['code'], seen.get('why', ''))[0] if seen['works'] is False else 'it was not working'
-    return repair(c, seen, env, settle, restarted, fix_say(c), reason, c.get('url', ''), by='owner')
+    start_repair(c, seen, env, settle, restarted, fix_say(c), reason, c.get('url', ''), by='owner')
+    return True
 
 
 def card_note(c, r, p, auto):
@@ -564,7 +651,7 @@ def card_note(c, r, p, auto):
     if not fx or r['works'] is not False or r['code'] == 'read-hung': return ''
     say = fix_say(c)
     o = p.get('outcome')
-    at = iso(p['owner_try'])[11:16] if isinstance(p.get('owner_try'), (int, float)) else ''
+    at = clock(p['owner_try']) if isinstance(p.get('owner_try'), (int, float)) else ''
     if o == 'owner-nohelp': return f'You restarted {say} at {at}, and it did not help.'
     if o == 'owner-cmdfail': return f'You asked for a restart of {say} at {at}, but the restart did not work.'
     if r['code'].startswith('drive-'): return ''
@@ -581,9 +668,12 @@ def snapshot(interval=60):
     with _lock: rows = [dict(v) for v in RESULTS.values()]
     for v in rows:
         if now - v['at'] > 3 * interval + 30:
-            v.update(works=None, code='stale', reason='Not checked for a while.', title_line='', detail='')
-        v.pop('at', None)
-        v['fixing'] = v['id'] in FIXING                 # the fix you asked for runs now (api/watch/fix)
+            if v['works'] is False:                     # known broken: it stays so, and says when Argus last could look
+                v.update(stale=True, unsure=looked_line(v.get('_looked')))
+            else: v.update(works=None, code='stale', reason='Not checked for a while.', title_line='', detail='')
+        v.pop('at', None); v.pop('_looked', None)
+        v['fixing'] = v['id'] in SENT                   # its restart has been sent: "Restarting it now" (api/watch/fix, self-repair)
+        v['queued'] = v['id'] in FIXING and v['id'] not in SENT    # asked for, not yet sent
     return sorted(rows, key=lambda v: v['id'])
 
 

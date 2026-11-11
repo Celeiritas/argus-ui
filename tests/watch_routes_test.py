@@ -12,6 +12,11 @@ from watch_works_test import Base, FakeEnv, JELLY, ABS, QBT, DRIVE, GOOD, good_e
 import watch
 
 
+def d2_msg(t):
+    code, d = t.post('api/watch/fix', {'id': 'jellyfin'}); t.assertEqual(code, 409, 'a second press at once is refused'); t.assertIn('Give it 2 minutes', d['msg'])
+    return d['msg']
+
+
 class PodmanFlag(unittest.TestCase):
     """--events-backend=none: without it each `podman exec` writes 2 journal lines (about 14,000 a day from the watch)."""
     def test_podman_gets_the_flag_before_exec(self):
@@ -75,7 +80,8 @@ class OwnerYes(Base):
         e = self.broken(restart_fixes=heal)
         self.assertTrue(watch.ask_fix('jellyfin', now=e.t)[0])
         self.assertTrue(watch.WAKE.is_set(), 'the loop is woken at once')
-        self.assertTrue({r['id']: r for r in watch.snapshot()}['jellyfin']['fixing'], 'the page can say "Restarting" until it ran')
+        row = {r['id']: r for r in watch.snapshot()}['jellyfin']
+        self.assertEqual((row['queued'], row['fixing']), (True, False), 'queued: the page says so, not "Restarting it now", until the restart is sent')
         watch.step(e, settle=6)
         self.assertEqual(e.restarts, ['jellyfin', 'audiobookshelf'], 'exactly the units its fix declares, once each')
         self.assertEqual(self.kinds(), ['needs-yes', 'fixed'], 'one event for your fix')
@@ -91,7 +97,8 @@ class OwnerYes(Base):
         watch.step(e, settle=6)
         self.assertEqual(e.restarts, ['jellyfin', 'audiobookshelf'])
         self.assertEqual(self.kinds(), ['needs-yes', 'broke'])
-        at = watch.iso(e.t)[11:16]
+        at = watch.clock(e.t)
+        self.assertRegex(at, r'^\d{1,2}:\d\d [AP]M$', 'a time as the page writes it')
         self.assertIn(f'You restarted Jellyfin and Audiobookshelf at {at}, and it did not help.', self.events[-1]['body'])
         j = self.result('jellyfin'); self.assertIs(j['works'], False)
         self.assertEqual(j['note'], f'You restarted Jellyfin and Audiobookshelf at {at}, and it did not help.')
@@ -118,6 +125,48 @@ class OwnerYes(Base):
         self.assertEqual(j['title_line'], 'Jellyfin runs, but cannot read its drive')
         self.assertEqual(self.result('qbittorrent')['fix_say'], '')
         d = self.result('media-drive'); self.assertIs(d['works'], True); self.assertTrue(d['since'])
+
+
+class KnownBrokenStays(Base):
+    """W2 point 1: an unknown round, or a result gone stale, never makes a known breakage look fine (R7 finding 1)."""
+    def setUp(self):
+        super().setUp()
+        for x in (watch.PENDING, watch.FIXING, watch.ASKED): x.clear()
+
+    def test_an_unknown_round_keeps_the_last_verdict_and_says_when_argus_last_looked(self):
+        self.checks(JELLY); e = good_env(inside={'jellyfin': 'container-dead-shutdown'}); self.rounds(e)
+        before = self.result('jellyfin'); self.assertIs(before['works'], False)
+        del e.inside['jellyfin']; e.t += 60; watch.step(e, settle=0)          # podman cannot look this round (exit 125)
+        j = self.result('jellyfin')
+        self.assertIs(j['works'], False, 'still not working'); self.assertEqual((j['code'], j['reason']), ('dead-copy', 'cannot read its drive'))
+        self.assertEqual(j['unsure'], f'Argus has not been able to look again since {watch.clock(e.t - 60)}.')
+        self.assertEqual(self.kinds(), ['needs-yes'], 'no event for the unknown round')
+        e.inside['jellyfin'] = 'container-dead-shutdown'; e.t += 60; watch.step(e, settle=0)
+        self.assertEqual(self.result('jellyfin')['unsure'], '', 'a real look again: the sentence goes')
+
+    def test_a_working_check_that_goes_unknown_is_not_trouble(self):
+        self.checks(JELLY); e = good_env(); self.rounds(e)
+        del e.inside['jellyfin']; watch.step(e, settle=0)
+        j = self.result('jellyfin'); self.assertIsNone(j['works']); self.assertEqual(j['code'], 'cannot-look'); self.assertEqual(j['unsure'], '')
+
+    def test_a_stale_result_stays_broken_and_a_stale_good_one_becomes_unknown(self):
+        self.checks(JELLY, DRIVE); e = good_env(inside={'jellyfin': 'container-dead-shutdown'}); self.rounds(e)
+        for v in watch.RESULTS.values(): v['at'] -= 1000                           # nobody looked for 1000 s (the loop was held)
+        rows = {r['id']: r for r in watch.snapshot(interval=60)}
+        j, d = rows['jellyfin'], rows['media-drive']
+        self.assertIs(j['works'], False); self.assertTrue(j['stale']); self.assertRegex(j['unsure'], r'^Argus has not been able to look again since \d{1,2}:\d\d [AP]M\.$')
+        self.assertIsNone(d['works']); self.assertEqual(d['code'], 'stale')
+
+
+class DriveGone(Base):
+    """W2 point 4: a program whose drive is gone is not promised a fix; its event is true on a lock screen."""
+    def test_no_yes_is_asked_and_no_restart_promised(self):
+        self.checks(JELLY); e = good_env(host='host-missing'); self.rounds(e)
+        j = self.result('jellyfin'); self.assertEqual(j['code'], 'drive-missing'); self.assertEqual(j['note'], '')
+        self.assertEqual(self.kinds(), ['broke'])
+        body = self.events[0]['body']
+        self.assertIn('Argus waits for the drive: a restart would not help until it is back.', body)
+        self.assertNotIn('should fix it', body); self.assertNotIn('yes', body)
 
 
 def server_env(tmp, port):
@@ -213,7 +262,8 @@ class Routes(unittest.TestCase):
         self.assertEqual(sorted(d['events'][0]), sorted(['id', 'at', 'kind', 'subject', 'title', 'body', 'url', 'level']), 'only the event fields go out')
         self.assertEqual(len(self.get('api/events?limit=500')[1]['events']), 100, 'at most 100')
         self.assertEqual(len(self.get('api/events')[1]['events']), 10, 'ten by default')
-        for bad in ('abc', '-3', '2.5'): self.assertEqual(self.get('api/events?limit=' + bad)[0], 400, bad)
+        for bad in ('abc', '-3', '2.5', '%C2%B2', '12345', '9' * 5000, '', '%20'): self.assertEqual(self.get('api/events?limit=' + bad)[0], 400, bad[:9])
+        self.assertEqual(len(self.get('api/events?limit=0')[1]['events']), 1, '0 is a number: at least one')
 
     def test_2_status_passes_count(self):
         code, d = self.get('api/countdemo/status'); self.assertEqual(code, 200)
@@ -250,7 +300,7 @@ class Routes(unittest.TestCase):
         self.wait_for(lambda: self.row('jellyfin').get('works') is False)
         code, d = self.post('api/watch/fix', {'id': 'jellyfin'}); self.assertEqual((code, d['ok']), (200, True), d)
         self.assertIn('Restarting Jellyfin and Audiobookshelf', d['msg'])
-        code, d2 = self.post('api/watch/fix', {'id': 'jellyfin'}); self.assertEqual(code, 409, 'a second press at once is refused'); self.assertIn('Give it 2 minutes', d2['msg'])
+        self.assertRegex(d2_msg(self), r'started at \d{1,2}:\d\d [AP]M\.')
         self.wait_for(lambda: os.path.exists(os.path.join(self.fx, 'restarts.log')))                                     # the restart ran ...
         shutil.copy(os.path.join(WFX, 'container-good.mountinfo'), os.path.join(self.tmp, 'pod', 'jellyfin.mountinfo'))   # ... and helped
         self.wait_for(lambda: self.row('jellyfin').get('works') is True and not self.row('jellyfin').get('fixing'))
@@ -260,6 +310,51 @@ class Routes(unittest.TestCase):
         mine = [e for e in evs if e['subject'] == 'jellyfin']
         self.assertEqual(mine[0]['kind'], 'fixed'); self.assertIn('You restarted Jellyfin and Audiobookshelf from the page', mine[0]['body'])
         code, d = self.post('api/watch/fix', {'id': 'jellyfin'}); self.assertEqual(code, 409); self.assertIn('works right now', d['msg'])
+
+
+class TwoFixes(Routes):
+    """W2 point 2: two fixes asked one after another. The second unit is restarted within seconds of its request (not after the
+    first one's 90-second wait), and every other check keeps its rounds meanwhile (nothing goes stale)."""
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        t = cls.tmp; pod = [sys.executable, os.path.join(cls.fx, 'fake_podman.py')]
+        shutil.copy(os.path.join(WFX, 'container-dead-gone.mountinfo'), os.path.join(t, 'pod', 'abs.mountinfo'))
+        jdump({'checks': [dict(JELLY, container=dict(JELLY['container'], runtime=pod), http=None, fix=dict(restart=['jellyfin'], say='Jellyfin')),
+                          dict(ABS, unit=None, container=dict(name='abs', dir='/audiobooks', runtime=pod), fix=dict(restart=['abs-unit'], say='Audiobookshelf')),
+                          dict(DRIVE)]}, os.path.join(t, 'checks.json'))
+        units = jload(os.path.join(cls.fx, 'units.json')); units['abs-unit'] = {'Result': 'success', 'ActiveState': 'active'}
+        jdump(units, os.path.join(cls.fx, 'units.json'))
+
+    def test_1_events_newest_first_and_capped(self): pass
+    def test_2_status_passes_count(self): pass
+    def test_3_each_task_says_whether_its_button_restarts(self): pass
+    def test_4_podman_is_called_with_events_off(self): pass
+    def test_5_fix_refusals(self): pass
+    def test_6_the_owner_fix_runs_once_and_works_again(self): pass
+
+    def restarted(self):
+        f = os.path.join(self.fx, 'restarts.log')
+        return open(f).read().split() if os.path.exists(f) else []
+
+    def test_7_the_second_fix_does_not_wait_for_the_first(self):
+        self.wait_for(lambda: self.row('jellyfin').get('works') is False and self.row('audiobookshelf').get('works') is False)
+        self.assertEqual(self.post('api/watch/fix', {'id': 'jellyfin'})[0], 200)
+        self.wait_for(lambda: 'jellyfin.service' in self.restarted(), 10)
+        q = self.row('jellyfin'); self.assertIs(q['fixing'], True, 'sent: now it says "Restarting it now"')
+        t0 = time.time(); self.assertEqual(self.post('api/watch/fix', {'id': 'audiobookshelf'})[0], 200)
+        self.wait_for(lambda: 'abs-unit.service' in self.restarted(), 8)
+        self.assertLess(time.time() - t0, 8, 'the second unit is restarted within seconds, while the first still waits')
+        self.assertIs(self.row('jellyfin')['fixing'], True, 'the first one is still looking (it does not get better here)')
+        for _ in range(12):                                   # 6 s: the drive check keeps its rounds, nothing goes stale
+            r = self.row('media-drive'); self.assertIs(r.get('works'), True, r)
+            time.sleep(.5)
+        self.assertEqual(self.restarted().count('jellyfin.service'), 1); self.assertEqual(self.restarted().count('abs-unit.service'), 1)
+
+    def test_8_the_loop_keeps_its_rounds_while_a_repair_waits(self):
+        # the drive check's last real look keeps moving while both repairs above are still waiting (they do not heal here)
+        a = self.row('media-drive').get('looked'); time.sleep(3.5); b = self.row('media-drive').get('looked')
+        self.assertTrue(a and b and b > a, f'looked {a} -> {b}')
 
 
 if __name__ == '__main__':
