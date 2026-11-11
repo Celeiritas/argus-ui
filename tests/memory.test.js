@@ -15,7 +15,8 @@ run(async b => {
   try {
     const p = await page(b);
     await p.goto(BASE + 'memory'); await p.locator('.mem-shelf .mem-jar').first().waitFor({timeout: 5000});
-    check(await p.locator('#realms a.realm', {hasText: 'Memory'}).count() === 1, 'a Memory pill in the section bar');
+    check(await p.locator('#realms a.realm', {hasText: 'Backups'}).count() === 1 && /Mnemosyne/.test(await p.locator('#realms a.realm', {hasText: 'Backups'}).textContent()), 'a Backups pill in the section bar, with Mnemosyne under it');
+    check(await p.locator('.title h1').textContent() === 'Backups' && /mnemosyne\.png$/.test(await p.locator('#hero').getAttribute('src')) && !(await p.locator('#hero').isHidden()), 'the page heading says Backups, under Mnemosyne\'s medallion');
     check(/~\/\.mnemosyne\/Server-brain\//.test(await p.locator('#mem-where').textContent()), 'it says which folder it reads');
     check(await p.locator('.mem-shelf .mem-jar').count() === 3 && await p.locator('.mem-list li').count() === 3, 'three snapshots on the shelf and in the list; the decoys are not listed');
     const list = await p.locator('.mem-list').textContent();
@@ -49,8 +50,8 @@ run(async b => {
     check(p.errors.length === 0, 'no page errors ' + p.errors.join(' | '));
 
     const h = await page(b);
-    await h.goto(BASE + 'home'); await h.locator('.place', {hasText: 'Memory'}).locator('small', {hasText: '3 on the server'}).waitFor({timeout: 5000}).catch(() => {});
-    check(/3 on the server, 2\.6 KB/.test(await h.locator('.place', {hasText: 'Memory'}).textContent()), "Home: Memory's place shows its line");
+    await h.goto(BASE); await h.locator('.place', {hasText: 'Backups'}).locator('.pl', {hasText: '3 on the server'}).waitFor({timeout: 5000}).catch(() => {});
+    check(/3 on the server, 2\.6 KB/.test(await h.locator('.place', {hasText: 'Backups'}).textContent()), "Today: the Backups card shows Memory's line");
 
     const ph = await page(b, 375, 760);
     await ph.goto(BASE + 'memory'); await ph.locator('.mem-shelf .mem-jar').first().waitFor({timeout: 5000}); await ph.waitForTimeout(300);

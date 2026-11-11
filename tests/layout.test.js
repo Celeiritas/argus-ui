@@ -11,10 +11,10 @@ run(async b => {
     const pills = await p.locator('#realms .realm').evaluateAll(es => es.map(e => e.getBoundingClientRect().x));
     check(pills.every(x => Math.abs(x - pills[0]) < 2), `${tag}: the sections stack in one column`);
     const needs = await box(p, '.home .needs'), places = await box(p, '.home .places');
-    check(needs.w >= 500 && places.w >= 500 && Math.abs(needs.y - places.y) < 2, `${tag}: Home puts Needs you beside Places, each at least 500 px wide (was a one-word column)`);
+    check(needs.w >= 500 && places.w >= 1000 && places.y > needs.y, `${tag}: Today uses the width: the rows at least 500 px wide, the section cards across the page under them`);
     check(await noOverflow(p), `${tag}: no sideways scrolling`);
     await shot(p, 'layout-' + w + '-home');
-    await p.goto(BASE); await p.locator('.card').first().waitFor(); await p.waitForTimeout(300);
+    await p.goto(BASE + 'argus'); await p.locator('.card').first().waitFor(); await p.waitForTimeout(300);
     check((await box(p, 'header')).h <= h * 0.25, `${tag}: Watch's header takes at most a quarter of the height (${Math.round((await box(p, 'header')).h)} px)`);
     const cols = await p.locator('.grid').first().evaluate(g => getComputedStyle(g).gridTemplateColumns.split(' ').length);
     check(cols >= 7, `${tag}: Watch fits ${cols} task cards in a row`);
@@ -26,8 +26,8 @@ run(async b => {
   const d = await page(b, 1920, 1080); await d.goto(BASE + 'home'); await d.locator('.home .places').waitFor(); await d.waitForTimeout(300);
   const dbar = await box(d, '.realms'), dn = await box(d, '.home .needs'), dp = await box(d, '.home .places'), dm = await box(d, 'main');
   check(dbar.y === 0 && dbar.w >= 1900, '16:9: the sections bar stays across the top');
-  check(Math.abs(dn.y - dp.y) < 2 && Math.abs(dn.x - dm.x - 16) < 2, '16:9: Home has two columns and lines up with the page edge (no second gutter)');
-  await d.goto(BASE); await d.locator('.card').first().waitFor();
+  check(dp.y > dn.y && Math.abs(dn.x - dm.x - 16) < 2, '16:9: Today lines up with the page edge (no second gutter), the section cards under the rows');
+  await d.goto(BASE + 'argus'); await d.locator('.card').first().waitFor();
   check((await box(d, '.argus')).w <= 1080 * 0.22 + 1, '16:9: Argus is at most about a fifth of the height');
   await shot(d, 'layout-1920-home');
 
@@ -56,7 +56,7 @@ run(async b => {
         const moved = await lp.locator('.realms').evaluate(async bar => { const x = bar.scrollLeft; bar.dispatchEvent(new WheelEvent('wheel', {deltaY: 120, bubbles: true, cancelable: true})); return bar.scrollLeft !== x || bar.scrollWidth <= bar.clientWidth; });
         check(moved, '1024: a scrolling bar moves sideways with the mouse wheel');
       }
-      check(await lp.getByRole('link', {name: /Home\s*Overview/}).count() === 1, '1024: a pill whose second line is hidden still reads it out');
+      check(await lp.locator('#realms').getByRole('link', {name: /Watch\s*Argus/}).count() === 1, '1024: a pill whose second line is hidden still reads it out');
       await lp.setViewportSize({width: 1920, height: 1080}); await lp.waitForTimeout(300);
       check(!(await lp.locator('.realms').evaluate(e => e.classList.contains('compact') || e.classList.contains('scroll'))), 'widening the window brings the second lines back and ends the sideways scrolling');
     }
@@ -65,17 +65,18 @@ run(async b => {
   }
 
   const ph = await page(b, 375, 760); await ph.goto(BASE + 'olympus'); await ph.waitForTimeout(800);
-  const on = await box(ph, '.realm.on');
-  check(on.x >= 0 && on.x + on.w <= 375, 'phone: the bar scrolls to show the section you are on (Olympus is past the edge otherwise)');
+  const tb = await box(ph, '.tabbar'), more = ph.locator('.tabbar [data-more]');
+  check(tb.y + tb.h >= 759 && tb.w >= 374 && await ph.locator('.realms').isHidden(), 'phone: the sections sit in a bar at the bottom instead of the strip');
+  check(await more.evaluate(e => e.classList.contains('on')) && /Playground/.test(await more.textContent()), 'phone: on a place inside More, the More slot is the current one and names it');
   await ph.goto(BASE + 'home'); await ph.locator('.home .places').waitFor();
   const pn = await box(ph, '.home .needs'), pp = await box(ph, '.home .places');
   check(pp.y > pn.y && pn.w >= 340, 'phone: Home is one column, full width');
   check(await noOverflow(ph), 'phone: no sideways scrolling');
-  await ph.goto(BASE); await ph.locator('.card').first().waitFor();
-  check((await box(ph, '.argus')).w <= 128, 'phone: Argus is smaller, so the first task card shows sooner');
+  await ph.goto(BASE + 'argus'); await ph.locator('.card').first().waitFor();
+  check((await box(ph, '.argus')).w <= 96, 'phone: Argus is 96 px, so the first task card shows sooner');
   await shot(ph, 'layout-phone-watch');
 
-  const ls = await page(b, 844, 390); await ls.goto(BASE); await ls.locator('.card').first().waitFor();
+  const ls = await page(b, 844, 390); await ls.goto(BASE + 'argus'); await ls.locator('.card').first().waitFor();
   check((await box(ls, '.argus')).w <= 96 && (await box(ls, '.card')).y < 390, 'phone on its side: Argus shrinks and a task card shows on the first screen');
   check(await noOverflow(ls), 'phone on its side: no sideways scrolling');
 });

@@ -55,7 +55,7 @@ function arm(name, quiet) {
   disarm(); armed = name; TOOLS[name].home.setAttribute('aria-pressed', 'true');
   const cards = $$('.card').filter(c => usable(name, c));
   cards.forEach(c => { c.tabIndex = 0; c.classList.add('armable', 'armed-target'); });
-  if (!quiet) { toast(onOlympus ? `Choose ${name === 'poseidon' ? 'a mess' : 'a tree'} for ${TOOLS[name].label}: click it. Esc cancels.` : `Choose a task for ${TOOLS[name].label}: click it, or Tab to it and press Enter. Esc cancels.`); cards[0]?.focus(); }
+  if (!quiet) { toast(onOlympus ? `Choose ${name === 'poseidon' ? 'a mess' : 'a tree'} for ${TOOLS[name].label}: click it. Esc cancels.` : `Choose a task to ${name === 'medusa' ? 'pause or resume (Medusa)' : 'run or restart'}: click it, or Tab to it and press Enter. Esc cancels.`); cards[0]?.focus(); }
 }
 function disarm(refocus) {
   if (!armed) return; const T = TOOLS[armed]; T.home.setAttribute('aria-pressed', 'false'); armed = null;

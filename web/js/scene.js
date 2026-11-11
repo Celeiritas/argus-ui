@@ -85,7 +85,7 @@ const scene = (() => {
       liveSky = r;
       if (r.sky) { live = {sky: r.sky, night: !r.is_day, south: r.south, wind: r.wind || 5, precip: r.precip || 0};
         $('#wxText').textContent = `${r.desc} · ${r.temp}°${r.unit}`; fitRealms();
-        if (here === 'home') $('#sub').textContent = home.greet()[1];       // the greeting was drawn before the weather came
+        if (here === 'home') $('#sub').textContent = home.greet().join(' · ');       // the greeting was drawn before the weather came
         $('#wxText').title = `Weather from ${r.source}, updated ${new Date(r.at * 1000).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'})}${r.stale ? ' (last reading; the weather service is not answering)' : ''}`; }
     } catch (e) {}
     apply(); if ($('#liveNote')) labNote();
@@ -93,7 +93,7 @@ const scene = (() => {
   let rt; addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { plant(); fit(); size(); seed(); if (!raf) draw(0); }, 200); });
   load(); setInterval(load, 20 * 60 * 1000);
   // ---- trees under the pointer (they sit behind the page, so hit-test them where nothing else covers them)
-  const covered = (x, y) => { const el = document.elementFromPoint(x, y); return !!(el && el.closest('.card,.panel,.lab,.dock,button,a,input,textarea,label,.argus,.tools,.realms')); };
+  const covered = (x, y) => { const el = document.elementFromPoint(x, y); return !!(el && el.closest('.card,.panel,.lab,.dock,button,a,input,textarea,label,.argus,.tools,.realms,.tabbar')); };
   const inside = (el, x, y, pad = 0) => { const r = el.getBoundingClientRect(); return x >= r.left - pad && x <= r.right + pad && y >= r.top - pad && y <= r.bottom + pad; };
   // a tree the pointer is over; stone trees only for Medusa (she turns them back)
   function treeAt(x, y, stone) {

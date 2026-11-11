@@ -141,8 +141,10 @@ It stays a sandboxed frame. Home shows its version. If Spartamelee later writes 
 Three screens matter: a phone, a 16:9 monitor and an ultrawide. One rule for all of them: **use the width you have, and spend
 little height on chrome**, because ultrawides are short and phones are narrow.
 - **Phone** (under 768 px): one column. The sections bar scrolls sideways and starts on the section you are on. Argus is 128 px.
-  On its side (under 500 px tall), Argus is 96 px so a task shows on the first screen.
-- **16:9:** the sections bar across the top. Home puts Needs you beside Places from 1200 px. Argus is at most 22% of the height.
+  Under 600 px (4.36.0) the sections move to a bar at the bottom edge with a More sheet, and Argus is 96 px (docs/home.md
+  "Finding your way"). On its side (under 500 px tall), Argus is 96 px so a task shows on the first screen.
+- **16:9:** the sections bar across the top. From 1200 px Today (once Home) puts the rows that need you beside the Open row, and the
+  section cards across the whole width under them (docs/home.md). Argus is at most 22% of the height.
 - **Ultrawide** (2:1 or wider and 1800 px+): the sections bar is a 200 px rail down the left edge (weather and Mute at its foot),
   content may run to 2400 px (`--wide`), and `--gutter` subtracts the rail (`--rail`).
 - Pages inside `main` never add `--gutter` themselves: `main` already centres and pads. (Home and plugin pages did, and that

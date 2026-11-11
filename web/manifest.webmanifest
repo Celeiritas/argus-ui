@@ -1,12 +1,12 @@
 {
- "name": "Argus",
- "short_name": "Argus",
+ "name": "Elaia",
+ "short_name": "Elaia",
  "start_url": "./",
  "scope": "./",
  "display": "standalone",
  "background_color": "#1C2127",
  "theme_color": "#1C2127",
- "description": "Argus the watchman: your agents and their tasks at a glance",
+ "description": "Elaia: what needs you today, with Argus watching the machines",
  "icons": [
   {
    "src": "static/argus-192.png",

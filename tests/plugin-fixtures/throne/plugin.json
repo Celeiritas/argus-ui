@@ -1,0 +1,1 @@
+{ "id": "throne", "kind": "server", "name": "Throne", "subtitle": "Zeus · deploys", "version": "0.0.1-test", "server": "plugin.py", "page": "page.js", "order": 20 }
