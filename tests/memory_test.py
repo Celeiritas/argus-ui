@@ -372,6 +372,15 @@ class Status(Base):
         self.assertEqual((st['needs'], st['action']), (True, 'Check backups'))
         self.jobs[1]['state'] = 'failed'; self.assertEqual(m.status(self.view())['action'], 'Look at the failed backup')
 
+    def test_no_server_snapshot_wins_over_an_old_pc_backup(self):
+        self.write(m.CONFIG, {'folder': os.path.join(self.tmp, 'empty')})          # the server has no snapshot at all
+        self.marker({'at': '2026-10-01T03:00:00'})                                 # and the PC is 40 days old
+        st = m.status(self.view())
+        self.assertEqual((st['needs'], st['action']), (True, 'Check backups'))
+        self.assertEqual(st['line'].split('.')[0], "The server has no backup yet; your PC's backup is older than a week (40 days ago)")
+        self.marker({'at': '2026-11-09T03:00:00'})                                 # PC fresh, server still none: still asks
+        self.assertEqual(m.status(self.view())['action'], 'Check backups')
+
     def test_today_says_word_came_when_it_came(self):
         for text, want in (('not json {', "your PC's backup sent word this page cannot read"), ('{"at": "2026-11-20T03:00:00"}', "your PC's clock looks wrong")):
             with open(os.path.join(self.mn, 'last-backup.json'), 'w', encoding='utf-8') as f: f.write(text)

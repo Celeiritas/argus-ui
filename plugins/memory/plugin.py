@@ -295,8 +295,9 @@ def status(v):
     j = v['job']
     failed = bool(j and j['state'] == 'failed')
     pc_old = any(x['key'] == 'pc' and x['kind'] == 'stale' for x in v['copies'])      # the PC's backup is older than a week
-    return {'line': today(v), 'needs': failed or v['stale'] or pc_old,
-            'action': 'Look at the failed backup' if failed else 'Check backups' if v['stale'] else "Check the PC's backup" if pc_old else ''}
+    no_snap = any(x['key'] == 'server' and x['kind'] == 'none' for x in v['copies'])  # nothing on the shelf: bigger than an old PC backup
+    return {'line': today(v), 'needs': failed or v['stale'] or no_snap or pc_old,
+            'action': 'Look at the failed backup' if failed else 'Check backups' if v['stale'] or no_snap else "Check the PC's backup" if pc_old else ''}
 
 def get(path, query, ctx):
     if path == 'state': return 200, view(ctx)

@@ -4,7 +4,7 @@ Memory (`<base>/memory`) answers **"are my backups fresh, and how many copies ex
 
 ## What it shows
 - **Latest snapshot:** its age ("2 days ago", with the date and time), its size, the next run (the brain job's timer) and how many snapshots the server keeps, with their total size. A warning line appears when the newest snapshot is older than 8 days (the job runs weekly: *The newest snapshot is older than a week: look at its weekly job under Mnemosyne on the Watch page.*) or the brain job's last run failed (*The last try failed (Sun 4:03 AM): its card under Mnemosyne on the Watch page has the log.*).
-- **Where your backups are** (3-2-1): three rows, each a mark and the copy's name, then **one plain sentence** (plugin 1.1.0, Elaia 4.39.0). The sentence says what the copy is, when it was last made and, only when something is not fine, what to do. The mark is a shape as well as a colour (✓ fine, ! older than a week, ✕ missing or failed, ? no word or unreadable, ↻ running), and the row's accessible name is the sentence (the mark is hidden from screen readers). No status words (*Done, Old, None, Unknown, Not yet, Failed, Not run*) and never the word *secrets*: tests check both.
+- **Where your backups are** (3-2-1): three rows, each a mark and the copy's name, then **one plain sentence** (plugin 1.1.0, Elaia 4.41.0). The sentence says what the copy is, when it was last made and, only when something is not fine, what to do. The mark is a shape as well as a colour (✓ fine, ! older than a week, ✕ missing or failed, ? no word or unreadable, ↻ running), and the row's accessible name is the sentence (the mark is hidden from screen readers). No status words (*Done, Old, None, Unknown, Not yet, Failed, Not run*) and never the word *secrets*: tests check both.
 - **The shelf:** one bar per snapshot (the newest 12), oldest on the left, height by size, labelled by date; the newest is marked. While a backup runs, a dashed bar fills at the right. Under it, **All N snapshots** lists each one with its time, age and exact size in bytes (the same number as `ls -l`). These are plain bars and words: **the jar, shelf and vessel art waits for the owner's approval** (ui-plan §13).
 
 ### The rows, every state, word for word
@@ -59,7 +59,7 @@ While it runs, a ribbon of motes (`api.fx.motes`) flows from the server's copy i
 **Never:** deleting snapshots, restoring, or showing what is inside a snapshot (they hold passwords and keys). The plugin lists names and sizes only, directly inside the one folder: no subfolders, no symlinks, nothing outside it, and nothing in a request can change which folder it reads.
 
 ## Home
-Its line on Today is one plain sentence about the server and the PC, then one about the copy outside the home (since 4.39.0; it was `Last snapshot 2 days ago · 3 on the server, 4.1 GB · off-site not yet`). On a phone the card shows the start of it; the whole line is in **Needs you** when it needs you.
+Its line on Today is one plain sentence about the server and the PC, then one about the copy outside the home (since 4.41.0; it was `Last snapshot 2 days ago · 3 on the server, 4.1 GB · off-site not yet`). On a phone the card shows the start of it; the whole line is in **Needs you** when it needs you.
 
 | Server, PC | First sentence |
 |---|---|
@@ -78,7 +78,7 @@ The second sentence is about the server's copy outside the home only (the PC's w
 
 For example: *Backups are fresh: the server 2 days ago, your PC 3 days ago. The server has no copy outside your home yet.*
 
-It goes to **Needs you** when the newest snapshot is older than 8 days (**Check backups**), the last run failed (**Look at the failed backup**) or, since 4.41.0, the PC's backup is older than a week (**Check the PC's backup**).
+It goes to **Needs you** when the newest snapshot is older than 8 days (**Check backups**), the last run failed (**Look at the failed backup**), the server has no snapshot at all (**Check backups**) or, since 4.41.0, the PC's backup is older than a week (**Check the PC's backup**). The server's missing snapshot wins the label when both are true.
 
 ## Settings
 Nothing is needed when the snapshots are in the only `~/.mnemosyne/<Server>-brain/` folder and there is one brain job. Otherwise, `~/.config/argus-ui/memory.json` (read on every refresh, all fields optional):
@@ -96,7 +96,7 @@ The PC's backup writes a small `last-backup.json` when it finishes, and it is br
 - `at` (required): an ISO time; with a zone it is read in the server's zone. A time up to a day ahead of the server's clock reads *just now*; further ahead, the row says to check the PC's clock.
 - `sets` (optional): how many sets of files the run backed up, a whole number from 1 to 999. Anything else is left out.
 - `bytes` (optional): their size, shown in MB or GB with at most one decimal (*117.7 MB*, *4.1 GB*, *12 GB*, *under 0.1 MB*). Zero, negative, not a number (a string, `true`, `NaN`, `Infinity`) or over 16 TB is left out, never shown as it is.
-- A byte-order mark at the start is fine (Windows PowerShell 5 writes one with `-Encoding UTF8`; before 4.39.0 such a file read as no word). A file over 64 KB is not read.
+- A byte-order mark at the start is fine (Windows PowerShell 5 writes one with `-Encoding UTF8`; before 4.41.0 such a file read as no word). A file over 64 KB is not read.
 
 Until that file arrives, the PC's row says no word has come yet.
 
