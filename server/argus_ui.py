@@ -3,14 +3,14 @@
 #   Open it at http://<host>:8095, or anywhere on your tailnet with:  tailscale serve --bg --set-path /argus http://127.0.0.1:8095
 # Powers on the page: Medusa freezes/thaws a task (stop + pause its timer; thaw restores it), Zeus's bolt runs/restarts it.
 # Which agents exist, their names and the page title come from the theme (static/theme.json).
-import json, os, re, socket, subprocess, sys, threading, mimetypes, ipaddress, importlib.util, traceback, types
+import json, os, re, socket, subprocess, sys, threading, mimetypes, ipaddress, importlib.util, inspect, traceback, types
 from urllib.parse import urlsplit, parse_qs
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from datetime import datetime, timezone
 from email.utils import formatdate, parsedate_to_datetime
 
 PORT = int(os.environ.get('ARGUS_PORT', 8095))
-BIND = os.environ.get('ARGUS_BIND', '0.0.0.0')          # e.g. 127.0.0.1 to allow only tailscale serve / this machine
+BIND = os.environ.get('ARGUS_BIND', '127.0.0.1')        # this machine only (tailscale serve passes requests on); 0.0.0.0 only on purpose
 MAX_BODY = 4096
 PLUGIN_MAX_BODY = 64 * 1024 * 1024   # the most a server plugin may ask for with "max_body" (4.23.0)
 HOME = os.path.expanduser('~')
@@ -22,6 +22,7 @@ JOURNALCTL = os.environ.get('ARGUS_JOURNALCTL', 'journalctl')
 sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)), os.path.expanduser('~/.local/share/argus-ui')]
 import sky          # weather for the background scene (sky.py; fetched server-side, cached 20 min)
 import watch        # "works, not just runs": checks.json, the mount table, one event per change (watch.py, docs/checks.md)
+import identity     # who is asking: Tailscale Serve's login (trusted only from Serve's own connection) and the people file (docs/people.md)
 SHARE = os.path.expanduser('~/.local/share/argus-ui')
 
 def load_theme():
@@ -50,7 +51,7 @@ LINKS = os.path.expanduser(os.environ.get('ARGUS_LINKS', '~/.config/argus-ui/lin
 BUNDLED = os.path.expanduser(os.environ.get('ARGUS_BUNDLED', '~/.local/share/argus-ui/bundled'))
 PLUGIN_ID = re.compile(r'^[a-z][a-z0-9-]{0,31}$')
 RESERVED = {'api', 'static', 'plugins', 'play', 'all', 'argus', 'sw.js', 'manifest.webmanifest',   # 'play' means Olympus in the page
-            'state', 'sky', 'health', 'log', 'freeze', 'thaw', 'bolt', 'run'}                     # built-in api/<name> routes
+            'state', 'sky', 'health', 'log', 'freeze', 'thaw', 'bolt', 'run', 'whoami'}                     # built-in api/<name> routes
 mimetypes.add_type('text/javascript', '.js'); mimetypes.add_type('text/javascript', '.mjs')
 mimetypes.add_type('model/gltf-binary', '.glb'); mimetypes.add_type('application/json', '.json')
 mimetypes.add_type('application/wasm', '.wasm')
@@ -58,6 +59,12 @@ SERVER_PLUGINS = {}      # id -> the loaded plugin.py module (load_server_plugin
 PLUGIN_LOCKS = {}        # id -> lock: one POST at a time per plugin, like the powers' LOCK
 PLUGIN_DIR = {}          # id -> the folder its plugin.py was loaded from (bundled or yours)
 PLUGIN_BODY = {}         # id -> its POST size limit ("max_body" in plugin.json, 4.23.0)
+
+# ---------- People and roles (docs/people.md) ----------
+# ~/.config/argus-ui/people.json (ARGUS_PEOPLE) says which Tailscale login is which person and their role: owner (everything)
+# or learner (Today and the study pages). No file: everyone is the owner, as before. Read again whenever it changes.
+PEOPLE = identity.People(os.path.expanduser(os.environ.get('ARGUS_PEOPLE', '~/.config/argus-ui/people.json')))
+SERVE_UID = identity.serve_uid()          # the user Tailscale Serve's connections come from (ARGUS_SERVE_UID, default 0)
 
 def safe_file(d, name):
     # a file named in a manifest: relative, inside the folder, and there
@@ -88,6 +95,10 @@ def manifest(pid, d):
              subtitle=str(m.get('subtitle') or (agent and agent[2].split('·')[0].strip()) or '')[:40],
              icon=safe_file(d, m.get('icon')), version=str(m.get('version') or '')[:20], agent=bool(agent), dir=d,
              bundled=os.path.dirname(d) == BUNDLED, order=m.get('order', 100) if isinstance(m.get('order'), int) else 100)
+    # which of its api/<id>/<path> a learner may call ("roles", docs/people.md); undeclared = the owner's. Only a server
+    # plugin can open anything: a static plugin stays the owner's, files and all.
+    p['roles'] = identity.plugin_roles(m.get('roles') if p['kind'] == 'server' else None)
+    p['learner'] = bool(p['roles']['get'] or p['roles']['post'])
     if p['kind'] == 'static':
         p['entry'] = safe_file(d, m.get('entry') or 'index.html')
         return p if p['entry'] else None
@@ -361,6 +372,20 @@ def state():
                 plugins=[plugin_view(p) for p in ps], watch=[{k: v for k, v in w.items() if k not in ('title_line',)} for w in ws],
                 alerts=sorted(alerts(set(PKEYS) | set(PAGES) | {p['id'] for p in ps}) + watch.alert_list(ws, lambda j: bool(GODS.match(j) and ALERT_JOB.match(j))), key=lambda a: (a['since'], a['file'])))
 
+def state_for(who, people_problem=None):
+    """api/state (and the state inside the page) for this person. The owner gets everything, as before. A learner gets a
+    list built from nothing (so a key added to state() later never leaks to her): her role and name, the plugins that open
+    at least one path to learners and the agents they take over, the title, and empty lists for everything else (no tasks,
+    alerts, links, watch rows or coming-later pills: nothing that names the owner's programs)."""
+    me = {'role': who['role'], 'person': who['person'], 'name': who['name']}
+    if who['role'] == 'owner': return dict(state(), **me, people_problem=people_problem)
+    ps = [p for p in plugins() if p['kind'] == 'server' and p['learner']]
+    ids = {p['id'] for p in ps}
+    return dict(updated=datetime.now().strftime('%I:%M %p').lstrip('0'), jobs=[], watch=[], alerts=[], links=[], soon=[],
+                title=THEME.get('title', 'Argus'), subtitle=THEME.get('subtitle', 'tasks'),
+                personas=[dict(key=k, name=n, domain=d) for k, n, d in PERSONAS if k in ids],
+                plugins=[plugin_view(p) for p in ps], **me)
+
 def plugin_view(p):
     # what the page needs about a plugin; a server plugin's script and style URLs carry their file times, so a redeploy is fetched fresh
     v = {k: p[k] for k in ('id', 'kind', 'name', 'subtitle', 'icon', 'version', 'agent')}
@@ -412,12 +437,12 @@ def thaw(u):
     return True, 'thawed'
 
 PAGE = None
-def page():
+def page(st):
     global PAGE
     if PAGE is None or os.environ.get('ARGUS_DEV'):
         PAGE = open(os.path.join(STATIC, 'index.html'), encoding='utf-8').read()
     # "</" is escaped so text from a unit's Description can never close the <script> tag
-    return PAGE.replace('/*STATE*/null', json.dumps(state()).replace('</', '<\\/'))
+    return PAGE.replace('/*STATE*/null', json.dumps(st).replace('</', '<\\/'))
 
 # Only answer to this machine's own names, IP addresses and Tailscale names (blocks DNS-rebinding attacks),
 # plus anything listed in ARGUS_ALLOWED_HOSTS (comma separated).
@@ -431,6 +456,15 @@ def host_ok(host):
     try: ipaddress.ip_address(h); return True
     except ValueError: return False
 
+PROTECT = {'X-Frame-Options': 'SAMEORIGIN', 'Content-Security-Policy': "frame-ancestors 'self'",   # on every answer that is
+           'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'same-origin'}                # not a plugin file (those carry their own)
+# A server plugin's files run inside Elaia's own page, so they need no CORS header; only a static plugin's sandboxed frame
+# (an opaque origin) does. Identity here rides on the network path, not on a cookie: any web site open in the owner's
+# browser can make it send a GET that carries his identity. What stops that site from READING the answer is the browser's
+# same-origin rule, and "Access-Control-Allow-Origin: *" would give that away.
+SERVER_FILE_HEADERS = {k: v for k, v in PLUGIN_HEADERS.items() if k != 'Access-Control-Allow-Origin'}
+OPEN = {'api/health', 'api/whoami'}                       # anyone may ask these, also a person without a role
+
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
 
@@ -439,6 +473,17 @@ class H(BaseHTTPRequestHandler):
         if p.startswith('/argus'): p = p[6:]          # works whether or not Tailscale strips /argus
         return p.lstrip('/')
 
+    def send_header(self, k, v):
+        self._sent = getattr(self, '_sent', set()); self._sent.add(k.lower())
+        super().send_header(k, v)
+
+    def end_headers(self):
+        # the protective headers (clickjacking, type sniffing, referrer) on every answer that is not a plugin file
+        if not getattr(self, '_plugin_file', False):
+            for k, v in PROTECT.items():
+                if k.lower() not in getattr(self, '_sent', set()): self.send_header(k, v)
+        super().end_headers()
+
     def out(self, body, ctype='text/html; charset=utf-8', code=200, cache='no-store', headers=None):
         b = body if isinstance(body, bytes) else body.encode()
         self.send_response(code)
@@ -446,26 +491,78 @@ class H(BaseHTTPRequestHandler):
         for k, v in (headers or {}).items(): self.send_header(k, v)
         self.send_header('Cache-Control', cache); self.end_headers(); self.wfile.write(b)
 
+    # ---------- who is asking (docs/people.md) ----------
+    def identify(self):
+        """Once per request: the login as sent, whether it came through Tailscale Serve, the person (who) and the people
+        file's state. The login header counts only when the connection's other end belongs to the Serve user."""
+        login = identity.header_value(self.headers.get('Tailscale-User-Login')) or None
+        try: uid = identity.connection_uid(self.client_address[:2], self.connection.getsockname()[:2])
+        except (OSError, TypeError, ValueError): uid = None
+        self.via_serve = uid is not None and uid == SERVE_UID
+        self.login, self.trusted = login, bool(self.via_serve and login)
+        self.people = PEOPLE.current()
+        self.who = identity.resolve(self.people, login, self.trusted)
+
+    def need(self, verb, p):
+        """The role a route needs: 'none' (anyone), 'learner' or 'owner'. Everything is the owner's unless listed here or
+        opened by a plugin's "roles" (docs/people.md has the table)."""
+        pid, _, rest = p[4:].partition('/')
+        if verb == 'post':
+            return self.plugin_need(pid, 'post', rest) if p.startswith('api/') and pid in SERVER_PLUGINS else 'owner'
+        if p in OPEN: return 'none'
+        if p.startswith('api/'):
+            if pid in SERVER_PLUGINS: return self.plugin_need(pid, 'get', rest)
+            return 'learner' if p in ('api/state', 'api/sky') else 'owner'
+        if p.startswith('plugins/'):                       # a plugin's files: open to a learner only if it opens a path to her
+            fid = p[8:].split('/')[0]                     # only a loaded server plugin can open its files (PLUGIN_DIR)
+            x = manifest(fid, PLUGIN_DIR[fid]) if fid in PLUGIN_DIR else None
+            return 'learner' if x and x['kind'] == 'server' and x['learner'] else 'owner'
+        return 'learner'                                   # the page itself (any address: the page sends her to Today) and its files
+
+    def plugin_need(self, pid, verb, path):
+        m = manifest(pid, PLUGIN_DIR[pid])                 # read fresh, like every manifest; a broken one opens nothing
+        return 'learner' if m and m['roles'][verb].get(path) == 'learner' else 'owner'
+
+    def refuse(self, verb, p, need):
+        """403 with one plain sentence; a page address opened by someone without a role gets the small private page."""
+        role = self.who['role']
+        if role == 'none' and verb == 'get' and not p.startswith('api/'):
+            html = identity.private_page(self.login, self.trusted, '../' * p.count('/') + 'api/whoami')
+            return self.out(html, code=403, headers={'Content-Security-Policy': identity.PRIVATE_CSP})
+        if role == 'none':
+            msg = (f'This page is private and {self.login} is not on its list of people. Ask the owner to add this Tailscale login.'
+                   if self.trusted else 'This page is private, and this request did not come through Tailscale, so the server cannot tell who you are.')
+        else:
+            msg = f'Only the owner of this page can {"do" if verb == "post" else "open"} this. You are signed in as {self.who["name"]}.'
+        return self.out(json.dumps({'ok': False, 'error': msg, 'msg': msg}), 'application/json', 403)
+
+    def whoami(self):
+        problem = self.people[2] if self.who['role'] == 'owner' else None
+        return self.out(json.dumps({'login': self.login, 'trusted': self.trusted, 'through_serve': self.via_serve,
+                                    **self.who, 'problem': problem}), 'application/json')
+
     def plugin_file(self, rest):
         # plugins/<id>/<path>: files of a plugin, inside its folder only (same guard as static/).
         # A server plugin's Python side is never served, only its page script, style and whatever they load.
+        self._plugin_file = True
         pid, _, sub = rest.partition('/')
         p = next((x for x in plugins() if x['id'] == pid), None)
         if not p: return self.out('not found', 'text/plain', 404)
         if '/' not in rest:                                   # plugins/<id> -> plugins/<id>/ so relative URLs resolve
             self.send_response(301); self.send_header('Location', self.path.split('?', 1)[0] + '/')
             self.send_header('Content-Length', '0'); self.end_headers(); return
+        own = PLUGIN_HEADERS if p['kind'] == 'static' else SERVER_FILE_HEADERS
         root = os.path.realpath(p['dir']); f = os.path.realpath(os.path.join(root, sub or p.get('entry', '')))
         if os.path.isdir(f): f = os.path.join(f, 'index.html')
         hidden = os.path.basename(f) == 'plugin.json' or (p['kind'] == 'server' and (f.endswith(('.py', '.pyc')) or '__pycache__' in f))
         if os.path.commonpath([root, f]) != root or not os.path.isfile(f) or hidden:
-            return self.out('not found', 'text/plain', 404, headers=PLUGIN_HEADERS)
+            return self.out('not found', 'text/plain', 404, headers=own)
         ct = mimetypes.guess_type(f)[0] or 'application/octet-stream'
         if ct.startswith('text/') or ct in ('application/json',): ct += '; charset=utf-8'
         with open(f, 'rb') as fh:
             st = os.fstat(fh.fileno())              # the file actually opened, so the ETag matches the bytes sent
             etag = f'"{st.st_mtime_ns:x}-{st.st_size:x}"'
-            headers = {**PLUGIN_HEADERS, 'ETag': etag, 'Last-Modified': formatdate(st.st_mtime, usegmt=True)}
+            headers = {**own, 'ETag': etag, 'Last-Modified': formatdate(st.st_mtime, usegmt=True)}
             cache = plugin_cache(os.path.relpath(f, root).replace(os.sep, '/'))
             if not_modified(self.headers, etag, st.st_mtime):   # 304: no body, the same validators and sandbox headers
                 self.send_response(304)
@@ -473,20 +570,35 @@ class H(BaseHTTPRequestHandler):
                 self.send_header('Cache-Control', cache); self.end_headers(); return
             return self.out(fh.read(), ct, cache=cache, headers=headers)
 
-    # Request headers a server plugin may read (ctx.headers). Behind `tailscale serve` they say who is asking; they can
-    # only be trusted when Elaia binds to 127.0.0.1, so a plugin that decides on them asks Janus (docs/leafy-plugin.md).
+    # Request headers a server plugin may read (ctx.headers). They say who is asking only when the request came through
+    # `tailscale serve` (the connection belongs to the Serve user); from anywhere else every one of them is dropped, so a
+    # plugin is never handed a faked name. A plugin that decides on them still asks Janus (docs/leafy-plugin.md).
     PASS_HEADERS = ('Tailscale-User-Login', 'Tailscale-User-Name', 'X-Forwarded-For')
+    TAKES_WHO = {}                                     # function -> True when it takes a fourth parameter (who)
+
+    @classmethod
+    def takes_who(cls, fn):
+        if fn not in cls.TAKES_WHO:
+            try:
+                ps = list(inspect.signature(fn).parameters.values())
+                cls.TAKES_WHO[fn] = any(x.kind == x.VAR_POSITIONAL for x in ps) or \
+                    len([x for x in ps if x.kind in (x.POSITIONAL_ONLY, x.POSITIONAL_OR_KEYWORD)]) >= 4
+            except (TypeError, ValueError): cls.TAKES_WHO[fn] = False
+        return cls.TAKES_WHO[fn]
 
     def plugin_call(self, pid, verb, path, arg):
-        # api/<id>/<path> -> the plugin's get(path, query, ctx) or post(path, body, ctx), which answers (status, obj)
+        # api/<id>/<path> -> the plugin's get(path, query, ctx[, who]) or post(path, body, ctx[, who]), which answers (status, obj).
+        # The role was checked before this; who is passed on every call to a function that takes it, never None.
         fn = getattr(SERVER_PLUGINS[pid], verb, None)
-        ctx = plugin_ctx(pid, PLUGIN_DIR[pid]); ctx.headers = {k: self.headers[k] for k in self.PASS_HEADERS if self.headers.get(k)}
+        ctx = plugin_ctx(pid, PLUGIN_DIR[pid])
+        ctx.headers = {k: self.headers[k] for k in self.PASS_HEADERS if self.headers.get(k)} if self.via_serve else {}
         r = None
         if callable(fn):
+            args = (path, arg, ctx) + ((dict(self.who),) if self.takes_who(fn) else ())
             try:
                 if verb == 'post':
-                    with PLUGIN_LOCKS[pid]: code, obj = fn(path, arg, ctx)
-                else: code, obj = fn(path, arg, ctx)
+                    with PLUGIN_LOCKS[pid]: code, obj = fn(*args)
+                else: code, obj = fn(*args)
                 if not isinstance(code, int) or not 100 <= code <= 599: raise ValueError(f'status {code!r} is not an HTTP status')
                 r = code, obj, json.dumps(obj)
             except Exception:
@@ -501,13 +613,19 @@ class H(BaseHTTPRequestHandler):
         self.out(r[2], 'application/json', r[0])
 
     def do_GET(self):
+        self._plugin_file = False; self._sent = set()
         if not host_ok(self.headers.get('Host')): return self.out('unknown host', 'text/plain', 421)
-        try: self.get()
+        try:
+            self.identify(); p = self.path_parts(); need = self.need('get', p)
+            if not identity.allows(self.who['role'], need): return self.refuse('get', p, need)
+            self.get()
         except Exception as e: self.out(json.dumps({'ok': False, 'msg': 'server error'}), 'application/json', 500)
 
     def get(self):
         p = self.path_parts()
         pid, _, rest = p[4:].partition('/')
+        if p == 'api/health': return self.out(json.dumps(health()), 'application/json', cache='no-store')
+        if p == 'api/whoami': return self.whoami()
         if p.startswith('api/') and pid in SERVER_PLUGINS: return self.plugin_call(pid, 'get', rest, parse_qs(urlsplit(self.path).query))
         if p.startswith('static/'):
             root = os.path.realpath(STATIC); f = os.path.realpath(os.path.join(root, p[7:]))
@@ -519,9 +637,8 @@ class H(BaseHTTPRequestHandler):
             f = os.path.join(STATIC, p)
             if not os.path.isfile(f): return self.out('not found', 'text/plain', 404)
             with open(f, 'rb') as fh: return self.out(fh.read(), 'application/manifest+json' if p.endswith('manifest') else 'text/javascript')
-        if p == 'api/state': return self.out(json.dumps(state()), 'application/json')
+        if p == 'api/state': return self.out(json.dumps(state_for(self.who, self.people[2])), 'application/json')
         if p == 'api/sky': return self.out(json.dumps(sky.current()), 'application/json')
-        if p == 'api/health': return self.out(json.dumps(health()), 'application/json', cache='no-store')
         if p.startswith('api/log/'):
             u = p[8:]
             return self.out(json.dumps({'log': log(u) if u in units() else ''}), 'application/json')
@@ -537,23 +654,29 @@ class H(BaseHTTPRequestHandler):
             name = next(x['name'] for x in live if x['id'] == MOVED[pid])   # it shows "problem" in place of its list and "line" on Home, both true
             return self.out(json.dumps({'ok': False, 'moved': MOVED[pid], 'line': f'Now called {name}: reload this page',
                                         'problem': f'This section is now called {name}. Reload this page to open it.'}), 'application/json')
-        if p == '' or first in PKEYS or first in PAGES or first in ids: return self.out(page())
+        if p == '' or first in PKEYS or first in PAGES or first in ids: return self.out(page(state_for(self.who, self.people[2])))
         return self.out('not found', 'text/plain', 404)
 
     def deny(self, code, msg): return self.out(json.dumps({'ok': False, 'msg': msg}), 'application/json', code)
 
     def do_POST(self):
-        # Cross-site protection (there is no login): right host, JSON only (a plain HTML form can't send it),
-        # and the browser must say the request came from this page itself.
+        # Cross-site protection: right host, JSON only (a plain HTML form can't send it), and the browser must say the
+        # request came from this page itself. Then the role (docs/people.md): every POST is the owner's unless a plugin opens it.
+        self._plugin_file = False; self._sent = set()
         if not host_ok(self.headers.get('Host')): return self.deny(421, 'unknown host')
         if (self.headers.get('Content-Type') or '').split(';')[0].strip() != 'application/json': return self.deny(415, 'json only')
         site = self.headers.get('Sec-Fetch-Site'); origin = self.headers.get('Origin')
         if site and site not in ('same-origin', 'none'): return self.deny(403, 'cross-site request blocked')
         if origin and origin.split('://', 1)[-1] != self.headers.get('Host'): return self.deny(403, 'cross-site request blocked')
-        try: n = int(self.headers.get('Content-Length', 0) or 0)
-        except ValueError: n = -1
         p = self.path_parts()
         pid, _, rest = p[4:].partition('/')
+        try: self.identify(); need = self.need('post', p)
+        except Exception: return self.deny(500, 'server error')
+        if not identity.allows(self.who['role'], need): return self.refuse('post', p, need)
+        if self.people[0] == 'broken':                     # a people file that never read well: nothing changes until it is fixed
+            return self.out(json.dumps({'ok': False, 'error': self.people[2], 'msg': self.people[2]}), 'application/json', 503)
+        try: n = int(self.headers.get('Content-Length', 0) or 0)
+        except ValueError: n = -1
         limit = PLUGIN_BODY.get(pid, MAX_BODY) if p.startswith('api/') and pid in SERVER_PLUGINS else MAX_BODY
         if n < 0 or n > limit: return self.deny(413, 'request too large')
         try: body = json.loads(self.rfile.read(n) or b'{}')
