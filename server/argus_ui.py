@@ -23,6 +23,7 @@ sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)), os.path.expanduser('
 import sky          # weather for the background scene (sky.py; fetched server-side, cached 20 min)
 import watch        # "works, not just runs": checks.json, the mount table, one event per change (watch.py, docs/checks.md)
 import identity     # who is asking: Tailscale Serve's login (trusted only from Serve's own connection) and the people file (docs/people.md)
+import push, summary  # phone alerts (Web Push) and the daily summary (docs/phone-alerts.md)
 SHARE = os.path.expanduser('~/.local/share/argus-ui')
 
 def load_theme():
@@ -34,7 +35,7 @@ FROZEN = f'{REG}/frozen.json'
 PERSONAS = [(a['key'], a['name'], a.get('domain', '')) for a in THEME.get('agents', [])] or [('argus', 'Argus', 'Watchman · monitoring')]
 NEVER_FREEZE = set(THEME.get('never_freeze', ['argus-ui']))
 PKEYS = [p[0] for p in PERSONAS]
-PAGES = ['olympus', 'home']      # sections that are not agents: the Olympus playground, Home (docs/home.md)
+PAGES = ['olympus', 'home', 'phone']   # sections that are not agents: the Olympus playground, Home (docs/home.md), Phone alerts (docs/phone-alerts.md)
 MOVED = {'pads': 'controllers'}  # sections that changed their address: <base>/pads still lands on Controllers (4.33.0, for one release)
 
 # ---------- LeafyPlugins (docs/leafy-plugin.md) ----------
@@ -51,7 +52,7 @@ LINKS = os.path.expanduser(os.environ.get('ARGUS_LINKS', '~/.config/argus-ui/lin
 BUNDLED = os.path.expanduser(os.environ.get('ARGUS_BUNDLED', '~/.local/share/argus-ui/bundled'))
 PLUGIN_ID = re.compile(r'^[a-z][a-z0-9-]{0,31}$')
 RESERVED = {'api', 'static', 'plugins', 'play', 'all', 'argus', 'sw.js', 'manifest.webmanifest',   # 'play' means Olympus in the page
-            'state', 'sky', 'health', 'log', 'freeze', 'thaw', 'bolt', 'run', 'whoami'}                     # built-in api/<name> routes
+            'state', 'sky', 'health', 'log', 'freeze', 'thaw', 'bolt', 'run', 'whoami', 'push'}             # built-in api/<name> routes
 mimetypes.add_type('text/javascript', '.js'); mimetypes.add_type('text/javascript', '.mjs')
 mimetypes.add_type('model/gltf-binary', '.glb'); mimetypes.add_type('application/json', '.json')
 mimetypes.add_type('application/wasm', '.wasm')
@@ -658,6 +659,8 @@ class H(BaseHTTPRequestHandler):
             with open(f, 'rb') as fh: return self.out(fh.read(), 'application/manifest+json' if p.endswith('manifest') else 'text/javascript')
         if p == 'api/state': return self.out(json.dumps(state_for(self.who, self.people[2])), 'application/json')
         if p == 'api/sky': return self.out(json.dumps(sky.current()), 'application/json')
+        if p == 'api/push/status':                          # the owner's (need()); never an endpoint or a key of a device
+            return self.out(json.dumps(push.status(self.who, self.trusted, parse_qs(urlsplit(self.path).query).get('device', [''])[0])), 'application/json')
         if p.startswith('api/log/'):
             u = p[8:]
             return self.out(json.dumps({'log': log(u) if u in units() else ''}), 'application/json')
@@ -700,6 +703,10 @@ class H(BaseHTTPRequestHandler):
         except Exception: return self.deny(400, 'bad json')
         if not isinstance(body, dict): return self.deny(400, 'bad json')
         if p.startswith('api/') and pid in SERVER_PLUGINS: return self.plugin_call(pid, 'post', rest, body)   # after every check above
+        if p in ('api/push/subscribe', 'api/push/kinds', 'api/push/forget', 'api/push/test'):   # phone alerts, the owner's (need())
+            try: code, obj = push.route(p[9:], body, self.who, self.trusted)
+            except Exception: return self.deny(500, 'server error')
+            return self.out(json.dumps(obj), 'application/json', code)
         u = str(body.get('job', ''))
         actions = {'api/freeze': freeze, 'api/thaw': thaw, 'api/bolt': bolt, 'api/run': bolt}
         if p not in actions: return self.deny(404, 'not found')
@@ -713,4 +720,7 @@ class H(BaseHTTPRequestHandler):
 if __name__ == '__main__':
     load_server_plugins()
     if WATCH_ON: watch.start(watch_env(), WATCH_INTERVAL)
+    push.start(lambda person: push.role_in(PEOPLE.current(), person),      # phone alerts: owners' devices only (docs/phone-alerts.md)
+               lambda s: next((w.get('title', '') for w in watch.snapshot(WATCH_INTERVAL or 60) if w.get('id') == s), ''))
+    summary.start(lambda: watch.snapshot(WATCH_INTERVAL or 60))            # the daily summary, its own small thread
     ThreadingHTTPServer((BIND, PORT), H).serve_forever()

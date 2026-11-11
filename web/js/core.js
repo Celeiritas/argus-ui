@@ -9,7 +9,7 @@ const RM = matchMedia('(prefers-reduced-motion: reduce)');      // reduced motio
 const MOUNT = /^\/argus(\/|$)/.test(location.pathname) ? '/argus/' : '/';
 const REST = location.pathname.slice(MOUNT.length - (location.pathname === '/argus' ? 1 : 0)).replace(/^\/+|\/+$/g, '');
 const AGENT_KEYS = (S?.personas || []).map(p => p.key);
-const PAGES = ['olympus', 'home'];                            // sections that are not agents (Today, once called Home: docs/home.md)
+const PAGES = ['olympus', 'home', 'phone'];                   // sections that are not agents (Today, once called Home: docs/home.md; Phone alerts: docs/phone-alerts.md)
 const PLUGINS = S?.plugins || [];                             // LeafyPlugins: each has its own section (docs/leafy-plugin.md)
 // Elaia opens on Today (here = 'home'): the bare address and its old name <base>/home. Watch is Argus's section, <base>/argus;
 // <base>/<agent> is Watch showing one agent's tasks, and <base>/argus/argus Argus's own.
@@ -23,7 +23,7 @@ const url = p => BASE + p;
 // leading /argus either way, so /argus/argus is Watch at both mounts
 const WATCH = '/argus/argus';
 // sections that are not about watching: Argus shrinks to the corner and the section's agent takes the centre
-const SIDE = ['mentor', 'olympus', 'home'];
+const SIDE = ['mentor', 'olympus', 'home', 'phone'];
 const side = SIDE.includes(here) || !!plugin, onOlympus = here === 'olympus';     // Olympus: a playground where the powers act on the scene
 const only = side ? null : here === 'argus' ? (SEG[1] === 'argus' ? 'argus' : null) : here;   // Watch: one agent's tasks, or all (null)
 document.body.classList.toggle('side', side); document.body.classList.toggle('play', onOlympus);
@@ -163,6 +163,7 @@ function sections() {
   add('olympus', url('olympus'), 'Olympus', icon('olympus'));
   ['controllers', 'spartamelee', 'ariad-node'].forEach(sec);
   PLUGINS.forEach(p => sec(p.id));
+  add('phone', url('phone'), 'Phone alerts', icon('argus'));   // the owner's (visible() leaves it out for a learner); More sheet only: alerts.js
   (S.links || []).forEach((x, i) => out.push({id: `link-${i}`, kind: 'link', href: x.href, word: x.name, realm: x.what || 'Opens another page', mark: LINK_MARK}));
   (S.soon || []).filter(x => !PLUGINS.some(p => p.name === x.name)).forEach((x, i) => out.push({id: `soon-${i}`, kind: 'soon', word: x.name, realm: `${x.what} · coming later`, mark: BLADES}));
   return out.map(e => ({...e, on: e.id === 'argus' ? !side : e.id === here, count: e.kind ? 0 : needCount(e.id)}));
@@ -190,7 +191,7 @@ function put(el, html) { if (!el || drawn[el.id] === html) return false; drawn[e
 function drawNav() {
   if (!S) return;
   const all = visible(sections()), prim = all.filter(e => PRIMARY.includes(e.id)), more = all.filter(e => !PRIMARY.includes(e.id));
-  put($('#realms'), all.map(pill).join(''));
+  put($('#realms'), all.filter(e => e.id !== 'phone').map(pill).join(''));   // Phone alerts: in the phone's More sheet, not the wide strip (alerts.js)
   const open = more.find(e => e.on);   // you are on a place inside More: the More slot is the current one and names it
   put($('#tabs'), prim.map(tab).join('') + (more.length ? `<button class="tab more${open ? ' on' : ''}" type="button" data-more aria-haspopup="dialog" aria-controls="moreSheet" aria-expanded="false"><span class="tabicon">${MORE_MARK}${badge(sumNeeds(more), 'tabcount')}</span><b>More</b>${open ? `<small>${esc(open.word)}</small><span class="sr">, ${esc(open.word)} is open</span>` : ''}${needSay(sumNeeds(more))}</button>` : ''));
   $('#tabbar').style.setProperty('--slots', prim.length + (more.length ? 1 : 0));
@@ -236,6 +237,8 @@ function render() {
     if (!$('#hero').hidden) $('#hero').src = plugin.icon ? url(`plugins/${plugin.id}/${plugin.icon}`) : `static/icons/${god || plugin.id}.png`;
   } else if (here === 'home') {
     head(name, home.greet().join(' · '), 'Today'); $('#hero').hidden = true;
+  } else if (here === 'phone') {
+    head('Phone alerts', 'Argus · what makes your phone buzz', 'Phone alerts'); $('#hero').hidden = true;
   } else if (side && !onOlympus) {
     const w = WORDS[here] || {}; head(w.word || me.name, w.realm ? `${w.realm} · ${me.domain}` : me.domain, w.word || me.name);
     $('#hero').src = `static/icons/${here}.png`;
@@ -249,6 +252,7 @@ function render() {
   // the people file cannot be used (the server keeps its last good copy): one plain line for the owner, on Today and Watch only
   const pp = $('#peopleProblem'), ppShow = role() === 'owner' && !!S.people_problem && (here === 'home' || (!plugin && !side && !onOlympus));
   pp.textContent = ppShow ? S.people_problem : ''; pp.hidden = !ppShow;          // textContent: the sentence is never read as HTML
+  phoneAlerts.hint();                                                            // Today's one quiet line about phone alerts (alerts.js)
   const by = {}; S.jobs.forEach(j => (by[j.persona] ||= []).push(j));
   const lone = {}; loneAlerts().forEach(a => (lone[a.job.split('-')[0]] ||= []).push(a));   // alerts with no task card of their own
   const shown = S.personas.filter(p => (by[p.key] || lone[p.key] || p.key === only) && !SIDE.includes(p.key));
@@ -257,6 +261,7 @@ function render() {
   if (plugin) { look.retarget(); return leafy.show(plugin); }
   if (onOlympus) { look.retarget(); return playground.show(); }
   if (here === 'home') { look.retarget(); return home.show(); }
+  if (here === 'phone') { look.retarget(); return phoneAlerts.show(); }
   // trouble first: failed (or alerted), then running, then ok, then the rest; groups ordered by their worst card
   const rank = j => j.state === 'failed' || j.works === false || alertsFor(j).some(a => a.level === 'alert') ? 0 : j.state === 'running' ? 1 : j.state === 'ok' ? 2 : 3;
   const worst = p => Math.min(4, ...(by[p.key] || []).map(rank), ...(lone[p.key] || []).map(a => a.level === 'alert' ? 0 : 2));
