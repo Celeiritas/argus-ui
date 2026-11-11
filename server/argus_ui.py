@@ -720,6 +720,7 @@ class H(BaseHTTPRequestHandler):
 if __name__ == '__main__':
     load_server_plugins()
     if WATCH_ON: watch.start(watch_env(), WATCH_INTERVAL)
-    push.start(lambda person: push.role_in(PEOPLE.current(), person))      # phone alerts: owners' devices only (docs/phone-alerts.md)
+    push.start(lambda person: push.role_in(PEOPLE.current(), person),      # phone alerts: owners' devices only (docs/phone-alerts.md)
+               lambda s: next((w.get('title', '') for w in watch.snapshot(WATCH_INTERVAL or 60) if w.get('id') == s), ''))
     summary.start(lambda: watch.snapshot(WATCH_INTERVAL or 60))            # the daily summary, its own small thread
     ThreadingHTTPServer((BIND, PORT), H).serve_forever()

@@ -13,13 +13,22 @@ It never buzzes when Argus fixed something by itself, or when something came bac
 stays on the page and goes into the next daily summary.
 
 So that the phone never becomes noise:
-- the same thing (same check, same kind) does not buzz again within **30 minutes**;
+- the same thing (same check, same kind) does not buzz again within **30 minutes**. If it keeps going wrong, the quiet
+  time grows to 1 hour, 2 hours, then 4 hours, and it is back to 30 minutes once that thing has been quiet for 12 hours;
+  nothing is lost: every event stays in the events file and in the daily summary;
 - at most **6 buzzes per person in any hour**. What comes after that is not lost: it is folded into **one** later message,
   *"3 more things happened. Open Elaia."*, sent as soon as the hour has room again;
 - a newer message about the same thing replaces one the phone has not shown yet, and on the phone a newer notification
   about the same thing replaces the older one instead of stacking.
 
-Only **owners** get alerts (`docs/people.md`); a learner never sees the page.
+Only **owners** get alerts (`docs/people.md`); a learner never sees the page. A phone turned on before there was a
+people file keeps getting its alerts after one is written: it counts for the owners (with several owners, for all of
+them), every owner sees it in his list and can remove it, and it becomes his own when that phone turns alerts on again.
+A learner never sees or gets it.
+
+On the lock screen a message that waits for you starts with **Needs your yes:** and the name of the thing (*Needs your
+yes: Media player*); its first line then says what is wrong. A message that something stopped working keeps Argus's own
+words. On a computer the same alerts show as notifications, and the page says *show an alert* instead of *buzz*.
 
 ## Turning it on (the owner, on the phone)
 
@@ -53,10 +62,13 @@ one phone (RFC 8291): the push service carries it but **cannot read it**. It hol
 (RFC 8292), so the push service knows it comes from the same server each time; the signature carries a contact address,
 `mailto:elaia@example.invalid` unless you set another (a made-up address under the reserved name `.invalid`). <!-- private-ok -->
 
-The server only ever calls a known push service: the address must be `https`, port 443, and its host must be
+The server only ever calls a known push service: the address must be `https` with no port written out (so port 443),
+and its host must be
 `fcm.googleapis.com` or end in `.push.services.mozilla.com`, `.notify.windows.com` or `.push.apple.com`. Anything else is
 refused when a phone is added and again before every message; a redirect is never followed. Nothing else about you, your
-programs or your network is sent anywhere.
+programs or your network is sent anywhere. In the clear, outside the encrypted part, the push service sees how long it may
+hold the message, how urgent it is, and a topic made from the subject with a secret from the server's key (so it cannot
+guess what the message is about; a newer message with the same topic replaces one the phone has not fetched yet).
 
 Sending runs on its own thread with a small queue, so neither Argus's checks nor the page ever wait on the network (10
 seconds per try). When the push service says the phone is gone (404 or 410), that device is removed. When it is busy or

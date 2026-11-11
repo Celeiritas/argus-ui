@@ -28,7 +28,9 @@ MAX_MESSAGE = 2000                                   # bytes of the message befo
 RECORD = 4096                                        # the record size in the aes128gcm header (one record)
 TIMEOUT = 10                                         # seconds for one request to the push service
 RETRY_AFTER = 60                                     # 429, 5xx or no answer: one more try after this many seconds
-REPEAT = 30 * 60                                     # the same subject and kind is not sent again within this
+REPEAT = 30 * 60                                     # the same subject and kind is not sent again within this; then the gap grows:
+GAPS = (REPEAT, 3600, 2 * 3600, 4 * 3600)            # 30 min, 1 h, 2 h, then 4 h between buzzes about one thing that keeps going wrong,
+CALM = 12 * 3600                                     # back to 30 minutes once that thing has been quiet for 12 hours
 PER_HOUR = 6                                         # buzzes per person per rolling hour; more are folded into one later message
 HOUR = 3600
 TEST_GAP = 10                                        # one test buzz per person per this many seconds
@@ -163,7 +165,9 @@ def encrypt(plaintext, ua_public, auth_secret, as_private=None, salt=None):
 # ---------- RFC 8292: VAPID ----------
 def contact():
     c = str(os.environ.get('ARGUS_PUSH_CONTACT') or '').strip()
-    if re.fullmatch(r'mailto:[^\s@<>"]+@[^\s@<>"]+', c) or re.fullmatch(r'https://[^\s<>"]+', c) and not urlsplit(c).hostname.endswith('.ts.net'):
+    try: host = urlsplit(c).hostname or '' if c.startswith('https://') else ''
+    except ValueError: host = ''
+    if re.fullmatch(r'mailto:[^\s@<>"]+@[^\s@<>"]+', c) or re.fullmatch(r'https://[^\s<>"]+', c) and host and not host.endswith('.ts.net'):
         return c
     if c: log('ARGUS_PUSH_CONTACT is not a mailto: or https: address (or is the page\'s own address); the default is used')
     return DEFAULT_CONTACT
@@ -173,7 +177,7 @@ def vapid(endpoint, key=None, now=None):
     """The Authorization header for one push service: 'vapid t=<ES256 JWT>, k=<public key>' (RFC 8292 section 3)."""
     c = crypto(); key = key or server_key()
     u = urlsplit(endpoint)
-    claims = {'aud': f'{u.scheme}://{u.netloc}', 'exp': int(now or time.time()) + 12 * 3600, 'sub': contact()}
+    claims = {'aud': f'{u.scheme}://{u.hostname}', 'exp': int(now or time.time()) + 12 * 3600, 'sub': contact()}
     head = b64(json.dumps({'typ': 'JWT', 'alg': 'ES256'}, separators=(',', ':')).encode())
     body = b64(json.dumps(claims, separators=(',', ':')).encode())
     r, s = c['dss'](key.sign(f'{head}.{body}'.encode(), c['ec'].ECDSA(c['hashes'].SHA256())))
@@ -193,7 +197,7 @@ def test_origin():
 
 
 def endpoint_ok(endpoint):
-    """True only for a known push service: https, port 443, no user-info, and a host that is fcm.googleapis.com or ends in
+    """True only for a known push service: https, no port written out, no user-info, and a host that is fcm.googleapis.com or ends in
     one of SUFFIXES (exact match on the parsed host). Checked at subscribe time and again before every send."""
     if not isinstance(endpoint, str) or not 8 < len(endpoint) <= 1024 or re.search(r'[\s\\\x00-\x1f\x7f]', endpoint): return False
     try:
@@ -203,7 +207,7 @@ def endpoint_ok(endpoint):
     host = u.hostname or ''
     t = test_origin()
     if t and (u.scheme, host, port) == t: return True
-    if u.scheme != 'https' or port not in (None, 443): return False
+    if u.scheme != 'https' or port is not None or ':' in u.netloc: return False   # no explicit port, not even :443 (aud is https://host)
     if not re.fullmatch(r'[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+', host): return False   # no IP literal in [], no trailing dot
     try:
         ipaddress.ip_address(host); return False
@@ -252,22 +256,49 @@ def remove_device(did):
 
 
 # ---------- who is an owner (set by the server: the people file; standalone, the no-file rule) ----------
+NO_FILE = 'owner'          # the person every request is while there is no people file (identity.YOU); rows turned on then carry it
+
+
 def role_in(people_state, person):
-    """The role of a person id in identity.People.current(): no file -> only 'owner' is the owner; a broken file -> nobody."""
+    """The role of a person id in identity.People.current(): no file -> only 'owner' is the owner; a broken file -> nobody.
+    A device turned on before the people file existed is stored with the person NO_FILE. Once a usable file is there, such a
+    row belongs to the owners: it keeps buzzing (for the owner, or for every owner when there are several, since it is one
+    phone), every owner sees it and can remove it, and it becomes his own when that phone turns alerts on again. Only if the
+    file gives a LEARNER the id 'owner' does such a row count for nobody (never for her)."""
     mode, people, _ = people_state
-    if mode == 'absent': return 'owner' if person == 'owner' else 'none'
+    if mode == 'absent': return 'owner' if person == NO_FILE else 'none'
     if mode == 'broken': return 'none'
-    return next((p['role'] for p in people if p['person'] == person), 'none')
+    p = next((p for p in people if p['person'] == person), None)
+    if person == NO_FILE: return 'owner' if p is None or p['role'] == 'owner' else 'none'
+    return p['role'] if p else 'none'
 
 
-role_of = lambda person: 'owner' if person == 'owner' else 'none'
+role_of = lambda person: 'owner' if person == NO_FILE else 'none'
+
+
+def owns(d, who):
+    """May this person see and change this device row: his own, or (as an owner) a row from before the people file."""
+    p = d.get('person')
+    if p == who.get('person'): return True
+    return p == NO_FILE and who.get('role') == 'owner' and role_of(NO_FILE) == 'owner'
+
+
+name_of = lambda subject: ''   # the name of a thing as the page calls it (the check's title); the server sets it at start
 
 
 # ---------- the message ----------
 def message(event, kind=None):
     """The JSON a phone gets: {id, kind, title, body, url, at, tag}, at most MAX_MESSAGE bytes (the body is trimmed)."""
-    m = {'id': str(event.get('id') or ''), 'kind': kind or event.get('kind', ''), 'title': str(event.get('title') or 'Elaia')[:200],
-         'body': str(event.get('body') or ''), 'url': str(event.get('url') or ''), 'at': str(event.get('at') or ''),
+    kind = kind or event.get('kind', '')
+    title, body = str(event.get('title') or 'Elaia'), str(event.get('body') or '')
+    if kind == 'needs-yes':          # on a lock screen he must see at once that he is asked: the ask first, then what it is about
+        try: name = str(name_of(str(event.get('subject') or '')) or '').strip()
+        except Exception: name = ''
+        said = title.rstrip('. ')
+        body = f'{said}. {body}'.strip() if said and not body.startswith(said) else body
+        title = f'Needs your yes: {name or said}'
+    m = {'id': str(event.get('id') or ''), 'kind': kind, 'title': title[:200],
+         'body': body, 'url': str(event.get('url') or ''), 'at': str(event.get('at') or ''),
          'tag': str(event.get('subject') or event.get('kind') or 'elaia')[:64]}
     dump = lambda: json.dumps(m, ensure_ascii=False).encode()
     raw = dump()
@@ -284,10 +315,13 @@ def message(event, kind=None):
     return raw
 
 
-def topic(subject):
+def topic(subject, key=None):
     """The Topic header: a newer message with the same topic replaces one the phone has not fetched yet (RFC 8030 5.4).
-    At most 32 characters of the URL-safe base64 alphabet, so a hash of the subject."""
-    return b64(hashlib.sha256(('elaia:' + str(subject)).encode()).digest())[:32]
+    At most 32 characters of the URL-safe base64 alphabet: an HMAC of the subject with a salt made from the server's private
+    key, so the push service (which sees the header in clear) cannot guess the subject; stable for one server."""
+    c = crypto(); key = key or server_key()
+    salt = hashlib.sha256(b'elaia-topic\x00' + key.private_bytes(c['ser'].Encoding.DER, c['ser'].PrivateFormat.PKCS8, c['ser'].NoEncryption())).digest()
+    return b64(hmac.new(salt, str(subject).encode(), hashlib.sha256).digest())[:32]
 
 
 # ---------- sending: one worker thread, a small queue ----------
@@ -310,7 +344,8 @@ def say_failure(why):
             'moved': 'The phone maker\'s message service answered with a different address, which Elaia never follows.',
             'refused': 'The phone maker\'s message service refused the message. Turning alerts off and on again on that device usually helps.',
             'unknown': 'This device asked for a message service Elaia does not know, so nothing was sent.',
-            'nokey': 'The message could not be locked for this device. Turning alerts off and on again on it usually helps.'}[why]
+            'nokey': 'The message could not be locked for this device. Turning alerts off and on again on it usually helps.',
+            'sign': 'Elaia could not sign the message. Check the alert settings on the server (docs/phone-alerts.md, "Files and settings").'}[why]
 
 
 class Sender:
@@ -351,8 +386,12 @@ class Sender:
             body = encrypt(job['raw'], unb64(dev['keys']['p256dh']), unb64(dev['keys']['auth']))
         except Exception:
             update_device(dev['id'], last_error=say_failure('nokey')); return
-        headers = {'TTL': str(TTL.get(job['kind'], 3600)), 'Urgency': URGENCY.get(job['kind'], 'normal'), 'Topic': topic(job['subject']),
-                   'Content-Encoding': 'aes128gcm', 'Content-Type': 'application/octet-stream', 'Authorization': vapid(dev['endpoint'])}
+        try:
+            headers = {'TTL': str(TTL.get(job['kind'], 3600)), 'Urgency': URGENCY.get(job['kind'], 'normal'), 'Topic': topic(job['subject']),
+                       'Content-Encoding': 'aes128gcm', 'Content-Type': 'application/octet-stream', 'Authorization': vapid(dev['endpoint'])}
+        except Exception as e:
+            log(f'a message could not be signed ({type(e).__name__})')
+            update_device(dev['id'], last_error=say_failure('sign')); return
         try: status = post(dev['endpoint'], body, headers)
         except (TimeoutError, OSError, http.client.HTTPException) as e:
             status = 'timeout'
@@ -391,12 +430,16 @@ class Gate:
         return q
 
     def offer(self, person, kind, subject, now=None):
-        """'send', 'repeat' (said within 30 minutes) or 'folded' (the hour is full: counted for the later message)."""
+        """'send', 'repeat' (said too recently: 30 minutes, growing to 4 hours for one thing that keeps going wrong) or 'folded'
+        (the hour is full: counted for the later message)."""
         now = clock() if now is None else now
         with self.lock:
             k = (person, kind, subject)
-            if k in self.told and now - self.told[k] < REPEAT: return 'repeat'
-            self.told[k] = now
+            rec = self.told.get(k)                       # [last buzz, step in GAPS, last time it came up]
+            if rec and now - rec[2] >= CALM: rec = None   # quiet for 12 hours: back to 30 minutes
+            if rec and now - rec[0] < GAPS[rec[1]]:
+                rec[2] = now; return 'repeat'
+            self.told[k] = [now, min(rec[1] + 1, len(GAPS) - 1) if rec else 0, now]
             q = self._room(person, now)
             if len(q) >= PER_HOUR or self.folded.get(person):
                 f = self.folded.setdefault(person, {'n': 0, 'kinds': set()}); f['n'] += 1; f['kinds'].add(kind)
@@ -469,7 +512,7 @@ def status(who, trusted, this=''):
         out.update(available=False, why='Phone alerts are not available: the server\'s list of devices cannot be read. '
                    'Move it aside to a dated name (docs/phone-alerts.md) and turn alerts on again.', key='')
         return out
-    out['devices'] = [_view(d, str(this or '')) for d in devs if d.get('person') == who.get('person')]
+    out['devices'] = [_view(d, str(this or '')) for d in devs if owns(d, who)]
     return out
 
 
@@ -489,7 +532,7 @@ def route(name, body, who, trusted):
     with _dev_lock:
         try: devs = load_devices()
         except (OSError, ValueError): return 503, {'ok': False, 'msg': 'The server\'s list of devices cannot be read.'}
-        dev = next((d for d in devs if d['id'] == did and d.get('person') == person), None)
+        dev = next((d for d in devs if d['id'] == did and owns(d, who)), None)
         if not dev: return 404, {'ok': False, 'msg': 'That device is not on your list any more. Reload this page.'}
         if name == 'kinds':
             if not isinstance(body.get('kinds'), list): return 400, {'ok': False, 'msg': 'Say which alerts this device should get.'}
@@ -540,8 +583,9 @@ def subscribe(person, body, trusted):
     return 200, {'ok': True, 'id': did, 'msg': 'Alerts are on for this device.'}
 
 
-def start(role):
-    """Called once at server start: who counts as an owner, and the sink."""
-    global role_of
+def start(role, names=None):
+    """Called once at server start: who counts as an owner, the name of a thing as the page calls it, and the sink."""
+    global role_of, name_of
     role_of = role
+    if names: name_of = names
     notify.register(sink)

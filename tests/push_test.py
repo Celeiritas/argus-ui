@@ -193,7 +193,7 @@ class Encryption(unittest.TestCase):
 
 class Hosts(unittest.TestCase):
     def test_known_push_services(self):
-        for e in ('https://fcm.googleapis.com/fcm/send/abc', 'https://fcm.googleapis.com:443/wp/abc',
+        for e in ('https://fcm.googleapis.com/fcm/send/abc', 'https://fcm.googleapis.com/wp/abc',
                   'https://updates.push.services.mozilla.com/wpush/v2/abc', 'https://wns2-by3p.notify.windows.com/w/?token=abc',
                   'https://web.push.apple.com/QGuQyavXutnMH', 'https://FCM.googleapis.com/fcm/send/abc'):
             self.assertTrue(push.endpoint_ok(e), e)
@@ -208,7 +208,7 @@ class Hosts(unittest.TestCase):
                       'https://fcm.googleapis.com:8443/x', 'https://fcm.googleapis.com:80/x', 'http://fcm.googleapis.com/x',
                       'ftp://fcm.googleapis.com/x', 'https://192.0.2.1/x', 'https://[2001:db8::1]/x', 'https://fcm.googleapis.com./x',
                       'https://fcm.googleapis.com\\@evil.example/x', 'https://fcm.googleapis.com /x', '//fcm.googleapis.com/x',
-                      'https://fcm.googleapis.com:443:80/x', 'https://xn--fcm-xyz.googleapis.co/x', '', None, 42,
+                      'https://fcm.googleapis.com:443:80/x', 'https://fcm.googleapis.com:443/x', 'https://fcm.googleapis.com:/x', 'https://fcm.googleapis.com:0443/x', 'https://xn--fcm-xyz.googleapis.co/x', '', None, 42,
                       'http://127.0.0.1:9/x', 'https://127.0.0.1/x', 'https://localhost/x', 'https://' + 'a' * 1100 + '.push.apple.com/x'):
                 self.assertFalse(push.endpoint_ok(e), e)
         finally: os.environ['ARGUS_PUSH_TEST_ORIGIN'] = FAKE.origin
@@ -467,7 +467,8 @@ if not os.path.isfile('/proc/net/tcp'):              # no /proc (Windows, macOS)
 
 
 @need
-class Routes(unittest.TestCase):
+class RouteBase(unittest.TestCase):
+    """A real server in this process, and how to ask it (the tests are in Routes and AfterThePeopleFile)."""
     @classmethod
     def setUpClass(cls):
         cls.srv = a.ThreadingHTTPServer(('127.0.0.1', 0), a.H)
@@ -510,6 +511,8 @@ class Routes(unittest.TestCase):
             self.assertNotIn(s.encode(), raw, s)
         self.assertNotIn(b'PRIVATE', raw); self.assertNotIn(pem.split(b'\n')[1] if b'\n' in pem else pem, raw)
 
+@need
+class Routes(RouteBase):
     def test_turn_on_list_change_test_forget(self):
         code, raw, d = self.req('GET', 'api/push/status')
         self.assertEqual((code, d['available'], d['trusted'], d['devices']), (200, True, True, []))
@@ -584,6 +587,127 @@ class Routes(unittest.TestCase):
             push.sink(notify.make('broke', 'x', 'x'))                        # does nothing, raises nothing
             self.assertEqual(self.req('GET', 'api/health')[0], 200)
         finally: push._c[:] = saved
+
+
+# ---------- the fix round (R8): each of these failed on the reviewed head ----------
+@need
+class AfterThePeopleFile(RouteBase):
+    """R8 finding 1: a device turned on before there was a people file keeps getting its alerts afterwards."""
+    def test_a_device_from_before_keeps_buzzing_and_the_owner_sees_it(self):
+        code, raw, d = self.req('POST', 'api/push/subscribe', self.sub_body('before'))     # no people file: the person "owner"
+        self.assertEqual((code, devices()[0]['person']), (200, push.NO_FILE)); did = d['id']
+        self.people()                                                                        # now an owner and a learner
+        FAKE.reset(); notify.notify(notify.make('broke', 'media', 'Media player is not running', 'The service is not running.'))
+        wait_for(lambda: len(FAKE.got) == 1, what='the buzz to the device from before')
+        self.assertEqual(json.loads(decrypt(FAKE.got[0]['body'], *self.keys))['kind'], 'broke')
+        s = self.req('GET', 'api/push/status', login=OWNER)[2]
+        self.assertEqual([x['id'] for x in s['devices']], [did], "the owner's list shows it")
+        self.assertEqual(self.req('GET', 'api/push/status', login=LEARNER)[0], 403, 'the learner gets nothing of it')
+        self.assertFalse(push.owns(devices()[0], {'person': 'learner-two', 'name': 'Learner Two', 'role': 'learner'}))
+        self.assertFalse(push.owns(devices()[0], {'person': None, 'name': None, 'role': 'none'}))
+        self.assertEqual(self.req('POST', 'api/push/forget', {'id': did}, login=LEARNER)[0], 403)
+        self.assertEqual(self.req('POST', 'api/push/kinds', {'id': did, 'kinds': ['summary']}, login=OWNER)[0], 200, 'the owner may change it')
+        self.assertEqual(self.req('POST', 'api/push/forget', {'id': did}, login=OWNER)[0], 200, 'and remove it')
+        self.assertEqual(devices(), [])
+
+    def test_the_same_phone_turning_on_again_becomes_his(self):
+        b = self.sub_body('same'); self.req('POST', 'api/push/subscribe', b)
+        self.people()
+        self.assertEqual(self.req('POST', 'api/push/subscribe', b, login=OWNER)[0], 200)
+        self.assertEqual([x['person'] for x in devices()], ['owner-one'])
+
+    def test_who_such_a_row_counts_for(self):
+        ok = lambda people: ('ok', people, None)
+        own = {'person': 'owner-one', 'role': 'owner'}; two = {'person': 'owner-two', 'role': 'owner'}
+        self.assertEqual(push.role_in(ok([own]), push.NO_FILE), 'owner')
+        self.assertEqual(push.role_in(ok([own, two]), push.NO_FILE), 'owner', 'several owners: it counts for the owners')
+        self.assertEqual(push.role_in(ok([own, {'person': 'owner', 'role': 'learner'}]), push.NO_FILE), 'none',
+                         'a learner who happens to have the id "owner" never gets it')
+        self.assertEqual(push.role_in(('broken', [], None), push.NO_FILE), 'none')
+        self.assertEqual(push.role_in(ok([own]), 'stranger'), 'none')
+
+
+@need
+class LockScreenWords(unittest.TestCase):
+    """R8 finding 5: on a lock screen "needs my yes" and "stopped working" read differently in the first 40 characters."""
+    def test_needs_yes_says_so_first(self):
+        import watch
+        push.name_of = lambda s: 'Media player' if s == 'media' else ''
+        try:
+            c = {'id': 'media', 'title': 'Media player', 'unit': 'jellyfin'}
+            codes = ['unit-down'] + [k for k in watch.PROGRAM]
+            for code in codes:
+                reason, title, why = watch.words(c, code)
+                yes = json.loads(push.message(notify.make('needs-yes', 'media', title, f'{why} Waiting for your yes.')))
+                broke = json.loads(push.message(notify.make('broke', 'media', title, f'{why} This one has no automatic fix.')))
+                self.assertNotEqual(yes['title'][:40], broke['title'][:40], code)
+                self.assertEqual(yes['title'], 'Needs your yes: Media player', code)
+                self.assertIn('Media player', broke['title'], code)
+                self.assertTrue(yes['body'].startswith(title.rstrip('.') + '. '), (code, yes['body']))
+                self.assertLessEqual(len(yes['title']), 40)
+                self.assertEqual(broke['body'], f'{why} This one has no automatic fix.', 'broke: the words as they are')
+            push.name_of = lambda s: ''
+            m = json.loads(push.message(notify.make('needs-yes', 'x', 'Backups is not running', 'Restarting it should fix it.')))
+            self.assertEqual(m['title'], 'Needs your yes: Backups is not running', 'no name known: the watch title, never cut')
+        finally: push.name_of = lambda s: ''
+
+
+@need
+class Flapping(unittest.TestCase):
+    """R8 finding 8: one check that breaks every 2 minutes all day buzzes far less than 48 times."""
+    def setUp(self):
+        clean(); self.t = [0.0]; push.clock = lambda: self.t[0]
+        self.real, push.sender = push.sender, Recorder(); push.role_of = lambda p: 'owner' if p == 'owner' else 'none'
+        add_device()
+    def tearDown(self): push.sender = self.real; push.clock = time.monotonic
+
+    def test_the_quiet_time_grows_and_comes_back(self):
+        sent = []
+        for i in range(24 * 30):                                   # every 2 minutes for 24 hours
+            self.t[0] = i * 120.0; n = len(push.sender.jobs)
+            push.sink(notify.make('broke', 'media', 'Media player is not running', ''))
+            if len(push.sender.jobs) > n: sent.append(self.t[0] / 60)
+        self.assertEqual(sent[:6], [0, 30, 90, 210, 450, 690], 'gaps of 30 minutes, 1 hour, 2 hours, then 4 hours')
+        self.assertLessEqual(len(sent), 9)
+        self.t[0] += 12 * 3600; push.sink(notify.make('broke', 'media', 'x', ''))
+        self.t[0] += 31 * 60; push.sink(notify.make('broke', 'media', 'x', ''))
+        self.assertEqual(len(push.sender.jobs), len(sent) + 2, 'quiet for 12 hours: back to 30 minutes')
+
+
+@need
+class SmallOnes(unittest.TestCase):
+    """R8 findings 9, 10 and 11 (the Topic header)."""
+    def setUp(self): clean(); push.RETRY_AFTER = 0.4; push.TIMEOUT = 1.0
+
+    def test_aud_is_the_host_name_alone(self):
+        for e in ('https://fcm.googleapis.com/x', 'https://FCM.googleapis.com/x'):
+            t = push.vapid(e).split('t=')[1].split(',')[0]
+            self.assertEqual(json.loads(u(t.split('.')[1]))['aud'], 'https://fcm.googleapis.com', e)
+        self.assertFalse(push.endpoint_ok('https://fcm.googleapis.com:443/x'), 'an explicit port is refused')
+
+    def test_a_contact_without_a_host_does_not_crash(self):
+        for bad in ('https://@', 'https://', 'https://:443'):
+            os.environ['ARGUS_PUSH_CONTACT'] = bad
+            try: self.assertEqual(push.contact(), push.DEFAULT_CONTACT, bad)
+            finally: os.environ.pop('ARGUS_PUSH_CONTACT')
+
+    def test_a_failure_while_signing_shows_as_the_last_try(self):
+        did = add_device()[0]; real = push.vapid
+        push.vapid = lambda *a, **k: (_ for _ in ()).throw(AttributeError('boom'))
+        try:
+            push.sender.put({'device': did, 'raw': push.message(notify.make('broke', 's', 't')), 'kind': 'broke', 'subject': 's'})
+            wait_for(lambda: devices()[0]['last_error'], what='last_error')
+        finally: push.vapid = real
+        self.assertEqual(devices()[0]['last_error'], push.say_failure('sign')); self.assertEqual(FAKE.got, [])
+
+    def test_the_topic_is_salted_with_the_server_key(self):
+        import hashlib
+        k1, k2 = ec.generate_private_key(ec.SECP256R1()), ec.generate_private_key(ec.SECP256R1())
+        self.assertEqual(push.topic('media', k1), push.topic('media', k1), 'stable for one subject')
+        self.assertNotEqual(push.topic('media', k1), push.topic('media', k2), 'another server, another topic')
+        self.assertNotEqual(push.topic('media', k1), push.topic('photos', k1))
+        self.assertNotEqual(push.topic('media'), push.b64(hashlib.sha256(b'elaia:media').digest())[:32], 'not the plain hash')
+        self.assertRegex(push.topic('media'), r'^[A-Za-z0-9_-]{32}$')
 
 
 if __name__ == '__main__':

@@ -54,7 +54,8 @@ When the people file cannot be used and the server keeps its last good copy, the
 the top of Today and of Watch.
 
 **Do this before you write the people file.** If `trusted` is `false` for your own phone, writing the file would lock you
-out; tell whoever set up the server (see *Locked out* below).
+out; tell whoever set up the server (see *Locked out* below). Phones that already get Elaia's alerts keep getting them
+afterwards: they count for the owners, and the owner sees them under Phone alerts (docs/phone-alerts.md).
 
 ## The people file
 
