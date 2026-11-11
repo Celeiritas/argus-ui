@@ -1,7 +1,7 @@
 # Mentor as a bundled server plugin (docs/leafy-plugin.md, docs/mentor.md): the Learn section and api/mentor/...
 # The study logic is mentor.py next to this file; this is only the door between Elaia's server and it.
 # The owner's database stays where Mentor has always kept it (~/.local/share/argus-ui/mentor.db, or ARGUS_MENTOR_DB),
-# not in ctx.data_dir, so moving Mentor into a plugin moved no one's review history. Since 4.35 every other person in the
+# not in ctx.data_dir, so moving Mentor into a plugin moved no one's review history. Since 4.37 every other person in the
 # people file (learners.py) has a database of their own next to it, mentor-<id>.db, holding only their own lessons
 # (~/.local/share/argus-ui/decks-<id>/): never the theme's decks, never the inbox.
 import importlib.util, os, threading

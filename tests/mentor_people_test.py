@@ -1,4 +1,4 @@
-"""Mentor with people (4.35, docs/mentor.md "People"): who is studying, one database per person, and the AI fence.
+"""Mentor with people (4.37, docs/mentor.md "People"): who is studying, one database per person, and the AI fence.
 
     python3 tests/mentor_people_test.py -v        (tests/run.sh runs it under "== mentor people")
 

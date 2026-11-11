@@ -1,7 +1,7 @@
 // Mentor page: plain decks and lessons (learn first: orientation -> teach -> terms -> worked examples -> drills -> pre-reads
 // -> explain cards), the hint ladder, stuck detection, the inbox, levels, Argus in the corner.
 const {BASE, check, page: page0, noOverflow, shot, run} = require('./lib');
-// 4.35: Mentor opens on Today (tests/mentor-today.test.js); the checks below start in the Study view, as the page remembers it
+// 4.37: Mentor opens on Today (tests/mentor-today.test.js); the checks below start in the Study view, as the page remembers it
 const page = async (b, ...a) => { const x = await page0(b, ...a); await x.addInitScript(() => { try { localStorage.setItem('mentor-view', 'practice'); } catch (e) {} }); return x; };
 const fs = require('fs'), path = require('path');
 const INBOX = path.join(process.env.FIXTURES || '.', '..', 'home', '.local', 'share', 'argus-ui', 'inbox');
@@ -24,7 +24,7 @@ run(async b => {
   const p = await page(b);
   // this walk-through follows the 4.32 order (reading cards before their questions) with no daily limit on new cards;
   // question first and the limit are checked in tests/mentor_today_test.py and tests/mentor-today.test.js
-  // and with "How sure are you?" on every card of the lesson's track (4.35 asks it on every fifth card otherwise)
+  // and with "How sure are you?" on every card of the lesson's track (4.37 asks it on every fifth card otherwise)
   check((await api(p, 'settings', {teach_first: true, new_per_day: {'*': 999}, ask_confidence: ['group:argus-ui']})).ok, 'the 4.32 order is one setting away');
   await p.goto(BASE + 'mentor'); await p.waitForTimeout(1000);
   check(await p.locator('body.side').count() === 1, 'Mentor is a side page (Argus in the corner)');
@@ -124,7 +124,7 @@ run(async b => {
   // the hint ladder on a term card: nudge -> expert's move -> near example -> answer; a reflection before each next rung
   check(await p.locator('#hintBtn').count() === 1, 'a practice card has a Hint button');
   await p.locator('#hintBtn').click(); await p.waitForTimeout(500);
-  check(/Hint 1 of 4/.test(await p.locator('#hints').textContent()) && await p.locator('#hints textarea').count() === 0, 'the first rung is a nudge, with nothing to type (4.35)');
+  check(/Hint 1 of 4/.test(await p.locator('#hints').textContent()) && await p.locator('#hints textarea').count() === 0, 'the first rung is a nudge, with nothing to type (4.37)');
   await p.locator('#hintBtn').click(); await p.waitForTimeout(500);
   check(/expert's first move/.test(await p.locator('#hints').textContent()), 'rung 2, the expert\'s first move, comes straight after');
   check(await p.locator('#hints textarea').count() === 1, 'from the second hint on, it asks what the hint told you');

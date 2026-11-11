@@ -2,7 +2,7 @@
 // the rubric answers at once and the AI's part arrives later (labelled, not used for the rating); a remote URL is refused
 // and a server that doesn't answer leaves the rubric's grade alone. The config file is taken away again at the end.
 const {BASE, check, page: page0, run} = require('./lib');
-// 4.35: Mentor opens on Today (tests/mentor-today.test.js); the checks below start in the Study view, as the page remembers it
+// 4.37: Mentor opens on Today (tests/mentor-today.test.js); the checks below start in the Study view, as the page remembers it
 const page = async (b, ...a) => { const x = await page0(b, ...a); await x.addInitScript(() => { try { localStorage.setItem('mentor-view', 'practice'); } catch (e) {} }); return x; };
 const fs = require('fs'), path = require('path');
 const CFG = path.join(path.dirname(process.env.FIXTURES), 'home/.config/argus-ui/mentor-ai.json');

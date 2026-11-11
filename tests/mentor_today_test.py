@@ -1,4 +1,4 @@
-"""Mentor 4.35 without a browser: tracks, pin and shelf, question first, the daily limit of new cards, Today's numbers.
+"""Mentor 4.37 without a browser: tracks, pin and shelf, question first, the daily limit of new cards, Today's numbers.
 
     python3 tests/mentor_today_test.py -v        (tests/run.sh runs it under "== mentor today")
 

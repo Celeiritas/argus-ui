@@ -173,7 +173,7 @@
 .modules .cmod.locked .cmhead h3,.modules .module.locked h4{color:var(--powder)}
 @media (max-width:640px){.modules .cmhead{grid-template-columns:1fr;gap:var(--s2)}}
 .mentor [hidden]{display:none !important}   /* a view hides the picker, the counts and the bar it does not use */
-/* 4.35: Who is studying?, Today (one button, pinned tracks, the week, the shelf), the 10-minute bar and its summary,
+/* 4.37: Who is studying?, Today (one button, pinned tracks, the week, the shelf), the 10-minute bar and its summary,
    question first (Teach me first, the lesson card as feedback), think-it mode. Same type roles and 44 px targets */
 .mentor button.link{background:none;border:0;color:var(--powder);text-decoration:underline;text-underline-offset:3px;min-height:var(--hit);min-width:var(--hit);padding:0 var(--s2);font-size:var(--fs-sec);font-weight:600;cursor:pointer}
 .mentor button.link:focus-visible{outline:2px solid var(--powder);outline-offset:2px}
