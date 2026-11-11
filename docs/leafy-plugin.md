@@ -37,6 +37,7 @@ Plugins live outside the install, so upgrading Argus keeps them (like the sounds
 | `version` | no | Shown under the frame. |
 | `order` | no | Pills sort by `order` (default 100), then name. |
 | `agent` | no | `true`: this server plugin takes over the section of the theme's agent with the same id (see *Taking over an agent's section*). |
+| `roles` | no | Server plugins only: which of its `api/<id>/<path>` a learner may call (see *Roles and who*). Everything else is the owner's. |
 
 A folder with a missing or invalid manifest is skipped quietly. If a theme's `coming_soon` list has an entry with the same `name`, the "coming later" pill disappears once the plugin is installed.
 
@@ -48,7 +49,8 @@ A folder with a missing or invalid manifest is skipped quietly. If a theme's `co
 
 ## The sandbox, and why
 A plugin's frame and files run in a **sandbox with an opaque origin**. The iframe has `sandbox="allow-scripts allow-pointer-lock allow-popups"`, and every plugin file is also sent with `Content-Security-Policy: sandbox ...`, so the sandbox holds even when a plugin page is opened in its own tab.
-- **What it can do:** run scripts, use WebGL, gamepads (`allow="gamepad"`), full screen and pointer lock, and fetch its own files. Plugin files carry `Access-Control-Allow-Origin: *` because ES modules and `fetch()` from an opaque origin are CORS requests.
+- **What it can do:** run scripts, use WebGL, gamepads (`allow="gamepad"`), full screen and pointer lock, and fetch its own files. A static plugin's files carry `Access-Control-Allow-Origin: *` because ES modules and `fetch()` from an opaque origin are CORS requests. A **server** plugin's files do not (4.37.0): they run inside Elaia's own page and need no CORS. Who is asking rides on the network path, not on a cookie, so any web site open in the owner's browser can make it send a GET that carries his identity; what stops that site from *reading* the answer is the browser's same-origin rule, and a wildcard header would give that away.
+- **Who may open it:** a static plugin is the owner's only (docs/people.md).
 - **What it can't do:**
   - **Use Argus's powers.** POSTs from it send `Origin: null` and are refused, so a plugin can't freeze, thaw or run your tasks.
   - **Read `api/state` or task logs.** Those send no CORS header.
@@ -69,12 +71,22 @@ Extra manifest fields: `"server"` (default `plugin.py`), `"page"` (default `page
 **Python side.** At startup Elaia imports `plugin.py` by its path and calls `init(ctx)` once, if it has one. A plugin that fails to import or whose `init` raises is logged (`skipped server plugin <id>` and the traceback, in Elaia's journal) and gets no pill, no section and no API; the rest of Elaia starts. **A new or changed `plugin.py` needs a restart**: a deploy restarts Elaia, or run `systemctl --user restart argus-ui`; `page.js` and `page.css` are fetched fresh after a change, like static plugins.
 - `ctx.id`, `ctx.version` (Elaia's version), `ctx.config_dir` (the plugin's folder, bundled or yours), `ctx.theme_dir` (the installed theme: `theme.json`, `decks/`, `icons/`), `ctx.data_dir` (`~/.local/share/argus-ui/plugins/<id>/`, made for it: keep files here), `ctx.base_url` (`/argus/`, or `ARGUS_BASE_URL`).
 - `ctx.jobs(prefix='')` (4.30.0): the tasks the Watch page shows whose unit name starts with `prefix`, as a list of dicts: `job` (the unit), `state` (`ok`, `running`, `failed`, `frozen`, `never`), `last` and `next` (as the cards word them: "Sun 4:00 AM", "paused by Medusa", "manual"), `notes` and the rest of a card's fields. It runs `systemctl` the way Elaia's own refresh does, so a plugin reads its agent's timers without a subprocess of its own (Memory reads `mnemosyne-*`). Check it exists (`getattr(ctx, 'jobs', None)`) if your plugin must run on an older Elaia.
-- `GET api/<id>/<path>` calls `get(path, query, ctx)`; `POST api/<id>/<path>` calls `post(path, body, ctx)`. Both return `(status, obj)`: an HTTP status and anything `json.dumps` takes. `query` is `parse_qs` output (`{'q': ['hi']}`); `body` is the JSON object.
-- Each call gets its own `ctx` with `ctx.headers`: `Tailscale-User-Login`, `Tailscale-User-Name` and `X-Forwarded-For` when the request has them. They say who is asking only behind `tailscale serve` with Elaia bound to `127.0.0.1`. **A plugin never decides on them itself**: it passes them to the agent's CLI, and Janus checks them (`janus verify-approval`).
-- POSTs pass Elaia's checks before `post()` is called: host allowlist, JSON only, same-origin `Origin`/`Sec-Fetch-Site`, 4 KB at most. They run one at a time per plugin. GETs run side by side and **must not change anything** (a GET has no cross-site check).
+- `GET api/<id>/<path>` calls `get(path, query, ctx)`; `POST api/<id>/<path>` calls `post(path, body, ctx)`. Both return `(status, obj)`: an HTTP status and anything `json.dumps` takes. `query` is `parse_qs` output (`{'q': ['hi']}`); `body` is the JSON object. A function that takes a fourth parameter also gets `who` (see *Roles and who*).
+- Each call gets its own `ctx` with `ctx.headers`: `Tailscale-User-Login`, `Tailscale-User-Name` and `X-Forwarded-For` when the request has them **and came through `tailscale serve`** (4.37.0: the server checks that the connection belongs to the Serve user, docs/people.md). From anywhere else, a program on the server included, all three are dropped, so a plugin is never handed a faked name. **A plugin never decides on them itself**: it passes them to the agent's CLI, and Janus checks them (`janus verify-approval`).
+- POSTs pass Elaia's checks before `post()` is called: host allowlist, JSON only, same-origin `Origin`/`Sec-Fetch-Site`, the role, 4 KB at most. They run one at a time per plugin. GETs run side by side and **must not change anything** (a GET has no cross-site check).
 - An exception, or an answer that isn't `(status, obj)`, is a `500 {"ok": false, "msg": "plugin error"}` and a traceback in the journal.
 - **`GET api/<id>/status` is reserved** for Elaia's Home page: answer `200, {"line": "1 deploy waiting · argus-ui 4.9.1 live", "needs": true, "action": "Approve argus-ui 4.9.2"}`. `needs: true` puts the plugin in Home's **Needs you** list with `action` as the button (verb-first, 32 characters at most; default "Open <name>"). Elaia passes on only `line` (160 characters at most), `needs` and `action`, or `{"line": null, "needs": false}` when the plugin has none or fails; it never errors (docs/home.md).
 - **Reads are file reads; writes call the agent's CLI; the plugin itself never decides.** A plugin reads the agent's status files directly (no subprocess on a GET). A POST runs the agent's own command (`zeus approve …`, `hermes message …`) with fixed arguments, never a shell, and returns what the agent said. Decisions (who may approve, what is allowed through) stay in the agent and Janus.
+
+**Roles and who** (4.37.0, docs/people.md). Elaia knows who is asking (owner, learner, or nobody it knows) and checks the role **before** it calls a plugin. Every `api/<id>/<path>` is the owner's unless `plugin.json` opens it to learners, path by path, exactly as `<path>` is written after `api/<id>/` (no query, no wildcards):
+```json
+"roles": {"get":  {"today": "learner", "next": "learner", "status": "learner"},
+          "post": {"answer": "learner", "rate": "learner"}}
+```
+- Only the value `"learner"` opens a path; anything else (missing, `"owner"`, a typo) leaves it to the owner. A refused call answers `403 {"error": "<sentence>"}` without calling the plugin.
+- Open `status` too if Home's line should show for a learner.
+- The plugin's files (`plugins/<id>/...`, its page script and style) are open to a learner only if it opens at least one path; its section and pill only show for her then.
+- A `get` or `post` that takes a fourth parameter, `get(path, query, ctx, who=None)`, gets `who = {"person": "<id>", "name": "<name>", "role": "owner" | "learner"}` on **every** call, never `None` (without a people file: `{"person": "owner", "name": "You", "role": "owner"}`). Old three-parameter plugins are called as before. A plugin that keeps data per person (Mentor) uses `who["person"]` to keep each person's apart and still checks `who` itself for what a role may see.
 
 **Page script.** It runs as a classic script in Elaia's page and registers itself:
 ```js
