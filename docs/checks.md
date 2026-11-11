@@ -84,11 +84,11 @@ A whole card then reads, for example, *Running, but not working: cannot read its
 | `needs-yes` | something stopped working and a `fix` is named; Argus may not (or, on the trial day, did not) restart it by itself | alert |
 | `fixed` | Argus restarted it (approved) and it works again | info |
 | `recovered` | it works again | info |
-| `summary` | reserved for the daily summary | info |
+| `summary` | the daily summary, once a day (`server/summary.py`, docs/phone-alerts.md) | info |
 
 **One event per change of state**, never per failed attempt: the same failure on the next round raises nothing. A program that stayed quiet because its drive had its own event (see above) raises no `recovered` either when the drive comes back. Starting the server again does not repeat anything (the last known state is kept in `~/.local/state/argus-ui/watch.json`). `title` and `body` are plain words, for example *Media player runs, but cannot read its drive*.
 
-The first sink writes `~/.local/state/argus-ui/events.jsonl` (`ARGUS_EVENTS`): one JSON object per line, the newest 500 kept. More sinks (a phone push) are added with `notify.register(fn)`.
+The first sink writes `~/.local/state/argus-ui/events.jsonl` (`ARGUS_EVENTS`): one JSON object per line, the newest 500 kept. More sinks are added with `notify.register(fn)`; the phone alerts' sink (`server/push.py`) buzzes owners' phones for `broke`, `needs-yes` and `summary` only (docs/phone-alerts.md).
 
 ## Self-repair ships OFF, and starts as a trial
 Self-repair is for one situation only: **the program runs, but cannot read its drive** (codes `dead-copy` and `cannot-read`). A slow or missing web answer, a unit that is down or starting, a test read that hangs, or anything else never restarts anything; those raise `needs-yes` or `broke` and wait for you (the restart is a Zeus action).

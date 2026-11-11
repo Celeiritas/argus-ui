@@ -18,6 +18,8 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
+      - name: The cryptography package for phone alerts (server/push.py; tests/push_test.py must run, not skip)
+        run: python3 -c "import cryptography" 2>/dev/null || sudo apt-get install -y --no-install-recommends python3-cryptography; python3 -c "import cryptography; print('cryptography', cryptography.__version__)"
       # Chromium's system packages come from Ubuntu's mirrors. When the runner cannot reach them (seen for hours
       # on 2026-11-11: only a few font packages were missing, the runner image already had every library), the
       # browser alone is installed and the run carries a warning. The tests still decide.
