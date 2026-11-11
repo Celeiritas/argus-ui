@@ -239,3 +239,6 @@
 .mentor details.report label.check{display:flex;align-items:center;gap:var(--s2);min-height:var(--hit);cursor:pointer}
 .mentor details.report label.check input{width:20px;height:20px;flex:none}
 .mentor .empty .row{margin-top:var(--s3)}
+/* the Lessons view's "About Mentor" and "Where these lessons come from" sit on cards too, never straight on the scene */
+.modules details.about,.modules details.srcs{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:0 var(--s4)}
+.modules details.about[open],.modules details.srcs[open]{padding-bottom:var(--s3)}
