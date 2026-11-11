@@ -1,4 +1,4 @@
-// Mentor 4.34 in the browser: Today first ("Who is studying?", one button "Study 10 minutes", pinned tracks, the week, the
+// Mentor 4.35 in the browser: Today first ("Who is studying?", one button "Study 10 minutes", pinned tracks, the week, the
 // shelf), the timed session and its summary, think-it on a phone and typing on a wide screen, reduced motion, 375 px.
 // It studies as "Learner Two" (a placeholder person in a people file inside the throwaway HOME), so the owner's database,
 // which tests/mentor.test.js walks through next, is only read. The people file is taken away again at the end.

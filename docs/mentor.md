@@ -11,14 +11,55 @@ Code an AI writes for you skips the part where you build the mental model (the *
 | **Tier 3 – vocabulary** | **Term card**: a sentence with the term blanked; the feedback gives what it does, where it is in your code and the term it's easily confused with | Pre-training (Mayer & Pilegard, 2014); elaborative encoding |
 | **Learn first** (4.8.0) | **Learn cards** in front of each practice card: an *orientation* for the lesson, a *teach card* per term (ending in "spot it in this snippet"), a *worked example* per drill (the full code, annotated line by line; you say why a line is there before the note appears, then explain the whole), a *pre-read* per explain card (the ideas it rests on, and a near example). A teach card or pre-read with a `try_first` question (4.24.0) asks it first: you type a guess, never graded or stored, then the explanation appears under it. Read once, never scheduled; they come back only when you are stuck | Worked examples before problems (Sweller & Cooper, 1985; Renkl, 2014); self-explanation (Chi et al., 1989); erroneous examples only after the correct one (Große & Renkl, 2007); pretesting (Richland, Kornell & Kao, 2009) |
 
-- **Teach before test.** In a new lesson, cards unlock in order: orientation → teach cards → terms → worked examples → drills → pre-reads → explain cards. Each practice card also waits for its own Learn card. Terms take up working memory, so they're learned before the code that uses them. A teach card or worked example can be skipped with *I know this, test me*; if the practice card then goes wrong, the skipped card comes back (Kalyuga et al., 2003).
-- **Hints before answers.** Every practice card has a four-rung hint ladder: a *nudge*, *the expert's first move* (what an expert scans for), a *near example* in different code, and the answer. Each rung needs a three-word reflection before the next (Aleven & Koedinger, 2002) and caps the rating Mentor suggests (rung 2: at most *Well enough*; rung 3: at most *Not well*, and a drill can't move up); the answer counts as a blank. A blank *Show answer* offers a hint first. The rung reached is stored with the attempt.
+- **Teach before test** (since 4.35 a setting, *Show a lesson's reading cards before its questions*, off by default: see *Question first* below). In a new lesson, cards unlock in order: orientation → teach cards → terms → worked examples → drills → pre-reads → explain cards. Each practice card also waits for its own Learn card. Terms take up working memory, so they're learned before the code that uses them. A teach card or worked example can be skipped with *I know this, test me*; if the practice card then goes wrong, the skipped card comes back (Kalyuga et al., 2003).
+- **Hints before answers.** Every practice card has a four-rung hint ladder: a *nudge*, *the expert's first move* (what an expert scans for), a *near example* in different code, and the answer. From the second rung on, each needs a three-word reflection before the next (Aleven & Koedinger, 2002; the first hint is free since 4.35) and caps the rating Mentor suggests (rung 2: at most *Well enough*; rung 3: at most *Not well*, and a drill can't move up); the answer counts as a blank. A blank *Show answer* offers a hint first. The rung reached is stored with the attempt.
 - **Stuck detection.** Wrong twice in a row on a card, a skipped Learn card whose practice card then fails, the answer shown twice, or *Needs work* twice in a week: the card's Learn card comes back before the next try (and in the last two cases the card is held for a day). The stats line counts cards sent back today. The Hint button pulses after 30–90 s without typing (never a modal, never a sound).
 - **Feedback that says where to look.** After a wrong answer the coach line is at most two sentences: the result, then the expert's first move and one place to look in the code. A slip (right before, wrong now) is named as one. Never about the person (Hattie & Timperley, 2007).
 - **Backward fading and expertise reversal.** Level 1 blanks the endings (return values, a call), level 2 the logic (a condition, a comprehension), level 3 leaves only the signature and docstring. A drill moves up a level when every blank is right and fast (under 15 s at level 1, 30 s at level 2, plus 5 s per extra blank), or right twice in a row at that level; it comes back within a day to try the new level. *Needs work* moves it down. Hints that help a beginner just slow down someone who knows the pattern (Kalyuga et al., 2003).
 - **Generate before feedback.** You always type an answer (or choose to show it) before you see the model answer.
 - **Interleaving.** When studying everything, each card comes from the lesson or deck that has waited longest, so you keep working out *which* rule applies (Bjork & Bjork, 2011).
 - **Context.** Every code card shows where it lives (`server › sky.py › current()`), and the lesson's big picture is one click away.
+
+## People, Today and tracks (4.35)
+Mentor is for more than one person, and it opens on **Today**: what to study now, in one button.
+
+**Who is studying.** The people come from one file on the server, outside git: `~/.config/argus-ui/people.json` (`ARGUS_PEOPLE` gives another path).
+```json
+{"people": [
+  {"id": "owner-one", "name": "Owner One", "role": "owner", "logins": ["owner@example.com"]},
+  {"id": "learner-two", "name": "Learner Two", "role": "learner", "logins": ["learner@example.com"]}
+]}
+```
+`id` is optional (the name in lower case, every run of other characters one `-`). Elaia's server says who is asking (`who`, from the Tailscale login) and enforces the roles in `plugin.json` before Mentor is called; Mentor checks again. A **learner** always studies as herself; a `learner=` she sends is ignored, and she sees only her own name. An **owner** may study as anyone in the file: the page's *Who is studying? Owner One · change* sends `learner=<id>` (a query on GET, a field on POST) and remembers the choice on that device. An unknown id is a 404 with a sentence. **No file:** one person, the owner, exactly as before. **A file that is not JSON:** read as no file, one log line, and every POST is refused with a sentence that names the file.
+
+**One database per person.** The first owner in the file keeps today's database (`~/.local/share/argus-ui/mentor.db`, or `ARGUS_MENTOR_DB`): it is opened as before, and its rows are never moved or rewritten (`tests/mentor_people_test.py` compares it row for row before and after a learner studies). Anyone else gets `mentor-<id>.db` in the same folder, made on first use, with only their own lessons from `~/.local/share/argus-ui/decks-<id>/` (read again when a file there is added or changed; no restart). Nothing of the owner's (the theme's decks, `decks/`, the inbox) is ever loaded into it. Each database has its own lock, so two people never wait on each other. The local AI runs only when the person studying is an owner ([mentor-ai.md](mentor-ai.md)).
+
+**Tracks.** A track is what a person picks to study: a plain deck, every lesson of one project or course (`group:<name>`; submenus count with their menu, so a menu with twelve lessons is one track), or a lesson without a project. Per database (study settings):
+
+| Setting | Meaning |
+|---|---|
+| `pinned` | up to 3 tracks on Today and in *Study 10 minutes*. A fourth is refused: *You can pin 3 tracks. Unpin one first...* |
+| `shelved` | tracks hidden from study and from every count (due, new, Home's line). History and schedule are kept; taking a track off the shelf brings it back exactly as it was. Shelving never edits a lesson file. A track is pinned or shelved, never both. |
+| `new_per_day` | `{track: n}` new questions a day (default 10; `"*"` sets every track). A question counts on the local day of its first rating, so the limit holds across reloads and restarts and starts again after midnight. `null` takes a value out. |
+| `goal` | `{track: "one line"}` shown on the track's card. Only an owner sets it (a learner's goal: the owner studying as her). |
+| `ask_confidence` | tracks that ask *How sure are you?* on every card; others ask it on every fifth card. |
+| `teach_first` | the 4.32 order: every question after its reading card. Off by default. |
+
+**Today.** One primary button, **Study 10 minutes**: due reviews of the pinned tracks first, then other reviews off the shelf, then new questions from the pinned tracks up to each one's daily limit (nothing pinned: every track off the shelf). A thin bar fills over the ten minutes; when it is full the card on screen is finished, then a summary (*12 cards, 9 right. Next: tomorrow, 8 due.*) with **Keep going 5 more** and **Replay my 3 mistakes**. The timer lives in the page only. Under the button: up to three pinned track cards (name, goal, due today, new, a bar of questions learned, **Study this**); the week as seven dots, one per day, filled by minutes studied (a card counts at most 2 minutes; no streak that breaks); and **Shelf: N tracks · Browse**, which lists every track with *Pin* / *Unpin*, *Shelve* / *Take off the shelf* and *Preview* (size, history, the first three questions, never an answer).
+
+**Question first.** A new lesson starts with a question, not a wall of reading. **Teach me first** on a card opens its lesson card (or the lesson's orientation) above it; otherwise the lesson card comes with the result the first time, and counts as read. A lesson with nothing to answer is still read card by card, and stuck detection still sends a lesson card back before the next try. Fewer steps per card: *How sure are you?* on every fifth card, the three-word reflection from the second hint on. **Think it, reveal it, rate it** is the default on a phone (600 px or narrower) for cards answered in words (define, explain, predict, write): show the answer, compare, rate it yourself (the attempt is stored with grader `self` and no coverage; no rating is suggested). Typing is one tap away (*Type my answer instead*), remembered on the device, and stays the default on a wide screen. A long question shows about 80 words, the rest behind *More*.
+
+**API (4.35).** Every route also takes `learner=` (an owner's choice; ignored for a learner).
+
+| Route | Answer |
+|---|---|
+| `GET learners` | `{me, role, people: [{id, name, role}], problem}`; a learner gets only her own entry |
+| `GET today` | `{learner, tracks: [{id, name, lessons, goal, cards, learned, progress, due, new, new_per_day, new_today, new_left, later, tomorrow, last, pinned, shelved, ask_confidence}], pinned, pin_max, shelf, due, new_left, scope, later, tomorrow, next_due, week: [{day, minutes}] (7), minutes, confidence_every, teach_first}` |
+| `GET track?id=` | Preview: `{id, name, lessons, goal, cards, reading, learned, answers, last, questions, pinned, shelved}` |
+| `GET next?session=1` | the next card of a *Study 10 minutes* session; every card now has `track`, `ask_confidence`, `teach_id` |
+| `POST answer {..., think: true}` | a self-rated answer: `coverage: null`, `suggested: 0`; every result can carry `teach` (the lesson card) and `teach_new` |
+| `POST settings` | also `pinned`, `shelved`, `new_per_day`, `goal`, `ask_confidence`, `teach_first` |
+| `GET status` | Elaia's Today card and Home's line, per person: `{line: "6 due", needs, action: "Study 10 minutes"}` |
 
 ## The loop
 1. **Build something** in Claude Code as usual.

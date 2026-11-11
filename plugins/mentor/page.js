@@ -1,6 +1,6 @@
 // Mentor: learn the code you build. Lessons (teach -> drills, explain cards, terms) + plain decks,
 // spaced repetition, typed answers, a hint ladder, calibration. See docs/mentor.md.
-// 4.34: Today is the first view (Who is studying?, one button "Study 10 minutes", pinned tracks, the week, the shelf);
+// 4.35: Today is the first view (Who is studying?, one button "Study 10 minutes", pinned tracks, the week, the shelf);
 // questions come first and their teaching is the feedback; on a phone a card is thought, revealed and rated.
 // A bundled server plugin (docs/leafy-plugin.md): Elaia loads this script and page.css on the Mentor section only.
 // It is first-party code, so besides the plugin api it uses Elaia's page helpers ($, $$, esc, url, toast).
@@ -12,7 +12,7 @@
   const M = {deck: null, view: 'today', card: null, t0: 0, result: null, shown: false, decks: [], modules: [], stats: null,
              hints: 0, reflections: [], idle: null, step: 0, notes: [], session: {answered: 0, right: 0, missed: []}, replay: [],
              last: null, again: null,       // last: this session's last rating (Ctrl+Z undoes it); again: the card an undo brought back
-             learner: null, people: null, today: null, timed: null, shown: 0, guessT: null};   // 4.34: who, Today, the 10-minute session
+             learner: null, people: null, today: null, timed: null, count: 0};   // 4.35: who, Today, the 10-minute session, cards asked
   try { M.deck = localStorage.getItem('mentor-deck') || null; const v = localStorage.getItem('mentor-view'); M.view = v === 'modules' || v === 'practice' ? v : 'today';
     M.learner = localStorage.getItem('mentor-learner') || null; } catch (e) {}
   const save = (k, v) => { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch (e) {} };
@@ -23,7 +23,7 @@
   const get = async p => (await fetch(url('api/mentor/' + who(p)), {cache: 'no-store'})).json();
   const send = async (p, body) => (await fetch(url('api/mentor/' + p), {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(M.learner ? {...body, learner: M.learner} : body)})).json();
   const studying = () => M.view === 'practice' || M.view === 'session';
-  // answer modes (4.34): "think it, reveal it, rate it" is the default on a phone for cards answered in words; typing is
+  // answer modes (4.35): "think it, reveal it, rate it" is the default on a phone for cards answered in words; typing is
   // one tap away and stays the default on a wide screen. The choice is remembered on this device
   const REVEAL = ['define', 'explain', 'predict', 'write'];
   const answerMode = () => stored('mentor-answer') || (matchMedia('(max-width: 600px)').matches ? 'think' : 'type');
@@ -200,7 +200,7 @@
     if (S && S.done && !replaying && !again) S.more--;
     M.card = r.card; if (M.card) M.card.replaying = replaying; M.result = null; M.hints = 0; M.reflections = []; M.step = 0; M.notes = [];
     if (!M.card && r.locked) {          // a course lesson that waits for others (4.32): say which, and where to go instead
-      const shelved = /on the shelf/.test(r.locked);     // 4.34: a track on the shelf answers the same way, with its own words
+      const shelved = /on the shelf/.test(r.locked);     // 4.35: a track on the shelf answers the same way, with its own words
       $('#mpanel').innerHTML = `<div class="panel done"><p class="kicker">${shelved ? 'On the shelf' : 'Locked'}</p><h2 class="lesson-title">${shelved ? 'This track is resting on the shelf' : `${esc((moduleOf(M.deck) || {}).name || 'This lesson')} isn't open yet`}</h2>
         <p class="coach lockline">${LOCK}<span>${esc(r.locked)}</span></p><div class="row"><button type="button" class="primary" id="toMods">Go to lessons</button></div></div>`;
       $('#toMods').onclick = () => setView('modules'); $('#toMods').focus(); return;
@@ -216,11 +216,11 @@
     }
     const c = M.card;
     if (isLearn(c)) return learnCard(c);
-    if (!replaying && !again) M.shown++;
+    if (!replaying && !again) M.count++;
     const mod = moduleOf(c.deck), big = mod && mod.summary && mod.summary.schematic_mental_model;
     c.think = REVEAL.includes(c.kind) && answerMode() === 'think';
-    // fewer steps per card (4.34): "How sure are you?" on every fifth card, or on every card of a track that asks for it
-    const askConf = c.ask_confidence || M.shown % ((M.today && M.today.confidence_every) || 5) === 0;
+    // fewer steps per card (4.35): "How sure are you?" on every fifth card, or on every card of a track that asks for it
+    const askConf = c.ask_confidence || M.count %((M.today && M.today.confidence_every) || 5) === 0;
     const teachBtn = c.teach_id && !c.replaying ? `<button type="button" class="link" id="teachBtn" aria-controls="teachbox" aria-expanded="false">Teach me first</button>` : '';
     const head = `<p class="deckname">${esc(sourceName(c))}${kindLabel(c) ? ` · <span class="kind">${esc(kindLabel(c))}</span>` : ''}${c.reps ? '' : ' · new card'}</p>${crumb(c.breadcrumb)}
       ${big && c.kind !== 'term' ? `<details class="big"><summary>Show the big picture of this lesson</summary>${rich(big)}</details>` : ''}<div id="teachbox" aria-live="polite"></div>`;
@@ -372,7 +372,7 @@
     M.hints = r.rung; $('#hintBtn').classList.remove('pulse'); clearIdle();
     $$('#hints .hint textarea').forEach(t => t.disabled = true);
     const last = r.rung === 4;
-    // fewer steps (4.34): the first hint is free; from the second on, say in three words what it told you before the next
+    // fewer steps (4.35): the first hint is free; from the second on, say in three words what it told you before the next
     const reflect = !last && r.rung >= 2;
     $('#hints').insertAdjacentHTML('beforeend', `<div class="hint" id="rung${r.rung}"><p class="label">Hint ${r.rung} of 4 · ${esc(r.name)}</p><div class="model">${rich(r.text)}</div>
       ${reflect ? `<label for="refl${r.rung}">What did that tell you?</label><textarea id="refl${r.rung}" rows="2" maxlength="300" placeholder="Three words or more"></textarea>` : ''}</div>`);
@@ -660,7 +660,7 @@
     $('#rhead').focus(); $('#rateBtn').onclick = () => rate(0);
   }
 
-  /* ----- Today (4.34): one button, the pinned tracks, the week, the shelf; GET today gives all of it ----- */
+  /* ----- Today (4.35): one button, the pinned tracks, the week, the shelf; GET today gives all of it ----- */
   const dayName = (d, i) => i === 6 ? 'Today' : new Date(d + 'T12:00:00').toLocaleDateString([], {weekday: 'short'});
   const dotSize = m => m <= 0 ? 0 : m < 5 ? 1 : m < 15 ? 2 : 3;
   const trackMeta = t => [t.due ? `${t.due} due today` : '', t.new_left ? `${t.new_left} new` : '', !t.due && !t.new_left ? (t.cards ? 'Nothing waiting today' : 'No questions yet') : ''].filter(Boolean).join(' · ');

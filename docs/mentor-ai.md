@@ -10,6 +10,9 @@ Mentor grades with a rubric (stage A in `plugins/mentor/mentor.py`). A local mod
 - **A grader that learns from you (stage Bv2), later.** `python plugins/mentor/mentor.py export [mentor.db] > attempts.jsonl` writes every rated attempt (prompt, model answer, your answer, the rubric's features, the AI's part, your rating and the "grade was wrong" flag) as training data. The file holds your answers: keep it on your machine.
 - **Never:** it never decides a rating alone, never runs your code, never sees anything but the card and your answer, and never talks to a server that isn't this machine unless you say so.
 
+## Who it runs for (4.35)
+Only for an **owner** studying as an owner: a learner's answer (or an owner's answer while *Who is studying?* names a learner) never starts the AI thread, and `GET api/mentor/ai` tells a learner the AI is off. This does not change the host's configuration, which still decides whether the AI runs at all. The NCLEX track's item kinds are not written answers, so they never reach it either.
+
 ## The config: `~/.config/argus-ui/mentor-ai.json`
 ```json
 { "enabled": true, "api": "ollama", "url": "http://127.0.0.1:11434",

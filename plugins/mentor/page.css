@@ -173,7 +173,7 @@
 .modules .cmod.locked .cmhead h3,.modules .module.locked h4{color:var(--powder)}
 @media (max-width:640px){.modules .cmhead{grid-template-columns:1fr;gap:var(--s2)}}
 .mentor [hidden]{display:none !important}   /* a view hides the picker, the counts and the bar it does not use */
-/* 4.34: Who is studying?, Today (one button, pinned tracks, the week, the shelf), the 10-minute bar and its summary,
+/* 4.35: Who is studying?, Today (one button, pinned tracks, the week, the shelf), the 10-minute bar and its summary,
    question first (Teach me first, the lesson card as feedback), think-it mode. Same type roles and 44 px targets */
 .mentor button.link{background:none;border:0;color:var(--powder);text-decoration:underline;text-underline-offset:3px;min-height:var(--hit);min-width:var(--hit);padding:0 var(--s2);font-size:var(--fs-sec);font-weight:600;cursor:pointer}
 .mentor button.link:focus-visible{outline:2px solid var(--powder);outline-offset:2px}
@@ -197,6 +197,7 @@
 .mentor .tcard .meta{margin:0}
 .mentor .tcard button{margin-top:auto;min-height:var(--hit);align-self:flex-start}
 .mentor .tprog{display:flex;flex-direction:column;gap:var(--s1)}.mentor .tprog .lpbar{flex:none;display:block}.mentor .tprog small{color:var(--powder);font-size:var(--fs-meta)}
+.mentor .week{padding:var(--s3) var(--s4);background:var(--card);border:1px solid var(--line);border-radius:12px}
 .mentor .week h3{margin:0 0 var(--s2)}
 .mentor .dots{list-style:none;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:var(--s1);padding:0;margin:0;max-width:420px}
 .mentor .dots li{display:flex;flex-direction:column;align-items:center;gap:var(--s1)}
