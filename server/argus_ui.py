@@ -21,6 +21,7 @@ JOURNALCTL = os.environ.get('ARGUS_JOURNALCTL', 'journalctl')
 # sky.py lives next to this file, or in ~/.local/share/argus-ui when installed. Mentor is a bundled plugin (plugins/mentor/).
 sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)), os.path.expanduser('~/.local/share/argus-ui')]
 import sky          # weather for the background scene (sky.py; fetched server-side, cached 20 min)
+import watch        # "works, not just runs": checks.json, the mount table, one event per change (watch.py, docs/checks.md)
 SHARE = os.path.expanduser('~/.local/share/argus-ui')
 
 def load_theme():
@@ -334,15 +335,31 @@ def links():
             out.append(dict(name=name, what=what, href=href))
     return out[:8]
 
+WATCH_INTERVAL = int(os.environ.get('ARGUS_WATCH_INTERVAL', 60))   # seconds between rounds; 0 turns the loop off (the tests do, unless they ask)
+WATCH_ON = os.environ.get('ARGUS_WATCH') != '0' and WATCH_INTERVAL > 0
+
+def watch_restart(u):
+    # the same restart the bolt uses (never for a frozen task), one at a time with the powers. LOCK is held only for this
+    # one systemctl call (20 s limit); watch.py waits for the program to come back outside it, so the power buttons never wait on that.
+    if u in frozen(): return False, 'frozen'
+    with LOCK: return sc_ok('restart', '--no-block', u + '.service')
+
+def watch_env():
+    # the watch's own reading of `systemctl is-active`: activating / reloading / deactivating are "cannot tell yet" (watch.unit_state);
+    # the task cards keep their own idea of running
+    return watch.Env(lambda u: watch.unit_state(sc('is-active', u + '.service')), lambda u: u in frozen(), watch_restart)
+
 def state():
     fz = frozen()
-    jobs = collapse([info(u, fz) for u in units()])
+    ws = watch.snapshot(WATCH_INTERVAL or 60)
+    jobs = watch.attach(collapse([info(u, fz) for u in units()]), ws)
     ps = plugins()
     return dict(updated=datetime.now().strftime('%I:%M %p').lstrip('0'), jobs=jobs,
                 title=THEME.get('title', 'Argus'), subtitle=THEME.get('subtitle', 'tasks'),
                 personas=[dict(key=k, name=n, domain=d) for k, n, d in PERSONAS],
                 soon=THEME.get('coming_soon', []), links=links(),
-                plugins=[plugin_view(p) for p in ps], alerts=alerts(set(PKEYS) | set(PAGES) | {p['id'] for p in ps}))
+                plugins=[plugin_view(p) for p in ps], watch=[{k: v for k, v in w.items() if k not in ('title_line',)} for w in ws],
+                alerts=sorted(alerts(set(PKEYS) | set(PAGES) | {p['id'] for p in ps}) + watch.alert_list(ws, lambda j: bool(GODS.match(j) and ALERT_JOB.match(j))), key=lambda a: (a['since'], a['file'])))
 
 def plugin_view(p):
     # what the page needs about a plugin; a server plugin's script and style URLs carry their file times, so a redeploy is fetched fresh
@@ -555,4 +572,5 @@ class H(BaseHTTPRequestHandler):
 
 if __name__ == '__main__':
     load_server_plugins()
+    if WATCH_ON: watch.start(watch_env(), WATCH_INTERVAL)
     ThreadingHTTPServer((BIND, PORT), H).serve_forever()

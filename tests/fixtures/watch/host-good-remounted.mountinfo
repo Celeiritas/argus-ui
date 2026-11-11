@@ -1,0 +1,4 @@
+36 1 0:30 / / rw,relatime shared:1 - btrfs /dev/nvme0n1p3 rw,ssd,subvolid=256
+30 36 0:26 / /proc rw,nosuid shared:2 - proc proc rw
+97 36 8:33 / /mnt/media rw,relatime shared:50 - ext4 /dev/sdc1 rw
+92 36 8:50 / /mnt/with\040space rw,relatime - ext4 /dev/sdd2 rw
