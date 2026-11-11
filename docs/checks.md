@@ -61,7 +61,15 @@ Everything is read without sudo. **Time limits, per kind of call:** a look or a 
 ## What state() shows
 `watch`: one entry per check, `{id, title, job, unit, works, code, reason, note, since, fix, fix_say, autofix, drive, title_line, detail, again, fixing}`
 (4.39.0: `fix_say` the words for what its fix restarts, `title_line` the event-style sentence, `again` true while it works again after
-a failure, `fixing` true while a fix you asked for runs). `since` is when its state last changed (the first round it was seen, until then).
+a failure, `queued` true while a fix is asked for and its restart not yet sent, `fixing` true once the restart has really been sent and
+Argus looks again, `mount`, `looked` the time of the last round with a real verdict, `unsure` a sentence when that is not this round).
+`since` is when its state last changed (the first round it was seen, until then).
+
+**A known breakage stays known.** A check whose last known verdict is "not working" keeps being published as not working, with its
+last code and reason, through a round where Argus cannot look (unknown: podman could not look inside, the unit is starting) and when
+its result goes stale (the loop has not refreshed it for `3 x interval + 30` seconds). Its row then carries `unsure`: *Argus has not
+been able to look again since 5:52 AM.* An unknown round never counts as a change, for events or for what the page says. A check that
+was working and goes unknown is not turned into trouble (`works: null`).
 `works` is `true`, `false` or `null` (unknown). `reason` is the plain phrase: *cannot read its drive*, *its drive is not connected*, *does not answer at its web address*. Each task card the checks name also gets `works` and `works_reason`. A failed check with a `job` adds an alert (same as an alert file: the card note, Argus's glare and the badge), worded *Running, but not working: cannot read its drive*.
 
 ### What the card says about a restart
@@ -70,7 +78,7 @@ A failed check that has a `fix` also says what Argus did about it (`note` in `wa
 | Situation | Added to the card |
 |---|---|
 | Trial day, where a restart would have happened | *Argus would have restarted the media player by itself and did not, because for now it only notes what it would do.* |
-| Not on the self-repair list, a reason self-repair does not act on, or the try of the day already used | *Argus did not restart it and waits for your yes.* |
+| Not on the self-repair list, a reason self-repair does not act on, or the try of the day already used | *Argus did not restart it and waits for your yes.* (the page shows it after "Argus:" as *Did not restart it …*) |
 | Argus restarted it and it did not help | *Argus restarted the media player once by itself, and it did not help. It waits for your yes.* |
 | The restart command itself failed | *Argus tried to restart the media player by itself, but the restart did not work. It waits for your yes.* |
 | Self-repair may still act next round (the first round of *cannot read its drive*) | nothing yet |
@@ -78,6 +86,13 @@ A failed check that has a `fix` also says what Argus did about it (`note` in `wa
 | You pressed it and the restart command failed | *You asked for a restart of the media player at 4:52 AM, but the restart did not work.* |
 
 A whole card then reads, for example, *Running, but not working: cannot read its drive. Argus did not restart it and waits for your yes.* A check without a `fix`, a drive that is missing (the drive's own card says it) and a test read that hangs keep their text as it is.
+
+**A drive that is gone or read-only** (`drive-*` on a program): no note, no button, and its event is a `broke`, true as one
+sentence on a lock screen: *Jellyfin runs, but its drive is not connected* / *The drive it needs is not mounted, so there is nothing for
+it to read. Argus waits for the drive: a restart would not help until it is back.* It never says a restart should fix it or that a
+yes is awaited.
+
+**Times** in every sentence read like the rest of the page, *5:52 AM* (`clock()`, the same on Linux and Windows).
 
 ## Events
 `server/notify.py` takes events: `{id, at, kind, subject, title, body, url, level}`.
@@ -128,7 +143,10 @@ file; no unit name is taken from the request. It is refused, with one plain sent
 
 Accepted, it answers `{"ok": true, "msg": "Restarting the media player. Argus looks again for up to 90 seconds and tells you how it went."}`
 at once. The check and the queueing happen under the same lock as the page's other powers. The loop is woken and, on that round,
-runs the fix **through the same `repair()` as self-repair**: the same `systemctl --user restart --no-block` for each unit of
+starts the fix **through the same `repair()` as self-repair**, in a short-lived thread of its own (one per check), so its 90-second
+look never holds the loop: every other check keeps its round, and a second fix asked meanwhile starts at once. Restarts of the same unit
+never overlap (a unit being restarted by another fix counts as restarted). The page says *queued* until the restart is really sent,
+then *Restarting it now*; the 90 seconds start there. It uses the same `systemctl --user restart --no-block` for each unit of
 `fix.restart` (never a frozen one, each once per round), the same look every 3 seconds for up to 90 seconds. It writes **one event**
 (existing kinds): `fixed` (*You restarted the media player from the page at 4:52 AM, and it works now.*) or `broke` (*… You
 restarted the media player at 4:52 AM, and it did not help.*). The card then ends on *Works again* or on the note above. When it
@@ -137,7 +155,7 @@ after you did. Only the owner sees the button (the server's role table comes wit
 
 ## What happened lately: api/events (4.39.0)
 `GET api/events?limit=N` → `{"events": [...], "since": "<when the server started>"}`: the newest events from the events file, newest
-first, 10 by default, at most 100 (a limit that is not a whole number: 400). Each event carries only its own fields
+first, 10 by default, at most 100 (a limit that is not 1 to 4 ASCII digits, an empty one included: 400; `0` gives 1). Each event carries only its own fields
 (`id, at, kind, subject, title, body, url, level`, as text); a damaged line is skipped. Watch shows the newest 10.
 
 ## podman and the journal

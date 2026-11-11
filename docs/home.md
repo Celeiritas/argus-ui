@@ -89,15 +89,23 @@ tasks, then agents' alerts. Each entry is drawn as a **block** on Watch (`troubl
 the groups) and as a **row** on Today, with three plain lines:
 
 1. **What is wrong and since when**, with whose it is: *Jellyfin runs, but cannot read its drive* · *Mnemosyne · Watch · since 4:50 AM*
-2. **Argus:** what he did, or would have done (the check's `note`, docs/checks.md): *Argus did not restart it and waits for your yes.*
-3. **You:** what you can do: *Hold the button to restart Jellyfin. Argus then looks again and tells you how it went.* A drive that
-   is gone says to plug it in again; a failed task says to read its log and press Run.
+2. **Argus:** what he did, or would have done (the check's `note`, docs/checks.md), without repeating his name: *Did not restart it
+   and waits for your yes.* A program whose drive is gone: *Waits for the drive: a restart would not help until it is back.* Queued:
+   *Restarts it in a moment, as you asked*; once the restart is really sent: *Restarting it now, as you asked. Looks again for up to
+   90 seconds and tells you if it helped.* When Argus could not look again: one more line, *Argus has not been able to look again
+   since 5:52 AM.*
+3. **You:** what you can do: *Hold the button to restart Jellyfin once. Argus looks again for up to 90 seconds and tells you if it
+   helped.* A drive that is gone says to plug it in again; a failed task says to read its log and press Run.
+
+**A drive that is gone comes first**: its block is the first (the eye goes to the cause), and the programs whose only problem is
+that drive are one line under it, *Also waiting for this drive: Jellyfin, Audiobookshelf*, in place of a block each, on Watch and
+on Today (they still count, one each, on the bar and in the panel's heading).
 
 When checks.json declares a `fix` for the check (and the problem is not the drive itself), the block has **one press-and-hold
 button**, *Restart Jellyfin* (`"say"` of the fix, else its units), in the bolt's gold look, made with `holdConfirm`, for the owner
 only. Holding it 3 seconds sends `POST api/watch/fix` once (docs/checks.md "Your yes from the page"); the toast says what the
 server answered, and the block says *Restarting it now, as you asked* until Argus knows. It then ends on *Works again* (the row)
-or *You restarted Jellyfin at 4:52 AM, and it did not help.* (the block). A refresh never redraws a button that is being held.
+or *You restarted Jellyfin at 4:52 AM, and it did not help.* (the block). A refresh never redraws a button that is being held, or one that is armed (the click-twice path of a screen reader).
 
 **Every check is on Watch while it works too.** A check whose `job` is a task card adds one line to that card, *Works · since
 4:50 AM* (*Works again* after a failure). A check with no card gets a **compact row** under the agent that owns it (the agent of
@@ -120,13 +128,17 @@ the broken card and glares at it. On Watch (owner only), `satellite` in `web/js/
 - **It never covers anything**: the block keeps a 60 px gutter on its right for it (44 px eye). Checked at 360x800, 412x915 and
   1440x900.
 - **Several broken things**: it goes to the first in the page's order, and a small *1 more* / *2 more* under it says how many
-  others there are (they are all listed in the panel).
-- **Out of view**: when the block is scrolled away, an edge marker (a 44 px button with an arrow and *Look*, at the top or above
-  the bottom bar) appears; a tap scrolls back to the block and the marker goes.
+  others there are (they are all listed in the panel). **Every new one is noticed** (4.39.0 review): the page keeps the set of
+  broken things, not only the first; when the set grows, the eye pulses once more where it stands (no travel) and the sentence
+  says the new one with the count (*Extra is running but not working. Now 3 things need a look.*); when one leaves and others
+  remain, the sentence says the new count, without a pulse. Reduced motion: the words only.
+- **Out of view**: when the block is scrolled away, an edge marker appears (top right; above the bottom bar if the block is below): the pill *Look* with an arrow for 5 seconds after it appears or after the set of trouble changes, then an arrow-only round button of 44 px with the same name (*Scroll to what needs a look*), so it does not rest on a control. A tap scrolls back to the block. Reduced motion: it changes without a transition.
 - **His other eyes look at that block, not at the pointer**, while anything is red (`look.fix`). Carrying a bolt and holding a
   button still come first.
 - **Said once**: the eye is `aria-hidden`; one polite live sentence says the same, once per change (*Jellyfin is running but not
   working, and 1 more thing needs a look.*). When the trouble ends the eye flies home and the sentence says *All is well again:
-  nothing on Watch needs a look.*
+  nothing on Watch needs a look.* **Only when Argus could look at everything**: while a broken check's round was unknown (podman
+  could not look inside) or its result is stale, the server keeps it broken (docs/checks.md), and the page never says all is well,
+  never turns the alarm off and never sends the eye home while any check is unknown, stale or seen once only.
 - **Reduced motion**: no travel and no pulse; the eye is simply at the block.
 - A learner never sees any of it (no Watch, no eye, no fix buttons, no rows about the owner's programs).

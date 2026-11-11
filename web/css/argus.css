@@ -241,3 +241,5 @@ dialog .confirm{border-color:var(--danger);color:var(--danger)}
 .satedge[hidden]{display:none}
 @media (prefers-reduced-motion:reduce){.sat.glaring svg{animation:none}}
 .need .nacts .fixbtn+.go{background:transparent;color:var(--snow);border:1px solid var(--line)}   /* with a fix beside it, the link to Watch is the quieter of the two */
+.satedge.small{width:var(--hit);padding:0;justify-content:center}.satedge.small span{display:none}   /* after 5 s: an arrow-only round button, same name (W2) */
+.tl.unsure{color:var(--run)}   /* Argus could not look again: said, so a stale page never reads as all well */

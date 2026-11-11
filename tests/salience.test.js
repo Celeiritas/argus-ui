@@ -52,7 +52,8 @@ run(async b => {
     check(firstTop[0] === 'trouble' && firstTop[1] === 'check-jellyfin', `trouble comes first on Watch, Jellyfin first in it (${firstTop.join(', ')})`);
     const blk = (await p.locator(JB).textContent()).replace(/\s+/g, ' ');
     check(/Jellyfin runs, but cannot read its drive/.test(blk) && /Mnemosyne · Watch · since/.test(blk), 'line 1: what is wrong, whose, and since when: ' + blk.slice(0, 90));
-    check(/Argus: Argus did not restart it and waits for your yes\./.test(blk) && /You: Hold the button to restart Jellyfin\./.test(blk), 'lines 2 and 3: what Argus did, what you can do');
+    check(/Argus: Did not restart it and waits for your yes\./.test(blk) && /You: Hold the button to restart Jellyfin once\. Argus looks again for up to 90 seconds and tells you if it helped\./.test(blk), 'lines 2 and 3: what Argus did (his name said once), what you can do (one restart, then what follows)');
+    check(!/Argus: Argus/.test(await p.locator('#main').textContent()), 'no "Argus: Argus" anywhere');
     check(await p.locator(`${JB} button.fixbtn.hold`).count() === 1 && /Restart Jellyfin/.test(await p.locator(`${JB} button.fixbtn`).textContent()), 'one press-and-hold button: Restart Jellyfin');
     check(await p.locator('.tblock[data-trouble^="task-"]').count() >= 1 && await p.locator('.tblock button').count() === 1, 'a failed task gets its block too, without a fix button');
     check(await p.locator('.crow.ok[data-check="media-drive"]', {hasText: 'Works'}).count() === 1, 'a check that works is shown too: "Works" and since when, as a compact row');
@@ -75,7 +76,7 @@ run(async b => {
     check(/^\d more$/.test((await p.locator('.satn').textContent()).trim()), 'a small count says how many more: ' + await p.locator('.satn').textContent());
     check(await p.evaluate(() => document.getElementById('argus').classList.contains('sat-out')), "his red eye is out: its lid shows shut");
     const said = await p.locator('#satSay').textContent();
-    check(/^Jellyfin is running but not working, and \d more things? needs? a look\.$/.test(said) && await p.locator('#satSay').getAttribute('aria-live') === 'polite', 'one polite sentence says the same: ' + said);
+    check(/^Jellyfin is running but not working(, and \d more things? needs? a look|\. Now \d things need a look)\.$/.test(said) && await p.locator('#satSay').getAttribute('aria-live') === 'polite', 'one polite sentence says the same: ' + said);
     // his other eyes look at the block, not at the pointer: the pointer is at the top right, the block below him
     await p.mouse.move(1430, 4); await p.waitForTimeout(80); await p.mouse.move(1435, 6); await p.waitForTimeout(700);
     const look = await p.evaluate(() => { const ir = document.querySelector('#argus .eye.top .iris').getAttribute('transform').match(/-?[\d.]+/g).map(Number); return ir; });
@@ -92,7 +93,13 @@ run(async b => {
         await q.evaluate(() => scrollTo(0, document.body.scrollHeight)); await q.waitForTimeout(500);
         const edge = q.locator('#satEdge');
         check(await edge.isVisible() && (await edge.boundingBox()).height >= 44 && (await edge.boundingBox()).width >= 44, 'scrolled away: an edge marker with an arrow, 44 px');
-        await shot(q, 'W-watch-edge-412-night');
+        await shot(q, 'W2-watch-edge-full-412-night');
+        const name0 = await edge.getAttribute('aria-label'), w0 = (await edge.boundingBox()).width;
+        await q.waitForTimeout(5400);
+        const sm = await edge.boundingBox();
+        check(w0 > 60 && await edge.evaluate(e => e.classList.contains('small')) && Math.round(sm.width) === 44 && Math.round(sm.height) === 44 && await edge.getAttribute('aria-label') === name0,
+          `the marker is the pill "Look" (${Math.round(w0)} px) for 5 s, then an arrow-only round button of 44 px with the same name (${Math.round(sm.width)}x${Math.round(sm.height)})`);
+        await shot(q, 'W2-watch-edge-small-412-night');
         await edge.click(); await q.waitForTimeout(900);
         const vis = await q.locator('.tblock.eyed').evaluate(e => { const r = e.getBoundingClientRect(); return r.top >= 0 && r.top < innerHeight; });
         check(vis && await edge.isHidden(), 'a tap on it scrolls back to the broken block, and the marker goes');
@@ -107,6 +114,44 @@ run(async b => {
     check(cs.length >= 10 && !low.length, `contrast of the new text is at least 4.5:1 (lowest ${Math.min(...cs.map(c => c.r))}) ${JSON.stringify(low)}`);
     for (const night of [0]) { const d = await page(b, 412, 915); await d.goto(BASE + `argus?night=${night}`); await d.locator(JB).waitFor({timeout: 10000}).catch(() => {}); await d.waitForTimeout(900); await shot(d, 'W-watch-trouble-412-day'); await d.close();
       const e = await page(b, 1440, 900); await e.goto(BASE + `argus?night=${night}`); await e.locator(JB).waitFor({timeout: 10000}).catch(() => {}); await e.waitForTimeout(900); await shot(e, 'W-watch-trouble-1440-day'); await e.close(); }
+    // W2 point 1: one round where Argus cannot look inside the container (podman exits 125): the block, the alarm and the eye stay
+    const JM = path.join(POD, 'jellyfin.mountinfo'), JA = JM + '.set-aside';
+    const trips0 = await p.evaluate(() => window.__trips.length);
+    fs.renameSync(JM, JA);
+    let held = false;
+    for (let i = 0; i < 30 && !held; i++) { await p.evaluate(() => refresh()); await p.waitForTimeout(400); held = await p.evaluate(() => !!(S.watch.find(w => w.id === 'jellyfin') || {}).unsure); }
+    const u1 = await p.evaluate(() => [document.querySelectorAll('.tblock[data-trouble="check-jellyfin"]').length, document.getElementById('argus').classList.contains('glare'),
+      document.getElementById('satSay').textContent, window.__trips.length, document.querySelectorAll('.tblock.eyed .sat').length, (document.querySelector('.tblock[data-trouble="check-jellyfin"] .unsure') || {}).textContent]);
+    check(held && u1[0] === 1 && u1[1] && !/All is well/.test(u1[2]) && u1[3] === trips0 && u1[4] === 1,
+      `an unknown round: the block stays, Argus still glares, nothing says all is well, the eye stays and does not travel again (${JSON.stringify(u1.slice(0, 5))})`);
+    check(/^Argus has not been able to look again since \d{1,2}:\d\d [AP]M\.$/.test(u1[5] || ''), 'and the block says when Argus last could look: ' + u1[5]);
+    await shot(p, 'W2-watch-unknown-round-1440-night');
+    fs.renameSync(JA, JM);
+    for (let i = 0; i < 30 && held; i++) { await p.evaluate(() => refresh()); await p.waitForTimeout(400); held = await p.evaluate(() => !!(S.watch.find(w => w.id === 'jellyfin') || {}).unsure); }
+    check(!held && await p.evaluate(() => window.__trips.length) === trips0, 'Argus looks again: the sentence goes, still no new travel');
+    // the page's own guard: nothing red left, but a row is unknown or stale: the page stays as it was
+    await p.evaluate(() => { busy = true; S.jobs.forEach(j => { if (j.state === 'failed') j.state = 'ok'; j.works = j.works === false ? null : j.works; });
+      S.watch.forEach(w => { if (w.works === false) { w.works = null; w.code = 'stale'; } }); S.alerts = []; render(); });
+    const g = await p.evaluate(() => [document.querySelectorAll('.tblock').length, document.getElementById('argus').classList.contains('glare'), document.getElementById('argus').classList.contains('sat-out'), document.getElementById('satSay').textContent, window.__trips.length]);
+    check(g[0] === 0 && g[1] && g[2] && !/All is well/.test(g[3]) && g[4] === trips0, `no trouble left but a row is stale: no "All is well", the alarm and the eye stay out, no travel (${JSON.stringify(g)})`);
+    await p.evaluate(() => { busy = false; }); await p.evaluate(() => refresh()); await p.waitForTimeout(800);
+    // W2 point 3: a second and a third thing break while one is shown: a new pulse each time, and the count said again
+    const pulsing = () => p.evaluate(() => { const s = document.querySelector('.sat'); return s && s.classList.contains('glaring') && s.querySelector('svg').getAnimations().length > 0; });
+    const extra = (id, title) => ({id, title, job: '', unit: '', mount: '', works: false, code: 'no-answer', reason: 'does not answer at its web address', since: new Date().toISOString(),
+      fix: false, fix_say: '', drive: false, again: false, unsure: '', title_line: `${title} runs, but does not answer at its web address`, detail: '', note: '', fixing: false, queued: false});
+    const told = [];
+    await p.evaluate(() => { busy = true; render(); });
+    const n0 = await p.evaluate(() => troubleItems().length);
+    for (const [id, title] of [['extra-one', 'Extra One'], ['extra-two', 'Extra Two']]) {
+      await p.evaluate(r => { S.watch.push(r); render(); }, extra(id, title)); await p.waitForTimeout(150);
+      told.push([await p.locator("#satSay").textContent(), await pulsing()]);
+    }
+    check(told[0][0] === `Extra One is running but not working. Now ${n0 + 1} things need a look.` && told[0][1], 'a second (or later) thing breaks: one new pulse, and it is said with the count: ' + told[0][0]);
+    check(told[1][0] === `Extra Two is running but not working. Now ${n0 + 2} things need a look.` && told[1][1], 'and the next one too: ' + told[1][0]);
+    await p.evaluate(() => { S.watch = S.watch.filter(w => w.id !== 'extra-one'); render(); }); await p.waitForTimeout(150);
+    const left = await p.locator('#satSay').textContent();
+    check(left === `Jellyfin is running but not working, and ${n0} more thing${n0 === 1 ? ' needs' : 's need'} a look.` && !await pulsing(), 'one leaves, others remain: the new count, no pulse: ' + left);
+    await p.evaluate(() => { S.watch = S.watch.filter(w => !w.id.startsWith('extra-')); busy = false; }); await p.evaluate(() => refresh()); await p.waitForTimeout(800);
     // the hold button calls the route once (answered here, so nothing really restarts; tests/watch_routes_test.py runs the real one)
     let calls = 0; await p.route('**/api/watch/fix', r => { calls++; r.fulfill({json: {ok: true, msg: 'Restarting Jellyfin. Argus looks again for up to 90 seconds and tells you how it went.'}}); });
     const fb = p.locator(`${JB} button.fixbtn`); const bb = await fb.boundingBox();
@@ -131,6 +176,18 @@ run(async b => {
     const rmt = await rm.evaluate(() => [window.__trips.length, getComputedStyle(document.querySelector('.sat svg')).animationName, document.querySelectorAll('.tblock.eyed .sat').length]);
     check(rmt[0] === 0 && rmt[1] === 'none' && rmt[2] === 1, `reduced motion: the eye is there with no travel and no pulse (${rmt.join(', ')})`);
     await shot(rm, 'W-watch-reducedmotion-412'); await rm.close();
+    // W2 point 4: the drive is gone: its block comes first (the eye goes to the cause), Jellyfin is one line under it, nobody waits for a yes
+    const HG = path.join(FX, 'watch', 'host-good.mountinfo'), good = fs.readFileSync(HG);
+    fs.copyFileSync(path.join(FX, 'watch', 'host-missing.mountinfo'), HG);
+    try {
+      check(await until(p, '.tblock[data-trouble="check-media-drive"]', true), 'the drive is gone: it gets a block');
+      await p.waitForTimeout(300);
+      const d = await p.evaluate(() => [document.querySelector('.tblock.eyed')?.dataset.trouble, [...document.querySelectorAll('.tblock')].map(b => b.dataset.trouble), document.querySelector('.trouble').textContent.replace(/\s+/g, ' ')]);
+      check(/^check-(media-drive|hermes-media-drive)$/.test(d[0]) && !d[1].includes('check-jellyfin') && /Also waiting for this drive: Jellyfin/.test(d[2]), `the drive's block is first and has the eye; Jellyfin is folded under it (${d[1].join(', ')})`);
+      check(!/waits for your yes/i.test(d[2]) && !/Restart Jellyfin/.test(d[2]) && /a restart would not help until it is back|Cannot bring a drive back/.test(d[2]), 'no "waits for your yes" and no restart button while the drive is gone');
+      await shot(p, 'W2-watch-drive-gone-1440-night');
+    } finally { fs.writeFileSync(HG, good); }
+    check(await until(p, '.tblock[data-trouble="check-media-drive"]', false), 'the drive is back: its block goes');
     // the trouble ends: the eye goes home and the sentence says so
     mi('container-good'); units(u => Object.values(u).forEach(v => { if (v.Result !== 'success') v.Result = 'success'; if (v.ActiveState === 'failed') v.ActiveState = 'inactive'; }));
     check(await until(p, '.tblock', false), 'all well: the trouble blocks go');

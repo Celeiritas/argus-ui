@@ -138,41 +138,58 @@ function trouble() {
   const alerts = (S?.alerts || []).filter(a => a.level === 'alert' && !checks.some(w => a.file === 'watch-' + w.id) && !tasks.some(j => jobIs(j, a.job)));
   return {tasks, alerts, checks, n: tasks.length + alerts.length + checks.length};
 }
-// One entry per broken thing, in the page's order (programs that run but do not work first: they have a fix; then failed tasks,
-// then agents' alerts), each in three plain lines: what is wrong and since when, what Argus did (or would have done), what you
-// can do; and the one fix that checks.json declares, when there is one (docs/home.md "Trouble first").
+// One entry per broken thing, in the page's order: a drive that is gone first (it is the cause: the programs on it are folded into
+// its block), then programs that run but do not work (they have a fix), then failed tasks, then agents' alerts. Each in three plain
+// lines: what is wrong and since when, what Argus did (or would have done), what you can do; and the one fix that checks.json
+// declares, when there is one (docs/home.md "Trouble first"). The "Argus:" line never repeats his name (the label says it).
 const agentOf = w => { const k = (w.job || '').split('-')[0]; return AGENT_KEYS.includes(k) && !SIDE.includes(k) ? k : 'argus'; };
 const agentName = k => (S.personas.find(p => p.key === k) || {name: k}).name;
 const sinceText = t => { const s = since(t); return s ? `since ${s}` : ''; };
+const noArgus = s => String(s || '').replace(/^Argus (\w)/, (m, c) => c.toUpperCase());     // the server's notes begin "Argus ..."
 const CAN = {'drive-missing': 'Plug the drive in again. Programs that use it may need a restart after that.',
   'drive-dropped': 'Plug the drive in again. Programs that use it may need a restart after that.',
   'drive-readonly': 'The drive needs a look on the server: it stopped taking writes, usually after errors.',
   'unit-down': 'Start it again on the server, or read its log there.', 'no-answer': 'Open its web address to see what it says. A restart often helps.'};
+const DRIVE_WAIT = 'Waits for the drive: a restart would not help until it is back.';
 function checkItem(w, j) {
-  const agent = j ? j.persona : agentOf(w), can = !/^drive-/.test(w.code) && w.fix;
+  const agent = j ? j.persona : agentOf(w), gone = /^drive-/.test(w.code), can = !gone && w.fix;
   const say = w.drive ? (w.title_line || w.reason) : w.code === 'unit-down' ? `${w.title} is not running` : `${w.title} is running but not working`;
   return {key: 'check-' + w.id, agent, who: `${agentName(agent)} · Watch`, what: w.title_line || `${w.title}: ${w.reason}`, when: sinceText(w.since), say,
-    did: w.fixing ? 'Restarting it now, as you asked. Argus looks again for up to 90 seconds.' : w.note || (w.fix ? 'Argus did not restart it and waits for your yes.' : 'Argus cannot fix this by himself, so he tells you.'),
-    can: w.fixing ? 'Wait a moment: this changes when Argus knows how it went.' : can ? `Hold the button to restart ${w.fix_say}. Argus then looks again and tells you how it went.` : CAN[w.code] || 'Look at it on the server.',
-    fix: can && !w.fixing && role() === 'owner' ? {id: w.id, label: `Restart ${w.fix_say}`} : null, href: WATCH};
+    row: w, unsure: w.unsure || '',
+    did: w.fixing ? 'Restarting it now, as you asked. Looks again for up to 90 seconds and tells you if it helped.'
+      : w.queued ? 'Restarts it in a moment, as you asked (the restart before it is still being sent).'
+      : gone ? (w.drive ? 'Cannot bring a drive back by himself, so he tells you.' : DRIVE_WAIT) : noArgus(w.note) || (w.fix ? 'Did not restart it and waits for your yes.' : 'Cannot fix this by himself, so he tells you.'),
+    can: w.fixing || w.queued ? 'Wait a moment: this changes when Argus knows how it went.'
+      : can ? `Hold the button to restart ${w.fix_say} once. Argus looks again for up to 90 seconds and tells you if it helped.` : CAN[w.code] || 'Look at it on the server.',
+    fix: can && !w.fixing && !w.queued && role() === 'owner' ? {id: w.id, label: `Restart ${w.fix_say}`} : null, href: WATCH};
 }
 function taskItem(j) {
   const why = j.works_reason || j.reason;
   return {key: 'task-' + j.job, agent: j.persona, who: `${agentName(j.persona)} · Watch`, what: `${j.name} failed${why ? `: ${why}` : ''}`, say: `${j.name} failed`,
-    when: j.last && j.last !== '—' ? `last ran ${j.last}` : '', did: 'Argus does not restart a failed task by himself.',
+    when: j.last && j.last !== '—' ? `last ran ${j.last}` : '', did: 'Does not restart a failed task by himself.',
     can: `Read its log on its card, then press ${always(j) ? 'Restart' : 'Run'} to try again.`, fix: null, href: WATCH};
 }
 function alertItem(a) {
   const k = a.job.split('-')[0], g = S.personas.find(p => p.key === k), name = g ? g.name : k, watch = g && !SIDE.includes(k);
   return {key: `alert-${a.file || a.job}`, agent: k, who: g ? `${name} · Watch` : a.job, what: a.message, say: a.message, when: sinceText(a.since), of: a.link || 'argus',
-    did: `${name} raised this; Argus passes it on.`, can: a.link ? `Open ${sectionName(a.link)} to deal with it.` : `Look at ${name}'s tasks on Watch.`, fix: null,
+    did: `Passes on what ${name} raised.`, can: a.link ? `Open ${sectionName(a.link)} to deal with it.` : `Look at ${name}'s tasks on Watch.`, fix: null,
     label: a.link ? `Open ${sectionName(a.link)}` : `Look at ${name} on Watch`, href: a.link ? url(a.link) : watch ? (k === 'argus' ? WATCH + '/argus' : url(k)) : WATCH};
 }
+// how many broken things an entry stands for: itself and the programs folded under its drive
+const weight = it => 1 + (it.also ? it.also.length : 0);
 function troubleItems() {
   const {tasks, alerts, checks} = trouble(), bad = j => checksFor(j).find(w => w.works === false);
-  return [...tasks.filter(bad).map(j => checkItem(bad(j), j)), ...checks.map(w => checkItem(w)), ...tasks.filter(j => !bad(j)).map(taskItem), ...alerts.map(alertItem)];
+  let list = [...tasks.filter(bad).map(j => checkItem(bad(j), j)), ...checks.map(w => checkItem(w)), ...tasks.filter(j => !bad(j)).map(taskItem), ...alerts.map(alertItem)];
+  // a drive that is gone is the cause: its block comes first, and programs whose only problem is that drive are one line under it
+  const drives = list.filter(it => it.row && it.row.drive && it.row.mount);
+  drives.forEach(d => { d.also = [];
+    list = list.filter(it => { const w = it.row, fold = w && !w.drive && w.mount === d.row.mount && /^drive-/.test(w.code);
+      if (fold) d.also.push(w.title); return !fold; }); });
+  return [...drives, ...list.filter(it => !drives.includes(it))];
 }
-const troubleLines = it => `<p class="tl"><b>Argus:</b> ${esc(it.did)}</p><p class="tl"><b>You:</b> ${esc(it.can)}</p>`;
+const troubleLines = it => `<p class="tl"><b>Argus:</b> ${esc(it.did)}</p><p class="tl"><b>You:</b> ${esc(it.can)}</p>`
+  + (it.also && it.also.length ? `<p class="tl"><b>Also waiting for this drive:</b> ${esc(it.also.join(', '))}</p>` : '')
+  + (it.unsure ? `<p class="tl unsure">${esc(it.unsure)}</p>` : '');
 const fixButton = it => it.fix ? `<button type="button" class="fixbtn" data-fix="${esc(it.fix.id)}">${esc(it.fix.label)}</button>` : '';
 function troubleBlock(it) {
   return `<article class="tblock" data-trouble="${esc(it.key)}" aria-labelledby="t-${esc(it.key)}"><h3 id="t-${esc(it.key)}">${esc(it.what)}</h3>
@@ -325,7 +342,8 @@ function render() {
   const list = (only ? shown.filter(p => p.key === only) : shown).map((p, i) => [p, i]).sort((a, b) => worst(a[0]) - worst(b[0]) || a[1] - b[1]).map(x => x[0]);
   // Trouble first: one block per broken thing, above the groups (docs/home.md "Trouble first"); "What happened lately" at the end
   const items = only ? troubleItems().filter(it => it.agent === only) : troubleItems();
-  const top = items.length ? `<section class="trouble" aria-labelledby="trouble-h"><h2 id="trouble-h">${items.length === 1 ? 'One thing needs a look' : `${items.length} things need a look`}</h2>${items.map(troubleBlock).join('')}</section>` : '';
+  const tn = items.reduce((t, it) => t + weight(it), 0);       // the programs folded under a drive count too, as on the bar
+  const top = items.length ? `<section class="trouble" aria-labelledby="trouble-h"><h2 id="trouble-h">${tn === 1 ? 'One thing needs a look' : `${tn} things need a look`}</h2>${items.map(troubleBlock).join('')}</section>` : '';
   const end = only ? '' : `<section class="lately" aria-labelledby="lately-h"><h2 id="lately-h">What happened lately</h2><div id="lately">${lately.html || '<p class="quiet">Loading…</p>'}</div></section>`;
   $('#main').innerHTML = top + (list.map(p => {
     const js = (by[p.key] || []).map((j, i) => [j, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(x => x[0]), ls = lone[p.key] || [];
@@ -417,7 +435,7 @@ function addStone(c) {
   s.innerHTML = `<svg viewBox="0 0 100 60" preserveAspectRatio="none"><path d="M8 0 L14 12 L10 22 L18 34 M60 0 L56 10 L64 18 L58 30 L66 44 M92 60 L86 48 L90 40 L82 30 M30 60 L34 50 L28 42" stroke="#22302a" stroke-width=".7" fill="none" opacity=".6" vector-effect="non-scaling-stroke"/></svg>`;
   c.prepend(s);
 }
-async function refresh() { if (busy || $('.hold.holding,.hold[aria-busy]')) return;   /* never redraw a button that is being held */ try { const r = await fetch(url('api/state'), {cache: 'no-store'}); S = await r.json(); const open = $$('details[open]').map(d => d.dataset.log); render(); open.forEach(k => { const d = $(`details[data-log="${CSS.escape(k)}"]`); if (d) { d.open = true; loadLog(d); } }); } catch (e) {} }
+async function refresh() { if (busy || $('.hold.holding,.hold[aria-busy],.hold.hold-armed')) return;   /* never redraw a button that is being held or armed (click twice) */ try { const r = await fetch(url('api/state'), {cache: 'no-store'}); S = await r.json(); const open = $$('details[open]').map(d => d.dataset.log); render(); open.forEach(k => { const d = $(`details[data-log="${CSS.escape(k)}"]`); if (d) { d.open = true; loadLog(d); } }); } catch (e) {} }
 async function post(what, job) { const r = await fetch(url('api/' + what), {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({job})}); return r.json(); }
 async function loadLog(d) { try { const r = await fetch(url('api/log/' + encodeURIComponent(d.dataset.log))); const j = await r.json(); $('pre', d).textContent = j.log || 'Nothing logged yet.'; } catch (e) { $('pre', d).textContent = "Couldn't load the log. Close and reopen it to try again."; } }
 document.addEventListener('toggle', e => { if (e.target.matches('details[data-log]') && e.target.open) loadLog(e.target); }, true);
@@ -452,6 +470,7 @@ const look = (() => {
     const owner = role() === 'owner'; A.hidden = !owner; A.tabIndex = owner && side ? 0 : -1;
     if (!owner) { A.removeAttribute('aria-label'); alarmed = false; lastBad = null; return; }
     const {tasks: bad, alerts: up, checks: ck, n} = trouble();
+    if (!n && lastBad > 0 && doubt()) return;                        // nothing red, but a broken check could not be looked at: stay as he was (W2)
     target = $(".tblock") || $('.card[data-state="failed"]') || $('.card.alerted') || $('.card.notworking');
     alarmed = n > 0; A.classList.toggle('glare', alarmed); A.classList.toggle('calm', !n);
     $('#alarm').hidden = !n; $('#alarmN').textContent = n > 1 ? n : '';
@@ -517,22 +536,28 @@ const satellite = (() => {
   const live = document.createElement('p'); live.className = 'sr'; live.id = 'satSay'; live.setAttribute('aria-live', 'polite'); document.body.append(live);
   const edge = document.createElement('button'); edge.type = 'button'; edge.id = 'satEdge'; edge.className = 'satedge'; edge.hidden = true;
   edge.setAttribute('aria-label', 'Scroll to what needs a look'); document.body.append(edge);
-  let key = null, at = null, seen = null;                     // the block it glares at, where it last sat (page coordinates), the observer
+  let key = null, keys = new Set(), at = null, seen = null, shrink = 0;   // the block it glares at, every trouble key, where it sat, the observer
   const say = t => { live.textContent = t; };
+  const base = it => (it ? it.say : 'Something is wrong').replace(/[.\s]+$/, '');
+  const plural = n => `${n} more thing${n === 1 ? ' needs' : 's need'} a look`;
   function eye() {                                            // a copy of his red eye in a small frame, its iris turned down-left onto the block
     const g = red.cloneNode(true); g.classList.remove('red'); $('.iris', g).setAttribute('transform', 'translate(-2.2 1.4)');
     return `<svg viewBox="90.2 64.1 28 28" aria-hidden="true">${g.outerHTML}</svg>`;
   }
   const centre = el => { const r = el.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; };
-  function edgeFor(block) {                                   // the edge marker: shown only while the block is out of view
-    seen?.disconnect(); seen = null; edge.hidden = true;
-    if (!block || !('IntersectionObserver' in window)) return;
+  // The edge marker, shown only while the block is out of view. The pill "Look" for 5 seconds after it appears or after the set
+  // of trouble changes; then an arrow-only round button of 44 px (same name), so it does not sit on a control for long.
+  function full() { edge.classList.remove('small'); clearTimeout(shrink); shrink = setTimeout(() => edge.classList.add('small'), 5000); }
+  function edgeFor(block, changed) {
+    seen?.disconnect(); seen = null;
+    if (!block || !('IntersectionObserver' in window)) { edge.hidden = true; clearTimeout(shrink); return; }
+    if (changed && !edge.hidden) full();
     seen = new IntersectionObserver(([e]) => {
-      if (e.isIntersecting) { edge.hidden = true; return; }
+      if (e.isIntersecting) { edge.hidden = true; clearTimeout(shrink); return; }
       const up = e.boundingClientRect.top < 0, bar = $('#tabbar'), barH = bar && bar.offsetHeight && getComputedStyle(bar).display !== 'none' ? bar.offsetHeight : 0;
-      edge.className = `satedge ${up ? 'up' : 'down'}`; edge.style.top = up ? '12px' : ''; edge.style.bottom = up ? '' : `${barH + 12}px`;
+      edge.classList.toggle('up', up); edge.classList.toggle('down', !up); edge.style.top = up ? '12px' : ''; edge.style.bottom = up ? '' : `${barH + 12}px`;
       edge.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${up ? 'M12 5 5 13h4v6h6v-6h4z' : 'M12 19 5 11h4V5h6v6h4z'}" fill="currentColor"/></svg><span>Look</span>`;
-      edge.hidden = false;
+      if (edge.hidden) { edge.hidden = false; full(); }       // it appears: the full pill first
     }, {threshold: .25});
     seen.observe(block);
   }
@@ -551,22 +576,34 @@ const satellite = (() => {
     look.fix(first);
     if (!first) {
       edgeFor(null);
-      if (key !== null) { key = null; say('All is well again: nothing on Watch needs a look.'); home(); }
+      // "All is well" only when nothing is broken AND Argus could look at everything: a broken check whose round was unknown or whose
+      // result is stale is not well (W2). Then nothing changes: no sentence, the eye does not fly home, his red eye stays out.
+      if (key !== null && !doubt()) { key = null; keys = new Set(); say('All is well again: nothing on Watch needs a look.'); home(); }
       return;
     }
-    const k = first.dataset.trouble, it = items.find(i => i.key === k), more = blocks.length - 1;
+    const now = new Set(blocks.map(b => b.dataset.trouble)), k = first.dataset.trouble, it = items.find(i => i.key === k);
+    const total = items.reduce((t, i) => t + weight(i), 0), more = total - 1;
     first.classList.add('eyed');
     const sat = document.createElement('span'); sat.className = 'sat'; sat.setAttribute('aria-hidden', 'true');
     sat.innerHTML = eye() + (more ? `<span class="satn">${more} more</span>` : '');
     first.append(sat); A.classList.add('sat-out');
     const r = sat.getBoundingClientRect(); at = [r.left + r.width / 2 + scrollX, r.top + 22 + scrollY];
-    if (k !== key) {                                          // a change: travel once and pulse, and say it once
-      const from = key === null ? centre(red) : null;
-      key = k; sat.classList.add('glaring');
-      if (from) fx.travel($('svg', sat), from);
-      say(`${(it ? it.say : 'Something is wrong').replace(/[.\s]+$/, '')}${more ? `, and ${more} more thing${more === 1 ? ' needs' : 's need'} a look` : ''}.`);
+    const grew = [...now].filter(x => !keys.has(x)), gone = [...keys].some(x => !now.has(x));
+    if (key === null && !keys.size) {                         // trouble starts: travel once from his face, pulse, say it
+      sat.classList.add('glaring'); fx.travel($('svg', sat), centre(red));
+      say(`${base(it)}${more ? `, and ${plural(more)}` : ''}.`);
+    } else if (grew.length) {                                 // something else broke too: one new pulse where it stands, and say it
+      const nw = items.find(i => i.key === grew[grew.length - 1]);
+      sat.classList.add('glaring');
+      say(`${base(nw)}. Now ${total} things need a look.`);
+    } else if (gone || k !== key) {                           // something left and others remain: the new count, no pulse
+      say(`${base(it)}${more ? `, and ${plural(more)}` : ''}.`);
     }
-    edgeFor(first);
+    const changed = grew.length > 0 || gone;
+    key = k; keys = now;
+    edgeFor(first, changed);
   }
   return {place, get key() { return key; }};
 })();
+// a row Argus could not judge this round: unknown (could not look), stale (not looked at for a while) or seen once (pending)
+const doubt = () => (S?.watch || []).some(w => w.works === null && w.code !== 'paused');

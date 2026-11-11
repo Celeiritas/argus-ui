@@ -14,7 +14,7 @@ const home = (() => {
   // did, what you can do, and the declared fix as a hold button), then each section that says it needs you. `of`: the place it
   // belongs to; `n`: how many things the row stands for, so the line above counts what the bar counts (trouble() in core.js).
   function needs() {
-    const out = troubleItems().map(it => ({key: it.key, of: it.of || 'argus', n: 1, mark: icon(AGENT_KEYS.includes(it.agent) ? it.agent : 'argus'), level: 'alert',
+    const out = troubleItems().map(it => ({key: it.key, of: it.of || 'argus', n: weight(it), mark: icon(AGENT_KEYS.includes(it.agent) ? it.agent : 'argus'), level: 'alert',
       who: it.who, text: it.what, item: it, label: it.label || 'Look at it on Watch', href: it.href}));
     PLUGINS.forEach(p => { const s = STATUS[p.id], c = needCount(p.id); if (s && s.needs) out.push({key: `needs-${p.id}`, of: p.id, n: c === true ? 1 : c,
       mark: pluginMark(p), who: placeName(p.id, p.name), level: 'needs', text: s.line, label: s.action || `Open ${p.name}`, href: url(p.id)}); });

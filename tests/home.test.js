@@ -25,7 +25,7 @@ run(async b => {
   const task = p.locator('.need[data-key^="task-"]');           // one row per broken thing (4.39.0): what, since, what Argus did, what you can do
   const t1 = (await p.locator('.need').first().textContent()).replace(/\s+/g, ' ');
   check(/rename failed/.test(t1) && await p.locator('.need').first().locator('a.go').textContent() === 'Look at it on Watch', 'the failed thing comes first, with "Look at it on Watch": ' + t1);
-  check(/Argus: Argus does not restart a failed task by himself\./.test(t1) && /You: Read its log on its card, then press Run to try again\./.test(t1), 'in plain words: what Argus did and what you can do');
+  check(/Argus: Does not restart a failed task by himself\./.test(t1) && /You: Read its log on its card, then press Run to try again\./.test(t1), 'in plain words: what Argus did and what you can do');
   check(/\/argus\/argus$/.test(await task.first().locator('a.go').getAttribute('href')), 'and the button goes to Watch');
   check(await need('deploy waiting').locator('a.go').textContent() === 'Review app 9.9.9' && /Approvals · Zeus/.test(await need('deploy waiting').textContent()), 'a section that needs you: its line, its plain name, its verb-first button');
   const place = t => p.locator('.place', {hasText: t});

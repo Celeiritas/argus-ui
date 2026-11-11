@@ -19,7 +19,7 @@ function holdConfirm(btn, onDone, {ms = 3000} = {}) {
   }
   function start() {
     if (busy || t0) return;
-    clearTimeout(armed); armed = 0; t0 = performance.now(); btn.classList.add('holding');
+    clearTimeout(armed); armed = 0; btn.classList.remove('hold-armed'); t0 = performance.now(); btn.classList.add('holding');
     btn.style.minWidth = `${btn.offsetWidth}px`;   // the countdown is shorter than the label: the button must not shrink out from under the finger
     look.watch(btn); look.react('wide');   // Argus keeps his eyes on the button and opens them wide while you hold
     tick();
@@ -30,7 +30,7 @@ function holdConfirm(btn, onDone, {ms = 3000} = {}) {
     if (!quiet) toast(`Let go early: nothing was sent. Hold ${label} for ${secs} seconds to confirm.`);
   }
   async function finish() {
-    cancelAnimationFrame(raf); t0 = 0; clearTimeout(armed); armed = 0; busy = true;
+    cancelAnimationFrame(raf); t0 = 0; clearTimeout(armed); armed = 0; btn.classList.remove('hold-armed'); busy = true;
     btn.classList.remove('holding'); btn.classList.add('done'); btn.setAttribute('aria-busy', 'true'); say('Working…');
     look.watch(null); look.react('rest');
     try { const r = await onDone(); look.react(r === false ? 'wince' : 'nod'); } catch (e) { look.react('wince'); throw e; } finally { busy = false; set(0); btn.classList.remove('done'); btn.removeAttribute('aria-busy'); btn.style.minWidth = ''; say(label); }
@@ -47,7 +47,7 @@ function holdConfirm(btn, onDone, {ms = 3000} = {}) {
     if (busy) return;
     if (armed) return finish();
     say(`Click again to ${label.toLowerCase()}`); toast(`Click ${label} again within 5 seconds to confirm.`);
-    armed = setTimeout(() => { armed = 0; say(label); }, 5000);
+    armed = setTimeout(() => { armed = 0; btn.classList.remove('hold-armed'); say(label); }, 5000); btn.classList.add('hold-armed');   // a refresh leaves an armed button alone (core.js refresh)
   });
   return {cancel: () => stop(true)};
 }
