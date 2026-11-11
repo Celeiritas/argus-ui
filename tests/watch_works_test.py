@@ -727,7 +727,8 @@ class RealServer(unittest.TestCase):
         env.update(HOME=home, USERPROFILE=home, ARGUS_BIND='127.0.0.1', ARGUS_PORT=str(cls.port), ARGUS_STATIC=static, ARGUS_BUNDLED=os.path.join(cls.tmp, 'none'),
                    ARGUS_SYSTEMCTL=sysctl, ARGUS_CHECKS=os.path.join(cls.tmp, 'checks.json'), ARGUS_AUTOFIX=os.path.join(cls.tmp, 'auto-fix.json'),
                    ARGUS_MOUNTINFO=os.path.join(WFX, 'host-good.mountinfo'), ARGUS_EVENTS=cls.events, ARGUS_WATCH_STATE=os.path.join(cls.tmp, 'watch.json'),
-                   ARGUS_WATCH_INTERVAL='1', FAKE_PODMAN_DIR=pod, ARGUS_ALERTS=os.path.join(cls.tmp, 'alerts'), ARGUS_REGISTRY=os.path.join(cls.tmp, 'reg'))
+                   ARGUS_WATCH_INTERVAL='1', FAKE_PODMAN_DIR=pod, ARGUS_ALERTS=os.path.join(cls.tmp, 'alerts'), ARGUS_REGISTRY=os.path.join(cls.tmp, 'reg'),
+                   ARGUS_SUMMARY='0')      # no daily summary event in the events file (between 08:00 and 12:00 it would go out at start)
         cls.log = open(os.path.join(cls.tmp, 'server.log'), 'w')
         cls.proc = subprocess.Popen([sys.executable, os.path.join(R, 'server', 'argus_ui.py')], env=env, stdout=cls.log, stderr=cls.log)
         for _ in range(150):

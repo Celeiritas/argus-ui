@@ -211,7 +211,8 @@ def server_env(tmp, port):
                ARGUS_BUNDLED=os.path.join(tmp, 'none'), ARGUS_PLUGINS=os.path.join(tmp, 'plugins'), ARGUS_CHECKS=os.path.join(tmp, 'checks.json'),
                ARGUS_AUTOFIX=os.path.join(tmp, 'auto-fix.json'), ARGUS_MOUNTINFO=os.path.join(WFX, 'host-good.mountinfo'),
                ARGUS_EVENTS=os.path.join(tmp, 'events.jsonl'), ARGUS_WATCH_STATE=os.path.join(tmp, 'watch.json'), ARGUS_WATCH_INTERVAL='1',
-               FAKE_PODMAN_DIR=os.path.join(tmp, 'pod'), ARGUS_ALERTS=os.path.join(tmp, 'alerts'), ARGUS_REGISTRY=os.path.join(tmp, 'reg'))
+               FAKE_PODMAN_DIR=os.path.join(tmp, 'pod'), ARGUS_ALERTS=os.path.join(tmp, 'alerts'), ARGUS_REGISTRY=os.path.join(tmp, 'reg'),
+               ARGUS_SUMMARY='0')          # no daily summary event in the events file (between 08:00 and 12:00 it would go out at start)
     return env
 
 
