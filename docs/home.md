@@ -12,10 +12,11 @@ opens on: the bare address `<base>/`, and `<base>/home`, its old address, which 
    every task in trouble, every alert, and each section that needs you (its `count`, else one). It is the heading of the list:
 3. **The rows that need you**, the failed thing first. Each row has the place's mark, who it is from (the plain word and the
    realm's name, e.g. *Approvals · Zeus*), one sentence, and one verb-first button that goes there:
-   - tasks in trouble, as one row: failed ones ("1 task failed: hermes-rename") and ones that run but cannot do their job
-     (`works: false`, docs/checks.md: "1 task running but not working: …") → **Look at 1 failed task** (to Watch). When there is
-     one, the sentence ends with its reason (`works_reason`, else `reason`).
-   - every `alert`-level alert (docs/alerts.md) that is not about one of those tasks: its agent in plain words ("Hermes · Watch"),
+   - **one row per broken thing on Watch** (4.39.0, see "Trouble first" below): a program that runs but cannot do its job,
+     a check with no task card of its own (a media program, a drive), a failed task, each with the same three plain lines as on
+     Watch and, when checks.json declares a fix, the same press-and-hold button (**Restart Jellyfin**) beside **Look at it on
+     Watch**
+   - every `alert`-level alert (docs/alerts.md) that is not about one of those: its agent in plain words ("Hermes · Watch"),
      its message, and "Open <section>" when it links to one, else "Look at Hermes on Watch" (Watch showing that agent's tasks)
    - every server plugin whose status says it needs you: its line → its `action` ("Study 5 due cards", "Review argus-ui 4.15.0")
 
@@ -79,3 +80,53 @@ in the Open row.
 - Every row button, chip and card is a plain link at least 44 px tall. On a phone the buttons go full width under their
   sentence and the cards make one column, with no sideways scrolling at 360 px.
 - Each part sits on one quiet panel so it reads over the scene.
+
+## Trouble first (4.39.0)
+The owner reads this page mostly on a phone and is not a programmer. When something is wrong, the page says **what is wrong, what
+Argus did, and what you can do**, before anything else, on Watch and on Today. `troubleItems()` in `web/js/core.js` makes one entry
+per broken thing, in this order: programs that run but cannot do their job (they have a fix), checks with no task card, failed
+tasks, then agents' alerts. Each entry is drawn as a **block** on Watch (`troubleBlock()`, in a "2 things need a look" panel above
+the groups) and as a **row** on Today, with three plain lines:
+
+1. **What is wrong and since when**, with whose it is: *Jellyfin runs, but cannot read its drive* · *Mnemosyne · Watch · since 4:50 AM*
+2. **Argus:** what he did, or would have done (the check's `note`, docs/checks.md): *Argus did not restart it and waits for your yes.*
+3. **You:** what you can do: *Hold the button to restart Jellyfin. Argus then looks again and tells you how it went.* A drive that
+   is gone says to plug it in again; a failed task says to read its log and press Run.
+
+When checks.json declares a `fix` for the check (and the problem is not the drive itself), the block has **one press-and-hold
+button**, *Restart Jellyfin* (`"say"` of the fix, else its units), in the bolt's gold look, made with `holdConfirm`, for the owner
+only. Holding it 3 seconds sends `POST api/watch/fix` once (docs/checks.md "Your yes from the page"); the toast says what the
+server answered, and the block says *Restarting it now, as you asked* until Argus knows. It then ends on *Works again* (the row)
+or *You restarted Jellyfin at 4:52 AM, and it did not help.* (the block). A refresh never redraws a button that is being held.
+
+**Every check is on Watch while it works too.** A check whose `job` is a task card adds one line to that card, *Works · since
+4:50 AM* (*Works again* after a failure). A check with no card gets a **compact row** under the agent that owns it (the agent of
+its `job`, else Argus): a dot, its title and *Works · since …*, *Running, but not working: cannot read its drive · since …*,
+*Not known yet: …* or *Restarting…*. Such a check is counted once: the alert the server makes from it is that row, not a second
+card.
+
+**What happened lately**, at the end of Watch: the newest 10 events (`api/events`) as plain sentences (the event's title, then
+its body) with a relative and an exact time (*12 minutes ago · Wed, Nov 11, 4:50 AM*, an HTML `<time>`). With none:
+*Nothing has happened since <the time the server started>.*
+
+## The satellite eye (4.39.0)
+The owner's words: the pointer still draws Argus's eyes while something is red; he should grow a satellite red eye that travels to
+the broken card and glares at it. On Watch (owner only), `satellite` in `web/js/core.js`:
+- **One eye leaves him.** A copy of his own red eye (his markup, cloned: no new drawing) travels once, 750 ms along a lifted
+  curve (`fx.travel`), from his face to the **top-right corner of the first trouble block**, and stays there. His red eye shows
+  its lid shut while it is out. It travels only when the trouble starts (the change itself draws the eye); a refresh with the
+  same trouble does not move it again, and a new first block simply gets it.
+- **It glares**: squinted, red, with a glow that pulses 4 times (4.8 s, under the 5 s of WCAG 2.2.2), then holds still.
+- **It never covers anything**: the block keeps a 60 px gutter on its right for it (44 px eye). Checked at 360x800, 412x915 and
+  1440x900.
+- **Several broken things**: it goes to the first in the page's order, and a small *1 more* / *2 more* under it says how many
+  others there are (they are all listed in the panel).
+- **Out of view**: when the block is scrolled away, an edge marker (a 44 px button with an arrow and *Look*, at the top or above
+  the bottom bar) appears; a tap scrolls back to the block and the marker goes.
+- **His other eyes look at that block, not at the pointer**, while anything is red (`look.fix`). Carrying a bolt and holding a
+  button still come first.
+- **Said once**: the eye is `aria-hidden`; one polite live sentence says the same, once per change (*Jellyfin is running but not
+  working, and 1 more thing needs a look.*). When the trouble ends the eye flies home and the sentence says *All is well again:
+  nothing on Watch needs a look.*
+- **Reduced motion**: no travel and no pulse; the eye is simply at the block.
+- A learner never sees any of it (no Watch, no eye, no fix buttons, no rows about the owner's programs).

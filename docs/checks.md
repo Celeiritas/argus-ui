@@ -59,11 +59,13 @@ Everything is read without sudo. **Time limits, per kind of call:** a look or a 
 - **A test read that hangs** (no answer in 6 seconds) is not repeated for 15 minutes, or until the host's mount line for its drive changes (unplugged and back, re-mounted), so reads cannot pile up. Rounds without a read count as still hanging, so after 2 rounds the check shows a `warn` note on its card, *Media player does not answer when it reads its drive*, and raises one `broke` event with level `warn`. It has its own code (`read-hung`), so it never leads to a restart.
 
 ## What state() shows
-`watch`: one entry per check, `{id, title, job, unit, works, code, reason, note, since, fix, autofix, drive}`.
+`watch`: one entry per check, `{id, title, job, unit, works, code, reason, note, since, fix, fix_say, autofix, drive, title_line, detail, again, fixing}`
+(4.39.0: `fix_say` the words for what its fix restarts, `title_line` the event-style sentence, `again` true while it works again after
+a failure, `fixing` true while a fix you asked for runs). `since` is when its state last changed (the first round it was seen, until then).
 `works` is `true`, `false` or `null` (unknown). `reason` is the plain phrase: *cannot read its drive*, *its drive is not connected*, *does not answer at its web address*. Each task card the checks name also gets `works` and `works_reason`. A failed check with a `job` adds an alert (same as an alert file: the card note, Argus's glare and the badge), worded *Running, but not working: cannot read its drive*.
 
 ### What the card says about a restart
-The events file is not shown on any page yet, so a failed check that has a `fix` also says on its card what Argus did about it (`note` in `watch`). It never claims a restart that did not happen, and it promises no button:
+A failed check that has a `fix` also says what Argus did about it (`note` in `watch`): Watch's trouble block shows it as *Argus: …* (docs/home.md "Trouble first"). It never claims a restart that did not happen:
 
 | Situation | Added to the card |
 |---|---|
@@ -72,6 +74,8 @@ The events file is not shown on any page yet, so a failed check that has a `fix`
 | Argus restarted it and it did not help | *Argus restarted the media player once by itself, and it did not help. It waits for your yes.* |
 | The restart command itself failed | *Argus tried to restart the media player by itself, but the restart did not work. It waits for your yes.* |
 | Self-repair may still act next round (the first round of *cannot read its drive*) | nothing yet |
+| You pressed the fix on the page and it did not help (4.39.0) | *You restarted the media player at 4:52 AM, and it did not help.* |
+| You pressed it and the restart command failed | *You asked for a restart of the media player at 4:52 AM, but the restart did not work.* |
 
 A whole card then reads, for example, *Running, but not working: cannot read its drive. Argus did not restart it and waits for your yes.* A check without a `fix`, a drive that is missing (the drive's own card says it) and a test read that hangs keep their text as it is.
 
@@ -108,8 +112,41 @@ Self-repair is for one situation only: **the program runs, but cannot read its d
 - **One try per check in 24 hours.** The time of the last try (real or trial) is saved in `~/.local/state/argus-ui/watch.json` **before** the restart command runs, and it is kept when the program works again and when the server restarts. A second breakage inside that day raises `needs-yes` and says when Argus last tried.
 - **The try:** the same `systemctl --user restart --no-block` as the bolt, for each unit in `fix.restart`, never a frozen one, and each unit at most once per round even when two checks name it. Then Argus checks again every 3 seconds for up to **90 seconds** (it stops as soon as the program works) and raises `fixed` or `broke`. That wait does not hold the lock the page's power buttons use. A restart command that hangs or fails counts as *the restart did not work* (a `broke` event); the round still finishes and saves its state.
 
+## Your yes from the page (4.39.0)
+`POST api/watch/fix` with `{"id": "<check id>"}` (JSON only, the usual POST checks) is the owner's yes, from the hold button on Watch
+or Today. **It runs exactly the fix that checks.json declares for that check and nothing else**: the id is looked up in the checks
+file; no unit name is taken from the request. It is refused, with one plain sentence in `msg`, when:
+
+| Refused when | Status | Says |
+|---|---|---|
+| the id is not a check (or not a valid id) | 404 (400) | *There is no check with that name. Reload the page.* |
+| the check has no `fix` | 409 | *Media player has no fix that Argus may run. Look at it on the server.* |
+| it works right now | 409 | *Media player works right now, so there is nothing to fix.* |
+| its `job`, its `unit` or a unit of its fix is paused (frozen) | 409 | *Media player is paused (frozen). Resume it first, then try again.* |
+| a fix of it started less than 2 minutes ago (yours, or Argus's real one; a trial note does not count) | 409 | *A restart of the media player started at 4:52 AM. Give it 2 minutes, then try again if it still does not work.* |
+| the watch loop is off | 409 | *The watch is switched off, so Argus cannot run a fix from here.* |
+
+Accepted, it answers `{"ok": true, "msg": "Restarting the media player. Argus looks again for up to 90 seconds and tells you how it went."}`
+at once. The check and the queueing happen under the same lock as the page's other powers. The loop is woken and, on that round,
+runs the fix **through the same `repair()` as self-repair**: the same `systemctl --user restart --no-block` for each unit of
+`fix.restart` (never a frozen one, each once per round), the same look every 3 seconds for up to 90 seconds. It writes **one event**
+(existing kinds): `fixed` (*You restarted the media player from the page at 4:52 AM, and it works now.*) or `broke` (*… You
+restarted the media player at 4:52 AM, and it did not help.*). The card then ends on *Works again* or on the note above. When it
+works again before the round, nothing is restarted (the usual `recovered` event). Self-repair does not restart it again right
+after you did. Only the owner sees the button (the server's role table comes with sign-in, docs/home.md "Who sees what").
+
+## What happened lately: api/events (4.39.0)
+`GET api/events?limit=N` → `{"events": [...], "since": "<when the server started>"}`: the newest events from the events file, newest
+first, 10 by default, at most 100 (a limit that is not a whole number: 400). Each event carries only its own fields
+(`id, at, kind, subject, title, body, url, level`, as text); a damaged line is skipped. Watch shows the newest 10.
+
+## podman and the journal
+Every `podman exec` the watch makes carries `--events-backend=none` (before `exec`): without it podman writes 2 lines to the journal
+per call, about 14,000 a day from this loop; the exit code is the same. It is added only when the runtime is podman (the default,
+or a path or list ending in a podman program); another runtime (`docker`) gets no flag it does not know.
+
 ## Settings
 `ARGUS_WATCH_INTERVAL` (seconds between rounds, default 60; 0 turns the loop off), `ARGUS_WATCH=0` (off), `ARGUS_CHECKS`, `ARGUS_AUTOFIX`, `ARGUS_EVENTS`, `ARGUS_WATCH_STATE`, `ARGUS_MOUNTINFO` (tests). `tests/run.sh` sets `HOME` and `USERPROFILE` to its temp folder and `ARGUS_EVENTS` and `ARGUS_WATCH_STATE` to explicit paths, so a test run never writes into a real profile.
 
 ## Tests
-`tests/watch_works_test.py` (canned mount tables in `tests/fixtures/watch/`, a fake container runtime, a real server in its own process) and `tests/works.test.js` (the card in a browser, the event file, the card going away). `bash tests/run.sh works`.
+`tests/watch_works_test.py` (canned mount tables in `tests/fixtures/watch/`, a fake container runtime, a real server in its own process), `tests/watch_routes_test.py` (the owner's yes: every refusal, one real fix that works and one that does not help; `api/events`, `count`, `restarts`, podman's flag in the fake runtime's call log) and `tests/works.test.js` (the row in a browser, the event file, the row going back to *Works*). `tests/salience.test.js` checks the page side (docs/home.md). `bash tests/run.sh works`.

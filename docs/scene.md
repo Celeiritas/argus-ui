@@ -60,6 +60,7 @@ Keep this order whenever you add art or effects, so nothing is covered by mistak
    5. `.debris` (ash, sticks, scorch, rubble, bones, wine), `.trees` (a grapevine is drawn inside a tree's SVG, an owl sits in its `.sway`), `.flora` (flowers), `.skels` (skeletons; an owl on a skull is inside the skeleton), `.stuck` (arrows, spears and owls on the ground). All are anchored to the ground's surface
    6. weather canvas (rain and snow fall in front of everything above), then fog
 3. Page content: section bar, header (title, Argus, tools), agent tabs, `main` (cards, Mentor, the Olympus dock). Cards are opaque, so the scene shows around them and at the end of each page
+   - Argus's satellite eye (`.sat`, docs/home.md) sits inside the first trouble block, in its own right-hand gutter, so it scrolls with it and never covers its words; while it flies home it is a `.sat.flying` in `#fx`. Its edge marker `#satEdge` (fixed, z 46) sits just above the bottom bar.
    - On a phone (under 600 px) the bottom bar `.tabbar` (fixed, z 45) is the front of this group. The scene and the page end above it (`#scene` gets a bottom offset, `body` a bottom padding, `html` a scroll padding so focused controls stay clear of it); the More sheet is a dialog (top layer)
 4. Things in hand or in flight: `.floating`, `.shot`, `.thrown`, `.seed` (z 50)
 5. `#flash` (48) and `#fx` effects (49): lightning, sparks, flames, smoke, dirt, bone pieces, wind streaks, wine drops, music notes
