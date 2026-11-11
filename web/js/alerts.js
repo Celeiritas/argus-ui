@@ -6,9 +6,10 @@ const phoneAlerts = (() => {
   const KINDS = [['broke', 'Something stopped working', 'A program on the server stopped doing its job.'],
     ['needs-yes', 'Something needs my yes', 'Argus waits for you before it restarts something.'],
     ['summary', 'Daily summary', 'One short message each morning about the day before.']];
-  const PHONE = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent), THING = PHONE ? 'phone' : 'computer';
+  // a computer shows an alert, it does not buzz: the words follow the device (the page's name stays "Phone alerts")
+  const PHONE = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent), THING = PHONE ? 'phone' : 'computer', BUZZ = PHONE ? 'buzz' : 'show an alert';
   const HINT_KEY = 'elaia-phone-hint';
-  let st = null, me = null, msg = '', busy = false, last = '', asked = 0, installEv = null;
+  let st = null, me = null, msg = {text: '', at: 'state'}, busy = false, last = '', asked = 0, installEv = null;
   // Chrome offers to install the page: keep the offer for our own button (Today and this page stay quiet otherwise)
   addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEv = e; if (here === 'phone') draw(); });
   addEventListener('appinstalled', () => { installEv = null; if (here === 'phone') draw(); });
@@ -54,9 +55,9 @@ const phoneAlerts = (() => {
   const ALLOW_STEPS = steps(['Tap the small icon to the left of the web address. In the installed Elaia: hold its icon on the home screen and tap <b>App info</b>.',
     'Tap <b>Permissions</b> (or <b>Notifications</b>), then <b>Notifications</b>.',
     'Choose <b>Allow</b> (or turn on <b>Show notifications</b>), then come back here and tap <b>Turn on alerts on this phone</b>.']);
-  function thisDevice(s) {
-    const install = installEv ? `<button type="button" class="pbtn" data-do="install">Install Elaia on this ${THING}</button>` : '';
-    const on = `<button type="button" class="pbtn primary" data-do="on">Turn on alerts on this ${THING}</button>`;
+  function thisDevice(s, n) {
+    const install = installEv ? `<button type="button" class="pbtn" data-do="install"${dis()}>Install Elaia on this ${THING}</button>` : '';
+    const on = `<button type="button" class="pbtn primary" data-do="on"${dis()}>Turn on alerts on this ${THING}</button>`;
     const say = {
       asking: ['Checking this ' + THING + '…', ''],
       unavailable: ['Phone alerts are not available', `<p>${esc(st?.why)}</p>`],
@@ -66,37 +67,57 @@ const phoneAlerts = (() => {
       off: [`Alerts are off on this ${THING}`, `<p>One tap, then your ${THING} asks whether Elaia may send notifications: say <b>Allow</b>.</p><div class="prow">${on}${install}</div>`],
       on: [`Alerts are on for this ${THING}`, `<p>On since ${esc(when(me?.dev?.made))}.</p>${install}`],
     }[s];
-    return `<section class="ppanel" aria-labelledby="pstate-h"><h2 class="pstate ${s}" id="pstate-h">${say[0]}</h2>${say[1]}</section>`;
+    return `<section class="ppanel" aria-labelledby="pstate-h"><h2 class="pstate ${s}" id="pstate-h" tabindex="-1">${say[0]}</h2>${n}${say[1]}</section>`;
   }
-  function kinds() {
+  function kinds(n) {
     const d = me.dev, mine = new Set(d.kinds || []);
-    return `<section class="ppanel" aria-labelledby="pkinds-h"><h2 id="pkinds-h">What buzzes on this ${THING}</h2><ul class="pswitches">${KINDS.map(([k, label, what]) =>
-      `<li><button type="button" class="pswitch" role="switch" aria-checked="${mine.has(k)}" data-kind="${k}"><span class="pk"><b>${label}</b><small>${what}</small></span><span class="ptrack" aria-hidden="true"><span class="pknob"></span></span></button></li>`).join('')}</ul></section>`;
+    return `<section class="ppanel" aria-labelledby="pkinds-h"><h2 id="pkinds-h">${PHONE ? 'What buzzes on this phone' : 'What shows an alert on this computer'}</h2><ul class="pswitches">${KINDS.map(([k, label, what]) =>
+      `<li><button type="button" class="pswitch" role="switch" aria-checked="${mine.has(k)}" data-kind="${k}"><span class="pk"><b>${label}</b><small>${what}</small></span><span class="ptrack" aria-hidden="true"><span class="pknob"></span></span></button></li>`).join('')}</ul>${n}</section>`;
   }
-  function test() {
+  function test(n) {
     const d = me.dev, res = d.last_error ? `<p class="pres bad">Last try: ${esc(d.last_error)}</p>` : d.last_ok ? `<p class="pres">Last message delivered to your ${THING}'s message service: ${esc(when(d.last_ok))}.</p>` : '';
     return `<section class="ppanel" aria-labelledby="ptest-h"><h2 id="ptest-h">Try it</h2><p>It should arrive within a few seconds, also when Elaia is closed.</p>
-      <div class="prow"><button type="button" class="pbtn" data-do="test">Send a test buzz</button><button type="button" class="pbtn" data-do="off">Turn off on this ${THING}</button></div>${res}</section>`;
+      <div class="prow"><button type="button" class="pbtn" data-do="test"${dis()}>${PHONE ? 'Send a test buzz' : 'Send a test alert'}</button><button type="button" class="pbtn" data-do="off"${dis()}>Turn off on this ${THING}</button></div>${n}${res}</section>`;
   }
-  function others() {
+  function othersPanel(n) {
     const list = (st?.devices || []).filter(d => !d.this);
-    return `<section class="ppanel" aria-labelledby="pothers-h"><h2 id="pothers-h">Your other devices</h2>${list.length
-      ? `<ul class="pdevices">${list.map(d => `<li><span><b>${esc(d.label || 'A device')}</b><small>${d.last_error ? esc(d.last_error) : 'On since ' + esc(when(d.made))}</small></span><button type="button" class="pbtn" data-do="forget" data-id="${esc(d.id)}" aria-label="Remove ${esc(d.label || 'this device')}">Remove</button></li>`).join('')}</ul>`
+    return `<section class="ppanel" aria-labelledby="pothers-h"><h2 id="pothers-h" tabindex="-1">Your other devices</h2>${n}${list.length
+      ? `<ul class="pdevices">${list.map(d => `<li><span><b>${esc(d.label || 'A device')}</b><small>${d.last_error ? esc(d.last_error) : 'On since ' + esc(when(d.made))}</small></span><button type="button" class="pbtn" data-do="forget" data-id="${esc(d.id)}"${dis()} aria-label="Remove ${esc(d.label || 'this device')}">Remove</button></li>`).join('')}</ul>`
       : '<p>No other device gets alerts.</p>'}</section>`;
   }
+  // The answer to a tap appears inside the panel whose control was used, and is scrolled into view above the bottom bar
+  // (html has scroll-padding-bottom for it). A screen reader hears it once, from one live region outside the redrawn part.
+  const live = (() => { const p = document.createElement('p'); p.className = 'sr'; p.id = 'phoneSay'; p.setAttribute('role', 'status'); p.setAttribute('aria-live', 'polite'); document.body.appendChild(p); return p; })();
+  const note = (at, here) => msg.text && at === here ? `<p class="psay">${esc(msg.text)}</p>` : '';
+  // While a tap is being carried out the other buttons look and read unavailable (aria-disabled, never disabled: a disabled
+  // button loses keyboard focus). The switches are never held: every press counts, in order.
+  const dis = () => busy ? ' aria-disabled="true"' : '';
+  let focusNext = '';
+  const pick = sel => sel.split(', ').map(x => x && $('#main ' + x)).find(Boolean) || null;   // the first of a list that is there                                 // where focus goes when the control that had it is gone after an action
+  const FALLBACK = {on: '[data-do="test"]', off: '[data-do="on"], #pstate-h', forget: '[data-do="forget"], #pothers-h', test: '[data-do="on"], #pstate-h', install: '#pstate-h'};
   function draw() {
     if (here !== 'phone') return;
-    const s = state();
+    const s = state(), others = st && st.available;
+    // where the sentence shows: its own panel, or the state panel when that panel is gone (turned off)
+    const at = (msg.at === 'kinds' || msg.at === 'test') && s !== 'on' ? 'state' : msg.at === 'others' && !others ? 'state' : msg.at;
     const html = `<section class="phone" aria-label="Phone alerts">
-      <p class="plead">Your ${THING} can buzz when Elaia needs you: when something stops working, when something waits for your yes, and once a day with a short summary. It does not buzz when Argus fixed something by itself; that stays on the page and goes into the summary.</p>
-      ${thisDevice(s)}${s === 'on' ? kinds() + test() : ''}${st && st.available ? others() : ''}
-      <p class="psay" id="psay" role="status" aria-live="polite">${esc(msg)}</p></section>`;
+      <p class="plead">Your ${THING} can ${BUZZ} when Elaia needs you: when something stops working, when something waits for your yes, and once a day with a short summary. It does not ${PHONE ? 'buzz' : 'show one'} when Argus fixed something by itself; that stays on the page and goes into the summary.</p>
+      ${thisDevice(s, note('state', at))}${s === 'on' ? kinds(note('kinds', at)) + test(note('test', at)) : ''}${others ? othersPanel(note('others', at)) : ''}</section>`;
     if (html === last) return;
-    const f = document.activeElement, key = f?.closest?.('#main') && (f.dataset.do ? `[data-do="${f.dataset.do}"]${f.dataset.id ? `[data-id="${f.dataset.id}"]` : ''}` : f.dataset.kind ? `[data-kind="${f.dataset.kind}"]` : '');
+    const f = document.activeElement, inPage = !!f?.closest?.('#main .phone');
+    const key = inPage ? (f.dataset.do ? `[data-do="${f.dataset.do}"]${f.dataset.id ? `[data-id="${f.dataset.id}"]` : ''}` : f.dataset.kind ? `[data-kind="${f.dataset.kind}"]` : f.id ? '#' + f.id : '') : '';
     $('#main').innerHTML = html; last = html;
-    if (key) $('#main ' + key)?.focus();            // a redraw keeps keyboard focus on the same control
+    if (!inPage && !focusNext) return;
+    // keyboard and screen-reader focus stay on the same control; if it is gone, on the control that took its place
+    const to = pick(focusNext) || (key && pick(key)) || (f?.dataset?.do && pick(FALLBACK[f.dataset.do] || '#pstate-h'));
+    focusNext = '';
+    to?.focus({preventScroll: true});
   }
-  const say = t => { msg = t; draw(); };
+  function say(text, at = 'state') {
+    msg = {text, at}; draw();
+    live.textContent = ''; requestAnimationFrame(() => { live.textContent = text; });
+    if (text) $('#main .psay')?.scrollIntoView({block: 'nearest'});
+  }
   const label = () => { const ua = navigator.userAgent;
     return (/Android/.test(ua) ? 'Android phone' : /iPhone|iPad/.test(ua) ? 'iPhone or iPad' : /Windows/.test(ua) ? 'Windows computer' : /Mac/.test(ua) ? 'Mac' : 'Device')
       + (/SamsungBrowser/.test(ua) ? ', Samsung Internet' : /Firefox/.test(ua) ? ', Firefox' : /Edg\//.test(ua) ? ', Edge' : /Chrome/.test(ua) ? ', Chrome' : ''); };
@@ -114,45 +135,58 @@ const phoneAlerts = (() => {
     catch (e) { return say('This ' + THING + ' could not sign up for alerts. Check that it is online, then try again.'); }
     const r = await send('subscribe', {subscription: sub.toJSON(), label: label(), kinds: KINDS.map(k => k[0])});
     if (!r.ok) { try { await sub.unsubscribe(); } catch (e) {} await load(); return say(r.msg || 'The server did not turn alerts on. Try again.'); }
-    await load(); say(`Alerts are on for this ${THING}. Send a test buzz to see one.`);
+    await load(); focusNext = '[data-do="test"]';     // "Turn on" is gone: the next step, Send a test buzz, takes its place
+    say(`Done. ${PHONE ? 'Send a test buzz' : 'Send a test alert'} to see one.`);   // the heading above already says it is on
   }
   async function turnOff() {
     const id = me.dev?.id;
     try { await me.sub?.unsubscribe(); } catch (e) {}
     const r = id ? await send('forget', {id}) : {ok: true};
-    await load(); say(r.ok ? `Alerts are off on this ${THING}.` : r.msg);
+    await load(); focusNext = '[data-do="on"], #pstate-h';
+    say(r.ok ? `Done. This ${THING} gets no more alerts.` : r.msg);
   }
-  async function toggle(b) {
-    const k = b.dataset.kind, now = new Set(me.dev.kinds), was = now.has(k);
+  // a switch: shown at once, sent in order (two quick presses are two changes); the server's answer is taken only when no
+  // other press is still on its way
+  let chain = Promise.resolve(), inFlight = 0;
+  function toggle(b) {
+    const k = b.dataset.kind, now = new Set(me.dev.kinds), was = now.has(k), w = KINDS.find(x => x[0] === k)[1];
     if (was) now.delete(k); else now.add(k);
-    b.setAttribute('aria-checked', String(!was));
-    const r = await send('kinds', {id: me.dev.id, kinds: KINDS.map(x => x[0]).filter(x => now.has(x))});
-    if (r.ok && r.device) { me.dev = r.device; st.devices = st.devices.map(d => d.id === r.device.id ? r.device : d);
-      const w = KINDS.find(x => x[0] === k)[1]; say(`${w}: ${was ? 'off' : 'on'}.`); }
-    else { b.setAttribute('aria-checked', String(was)); say(r.msg || 'That did not change. Try again.'); }
+    const want = KINDS.map(x => x[0]).filter(x => now.has(x));
+    me.dev = {...me.dev, kinds: want}; b.setAttribute('aria-checked', String(!was)); inFlight++;
+    chain = chain.then(async () => {
+      const r = await send('kinds', {id: me.dev.id, kinds: want}); inFlight--;
+      if (!r.ok || !r.device) { await load(); return say(r.msg || 'That did not change. Try again.', 'kinds'); }
+      if (!inFlight) { me.dev = r.device; st.devices = st.devices.map(d => d.id === r.device.id ? r.device : d); }
+      say(`${w}: ${was ? 'off' : 'on'}.`, 'kinds');
+    });
+    return chain;
   }
   async function testBuzz() {
-    const r = await send('test', {id: me.dev.id}); say(r.msg || 'The test buzz was not sent. Try again.');
-    if (r.ok) { await wait(6000); if (here === 'phone') { await load(); draw(); } }
+    const r = await send('test', {id: me.dev.id}); say(r.msg || `The test ${PHONE ? 'buzz' : 'alert'} was not sent. Try again.`, 'test');
+    // a look at the result a few seconds later, after the page is free again (never holding the buttons meanwhile)
+    if (r.ok) setTimeout(async () => { if (here === 'phone' && !busy) { await load(); draw(); } }, 6000);
   }
   async function forget(id) {
     const d = st.devices.find(x => x.id === id), r = await send('forget', {id});
-    await load(); say(r.ok ? `${d?.label || 'That device'} gets no more alerts.` : r.msg);
+    await load(); focusNext = '[data-do="forget"], #pothers-h';
+    say(r.ok ? `${d?.label || 'That device'} gets no more alerts.` : r.msg, 'others');
   }
+  const panelOf = b => b.dataset.kind ? 'kinds' : b.dataset.do === 'forget' ? 'others' : b.dataset.do === 'test' || b.dataset.do === 'off' ? 'test' : 'state';
   document.addEventListener('click', async e => {
-    const b = e.target.closest('#main .phone button'); if (!b || busy) return;
-    busy = true; b.disabled = true;
+    const b = e.target.closest('#main .phone button'); if (!b) return;
+    if (b.dataset.kind) return toggle(b);
+    if (busy) return say('One moment: Elaia is still busy with your last tap.', panelOf(b));   // never a silent tap
+    busy = true; $$('#main .phone .pbtn').forEach(x => x.setAttribute('aria-disabled', 'true'));
     try {
-      if (b.dataset.kind) await toggle(b);
-      else if (b.dataset.do === 'on') await turnOn();
+      if (b.dataset.do === 'on') await turnOn();
       else if (b.dataset.do === 'off') await turnOff();
       else if (b.dataset.do === 'test') await testBuzz();
       else if (b.dataset.do === 'forget') await forget(b.dataset.id);
-      else if (b.dataset.do === 'install' && installEv) { const ev = installEv; installEv = null; ev.prompt(); try { await ev.userChoice; } catch (x) {} draw(); }
-    } finally { busy = false; b.disabled = false; last = ''; draw(); }
+      else if (b.dataset.do === 'install' && installEv) { const ev = installEv; installEv = null; ev.prompt(); try { await ev.userChoice; } catch (x) {} }
+    } finally { busy = false; last = ''; draw(); }
   });
   // the page: draw from what is known, then ask (the 15 s refresh asks again at most every 15 s, and never during a tap)
-  async function show() { draw(); if (!busy && Date.now() - asked > 14000) { await load(); draw(); } }
+  async function show() { draw(); if (!busy && !inFlight && Date.now() - asked > 14000) { await load(); draw(); } }
 
   // Today: one quiet line for the owner when alerts could be on here and are off on this device; "Not now" hides it for good
   // on this device (localStorage, in try/catch: without storage the line simply can come back next time)
@@ -166,7 +200,7 @@ const phoneAlerts = (() => {
     const show = st && st.available && st.trusted && !(me.sub && me.dev);
     if (!show || el.dataset.drawn) { el.hidden = !show; return; }
     el.dataset.drawn = '1';
-    el.innerHTML = `<span>Your ${THING} can buzz when something needs you.</span><a href="${esc(url('phone'))}">Set up phone alerts</a><button type="button" data-hint-off>Not now</button>`;
+    el.innerHTML = `<span>Your ${THING} can ${BUZZ} when something needs you.</span><a href="${esc(url('phone'))}">${PHONE ? 'Set up phone alerts' : 'Set up alerts'}</a><button type="button" data-hint-off>Not now</button>`;
     el.hidden = false;
     el.querySelector('[data-hint-off]').onclick = () => { try { localStorage.setItem(HINT_KEY, 'off'); } catch (e) {} el.hidden = true; };
   }

@@ -47,8 +47,8 @@ function standIn({mode, sub, noStorage}) {
   PushManager.prototype.getSubscription = async function () { return made(); };
   PushManager.prototype.subscribe = async function (o) { __t.subscribed++; __t.keyLength = new Uint8Array(o.applicationServerKey).length; ss.set('t-sub', JSON.stringify(sub)); return made(); };
 }
-async function phone(b, {mode = 'ok', width = 412, login = OWNER, ua = PHONE_UA, noStorage = false, sub} = {}) {
-  const ctx = await b.newContext({viewport: {width, height: 900}, userAgent: ua, extraHTTPHeaders: {'Tailscale-User-Login': login, 'X-Forwarded-For': '192.0.2.20'}});
+async function phone(b, {mode = 'ok', width = 412, height = 900, login = OWNER, ua = PHONE_UA, noStorage = false, sub} = {}) {
+  const ctx = await b.newContext({viewport: {width, height}, userAgent: ua, extraHTTPHeaders: {'Tailscale-User-Login': login, 'X-Forwarded-For': '192.0.2.20'}});
   await ctx.addInitScript(standIn, {mode, sub: sub || phoneKeys('phone-1').sub, noStorage});
   return ctx;
 }
@@ -192,12 +192,12 @@ run(async b => {
     check(p.posts.slice(before).join() === 'api/push/kinds', `a switch: exactly one call (${p.posts.slice(before).join()})`);
     check(await p.locator('.pswitch', {hasText: 'Daily summary'}).getAttribute('aria-checked') === 'false', 'a switch: it shows off');
     s = await status(p); check(JSON.stringify(s.devices[0].kinds) === '["broke","needs-yes"]', 'a switch: the server has it');
-    check(/Daily summary: off/.test(await p.locator('#psay').textContent()), 'a switch: it says what changed');
+    check(/Daily summary: off/.test(await p.locator('#main .psay').textContent()), 'a switch: it says what changed');
 
     // ---- a test buzz reaches the (fake) push service, encrypted, and reads right ----
     got.length = 0;
     await p.locator('[data-do=test]').click(); await p.waitForTimeout(1500);
-    check(/within a few seconds, also when Elaia is closed/.test(await p.locator('#psay').textContent()), 'test buzz: it says what to expect');
+    check(/within a few seconds, also when Elaia is closed/.test(await p.locator('#main .psay').textContent()), 'test buzz: it says what to expect');
     check(got.length === 1 && got[0].path === '/send/phone-1' && got[0].headers['content-encoding'] === 'aes128gcm' && /^vapid t=/.test(got[0].headers.authorization), 'test buzz: one encrypted message to this phone\'s service');
     let m = null; try { m = decrypt(got[0].body, k1); } catch (e) {}
     check(m && m.title === 'Test buzz from Elaia' && m.kind === 'test' && m.url === 'phone', `test buzz: the phone can read it (${m && m.title})`);
@@ -236,6 +236,108 @@ run(async b => {
     await p.locator('#phoneHint [data-hint-off]').click();
     check(await p.locator('#phoneHint').isHidden(), 'no storage: "Not now" still hides it for now');
     await ctx.close();
+
+    // ---- the fix round (R8 findings 2, 3, 4, 7): each of these failed on the reviewed head ----
+    // 2: the answer to a tap shows where the thumb is: inside the visible screen, above the bottom bar, in the panel used
+    const inView = q => q.evaluate(() => { const e = document.querySelector('#main .psay'); if (!e) return {ok: false, why: 'no sentence on the page'};
+      const r = e.getBoundingClientRect(), bar = document.querySelector('#tabbar'), limit = bar && bar.offsetHeight ? bar.getBoundingClientRect().top : innerHeight;
+      return {ok: r.top >= 0 && r.bottom <= limit, why: `${e.textContent} at ${r.top | 0}-${r.bottom | 0}, bar at ${limit | 0}`, text: e.textContent, panel: e.closest('.ppanel')?.getAttribute('aria-labelledby')}; });
+    const heard = q => q.evaluate(() => new Promise(z => requestAnimationFrame(() => requestAnimationFrame(() => z(document.querySelector('#phoneSay')?.textContent || '')))));
+    for (const [w, h] of [[412, 915], [360, 800]]) {
+      if (w === 360) await new Promise(z => setTimeout(z, 10500));   // one test buzz per 10 seconds
+      const kf = phoneKeys(`fix-${w}`), fc = await phone(b, {width: w, height: h, sub: kf.sub}), q = await open(fc);
+      const step = async (what, act, panel, re) => {
+        await act(); await q.waitForTimeout(900);
+        const v = await inView(q);
+        check(v.ok && re.test(v.text) && v.panel === panel, `${w}x${h} ${what}: the answer shows in its panel (${panel}), on screen above the bar (${v.why})`);
+        check((await heard(q)) === v.text, `${w}x${h} ${what}: a screen reader hears the same sentence once`);
+      };
+      await step('Turn on', () => q.locator('[data-do=on]').click(), 'pstate-h', /^Done\. Send a test buzz to see one\.$/);
+      await step('a switch', () => q.locator('.pswitch', {hasText: 'Daily summary'}).click(), 'pkinds-h', /Daily summary: off/);
+      if (w === 412) await shot(q, 'p2-412-after-switch');
+      await step('Send a test buzz', () => q.locator('[data-do=test]').click(), 'ptest-h', /within a few seconds/);
+      if (w === 412) await shot(q, 'p2-412-after-test');
+      await step('a second test at once (refused)', () => q.locator('[data-do=test]').click(), 'ptest-h', /One test buzz every 10 seconds/);
+      const ko = phoneKeys(`fix-other-${w}`);
+      await q.request.post(BASE + 'api/push/subscribe', {data: {subscription: ko.sub, label: 'Android tablet, Chrome', kinds: ['summary']}});
+      await q.reload(); await q.waitForTimeout(1500);
+      await step('Remove', () => q.locator('.pdevices [data-do=forget]').first().click(), 'pothers-h', /gets no more alerts/);
+      await step('Turn off', () => q.locator('[data-do=off]').click(), 'pstate-h', /^Done\. This phone gets no more alerts\.$/);
+      check(q.errors.length === 0, `${w}x${h}: no page errors ` + q.errors.join(' | '));
+      await fc.close();
+    }
+
+    // 3: keyboard: focus stays on the control (or on the one that took its place); two Spaces on a switch are two changes
+    {
+      const kk = phoneKeys('keys'), kc = await phone(b, {sub: kk.sub}), q = await open(kc);
+      const focused = () => q.evaluate(() => { const e = document.activeElement; return e === document.body ? 'body' : e.dataset.do ? 'do=' + e.dataset.do : e.dataset.kind ? 'kind=' + e.dataset.kind : e.id || e.tagName; });
+      await q.locator('[data-do=on]').focus(); await q.keyboard.press('Enter'); await q.locator('#main .pstate.on').waitFor({timeout: 8000}); await q.waitForTimeout(400);
+      check(await focused() === 'do=test', `Enter on "Turn on alerts": focus goes to "Send a test buzz", which took its place (${await focused()})`);
+      const sw = q.locator('.pswitch[data-kind=summary]'); const before = q.posts.length;
+      await sw.focus(); await q.keyboard.press('Space'); await q.keyboard.press('Space'); await q.waitForTimeout(1500);
+      check(q.posts.slice(before).filter(x => x === 'api/push/kinds').length === 2, `two Spaces on a switch: two changes sent (${q.posts.slice(before).join()})`);
+      check(await q.locator('.pswitch[data-kind=summary]').getAttribute('aria-checked') === 'true' && JSON.stringify(((await status(q)).devices.find(d => d.id === crypto.createHash('sha256').update('argus-push:' + kk.sub.endpoint).digest('hex').slice(0, 16)) || {}).kinds) === '["broke","needs-yes","summary"]', 'two Spaces on a switch: off and on again, the page and the server agree');
+      check(await focused() === 'kind=summary', `after the switch, focus is still on it (${await focused()})`);
+      await q.locator('.pswitch[data-kind=needs-yes]').focus(); await q.keyboard.press('Enter'); await q.waitForTimeout(900);
+      check(await focused() === 'kind=needs-yes' && await q.locator('.pswitch[data-kind=needs-yes]').getAttribute('aria-checked') === 'false', `Enter on a switch: changed, focus stays (${await focused()})`);
+      await q.locator('.pswitch[data-kind=needs-yes]').press('Enter'); await q.waitForTimeout(900);
+      await q.locator('[data-do=test]').focus(); await q.keyboard.press('Enter'); await q.waitForTimeout(900);
+      check(await focused() === 'do=test', `Enter on "Send a test buzz": focus stays (${await focused()})`);
+      const k2 = phoneKeys('keys-other'), k3 = phoneKeys('keys-third');
+      for (const k of [k2, k3]) await q.request.post(BASE + 'api/push/subscribe', {data: {subscription: k.sub, label: 'Android tablet, Chrome', kinds: ['summary']}});
+      await q.reload(); await q.waitForTimeout(1500);
+      await q.locator('.pdevices [data-do=forget]').first().focus(); await q.keyboard.press('Enter'); await q.waitForTimeout(1200);
+      check(await focused() === 'do=forget' && await q.locator('.pdevices li').count() === 1, `Enter on "Remove": focus goes to the next Remove (${await focused()})`);
+      await q.keyboard.press('Enter'); await q.waitForTimeout(1200);
+      check(await focused() === 'pothers-h', `Enter on the last "Remove": focus goes to the list's heading (${await focused()})`);
+      // 4: no silent dead time: "Turn off" 1.5 seconds after a test buzz works
+      await q.waitForTimeout(10500);
+      await q.locator('[data-do=test]').click(); await q.waitForTimeout(1500);
+      await q.locator('[data-do=off]').focus(); await q.keyboard.press('Enter');
+      await q.locator('#main .pstate.off').waitFor({timeout: 4000}).catch(() => {});
+      check(await q.locator('#main .pstate').textContent() === 'Alerts are off on this phone', `"Turn off" 1.5 s after a test buzz works at once (${await q.locator('#main .pstate').textContent()})`);
+      check(await focused() === 'do=on', `Enter on "Turn off": focus goes to "Turn on alerts", which took its place (${await focused()})`);
+      check(q.errors.length === 0, 'keyboard: no page errors ' + q.errors.join(' | '));
+      await kc.close();
+    }
+    // 4: while a tap is being carried out the other buttons read unavailable, and a tap on them says so
+    {
+      const kb = phoneKeys('busy'), bc = await phone(b, {sub: kb.sub}), q = await open(bc);
+      await bc.route('**/api/push/subscribe', async r => { await new Promise(z => setTimeout(z, 1500)); await r.continue(); });
+      await q.locator('[data-do=on]').click(); await q.waitForTimeout(500);
+      const ad = await q.locator('#main .phone .pbtn').evaluateAll(es => es.map(e => e.getAttribute('aria-disabled')));
+      check(ad.length > 0 && ad.every(x => x === 'true'), `while turning on, every button reads unavailable (${ad.join()})`);
+      await q.waitForTimeout(2500);
+      check(await q.locator('#main .phone .pbtn[aria-disabled]').count() === 0, 'and every one is available again right after');
+      await bc.close();
+    }
+    // 7: on a computer it "can show an alert", Today's link says "Set up alerts"
+    {
+      const dc = await phone(b, {width: 1440, ua: DESK_UA, sub: phoneKeys('desk').sub}), q = await open(dc, '', 1800);
+      check(await q.locator('#phoneHint span').textContent() === 'Your computer can show an alert when something needs you.' && await q.locator('#phoneHint a').textContent() === 'Set up alerts', `computer, Today: "${await q.locator('#phoneHint').innerText()}"`);
+      await q.goto(BASE + 'phone'); await q.waitForTimeout(1500);
+      check(/^Your computer can show an alert when Elaia needs you: .* It does not show one when Argus fixed something by itself/.test(await q.locator('.plead').textContent()), 'computer: the lead says "can show an alert"');
+      check(await q.locator('h1').textContent() === 'Phone alerts', 'computer: the page is still called Phone alerts');
+      await q.locator('[data-do=on]').click(); await q.locator('#main .pstate.on').waitFor({timeout: 8000});
+      check(await q.locator('#pkinds-h').textContent() === 'What shows an alert on this computer' && await q.locator('[data-do=test]').textContent() === 'Send a test alert', 'computer: the switches\' heading and the test button say alert, not buzz');
+      await shot(q, 'p2-1440-computer');
+      await dc.close();
+    }
+    // 1: a phone turned on before there was a people file still counts afterwards (picture; the server side is in push_test.py)
+    {
+      const kp = phoneKeys('before-people'), pc = await phone(b, {sub: kp.sub}), q = await open(pc);
+      await q.locator('[data-do=on]').click(); await q.locator('#main .pstate.on').waitFor({timeout: 8000});
+      fs.mkdirSync(CONF, {recursive: true}); const PF = path.join(CONF, 'people.json');
+      fs.writeFileSync(PF, JSON.stringify({people: [{id: 'owner-one', name: 'Owner One', role: 'owner', logins: [OWNER]}, {id: 'learner-two', name: 'Learner Two', role: 'learner', logins: [LEARNER]}]}));
+      const t2 = new Date(Date.now() + 9000); fs.utimesSync(PF, t2, t2);
+      try {
+        await q.reload(); await q.waitForTimeout(1800);
+        check(await q.evaluate(() => S.person) === 'owner-one' && await heading(q) === 'Alerts are on for this phone', `after a people file: still "Alerts are on for this phone" (${await heading(q)})`);
+        await shot(q, 'p2-412-after-people-file');
+      } finally { fs.renameSync(PF, path.join(CONF, `people.json.set-aside-${Date.now()}`)); }
+      await q.locator('[data-do=off]').click(); await q.waitForTimeout(1200);
+      await pc.close();
+    }
 
     // ---- a learner has no way to the page ----
     fs.mkdirSync(CONF, {recursive: true}); const FILE = path.join(CONF, 'people.json');
