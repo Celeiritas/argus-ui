@@ -16,17 +16,17 @@
 .mem-act button{min-height:var(--hit)}
 .mem-note{margin:0;flex:1 1 200px;color:var(--powder);font-size:var(--fs-meta);line-height:1.5}
 .mem-why{margin:var(--s2) 0 0;font-size:var(--fs-sec);min-height:1.5em;line-height:1.5}
-.mem-copies{list-style:none;margin:0;padding:0;display:grid;gap:var(--s2)}
-.mem-copies li{display:grid;grid-template-columns:28px minmax(0,1fr);gap:0 var(--s2);align-items:center}
+/* a copy: the mark (a shape as well as a colour), the copy's name, and one plain sentence under it (1.1.0: no status words) */
+.mem-copies{list-style:none;margin:0;padding:0;display:grid;gap:var(--s3)}
+.mem-copies li{display:grid;grid-template-columns:28px minmax(0,1fr);gap:2px var(--s2);align-items:start}
 .mem-copies .mark{grid-row:span 2;width:28px;height:28px;border-radius:50%;border:2px solid currentColor;display:grid;place-items:center;font-weight:600;font-size:var(--fs-sec)}
-.mem-copies .what{font-size:var(--fs-body)}.mem-copies .what b{font-weight:600}
-.mem-copies .word{font-size:var(--fs-sec);font-weight:600}
-.mem-copies .detail{font-size:var(--fs-meta);color:var(--powder);overflow-wrap:anywhere}
-.mem-copies .yes .mark,.mem-copies .yes .word{color:var(--ok)}
-.mem-copies .no .mark,.mem-copies .no .word{color:var(--bad)}
-.mem-copies .stale .mark,.mem-copies .stale .word{color:var(--run)}
-.mem-copies .unknown .mark,.mem-copies .unknown .word{color:var(--frost)}
-.mem-copies .unknown .mark{border-style:dashed}
+.mem-copies .name{font-size:var(--fs-body);font-weight:600;line-height:1.4;padding-top:2px}
+.mem-copies .say{font-size:var(--fs-sec);line-height:1.5;color:var(--snow);overflow-wrap:anywhere}
+.mem-copies .yes .mark{color:var(--ok)}
+.mem-copies .no .mark{color:var(--bad)}
+.mem-copies .stale .mark{color:var(--run)}
+.mem-copies .unknown .mark{color:var(--frost);border-style:dashed}
+.mem-copies .running .mark{color:var(--stone)}
 .mem-shelf{list-style:none;margin:var(--s3) 0 0;padding:0 0 var(--s1);display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,48px);gap:var(--s2);
   align-items:end;border-bottom:3px solid var(--line);min-height:170px}
 .mem-shelf .mem-jar{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;min-width:0;height:170px}
