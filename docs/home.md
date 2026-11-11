@@ -98,7 +98,7 @@ the groups) and as a **row** on Today, with three plain lines:
    helped.* A drive that is gone says to plug it in again; a failed task says to read its log and press Run.
 
 **A drive that is gone comes first**: its block is the first (the eye goes to the cause), and the programs whose only problem is
-that drive are one line under it, *Also waiting for this drive: Jellyfin, Audiobookshelf*, in place of a block each, on Watch and
+that drive (and a second check of the same drive) are one line under it, *Also waiting for this drive: Jellyfin, Audiobookshelf*, in place of a block each, on Watch and
 on Today (they still count, one each, on the bar and in the panel's heading).
 
 When checks.json declares a `fix` for the check (and the problem is not the drive itself), the block has **one press-and-hold

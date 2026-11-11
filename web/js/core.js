@@ -181,9 +181,10 @@ function troubleItems() {
   const {tasks, alerts, checks} = trouble(), bad = j => checksFor(j).find(w => w.works === false);
   let list = [...tasks.filter(bad).map(j => checkItem(bad(j), j)), ...checks.map(w => checkItem(w)), ...tasks.filter(j => !bad(j)).map(taskItem), ...alerts.map(alertItem)];
   // a drive that is gone is the cause: its block comes first, and programs whose only problem is that drive are one line under it
-  const drives = list.filter(it => it.row && it.row.drive && it.row.mount);
+  // (a second check of the same drive is folded too: one cause, one block)
+  const drives = list.filter(it => it.row && it.row.drive && it.row.mount).filter((d, i, all) => all.findIndex(x => x.row.mount === d.row.mount) === i);
   drives.forEach(d => { d.also = [];
-    list = list.filter(it => { const w = it.row, fold = w && !w.drive && w.mount === d.row.mount && /^drive-/.test(w.code);
+    list = list.filter(it => { const w = it.row, fold = it !== d && w && w.mount === d.row.mount && /^drive-/.test(w.code);
       if (fold) d.also.push(w.title); return !fold; }); });
   return [...drives, ...list.filter(it => !drives.includes(it))];
 }

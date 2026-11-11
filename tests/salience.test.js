@@ -180,14 +180,14 @@ run(async b => {
     const HG = path.join(FX, 'watch', 'host-good.mountinfo'), good = fs.readFileSync(HG);
     fs.copyFileSync(path.join(FX, 'watch', 'host-missing.mountinfo'), HG);
     try {
-      check(await until(p, '.tblock[data-trouble="check-media-drive"]', true), 'the drive is gone: it gets a block');
+      check(await until(p, '.tblock[data-trouble$="media-drive"]', true), 'the drive is gone: it gets a block');
       await p.waitForTimeout(300);
       const d = await p.evaluate(() => [document.querySelector('.tblock.eyed')?.dataset.trouble, [...document.querySelectorAll('.tblock')].map(b => b.dataset.trouble), document.querySelector('.trouble').textContent.replace(/\s+/g, ' ')]);
-      check(/^check-(media-drive|hermes-media-drive)$/.test(d[0]) && !d[1].includes('check-jellyfin') && /Also waiting for this drive: Jellyfin/.test(d[2]), `the drive's block is first and has the eye; Jellyfin is folded under it (${d[1].join(', ')})`);
+      check(/^check-(media-drive|hermes-media-drive)$/.test(d[0]) && !d[1].includes('check-jellyfin') && d[1].filter(k => /drive/.test(k)).length === 1 && /Also waiting for this drive: .*Jellyfin/.test(d[2]), `one block for the drive, first, with the eye; Jellyfin (and the drive's second check) folded under it (${d[1].join(', ')})`);
       check(!/waits for your yes/i.test(d[2]) && !/Restart Jellyfin/.test(d[2]) && /a restart would not help until it is back|Cannot bring a drive back/.test(d[2]), 'no "waits for your yes" and no restart button while the drive is gone');
       await shot(p, 'W2-watch-drive-gone-1440-night');
     } finally { fs.writeFileSync(HG, good); }
-    check(await until(p, '.tblock[data-trouble="check-media-drive"]', false), 'the drive is back: its block goes');
+    check(await until(p, '.tblock[data-trouble$="media-drive"]', false), 'the drive is back: its block goes');
     // the trouble ends: the eye goes home and the sentence says so
     mi('container-good'); units(u => Object.values(u).forEach(v => { if (v.Result !== 'success') v.Result = 'success'; if (v.ActiveState === 'failed') v.ActiveState = 'inactive'; }));
     check(await until(p, '.tblock', false), 'all well: the trouble blocks go');
