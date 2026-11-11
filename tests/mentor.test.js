@@ -1,6 +1,8 @@
 // Mentor page: plain decks and lessons (learn first: orientation -> teach -> terms -> worked examples -> drills -> pre-reads
 // -> explain cards), the hint ladder, stuck detection, the inbox, levels, Argus in the corner.
-const {BASE, check, page, noOverflow, shot, run} = require('./lib');
+const {BASE, check, page: page0, noOverflow, shot, run} = require('./lib');
+// 4.34: Mentor opens on Today (tests/mentor-today.test.js); the checks below start in the Study view, as the page remembers it
+const page = async (b, ...a) => { const x = await page0(b, ...a); await x.addInitScript(() => { try { localStorage.setItem('mentor-view', 'practice'); } catch (e) {} }); return x; };
 const fs = require('fs'), path = require('path');
 const INBOX = path.join(process.env.FIXTURES || '.', '..', 'home', '.local', 'share', 'argus-ui', 'inbox');
 const api = (p, what, body) => body ? p.request.post(BASE + 'api/mentor/' + what, {data: body}).then(r => r.json()) : p.request.get(BASE + 'api/mentor/' + what).then(r => r.json());
@@ -20,6 +22,10 @@ async function skip(p, deck, kind, n) {
 const words = async (p, sel, text) => { await p.locator(sel).fill(text); };
 run(async b => {
   const p = await page(b);
+  // this walk-through follows the 4.32 order (reading cards before their questions) with no daily limit on new cards;
+  // question first and the limit are checked in tests/mentor_today_test.py and tests/mentor-today.test.js
+  // and with "How sure are you?" on every card of the lesson's track (4.34 asks it on every fifth card otherwise)
+  check((await api(p, 'settings', {teach_first: true, new_per_day: {'*': 999}, ask_confidence: ['group:argus-ui']})).ok, 'the 4.32 order is one setting away');
   await p.goto(BASE + 'mentor'); await p.waitForTimeout(1000);
   check(await p.locator('body.side').count() === 1, 'Mentor is a side page (Argus in the corner)');
   check(await p.locator('#mdeck option[value="argus-code"]').count() === 1, 'the built-in lesson is in the Study picker');
@@ -118,11 +124,13 @@ run(async b => {
   // the hint ladder on a term card: nudge -> expert's move -> near example -> answer; a reflection before each next rung
   check(await p.locator('#hintBtn').count() === 1, 'a practice card has a Hint button');
   await p.locator('#hintBtn').click(); await p.waitForTimeout(500);
-  check(/Hint 1 of 4/.test(await p.locator('#hints').textContent()), 'the first rung is a nudge');
+  check(/Hint 1 of 4/.test(await p.locator('#hints').textContent()) && await p.locator('#hints textarea').count() === 0, 'the first rung is a nudge, with nothing to type (4.34)');
+  await p.locator('#hintBtn').click(); await p.waitForTimeout(500);
+  check(/expert's first move/.test(await p.locator('#hints').textContent()), 'rung 2, the expert\'s first move, comes straight after');
+  check(await p.locator('#hints textarea').count() === 1, 'from the second hint on, it asks what the hint told you');
   await p.locator('#hintBtn').click(); await p.waitForTimeout(300);
-  check(await p.locator('#hints .hint').count() === 1 && /three words/.test(await p.locator('#toastText').textContent()), 'the next rung waits for a three-word reflection');
-  await p.locator('#hints textarea').last().fill('it is the with block'); await p.locator('#hintBtn').click(); await p.waitForTimeout(500);
-  check(/expert's first move/.test(await p.locator('#hints').textContent()), 'rung 2 is the expert\'s first move');
+  check(await p.locator('#hints .hint').count() === 2 && /three words/.test(await p.locator('#toastText').textContent()), 'the third rung waits for a three-word reflection');
+  await p.locator('#hints textarea').last().fill('it is the with block');
   await p.locator('#ans').fill('context manager'); await p.keyboard.press('Enter'); await p.waitForTimeout(600);
   check(await p.locator('.verdict.ok').count() === 1 && /Correct · context manager/.test(await p.locator('#rhead').textContent()) && /2 hints used/.test(await p.locator('#rpanel .deckname').first().textContent()), 'a right term is confirmed (Correct, in green, with a tick) and the hints used are shown');
   check(await p.locator('input[name=rate]:checked').first().inputValue() === '3', 'rung 2 caps the suggested rating at Good');

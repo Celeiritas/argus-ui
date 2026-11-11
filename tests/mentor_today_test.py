@@ -115,6 +115,24 @@ class QuestionFirst(Base):
         back, _ = m.next_card(self.db, LESSON)
         self.assertEqual((back['id'], back['refresh']), (c['learn_of'], True), 'the Learn card comes back before the next try')
 
+class ThinkIt(Base):
+    def test_think_reveal_rate(self):
+        cid = 'ux-hci:affordance'
+        a = m.answer(self.db, cid, 'ignored', None, 3000, think=True)
+        self.assertEqual((a['think'], a['coverage'], a['suggested'], a['stuck']), (True, None, 0, None), 'nothing graded, nothing suggested')
+        self.assertTrue(a['reference'] and set(a['previews']) == {1, 2, 3, 4}, 'the answer and what each rating does')
+        self.assertEqual(self.count("SELECT grader FROM attempts WHERE id=?", a['attempt']), 'self')
+        m.rate(self.db, a['attempt'], 1, False)
+        b = m.answer(self.db, cid, '', None, 3000, think=True)
+        self.assertIsNone(b['stuck'], 'two self-rated misses are not "stuck" (nothing was graded)')
+        m.rate(self.db, b['attempt'], 3, False)
+        st = m.stats(self.db)
+        self.assertEqual((st['labels'], st['avg_coverage']), (2, None), 'rated, but no coverage to average')
+        t = m.answer(self.db, 'ux-hci:csrf', 'x', None, 1000, think=True)
+        self.assertTrue(t['think'])
+        drill = self.db.execute("SELECT id FROM cards WHERE kind='drill' LIMIT 1").fetchone()[0]
+        self.assertNotIn('think', m.answer(self.db, drill, '[]', None, 1000, think=True), 'a drill is always graded')
+
 class DailyLimit(Base):
     def test_limit_holds_across_sessions_and_resets_at_midnight(self):
         m.set_settings(self.db, {'new_per_day': {'ux-hci': 2}})

@@ -166,7 +166,7 @@ def _post(b, person, path, body):
             conf = body.get('confidence'); conf = int(conf) if conf in (1, 2, 3, 4, '1', '2', '3', '4') else None
             ms = int(body.get('ms') or 0)
             r = mentor.answer(db, str(body.get('card', '')), text, conf, max(0, min(ms, 3_600_000)),
-                              int(body.get('hints') or 0), body.get('reflections') or [], bool(body.get('skipped')))
+                              int(body.get('hints') or 0), body.get('reflections') or [], bool(body.get('skipped')), think=body.get('think') is True)
         elif path == 'rate':
             r = mentor.rate(db, int(body.get('attempt') or 0), int(body.get('rating') or 0), bool(body.get('grade_wrong')))
         elif path == 'undo':                          # Ctrl+Z: the page's last rating this session; {'undone': False} if not undoable
