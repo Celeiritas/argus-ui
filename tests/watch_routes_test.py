@@ -4,12 +4,15 @@
 
   * the owner's yes: ask_fix() refuses in plain words, or queues exactly the declared fix, which the loop runs through repair()
   * api/events (newest first, at most 100), api/watch/fix (refusals and one real fix), api/<id>/status passing `count`,
-    `restarts` on each task, and podman called with --events-backend=none (a real server in its own process)."""
+    `restarts` on each task, and podman called with --events-backend=none (a real server in its own process)
+  * the seams with phone alerts (4.40): one buzz for a gone drive that names the programs on it, no buzz for what the owner's own
+    press caused a moment ago, the daily summary saying who restarted it"""
 import json, os, shutil, socket, subprocess, sys, tempfile, threading, time, unittest, urllib.error, urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from watch_works_test import Base, FakeEnv, JELLY, ABS, QBT, DRIVE, GOOD, good_env, put, jload, jdump, R, FX, WFX
-import watch
+from datetime import datetime
+import notify, push, summary, watch
 
 
 def d2_msg(t):
@@ -419,6 +422,136 @@ class ServerRestart(Routes):
         self.assertTrue(j.get('unsure'))
         self.wait_for(lambda: self.get('api/state')[1]['watch_ready'] is True, 30)
         self.assertIs(self.row('jellyfin')['works'], False)
+
+
+class Recorder:
+    def __init__(self): self.jobs = []
+    def put(self, job): self.jobs.append(job)
+
+
+class PhoneSeams(Base):
+    """4.40: what the phone alerts (#47, server/push.py) and the daily summary (server/summary.py) make of the watch's events.
+    push.sink decides on one device of the owner; the encryption package is stubbed out, because nothing is encrypted or sent
+    here: the Recorder takes the jobs the sink would hand the sender."""
+    def setUp(self):
+        super().setUp()
+        for x in (watch.PENDING, watch.FIXING, watch.ASKED): x.clear()
+        self.push = {k: getattr(push, k) for k in ('sender', 'crypto', 'role_of', 'gate', 'name_of')}
+        os.environ['ARGUS_PUSH_DEVICES'] = os.path.join(self.tmp, 'push-devices.json')
+        push.save_devices([{'id': 'phone-1', 'person': 'owner', 'label': 'Phone', 'endpoint': 'https://fcm.googleapis.com/fcm/send/x',
+                            'keys': {}, 'kinds': list(push.KINDS), 'made': '', 'last_ok': '', 'last_error': ''}])
+        push.sender, push.crypto, push.gate = Recorder(), (lambda: {'stub': True}), push.Gate()
+        push.role_of = lambda person: 'owner' if person == 'owner' else 'none'
+        notify.SINKS[:] = [self.events.append, push.sink]
+
+    def tearDown(self):
+        for k, v in self.push.items(): setattr(push, k, v)
+        os.environ.pop('ARGUS_PUSH_DEVICES', None)
+        super().tearDown()
+
+    def buzzes(self): return [json.loads(j['raw']) for j in push.sender.jobs]
+
+    # ---- 2b: one unplugged drive, one buzz ----
+    def test_2b_one_gone_drive_buzzes_once_and_names_the_programs(self):
+        # R7c's setup: the media programs have no unit of their own (they are containers), and the drive has its own check
+        self.checks(DRIVE, dict(JELLY, unit=None), dict(ABS, unit=None), QBT)
+        e = good_env(host='host-missing'); self.rounds(e)
+        self.assertEqual([(x['kind'], x['subject']) for x in self.events], [('broke', 'media-drive')], 'one event for the drive, none per program')
+        self.assertEqual(self.events[0]['title'], 'The media drive is not connected; Jellyfin, Audiobookshelf and 1 more cannot read it')
+        self.assertEqual([(b['kind'], b['title']) for b in self.buzzes()],
+                         [('broke', 'The media drive is not connected; Jellyfin, Audiobookshelf and 1 more cannot read it')], 'one buzz')
+        for id_ in ('jellyfin', 'audiobookshelf', 'qbittorrent'):
+            r = self.result(id_); self.assertIs(r['works'], False, id_); self.assertEqual(r['code'], 'drive-missing', id_)   # the rows still say why
+        for _ in range(3): watch.step(e)
+        self.assertEqual(len(self.events), 1, 'nothing more while it stays gone')
+        e.host = 'host-good'; watch.step(e)
+        self.assertEqual([(x['kind'], x['subject']) for x in self.events], [('broke', 'media-drive'), ('recovered', 'media-drive')],
+                         'it comes back: one recovered, for the drive (the quiet programs were never said to be broken)')
+        self.assertEqual(len(self.buzzes()), 1, 'a recovery never buzzes')
+
+    def test_2b_a_second_check_of_the_same_drive_is_folded_too(self):
+        backup = dict(DRIVE, id='media-backup-drive', title='The media drive (backup check)', job='mnemosyne-backup-drive')
+        self.checks(DRIVE, backup, dict(JELLY, unit=None))
+        self.rounds(good_env(host='host-dropped'))
+        self.assertEqual([(x['kind'], x['subject'], x['title']) for x in self.events],
+                         [('broke', 'media-drive', 'The media drive has dropped out; Jellyfin cannot read it')])
+        self.assertEqual(len(self.buzzes()), 1)
+
+    def test_2b_read_only_and_two_names(self):
+        self.checks(dict(JELLY, unit=None), DRIVE, ABS)                         # the drive need not come first in the file
+        self.rounds(good_env(host='host-readonly'))
+        self.assertEqual([x['title'] for x in self.events], ['The media drive is read-only; Jellyfin and Audiobookshelf cannot save to it'])
+
+    def test_2b_without_programs_on_it_the_words_are_as_before(self):
+        self.checks(DRIVE); self.rounds(good_env(host='host-missing'))
+        self.assertEqual([x['title'] for x in self.events], ['The media drive is not connected'])
+
+    # ---- 2c: his own press ----
+    def broken_jellyfin(self, **kw):
+        self.checks(dict(JELLY, http=None))
+        e = good_env(inside={'jellyfin': 'container-dead-shutdown'}, **kw); self.rounds(e, settle=0)
+        self.assertEqual([b['kind'] for b in self.buzzes()], ['needs-yes'], 'the breakage itself buzzes, as before')
+        return e
+
+    def test_2c_his_own_try_that_did_not_help_does_not_buzz_right_after_his_press(self):
+        e = self.broken_jellyfin()
+        self.assertTrue(watch.ask_fix('jellyfin', now=e.t)[0]); watch.step(e, settle=6)
+        ev = self.events[-1]
+        self.assertEqual((ev['kind'], ev['by']), ('broke', 'owner')); self.assertIn('You restarted Jellyfin and Audiobookshelf at', ev['body'])
+        self.assertEqual(ev['pressed'], watch.iso(watch.PREV['jellyfin']['owner_try']), 'when he pressed')
+        self.assertEqual([b['kind'] for b in self.buzzes()], ['needs-yes'], 'his own try did not help: the page says so, the phone keeps still')
+        self.assertEqual(self.kinds(), ['needs-yes', 'broke'], 'it is still an event: the events file, the page and the summary have it')
+        pressed = datetime.fromisoformat(ev['pressed']).timestamp()
+        self.assertTrue(push.own_press(ev, now=pressed + 100), '100 s after the press: no buzz (a 90-second look ends about here)')
+        self.assertFalse(push.own_press(ev, now=pressed + 121), 'more than 2 minutes after his press: it buzzes as any other')
+        push.sink(dict(ev, pressed=watch.iso(time.time() - 180)))
+        self.assertEqual([b['kind'] for b in self.buzzes()], ['needs-yes', 'broke'], 'an outcome 3 minutes after the press buzzes')
+
+    def test_2c_a_restart_command_that_failed_from_his_press_does_not_buzz_either(self):
+        e = self.broken_jellyfin()
+        e.restart = lambda u: (False, 'Failed to restart')
+        self.assertTrue(watch.ask_fix('jellyfin', now=e.t)[0]); watch.step(e, settle=6)
+        self.assertEqual((self.events[-1]['kind'], self.events[-1]['by']), ('broke', 'owner'))
+        self.assertIn('but the restart did not work', self.events[-1]['body'])
+        self.assertEqual([b['kind'] for b in self.buzzes()], ['needs-yes'])
+
+    def test_2c_argus_own_repair_that_did_not_help_still_buzzes(self):
+        self.checks(dict(JELLY, http=None)); self.autofix('jellyfin', trial=False)
+        e = good_env(inside={'jellyfin': 'container-dead-shutdown'}); self.rounds(e, settle=6)
+        self.assertEqual([(x['kind'], x.get('by')) for x in self.events], [('broke', 'argus')])
+        self.assertNotIn('pressed', self.events[-1])
+        self.assertEqual([b['kind'] for b in self.buzzes()], ['broke'], 'nobody pressed anything: it buzzes')
+
+    # ---- 2a: the daily summary says who restarted it ----
+    def summary_of(self):
+        return summary.compose(list(reversed(self.events)), watch.snapshot(), datetime.now().astimezone())
+
+    def test_2a_his_own_restart_reads_as_his(self):
+        def heal(env): env.inside['jellyfin'] = 'container-good'
+        e = self.broken_jellyfin(restart_fixes=heal)
+        self.assertTrue(watch.ask_fix('jellyfin', now=e.t)[0]); watch.step(e, settle=6)
+        self.assertEqual((self.events[-1]['kind'], self.events[-1]['by']), ('fixed', 'owner'))
+        self.assertEqual([b['kind'] for b in self.buzzes()], ['needs-yes'], 'a fixed never buzzes')
+        s = self.summary_of()
+        self.assertEqual(s['title'], 'Yesterday: 1 thing stopped working, you fixed it')
+        self.assertEqual(s['body'], 'You restarted Jellyfin from the page, and it works now. Nothing waits for you.')
+        self.assertNotIn('as you allowed', s['body'])
+
+    def test_2a_argus_own_restart_still_reads_as_his(self):
+        def heal(env): env.inside['jellyfin'] = 'container-good'
+        self.checks(dict(JELLY, http=None)); self.autofix('jellyfin', trial=False)
+        e = good_env(inside={'jellyfin': 'container-dead-shutdown'}, restart_fixes=heal); self.rounds(e, settle=6)
+        self.assertEqual([(x['kind'], x.get('by')) for x in self.events], [('fixed', 'argus')])
+        self.assertEqual(self.buzzes(), [], 'he fixed it before anyone was told: nothing buzzes')
+
+    def test_2a_both_on_one_day(self):
+        now = datetime.now().astimezone()
+        ev = [notify.make('fixed', 'jellyfin', 'x', '', at=now), dict(notify.make('fixed', 'backup', 'x', '', at=now), by='owner'),
+              notify.make('needs-yes', 'jellyfin', 'x', '', at=now), notify.make('broke', 'backup', 'x', '', at=now)]
+        rows = [{'id': 'jellyfin', 'title': 'Jellyfin', 'works': True}, {'id': 'backup', 'title': 'Backups', 'works': True}]
+        s = summary.compose(ev, rows, now)
+        self.assertEqual(s['title'], 'Yesterday: 2 things stopped working, and all work again')
+        self.assertEqual(s['body'], 'You restarted Backups from the page, and it works now. Argus restarted Jellyfin as you allowed, and it works now. Nothing waits for you.')
 
 
 if __name__ == '__main__':

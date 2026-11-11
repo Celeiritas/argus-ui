@@ -10,6 +10,8 @@ An event is {id, at, kind, subject, title, body, url, level}:
   body     two or three plain sentences: what it means and what happens next
   url      a section id or a path under the page, or '' (the page decides how to open it)
   level    alert | warn | info
+A repair's events also carry `by` ('owner': his press on the page, with `pressed`, when; 'argus': self-repair), for the daily
+summary's words and the phone's rule about his own press (watch.told_by, push.own_press).
 The first sink writes a capped file, one JSON object per line: ARGUS_EVENTS, else ~/.local/state/argus-ui/events.jsonl.
 Later sinks (a phone push) are added with register(); nothing else here needs to change."""
 import json, os, sys, threading, time

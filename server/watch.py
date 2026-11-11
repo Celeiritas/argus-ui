@@ -370,10 +370,8 @@ def step(env, settle=SETTLE):
     auto, trial = auto_fix()
     now = env.now()
     apply_done()          # repairs that ended since the last round: their events and saved state first
-    drive_down = {}       # mount -> True while a drive check of its own is failing (its dependents stay quiet)
     results = [track(c, evaluate(c, env, hold_of(c['id'])), now) for c in checks]
-    for c, r in zip(checks, results):
-        if not c.get('unit') and c.get('mount') and r['works'] is False: drive_down[c['mount']] = True
+    drive_down = gone_drives(checks, results)     # mount -> the drive check that speaks for it, and the programs that went with it
     restarted = set()     # units restarted this round: each at most once, also when two checks name it
     with _lock: asked = set(PENDING); PENDING.clear()
     final, started = {}, []
@@ -407,6 +405,27 @@ def step(env, settle=SETTLE):
         FIXING.difference_update(k for k in asked if k not in RUNNING)     # asked for a check that left checks.json, or nothing ran
     LAST_STEP[0] = now
     save_prev()
+
+
+def gone_drives(checks, results):
+    """mount -> [id of the drive check that speaks for it, titles of the programs that went with it] while a drive check of that
+    mount fails. One cause, one event: the first drive check of a mount (in checks.json's order) raises it and names the programs
+    whose only problem this round is that drive; those programs, and a second check of the same drive, stay quiet (the page folds
+    them under the drive's block the same way, docs/home.md "Trouble first")."""
+    out = {}
+    for c, r in zip(checks, results):
+        if is_drive(c) and c.get('mount') and r['works'] is False: out.setdefault(c['mount'], [c['id'], []])
+    for c, r in zip(checks, results):
+        d = out.get(c.get('mount'))
+        if d and not is_drive(c) and r['works'] is False and r['code'].startswith('drive-'): d[1].append(c['title'])
+    return out
+
+
+def went_with(titles, code):
+    """'Jellyfin and Audiobookshelf cannot read it' (two names at most, then "and 2 more"): what follows the drive's own words."""
+    n = list(titles)
+    who = ' and '.join(n) if len(n) <= 2 else f'{n[0]}, {n[1]} and {len(n) - 2} more'
+    return f'{who} cannot {"save to" if code == "drive-readonly" else "read"} it'
 
 
 def publish(c, r, auto, now):
@@ -480,8 +499,10 @@ def handle(c, r, env, auto, trial, now, drive_down, settle, restarted):
     else: changed = False
     p.pop('pending', None)
     reason, title, detail = words(c, r['code'], r.get('why', ''))
-    if changed and bool(c.get('mount')) and c.get('unit') and r['code'].startswith('drive-') and drive_down.get(c['mount']):
-        return r                                 # quiet: the drive's own event already says it; this card still shows the reason
+    d = drive_down.get(c.get('mount'))
+    if changed and d and d[0] != id_ and r['code'].startswith('drive-'):
+        return r                                 # quiet: the drive's own event already says it (and names it); this row still shows the reason
+    if d and d[0] == id_ and d[1]: title = f'{title}; {went_with(d[1], r["code"])}'     # one buzz for the drive, naming who went with it
     fx = c.get('fix')
     say = fix_say(c)
     url = c.get('url', '')
@@ -572,6 +593,15 @@ def apply_done():
     return out
 
 
+def told_by(kind, id_, title, body, url, o, p):
+    """A repair's one event, with who asked for it: `by` 'owner' (his press on the page; `pressed`: when) or 'argus' (self-repair,
+    as allowed). The daily summary words a repair by who did it, and the phone does not buzz for what his own press caused a
+    moment ago (server/summary.py, server/push.py, docs/phone-alerts.md)."""
+    ev = dict(notify.make(kind, id_, title, body, url), by=o['by'])
+    if o['by'] == 'owner' and isinstance(p.get('owner_try'), (int, float)): ev['pressed'] = iso(p['owner_try'])
+    notify.notify(ev)
+
+
 def apply_repair(o):
     c, r, say, reason, url = o['c'], o['r'], o['say'], o['reason'], o['url']
     id_, mine, at = c['id'], o['by'] == 'owner', clock(o['at'])
@@ -580,19 +610,19 @@ def apply_repair(o):
         p['outcome'] = 'owner-cmdfail' if mine else 'cmdfail'
         tried = (f'You asked Argus to restart {say} at {at}, but the restart did not work.' if mine else
                  f'Argus tried to restart {say} by itself, but the restart did not work. It will not try again by itself for a day.')
-        notify.notify(notify.make('broke', id_, words(c, r['code'], r.get('why', ''))[1], f'It could not do its job ({reason}). {tried}', url))
+        told_by('broke', id_, words(c, r['code'], r.get('why', ''))[1], f'It could not do its job ({reason}). {tried}', url, o, p)
         return r
     if o['kind'] == 'fixed':
         for k in ('streak', 'decided', 'outcome', 'pending'): p.pop(k, None)
         p.update(works=True, code='ok', since=o['done'], looked=o['done'], told=False, again=True)
         did = f'You restarted {say} from the page at {at}, and it works now.' if mine else f'Argus restarted {say} as you allowed, and it works now.'
-        notify.notify(notify.make('fixed', id_, f'{c["title"]} was restarted and works again', f'It could not do its job ({reason}). {did}', url))
+        told_by('fixed', id_, f'{c["title"]} was restarted and works again', f'It could not do its job ({reason}). {did}', url, o, p)
         return o['r']
     p['outcome'] = 'owner-nohelp' if mine else 'nohelp'
     if r['works'] is False and r['code'] != p.get('code'): p.update(code=r['code'], why=r.get('why', ''))
     title, detail = words(c, r['code'], r.get('why', ''))[1:]
     did = f'You restarted {say} at {at}, and it did not help.' if mine else f'Argus restarted {say} once, and it did not help. It will not try again by itself for a day.'
-    notify.notify(notify.make('broke', id_, title, f'{detail} {did}'.strip(), url))
+    told_by('broke', id_, title, f'{detail} {did}'.strip(), url, o, p)
     return r
 
 

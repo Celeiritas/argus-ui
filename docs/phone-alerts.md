@@ -19,7 +19,12 @@ So that the phone never becomes noise:
 - at most **6 buzzes per person in any hour**. What comes after that is not lost: it is folded into **one** later message,
   *"3 more things happened. Open Elaia."*, sent as soon as the hour has room again;
 - a newer message about the same thing replaces one the phone has not shown yet, and on the phone a newer notification
-  about the same thing replaces the older one instead of stacking.
+  about the same thing replaces the older one instead of stacking;
+- **one unplugged drive buzzes once**: the drive's own message names the programs that went with it (*The media drive is not
+  connected; Jellyfin and Audiobookshelf cannot read it*), the same folding Watch does (docs/checks.md, drive check);
+- **what you just did yourself does not buzz**: when your own restart from Watch or Today did not help, or could not be sent,
+  the page you pressed it on says so, so the phone keeps still for **2 minutes after your press**. It still goes into the
+  events, onto the page and into the daily summary; an outcome that comes later than that buzzes as usual.
 
 Only **owners** get alerts (`docs/people.md`); a learner never sees the page. A phone turned on before there was a
 people file keeps getting its alerts after one is written: it counts for the owners (with several owners, for all of
@@ -86,6 +91,7 @@ now:
 |---|---|---|
 | nothing happened | Yesterday: everything worked | Argus checked 3 things all day, and nothing stopped working. Nothing waits for you. |
 | a repair you allowed | Yesterday: 1 thing stopped working, Argus fixed it | Argus restarted Media player as you allowed, and it works now. Nothing waits for you. |
+| a restart you did from the page | Yesterday: 1 thing stopped working, you fixed it | You restarted Media player from the page, and it works now. Nothing waits for you. |
 | something waits | 1 thing is waiting for your yes | Media player needs a restart, and Argus waits for your yes. |
 
 The date of the last summary is saved before the message is made, so a restart never sends a second one. If the server

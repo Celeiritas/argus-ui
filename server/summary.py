@@ -76,24 +76,26 @@ def compose(events, rows, now):
     title_of = {r['id']: str(r.get('title') or r['id']) for r in rows}
     title = lambda s: title_of.get(s, s)
     recent = [e for e in events if e.get('kind') in TROUBLE and (_when(e) or since - timedelta(1)) >= since]
-    latest, stopped = {}, []
+    latest, last, stopped = {}, {}, []
     for e in recent:                                   # newest first: the first event of a subject is its latest
         s = str(e.get('subject') or '')
-        latest.setdefault(s, e['kind'])
+        latest.setdefault(s, e['kind']); last.setdefault(s, e)
         if e['kind'] in ('broke', 'needs-yes') and s not in stopped: stopped.append(s)
     stopped.reverse()                                  # oldest first reads more naturally
     bad_now = [r['id'] for r in rows if r.get('works') is False]
     waiting = [s for s in stopped if latest.get(s) == 'needs-yes' and (s in bad_now or s not in title_of)]
     broken = [s for s in bad_now if s not in waiting]
     fixed = [s for s in stopped if latest.get(s) == 'fixed']
+    mine = [s for s in fixed if last[s].get('by') == 'owner']       # he restarted it from the page (an event before 4.40 has no `by`:
+    his = [s for s in fixed if s not in mine]                        # only Argus's own repairs wrote `fixed` then)
     back = [s for s in stopped if latest.get(s) == 'recovered']
     plural = lambda n, one, many: one if n == 1 else many
     if waiting:
         head = f'{len(waiting)} {plural(len(waiting), "thing is", "things are")} waiting for your yes'
     elif broken:
         head = f'{len(broken)} {plural(len(broken), "thing is", "things are")} not working right now'
-    elif stopped and len(fixed) == len(stopped):
-        head = f'Yesterday: {len(stopped)} {plural(len(stopped), "thing", "things")} stopped working, Argus fixed {plural(len(stopped), "it", "them")}'
+    elif stopped and len(fixed) == len(stopped) and not (mine and his):
+        head = f'Yesterday: {len(stopped)} {plural(len(stopped), "thing", "things")} stopped working, {"you" if mine else "Argus"} fixed {plural(len(stopped), "it", "them")}'
     elif stopped:
         head = f'Yesterday: {len(stopped)} {plural(len(stopped), "thing", "things")} stopped working, and {plural(len(stopped), "it works", "all work")} again'
     else:
@@ -101,7 +103,8 @@ def compose(events, rows, now):
     said = []
     if waiting: said.append(f'{names(waiting, title)} {plural(len(waiting), "needs", "need")} a restart, and Argus waits for your yes.')
     if broken: said.append(f'{names(broken, title)} {plural(len(broken), "does", "do")} not work right now.')
-    if fixed: said.append(f'Argus restarted {names(fixed, title)} as you allowed, and {plural(len(fixed), "it works", "they work")} now.')
+    if mine: said.append(f'You restarted {names(mine, title)} from the page, and {plural(len(mine), "it works", "they work")} now.')
+    if his: said.append(f'Argus restarted {names(his, title)} as you allowed, and {plural(len(his), "it works", "they work")} now.')
     if back: said.append(f'{names(back, title)} came back by {plural(len(back), "itself", "themselves")}.')
     if not stopped and not broken:
         said.append(f'Argus checked {len(rows)} {plural(len(rows), "thing", "things")} all day, and nothing stopped working.' if rows

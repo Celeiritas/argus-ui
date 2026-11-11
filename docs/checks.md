@@ -40,7 +40,7 @@ Nothing runs without a checks file, and the server never restarts anything by it
 
 **`container.runtime` names a program the server will run** (with `exec <name> ...` after it), and `unit` and `fix.restart` name units it will ask `systemctl` about or restart. So only the owner may be able to write `checks.json` and `auto-fix.json`: keep `~/.config/argus-ui/` writable by the server's own user alone.
 
-A check with only `mount` is a **drive check**: it speaks for the drive, and programs that need that drive stay quiet while it is down (one event, not four).
+A check with only `mount` is a **drive check**: it speaks for the drive, and programs that need that drive stay quiet while it is down (one event, not four). Since 4.40 that one event names the programs that went with it, so the phone buzzes once: *The media drive is not connected; Jellyfin, Audiobookshelf and 1 more cannot read it* (*cannot save to it* for a read-only drive). This holds for every program on that drive whose only problem is the drive, with or without a `unit`, and for a second drive check of the same mount (the first in the file speaks), the same folding Watch's drive block does. Without a drive check, each program on a gone drive raises its own `broke`; add one to fold them.
 
 ### The order of the proof, and its safety rules
 1. Frozen by Medusa: paused on purpose, `works` is unknown.
@@ -101,7 +101,10 @@ yes is awaited.
 **Times** in every sentence read like the rest of the page, *5:52 AM* (`clock()`, the same on Linux and Windows).
 
 ## Events
-`server/notify.py` takes events: `{id, at, kind, subject, title, body, url, level}`.
+`server/notify.py` takes events: `{id, at, kind, subject, title, body, url, level}`. The events of a repair (4.40) also carry `by`:
+`owner` (his press on the page, with `pressed`, when he pressed) or `argus` (self-repair, as allowed). The daily summary words a
+repair by who did it, and the phone does not buzz for what his own press caused in the last 2 minutes (docs/phone-alerts.md);
+`api/events` sends only the fields above.
 
 | `kind` | When | `level` |
 |---|---|---|

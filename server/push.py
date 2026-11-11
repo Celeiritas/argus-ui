@@ -34,6 +34,7 @@ CALM = 12 * 3600                                     # back to 30 minutes once t
 PER_HOUR = 6                                         # buzzes per person per rolling hour; more are folded into one later message
 HOUR = 3600
 TEST_GAP = 10                                        # one test buzz per person per this many seconds
+OWN_PRESS = 120                                      # an event his own press on the page caused within this many seconds does not buzz
 TTL = {'broke': 6 * 3600, 'needs-yes': 6 * 3600, 'summary': 12 * 3600, 'more': 6 * 3600, 'test': 600}
 URGENCY = {'broke': 'high', 'needs-yes': 'high', 'summary': 'normal', 'more': 'normal', 'test': 'high'}
 NO_CRYPTO = ('Phone alerts are not available on this server: it is missing the part that locks each message for your phone '
@@ -486,11 +487,24 @@ def to_devices(person, kinds, event, kind):
     return n
 
 
+def own_press(event, now=None):
+    """True for an event the owner's own press on the page caused less than OWN_PRESS seconds ago (watch.py writes `by` 'owner' and
+    `pressed` on the events of his restart: it did not help, or could not be sent). He pressed it while looking at the page, and
+    the page says how it went, so the phone keeps still; the event still goes into the events file, onto the page and into the
+    daily summary. Later than that (a slow restart, or he walked away), it buzzes as any other."""
+    if event.get('by') != 'owner': return False
+    try: pressed = datetime.fromisoformat(str(event.get('pressed'))).timestamp()
+    except (TypeError, ValueError, OverflowError, OSError): return False
+    return abs((time.time() if now is None else now) - pressed) < OWN_PRESS
+
+
 def sink(event):
-    """notify.register(sink): buzz for broke, needs-yes and summary only, to owners' devices that want that kind."""
+    """notify.register(sink): buzz for broke, needs-yes and summary only, to owners' devices that want that kind; never for what
+    the owner's own press caused a moment ago (own_press)."""
     kind = event.get('kind')
     if kind == 'fixed': gate.forget(str(event.get('subject', '')))   # never buzzes, but resets that thing's quiet time
     if kind not in KINDS or not crypto(): return
+    if own_press(event): return                                       # he is looking at the page that says how his press went
     try: devs = load_devices()
     except (OSError, ValueError): return
     people = sorted({d.get('person') for d in devs if kind in (d.get('kinds') or ())})

@@ -204,7 +204,8 @@ class Drive(Base):
         self.checks(DRIVE, JELLY, ABS, QBT)
         e = FakeEnv(host='host-missing', inside={}); watch.step(e); watch.step(e)
         self.assertEqual(len(self.events), 1)
-        self.assertEqual(self.events[0]['title'], 'The media drive is not connected'); self.assertEqual(self.events[0]['kind'], 'broke')
+        self.assertEqual(self.events[0]['title'], 'The media drive is not connected; Jellyfin, Audiobookshelf and 1 more cannot read it')   # 4.40: names who went with it
+        self.assertEqual(self.events[0]['kind'], 'broke')
         self.assertIs(self.result('jellyfin')['works'], False)          # the cards still say why
         self.assertEqual(self.result('jellyfin')['reason'], 'its drive is not connected')
 
