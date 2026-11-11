@@ -37,17 +37,19 @@ def _read():
         with open(FILE, encoding='utf-8') as f: doc = json.load(f)
         rows = doc.get('people') if isinstance(doc, dict) else None
         if not isinstance(rows, list): raise ValueError('it has no "people" list')
+        # fail closed (4.37), as strict as the server's own reader: one bad entry makes the whole file unusable
         out, seen = [], set()
-        for p in rows:
-            if not isinstance(p, dict) or not str(p.get('name') or '').strip(): continue
+        for i, p in enumerate(rows, 1):
+            if not isinstance(p, dict): raise ValueError(f'entry {i} is not an object')
+            if not isinstance(p.get('name'), str) or not p['name'].strip(): raise ValueError(f'entry {i} has no name')
             pid = ident(p.get('id') or p['name'])
-            if not pid: continue
-            if pid in seen:            # the first entry with that id counts; the second is named once in the log (4.37)
-                log_once(f'{FILE}: the id "{pid}" is used twice; only its first entry counts ({str(p["name"]).strip()[:60]} is left out)'); continue
+            if not pid: raise ValueError(f'entry {i} ({p["name"].strip()[:60]}) has no usable id')
+            if pid in seen: raise ValueError(f'the id "{pid}" is used twice')
+            if p.get('role') not in ('owner', 'learner'): raise ValueError(f'entry {i} ({p["name"].strip()[:60]}) has the role {p.get("role")!r}, not owner or learner')
+            lg = p.get('logins', [])
+            if not isinstance(lg, list) or not all(isinstance(x, str) and x.strip() for x in lg): raise ValueError(f'entry {i} ({p["name"].strip()[:60]}) has logins that are not a list of names')
             seen.add(pid)
-            role = p.get('role') if p.get('role') in ('owner', 'learner') else 'learner'     # an unknown role gets the smaller one
-            logins = [str(x).lower() for x in p.get('logins') or [] if isinstance(x, str)]
-            out.append({'id': pid, 'name': str(p['name']).strip()[:60], 'role': role, 'logins': logins})
+            out.append({'id': pid, 'name': p['name'].strip()[:60], 'role': p['role'], 'logins': [x.strip().lower() for x in lg]})
         if not any(p['role'] == 'owner' for p in out): raise ValueError('it names no owner')
         return out, ''
     except FileNotFoundError:
@@ -89,7 +91,11 @@ def studying(who, requested=None, write=False, holder=None):
     else:
         role = who.get('role') if isinstance(who, dict) else None
         if role not in ('owner', 'learner'): raise Refused(403, 'Mentor is only for the people in the people file. Ask the owner to add you.')
-        if not from_file(): me = find(first)                          # no people file: everybody let in is the one person
+        if not from_file():
+            # no people file: everybody let in is the one person, the owner. A people file that cannot be read fails closed
+            # for anyone the server calls a learner (it cannot tell whose lessons are hers)
+            if role == 'learner' and os.path.isfile(FILE): raise Refused(503, problem or f'{FILE} cannot be read. Ask the owner to fix it.')
+            me = find(first)
         else:
             me = find(ident(who.get('person')))
             if me is None: raise Refused(403, 'Mentor does not know you yet. Ask the owner to add you to the people file.')

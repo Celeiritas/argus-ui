@@ -280,13 +280,26 @@ class People(unittest.TestCase):
         self.assertEqual(self.get('learners', {'person': 'someone', 'role': 'owner'})[1]['me'], 'owner')
         self.assertEqual(self.get('next', {'person': 'someone', 'role': 'none'})[0], 403)
 
-    def test_duplicate_id_is_logged(self):
-        err = io.StringIO()
-        with contextlib.redirect_stderr(err):
-            self.start({'people': PEOPLE['people'] + [{'id': 'learner-two', 'name': 'Second Learner', 'role': 'learner'}]})
-            self.get('learners', OWNER)
-        self.assertIn('"learner-two" is used twice', err.getvalue())
-        self.assertEqual([x['name'] for x in self.get('learners', OWNER)[1]['people']], ['Owner One', 'Learner Two'])
+    def test_a_bad_entry_makes_the_file_unusable(self):
+        """Review S9, and the server's reader (#45): a duplicate id, an unknown role, an entry without a name or logins that
+        are not a list of names make the whole file unusable, with one log line: read as no file, every change refused,
+        and a learner refused even for reading."""
+        bad = [({'id': 'learner-two', 'name': 'Second Learner', 'role': 'learner'}, 'used twice'),
+               ({'name': 'Third', 'role': 'teacher'}, "role 'teacher'"), ({'role': 'learner'}, 'has no name'),
+               ({'name': 'Fourth', 'role': 'learner', 'logins': 'fourth@example.com'}, 'not a list')]
+        for k, (entry, words) in enumerate(bad):
+            with self.subTest(words):
+                if k: self.tearDown(); self.setUp()
+                err = io.StringIO()
+                with contextlib.redirect_stderr(err):
+                    self.start({'people': PEOPLE['people'] + [entry]})
+                    r = self.get('learners', None)[1]
+                self.assertIn(words, err.getvalue())
+                self.assertEqual(([x['id'] for x in r['people']], bool(r['problem'])), (['owner'], True), 'read as no file, the problem named')
+                code, x = self.post('settings', {'bury': False}, OWNER)
+                self.assertEqual(code, 503); self.assertIn('people.json', x['msg'])
+                self.assertEqual(self.get('next', LEARNER)[0], 503, "a learner is refused: it cannot be told whose lessons are hers")
+                self.assertEqual(self.get('next', OWNER)[0], 200)
 
 if __name__ == '__main__':
     try: unittest.main(verbosity=1 if '-v' not in sys.argv else 2)
