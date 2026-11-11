@@ -35,7 +35,7 @@ const home = (() => {
   function cards() {
     const st = s => s === undefined ? 'Checking…' : s === null ? 'No news' : s.line;
     const tr = trouble(), fails = tr.n, allFailed = !tr.alerts.length && tr.tasks.every(j => j.state === 'failed');
-    return sections().filter(e => !e.kind && e.id !== 'home' && e.id !== 'olympus' && visible([e]).length).map(e => {
+    return sections().filter(e => !e.kind && e.id !== 'home' && e.id !== 'olympus' && e.id !== 'phone' && visible([e]).length).map(e => {
       const p = PLUGINS.find(x => x.id === e.id);
       const line = e.id === 'argus' ? (!fails ? `All ${plural(S.jobs.length, 'task')} well` : allFailed ? `${plural(fails, 'task')} failed` : `${plural(fails, 'thing')} need${fails === 1 ? 's' : ''} a look`)
         : !p ? '' : p.kind === 'server' ? st(STATUS[p.id]) : p.version ? `Version ${p.version}` : 'Open it';
