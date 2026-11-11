@@ -3,7 +3,7 @@
     python3 tests/mentor_today_test.py -v        (tests/run.sh runs it under "== mentor today")
 
 Each test gets its own temporary database and inbox, loaded with the theme's decks; nothing outside a temporary folder is touched."""
-import importlib.util, os, shutil, sys, tempfile, time, unittest
+import importlib.util, json, os, shutil, sys, tempfile, time, unittest
 
 R = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _spec = importlib.util.spec_from_file_location('leafy_mentor', os.path.join(R, 'plugins', 'mentor', 'mentor.py'))
@@ -88,7 +88,24 @@ class PinShelf(Base):
         t = m.today(self.db)
         self.assertEqual(set(t['scope']), {'ai-coding', 'psych-design', TRACK})
         self.assertEqual(t['shelf'], 1)
-        self.assertEqual(t['new_left'], sum(x['new_left'] for x in t['tracks'] if x['id'] in t['scope']))
+        self.assertEqual(t['new_left'], min(m.NEW_PER_DAY, sum(x['new_left'] for x in t['tracks'] if x['id'] in t['scope'])),
+                         'nothing pinned: one shared limit of new questions for the day, not one per track')
+
+    def test_nothing_pinned_one_limit_for_the_day(self):
+        # 4.37 (review N1): four tracks with 59 new questions open on 10 waiting, and a session stops at 10 new
+        t = m.today(self.db)
+        self.assertGreater(sum(x['new_left'] for x in t['tracks']), m.NEW_PER_DAY)
+        self.assertEqual(t['new_left'], m.NEW_PER_DAY)
+        new = 0
+        for _ in range(40):
+            c, _ = m.next_card(self.db, session=True)
+            if not c: break
+            if not c['reps'] and c['kind'] not in m.LEARN: new += 1
+            self.rate(c['id'], 4)
+        self.assertEqual(new, m.NEW_PER_DAY)
+        self.assertEqual(m.today(self.db)['new_left'], 0)
+        m.set_settings(self.db, {'pinned': ['ux-hci']})
+        self.assertGreater(m.today(self.db)['new_left'], 0, 'a pinned track keeps its own limit')
 
 class QuestionFirst(Base):
     def test_a_new_lesson_asks_first(self):
@@ -132,6 +149,51 @@ class ThinkIt(Base):
         self.assertTrue(t['think'])
         drill = self.db.execute("SELECT id FROM cards WHERE kind='drill' LIMIT 1").fetchone()[0]
         self.assertNotIn('think', m.answer(self.db, drill, '[]', None, 1000, think=True), 'a drill is always graded')
+
+class Rollback(Base):
+    """4.37 (review B1): a self-rated answer stores coverage 0.0, never NULL, so the Mentor before 4.37 still reads the
+    database after a rollback; the new counts leave grader 'self' out."""
+    def test_no_null_coverage_and_the_old_sums_still_run(self):
+        g = m.answer(self.db, 'ux-hci:affordance', 'what an element lets you do, its perceived action', 3, 2000)
+        m.rate(self.db, g['attempt'], 3, False)
+        for cid in ('ux-hci:csrf', 'ux-hci:arm-then-choose', 'ux-hci:accessible-name'):
+            a = m.answer(self.db, cid, '', 4, 2000, think=True); m.rate(self.db, a['attempt'], 3, False)
+        self.assertEqual(self.count("SELECT COUNT(*) FROM attempts WHERE coverage IS NULL"), 0, 'no NULL coverage anywhere')
+        self.assertEqual(self.count("SELECT COUNT(*) FROM attempts WHERE grader='self' AND coverage=0.0"), 3)
+        st = m.stats(self.db)
+        self.assertEqual(st['avg_coverage'], round(g['coverage'], 2), 'self-rated rows are not graded coverage')
+        self.assertEqual(st['labels'], 4)
+        # the two sums of the Mentor before 4.37 (mentor.py:1382 and :1393 at 4.34.0), over every rated attempt
+        att = self.db.execute("SELECT * FROM attempts ORDER BY id DESC LIMIT 500").fetchall()
+        rated = [a for a in att if a['rating'] and not a['undone']]
+        conf = [a for a in rated if a['confidence']]
+        round(sum((a['confidence'] - 1) / 3 - a['coverage'] for a in conf) / len(conf), 2)
+        round(sum(a['coverage'] for a in rated) / len(rated), 2)
+        self.assertTrue(m.today(self.db)['tracks'])
+
+    def test_self_rated_miss_is_not_stuck(self):
+        a = m.answer(self.db, 'ux-hci:csrf', '', None, 1000, think=True); m.rate(self.db, a['attempt'], 1, False)
+        b = m.answer(self.db, 'ux-hci:csrf', '', None, 1000)
+        self.assertNotEqual(b['stuck'], 'repeat', 'a self-rated attempt before a blank one is not "wrong twice in a row"')
+
+class TeachFirst(Base):
+    """4.37 (review S2): reading the lesson card first ("Teach me first") counts as help."""
+    def test_capped_at_hard(self):
+        free = m.answer(self.db, 'ux-hci:affordance', 'perceived action possibility an object offers', 4, 1000)
+        taught = m.answer(self.db, 'ux-hci:affordance', 'perceived action possibility an object offers', 4, 1000, taught=True)
+        self.assertLessEqual(taught['suggested'], 2, 'at most Hard after Teach me first')
+        self.assertGreaterEqual(free['suggested'], taught['suggested'])
+        self.assertTrue(json.loads(self.db.execute("SELECT features FROM attempts WHERE id=?", (taught['attempt'],)).fetchone()[0])['taught'])
+
+    def test_a_drill_does_not_move_up(self):
+        drill = self.db.execute("SELECT c.id, c.data FROM cards c WHERE c.kind='drill' ORDER BY c.id LIMIT 1").fetchone()
+        answers = json.loads(drill['data'])['fades']['1']['answers']
+        typed = json.dumps([a if isinstance(a, str) else a[0] for a in answers])
+        fast = m.answer(self.db, drill['id'], typed, 4, 2000)
+        self.assertGreater(fast['level_after'][4], 1, 'without help a fast, right drill moves up')
+        taught = m.answer(self.db, drill['id'], typed, 4, 2000, taught=True)
+        self.assertEqual(taught['level_after'][4], 1, 'after Teach me first it stays at its level')
+        self.assertLessEqual(taught['suggested'], 2)
 
 class DailyLimit(Base):
     def test_limit_holds_across_sessions_and_resets_at_midnight(self):

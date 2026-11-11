@@ -177,7 +177,7 @@
    question first (Teach me first, the lesson card as feedback), think-it mode. Same type roles and 44 px targets */
 .mentor button.link{background:none;border:0;color:var(--powder);text-decoration:underline;text-underline-offset:3px;min-height:var(--hit);min-width:var(--hit);padding:0 var(--s2);font-size:var(--fs-sec);font-weight:600;cursor:pointer}
 .mentor button.link:focus-visible{outline:2px solid var(--powder);outline-offset:2px}
-.mentor .who{margin:var(--s2) 0 0}
+.mentor .who{margin:var(--s2) 0 0;padding:var(--s1) var(--s4);background:var(--card);border:1px solid var(--line);border-radius:12px}   /* on a card: never straight on the scene (4.37) */
 .mentor .wholine{display:flex;flex-wrap:wrap;align-items:center;gap:0 var(--s2);margin:0;font-size:var(--fs-body);color:var(--powder)}
 .mentor .wholine b{color:var(--snow);font-weight:600}
 .mentor .wholist{list-style:none;display:flex;flex-wrap:wrap;gap:var(--s2);padding:0;margin:var(--s2) 0 0}
@@ -207,8 +207,10 @@
 .mentor .dot.d2{border-color:var(--teal);background:radial-gradient(circle,var(--teal) 55%,transparent 57%)}
 .mentor .dot.d3{border-color:var(--teal);background:var(--teal)}
 .mentor details.shelf>summary{min-height:var(--hit);display:flex;align-items:center;cursor:pointer;color:var(--snow);font-size:var(--fs-body);font-weight:600;padding:0 var(--s4);background:var(--card);border:1px solid var(--line);border-radius:12px}
-.mentor details.shelf[open]>summary{border-radius:12px 12px 0 0}
-.mentor details.shelf>.help{margin:var(--s3) 0}
+.mentor details.shelf[open]{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:0 0 var(--s2)}   /* the help and the labels sit on the card, not on the scene (4.37) */
+.mentor details.shelf[open]>summary{border:0;border-bottom:1px solid var(--line);border-radius:12px 12px 0 0}
+.mentor details.shelf>.help,.mentor details.shelf>h3.label{margin:var(--s3) var(--s4)}
+.mentor details.shelf>.tlist{margin:0 var(--s2) var(--s4)}
 .mentor .tlist{list-style:none;margin:0 0 var(--s4);padding:0;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
 .mentor .trow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--s2) var(--s4);align-items:center;padding:var(--s2) var(--s4);border-top:1px solid var(--line)}
 .mentor .trow:first-child{border-top:0}
@@ -229,3 +231,11 @@
 @keyframes mentor-enter{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 .mentor .enter,.mentor .summary{animation:mentor-enter .22s ease-out}
 @media (prefers-reduced-motion:reduce){.mentor .enter,.mentor .summary{animation:none}.mentor .tfill span{transition:none}}
+/* 4.37: "All done for today", and two old small targets (review N7): the rating's save button and "grade was wrong" */
+.mentor .today .go.done{border-color:var(--line)}
+.mentor .today .go.done .lesson-title{margin:0}
+.mentor .today .go.done button{min-height:var(--hit)}
+.mentor #rateBtn,.mentor #replayNext{min-height:var(--hit)}
+.mentor details.report label.check{display:flex;align-items:center;gap:var(--s2);min-height:var(--hit);cursor:pointer}
+.mentor details.report label.check input{width:20px;height:20px;flex:none}
+.mentor .empty .row{margin-top:var(--s3)}

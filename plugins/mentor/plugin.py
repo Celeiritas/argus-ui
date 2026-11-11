@@ -22,12 +22,14 @@ PENDING = set()                       # (database path, attempt) whose AI part i
 class Book:
     """One person's database and its lock. One request at a time on one SQLite connection: two at once (the page asks for
     decks and stats together) could read each other's rows. Every call is a few milliseconds, so nobody waits noticeably.
-    Two people's requests never wait for each other."""
-    def __init__(self, path, dirs, inbox):
-        self.path, self.dirs, self.lock, self.sig = path, dirs, threading.Lock(), None
+    Two people's requests never wait for each other. Everything that touches .db holds .lock, the reload of a learner's
+    lesson folder included (it writes cards)."""
+    def __init__(self, path, dirs, inbox, reload=False):
+        self.path, self.dirs, self.lock, self.sig, self.reload = path, dirs, threading.Lock(), None, reload
         self.db = mentor.connect(path, inbox=inbox)
     def load(self, always=False):
-        """Load the deck folders; a learner's folder again whenever a file in it was added or changed (no restart)."""
+        """Load the deck folders; a learner's folder again whenever a file in it was added or changed (no restart).
+        The caller holds self.lock."""
         sig = []
         for d in self.dirs:
             try: sig += sorted((e.name, e.stat().st_mtime, e.stat().st_size) for e in os.scandir(d) if e.name.endswith('.json'))
@@ -52,7 +54,8 @@ def init(ctx):
     DB, ONE = b.db, b.lock
 
 def book_for(person):
-    """The Book of the person studying (learners.studying()); None = the owner, as before people existed."""
+    """The Book of the person studying (learners.studying()); None = the owner, as before people existed. A learner's
+    lesson folder is (re)loaded by fresh(), under the Book's lock."""
     if person is None or person['owner_db']: path, dirs, inbox = owner_path(), DECK_DIRS, True
     else:
         path = os.path.join(os.path.dirname(owner_path()) or '.', f"mentor-{person['id']}.db")
@@ -60,12 +63,32 @@ def book_for(person):
     with BOOKS_LOCK:
         b = BOOKS.get(path)
         if b is None:
-            b = BOOKS[path] = Book(path, dirs, inbox)
-            if person is not None and not person['owner_db']: b.load(True)
-            else:
+            b = BOOKS[path] = Book(path, dirs, inbox, reload=not inbox)
+            if inbox:
                 for d in dirs: mentor.load_decks(b.db, d)        # the owner's decks: once at start, as before
-    if person is not None and not person['owner_db']: b.load()
     return b
+
+def fresh(b):
+    """A learner's lesson folder, read again if a file changed. Call it holding b.lock (it writes on the connection)."""
+    if b.reload: b.load()
+
+def holder():
+    """Whose history mentor.db is (4.37): the person id stored in mentor.db itself, so the order of lines in the people file
+    never decides it. The first open under a people file stores the first owner; if the stored id has left the file, the
+    first owner takes mentor.db over, the stored id is updated and one line is logged. None without a people file (the
+    one person there is, the owner, has mentor.db, as before people)."""
+    ps, problem = learners.people()
+    if not learners.from_file(): return None
+    ob = book_for(None)
+    with ob.lock:
+        stored, first = mentor.meta(ob.db, 'person'), learners.owner_id()
+        if stored in {p['id'] for p in ps}: return stored
+        if stored: learners.log_once(f'mentor.db belonged to "{stored}", who is no longer in {learners.FILE}; it is now "{first}"\'s')
+        mentor.set_meta(ob.db, 'person', first)
+        return first
+
+def studying(who, requested, write=False):
+    return learners.studying(who, requested, write=write, holder=holder())
 
 def plural(n, one, many=None):
     return f'{n} {one if n == 1 else (many or one + "s")}'
@@ -94,20 +117,24 @@ def deck_names(b):
 
 def get(path, query, ctx, who=None):
     try:
-        if path == 'learners': return 200, learners.listing(who)
-        person = learners.studying(who, (query.get('learner') or [None])[0])
+        if path == 'learners': return 200, learners.listing(who, holder())
+        person = studying(who, (query.get('learner') or [None])[0])
     except learners.Refused as e: return refused(e)
     if path == 'ai' and not query.get('attempt'):          # may ask the model server: outside the lock
         return 200, assist.status() if person['role'] == 'owner' else {'enabled': False, 'owner_only': True, 'problem': ''}
     b = book_for(person)
-    with b.lock: return _get(b, person, path, query)
+    with b.lock:
+        fresh(b)
+        return _get(b, person, path, query)
 
 def post(path, body, ctx, who=None):
     if not isinstance(body, dict): return 400, {'ok': False, 'msg': 'bad request'}
-    try: person = learners.studying(who, body.get('learner'), write=True)
+    try: person = studying(who, body.get('learner'), write=True)
     except learners.Refused as e: return refused(e)
     b = book_for(person)
-    with b.lock: code, r = _post(b, person, path, body)
+    with b.lock:
+        fresh(b)
+        code, r = _post(b, person, path, body)
     # the rubric has answered; the local AI's part (if it is on) follows in a thread and the page asks for it (GET ai?attempt=).
     # Only when the person studying is an owner: a learner's answer never starts it (docs/mentor-ai.md, "Who it runs for")
     if (code == 200 and path == 'answer' and r.get('attempt') and r.get('kind') in mentor.AI_KINDS and person['role'] == 'owner'
@@ -141,7 +168,10 @@ def _get(b, person, path, query):
         card, next_due = mentor.next_card(db, deck, (query.get('extra') or ['0'])[0] == '1', session=session)
         # a course lesson that waits for others (4.32), or a track on the shelf, says why instead of "nothing due"
         return 200, {'card': card, 'next_due': next_due, 'locked': None if card else mentor.locked_reason(db, deck)}
-    if path == 'stats': return 200, mentor.stats(db, deck)
+    if path == 'stats':          # a learner's own lesson folder, for the owner's "adding a lesson" line (never shown to a learner)
+        r = mentor.stats(db, deck)
+        if b.reload: r['deck_folder'] = b.dirs[0].replace(os.path.expanduser('~'), '~', 1).replace('\\', '/')
+        return 200, r
     if path == 'today': return 200, {**mentor.today(db, deck_names(b)), 'learner': {k: person[k] for k in ('id', 'name', 'role')}}
     if path == 'track':                          # Preview: one track's size, history and a few questions; nothing is scheduled
         t = mentor.track_preview(db, (query.get('id') or [''])[0], deck_names(b))
@@ -166,7 +196,8 @@ def _post(b, person, path, body):
             conf = body.get('confidence'); conf = int(conf) if conf in (1, 2, 3, 4, '1', '2', '3', '4') else None
             ms = int(body.get('ms') or 0)
             r = mentor.answer(db, str(body.get('card', '')), text, conf, max(0, min(ms, 3_600_000)),
-                              int(body.get('hints') or 0), body.get('reflections') or [], bool(body.get('skipped')), think=body.get('think') is True)
+                              int(body.get('hints') or 0), body.get('reflections') or [], bool(body.get('skipped')), think=body.get('think') is True,
+                              taught=body.get('taught') is True)
         elif path == 'rate':
             r = mentor.rate(db, int(body.get('attempt') or 0), int(body.get('rating') or 0), bool(body.get('grade_wrong')))
         elif path == 'undo':                          # Ctrl+Z: the page's last rating this session; {'undone': False} if not undoable

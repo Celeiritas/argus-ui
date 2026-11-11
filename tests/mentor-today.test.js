@@ -65,6 +65,7 @@ run(async b => {
     await p.goto(BASE + 'mentor'); await p.waitForTimeout(900);
     await p.locator('#go10').click(); await p.waitForTimeout(700);
     check(await p.locator('#mtime').isVisible() && await p.locator('#mtime [role=progressbar]').count() === 1, 'a thin bar shows the time');
+    check(await p.locator('[data-view=today]').getAttribute('aria-pressed') === 'true', 'during a session the Today tab stays marked');
     check(await p.locator('#ans').count() === 0 && await p.locator('#checkBtn').textContent() === 'Show the answer', 'on a phone a card is thought, then revealed: no box to type in');
     check(await p.locator('input[name=conf]').count() === 0, '"How sure are you?" is not asked on every card');
     await p.locator('#modeBtn').click(); await p.waitForTimeout(500);
@@ -72,6 +73,9 @@ run(async b => {
     await p.locator('#modeBtn').click(); await p.waitForTimeout(500);
     check(await p.locator('#ans').count() === 0, 'and back to think it');
     await p.keyboard.press('Space'); await p.waitForTimeout(600);
+    const hit = async sel => Math.round((await p.locator(sel).first().boundingBox() || {height: 0}).height);
+    await p.locator('details.report summary').click();
+    check(await hit('#rateBtn') >= 44 && await hit('details.report label.check') >= 44, `the save button and "grade was wrong" are 44 px targets (${await hit('#rateBtn')}, ${await hit('details.report label.check')})`);
     check(/Here is the answer/.test(await p.locator('#rhead').textContent()) && await p.locator('input[name=rate]:checked').count() === 0, 'Space reveals the answer; nothing is graded, so nothing is preselected');
     await p.locator('#rateBtn').click(); await p.waitForTimeout(300);
     check(/Pick how well you knew it/.test(await p.locator('#toastText').textContent()), 'saving without a rating says what to do');
@@ -87,12 +91,45 @@ run(async b => {
     await p.unroute('**/api/mentor/today*');
     check(p.errors.length === 0, 'no page errors ' + p.errors.join(' | '));
 
-    // a wide screen types by default; reduced motion keeps the bar still between its steps
+    // everything done today (4.37): no false promise and no big button; "Study a little more" brings cards forward
+    for (let i = 0; i < 6; i++) { const {card} = await api(p, 'next?session=1&' + L); if (!card) break;
+      const a = await api(p, 'answer', {learner: 'learner-two', card: card.id, text: '', think: true}); await api(p, 'rate', {learner: 'learner-two', attempt: a.attempt, rating: 3}); }
+    await p.goto(BASE + 'mentor'); await p.waitForTimeout(900);
+    check(/All done for today\./.test(await p.locator('.go').textContent()) && /Next: /.test(await p.locator('#golist').textContent()), 'all done: it says so, with when the next card comes: ' + (await p.locator('.go').textContent()).replace(/\s+/g, ' ').trim());
+    check(await p.locator('#mpanel .primary').count() === 0 && await p.locator('#go10').count() === 0, 'and the big primary button goes away');
+    check(/started/.test(await p.locator('.tcard small').textContent()) && !/learned/.test(await p.locator('#mpanel').textContent()), 'a card answered once is "started", not "learned"');
+    await shot(p, 'mentor-all-done-412');
+    // a wide screen types by default (the next cards brought forward, a define card)
     const w = await page(b, 1440, 900);
-    await w.addInitScript(() => { try { localStorage.setItem('mentor-learner', 'learner-two'); } catch (e) {} });
+    await w.addInitScript(() => { try { localStorage.setItem('mentor-learner', 'learner-two'); localStorage.removeItem('mentor-answer'); } catch (e) {} });
     await w.goto(BASE + 'mentor'); await w.waitForTimeout(900);
-    await w.locator('#go10').click(); await w.waitForTimeout(700);
-    check(await w.locator('#ans').count() === 1 || !(await w.locator('#qform').count()), 'on a wide screen the answer is typed');
+    await w.locator('#goMore').click(); await w.waitForTimeout(800);
+    check(await w.locator('#qform').count() === 1 && await w.locator('#ans').count() === 1, 'Study a little more serves a card, and on a wide screen the answer is typed');
+
+    // Lessons: an owner studying as Learner Two sees her real folder; an empty Lessons view points to Today
+    await p.locator('[data-view=modules]').click(); await p.waitForTimeout(900);
+    check(await p.locator('#toToday2').count() === 1 && /Your questions are on Today/.test(await p.locator('.empty').textContent()), 'no lessons: the view points to Today');
+    check(/decks-learner-two/.test(await p.locator('details.about').textContent()) && !/<id>/.test(await p.locator('details.about').textContent()), "the owner sees the person's real lesson folder");
+    // ... and a learner (the server will say so; here its answer is faked) never sees the owner's steps
+    const lp = await page(b, 412, 915);
+    await lp.route('**/api/mentor/learners*', r => r.fulfill({json: {me: 'learner-two', role: 'learner', people: [{id: 'learner-two', name: 'Learner Two', role: 'learner'}], problem: ''}}));
+    await lp.addInitScript(() => { try { localStorage.setItem('mentor-view', 'modules'); } catch (e) {} });
+    await lp.goto(BASE + 'mentor'); await lp.waitForTimeout(1200);
+    check(await lp.locator('#whoBtn').count() === 0 && /Learner Two/.test(await lp.locator('#mwho').textContent()), 'a learner sees her name and no picker');
+    check(await lp.locator('ol.steps').count() === 0 && !/mentor_inbox|Claude Code|adding a lesson/.test(await lp.locator('details.about').textContent()), "a learner never sees the owner's steps for adding a lesson");
+    await shot(lp, 'mentor-learner-lessons-412');
+
+    // question first on a lesson (the theme's lesson, copied into her folder): a question, Teach me first, and it counts as help
+    fs.copyFileSync(path.join(__dirname, '..', 'themes', 'leafy-realm', 'decks', 'argus-code.json'), path.join(LDECKS, 'argus-code.json'));
+    const q = await page(b, 1440, 900);
+    await q.addInitScript(() => { try { localStorage.setItem('mentor-learner', 'learner-two'); localStorage.setItem('mentor-view', 'practice'); localStorage.setItem('mentor-deck', 'argus-code'); localStorage.setItem('mentor-answer', 'type'); } catch (e) {} });
+    await q.goto(BASE + 'mentor'); await q.waitForTimeout(1200);
+    check(!/Orientation|Teach ·/.test(await q.locator('.deckname').first().textContent()) && await q.locator('#teachBtn').count() === 1, 'a new lesson starts with a question, with Teach me first');
+    await q.locator('#teachBtn').click(); await q.waitForTimeout(600);
+    check(await q.locator('#teachbox .taught').count() === 1, 'Teach me first shows the lesson card above the question');
+    const box = q.locator('#qform input.blank, #qform textarea#ans').first(); await box.fill('context manager'); await q.keyboard.press('Control+Enter'); await q.waitForTimeout(800);
+    check(+(await q.locator('input[name=rate]:checked').inputValue()) <= 2, 'after Teach me first Mentor suggests at most Hard');
+    check(q.errors.length === 0 && w.errors.length === 0 && lp.errors.length === 0, 'no page errors ' + [...q.errors, ...w.errors, ...lp.errors].join(' | '));
     const rm = await b.newPage({viewport: {width: 375, height: 760}, reducedMotion: 'reduce'});
     await rm.addInitScript(() => { try { localStorage.setItem('mentor-learner', 'learner-two'); } catch (e) {} });
     await rm.goto(BASE + 'mentor'); await rm.waitForTimeout(900);

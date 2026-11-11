@@ -807,6 +807,7 @@ def next_level(db, card, srow, attempt, g):
     if g < 3 or attempt['coverage'] < 0.99 or lv >= 3: return lv, False
     if (attempt['hints'] or 0) >= 3: return lv, False       # a near example or the answer was shown: no step up this time
     feats = json.loads(attempt['features'] or '{}')
+    if feats.get('taught'): return lv, False                 # "Teach me first" was read before answering (4.37): no step up either
     prev = db.execute("SELECT coverage FROM attempts WHERE card_id=? AND id<? AND level=? AND rating IS NOT NULL AND COALESCE(undone, 0)=0 ORDER BY id DESC LIMIT 1",
                       (card['id'], attempt['id'], lv)).fetchone()
     if attempt['ms'] <= fast_ms(lv, feats.get('blanks', 1)) or (prev and prev['coverage'] >= 0.99):
@@ -984,6 +985,11 @@ def new_limit(st, track):
     lim = st['new_per_day']
     return lim[track] if track in lim else lim.get('*', NEW_PER_DAY)
 
+def unpinned_room(st, made):
+    """With nothing pinned, a session's new questions share ONE daily limit (the "*" value, else NEW_PER_DAY) across every
+    track off the shelf, so a database with 24 tracks does not open on "240 new cards waiting" (4.37). How many are left today."""
+    return max(0, st['new_per_day'].get('*', NEW_PER_DAY) - sum(made.values()))
+
 # ---------- study settings (stored in each person's database, next to the history they shape) ----------
 # bury: siblings wait until tomorrow (spec section 15.3). teach_first: the old order, every practice card after its Learn
 # card (4.37: off; a practice card comes first and its teaching is the feedback). pinned: up to PIN_MAX tracks on Today;
@@ -1029,6 +1035,17 @@ def settings(db):
             except ValueError: continue
             if isinstance(v, type(SETTINGS[r['key']])): out[r['key']] = v
     return out
+
+def meta(db, key):
+    """Mentor's own notes in the settings table (keys starting with "_", never a study setting): None when not set."""
+    r = db.execute("SELECT value FROM settings WHERE key=?", ('_' + key,)).fetchone()
+    try: return json.loads(r['value']) if r else None
+    except ValueError: return None
+
+def set_meta(db, key, value):
+    with DB_LOCK:
+        db.execute("INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", ('_' + key, json.dumps(value)))
+        db.commit()
 
 def set_settings(db, changes):
     """Save the known keys with the right type; anything else is ignored. Returns every setting. A fourth pin raises
@@ -1195,6 +1212,8 @@ def next_card(db, deck=None, extra=False, session=False, out=None):
         mine = lambda r: track_of(tm, r['deck']) in pins
         due = [r for r in due if mine(r)] or due
         new = [r for r in new if mine(r)]
+    elif session and not unpinned_room(st, made):
+        new = [r for r in new if r['kind'] in LEARN]          # nothing pinned: today's one shared limit is used up
     # a module's check, once all its lessons are mastered: after the reviews due, before new cards (mastery leaves out an
     # item buried today, so the course map counts the same)
     checks = sorted((r for r in every if r['id'] in info['checks'] and r['kind'] not in LEARN), key=order)
@@ -1256,13 +1275,15 @@ def learn_answer(db, c, text, ms, skipped):
 
 THINK_KINDS = ('define', 'explain', 'predict', 'write')      # cards a phone shows as "think it, reveal it, rate it" (4.37)
 
-def answer(db, card_id, text, confidence, ms, hints=0, reflections=None, skipped=False, think=False):
+def answer(db, card_id, text, confidence, ms, hints=0, reflections=None, skipped=False, think=False, taught=False):
     """Grade one answer. think=True (4.37, "think it, reveal it, rate it"): nothing was typed, so nothing is graded; the
-    attempt is stored without a coverage (grader "self"), Mentor suggests no rating, and the person rates it."""
+    attempt is stored with grader "self" and coverage 0.0 (a number, so an older Mentor still reads it), Mentor suggests no
+    rating, and the person rates it. taught=True: "Teach me first" was open while answering, so it counts as help: the
+    suggestion is capped at Hard and a drill does not move up a level from it."""
     c = filled(db.execute("SELECT c.*, s.level FROM cards c LEFT JOIN sched s ON s.card_id=c.id WHERE c.id=?", (card_id,)).fetchone())
     if not c: return None
     if c['kind'] in LEARN: return learn_answer(db, c, text, ms, skipped)
-    if think and c['kind'] in THINK_KINDS and not c['is_check']: return think_answer(db, c, confidence, ms, hints, reflections)
+    if think and c['kind'] in THINK_KINDS and not c['is_check']: return think_answer(db, c, confidence, ms, hints, reflections, taught)
     data = json.loads(c['data'] or '{}')
     level, per, extra = None, None, {}
     hints = max(0, min(4, int(hints or 0)))
@@ -1299,16 +1320,17 @@ def answer(db, card_id, text, confidence, ms, hints=0, reflections=None, skipped
     extra['move'] = data.get('move') or MOVE.get(c['kind'], MOVE['define'])
     # slip or mistake (Norman): a blank that was right before, or the same card right at another time, is a slip
     prev = db.execute("SELECT * FROM attempts WHERE card_id=? AND kind=? ORDER BY id DESC LIMIT 1", (card_id, c['kind'])).fetchone()
-    extra['slip'] = bool(prev and cov < 0.99 and (prev['coverage'] or 0) >= 0.99)
+    extra['slip'] = bool(prev and prev['grader'] != 'self' and cov < 0.99 and (prev['coverage'] or 0) >= 0.99)
     # stuck: wrong twice in a row within a session -> the lesson's Learn card comes back before the next try
     stuck = None
-    if cov < 0.5 and prev and prev['coverage'] is not None and prev['coverage'] < 0.5 and time.time() - prev['at'] < STUCK_WINDOW:
+    if cov < 0.5 and prev and prev['grader'] != 'self' and (prev['coverage'] or 0) < 0.5 and time.time() - prev['at'] < STUCK_WINDOW:
         stuck = 'repeat'
     elif cov < 0.5 and c['learn_of']:
         la = db.execute("SELECT skipped FROM attempts WHERE card_id=? ORDER BY id DESC LIMIT 1", (c['learn_of'],)).fetchone()
         if la and la['skipped']: stuck = 'skipped'     # "I know this, test me" was a miscalibration
     feats.update({'confidence': confidence, 'ms': ms, 'kind': c['kind'], 'level': level, 'hints': hints, 'slip': extra['slip']})
-    sug = cap(suggest_rating(cov, confidence), hints)
+    if taught: feats['taught'] = True
+    sug = cap(suggest_rating(cov, confidence), max(hints, 3) if taught else hints)     # read first: at most Hard, like rung 3
     with DB_LOCK:
         cur = db.execute("INSERT INTO attempts(card_id,at,answer,confidence,ms,coverage,hits,missed,features,suggested,grader,kind,level,hints,reflections,stuck) "
                          "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (card_id, time.time(), text, confidence, ms, cov,
@@ -1345,13 +1367,13 @@ def teaching(db, c, now):
                        (lr['id'], now)); db.commit()
     return card_payload(db, lr, read_only=True), not lr['reps']
 
-def think_answer(db, c, confidence, ms, hints, reflections):
+def think_answer(db, c, confidence, ms, hints, reflections, taught=False):
     data, now = json.loads(c['data'] or '{}'), time.time()
     hints = max(0, min(3, int(hints or 0)))
-    feats = {'think': True, 'confidence': confidence, 'ms': ms, 'kind': c['kind'], 'hints': hints}
+    feats = {'think': True, 'confidence': confidence, 'ms': ms, 'kind': c['kind'], 'hints': hints, **({'taught': True} if taught else {})}
     with DB_LOCK:
         cur = db.execute("INSERT INTO attempts(card_id,at,answer,confidence,ms,coverage,hits,missed,features,suggested,grader,kind,level,hints,reflections) "
-                         "VALUES(?,?,?,?,?,NULL,'[]','[]',?,0,'self',?,NULL,?,?)", (c['id'], now, '', confidence, ms, json.dumps(feats), c['kind'],
+                         "VALUES(?,?,?,?,?,0.0,'[]','[]',?,0,'self',?,NULL,?,?)", (c['id'], now, '', confidence, ms, json.dumps(feats), c['kind'],
                          hints, json.dumps([str(x)[:300] for x in as_list(reflections)][:4])))
         db.commit()
     att = db.execute("SELECT * FROM attempts WHERE id=?", (cur.lastrowid,)).fetchone()
@@ -1359,7 +1381,7 @@ def think_answer(db, c, confidence, ms, hints, reflections):
     previews = {g: round((plan(db, c, srow, att, g, now)[2] - now) / DAY, 6) for g in (1, 2, 3, 4)}
     teach, teach_new = teaching(db, c, now)
     return {'attempt': cur.lastrowid, 'kind': c['kind'], 'coverage': None, 'hits': [], 'missed': [], 'previews': previews,
-            'level_after': None, 'reference': c['answer'], 'suggested': 0, 'hints': hints, 'stuck': None, 'check': False, 'think': True,
+            'level_after': None, 'reference': c['answer'], 'suggested': 0, 'hints': hints, 'stuck': None, 'check': False, 'think': True, 'taught': bool(taught),
             'coach': 'Compare it with what you thought, then say how well you knew it.', 'breadcrumb': data.get('breadcrumb', ''),
             'code': data.get('code', '') if c['kind'] == 'predict' else '', 'slip': False,
             'move': data.get('move') or MOVE.get(c['kind'], MOVE['define']), 'teach': teach, 'teach_new': teach_new}
@@ -1559,7 +1581,7 @@ def stats(db, deck=None):
     aw = ("WHERE " + " OR ".join("a.card_id LIKE ?" for _ in pats)) if pats else ("WHERE 0" if ids is not None else "")
     att = db.execute(f"SELECT a.* FROM attempts a {aw} ORDER BY a.id DESC LIMIT 500", pats).fetchall()
     rated = [a for a in att if a['rating'] and not a['undone']]
-    graded = [a for a in rated if a['coverage'] is not None]      # a self-rated ("think it") attempt has no coverage
+    graded = [a for a in rated if a['grader'] != 'self']     # a self-rated ("think it") attempt was never graded (coverage 0.0)
     conf = [a for a in graded if a['confidence']]
     # calibration: confidence (1-4 -> 0..1) minus coverage; positive = overconfident
     cal = round(sum((a['confidence'] - 1) / 3 - a['coverage'] for a in conf) / len(conf), 2) if conf else None
@@ -1631,7 +1653,8 @@ def today(db, names=None):
     nxt = db.execute("SELECT c.deck, s.due FROM sched s JOIN cards c ON c.id=s.card_id WHERE s.due>? ORDER BY s.due", (now,)).fetchall()
     nxt = next((r['due'] for r in nxt if track_of(tm, r['deck']) not in shelf), None)
     return {'tracks': rows, 'pinned': pins, 'pin_max': PIN_MAX, 'shelf': len([r for r in rows if r['shelved']]),
-            'due': sum(r['due'] for r in live), 'new_left': sum(r['new_left'] for r in scope), 'scope': [r['id'] for r in scope],
+            'due': sum(r['due'] for r in live), 'scope': [r['id'] for r in scope],
+            'new_left': sum(r['new_left'] for r in scope) if pins else min(sum(r['new_left'] for r in scope), unpinned_room(st, made)),
             'later': sum(r['later'] for r in live), 'tomorrow': sum(r['tomorrow'] for r in live), 'next_due': nxt, 'week': week, 'minutes': SESSION_MIN,
             'confidence_every': CONF_EVERY, 'teach_first': st['teach_first']}
 

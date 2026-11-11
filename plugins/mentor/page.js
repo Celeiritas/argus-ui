@@ -167,7 +167,7 @@
   function setView(v) {
     if (v !== 'session') stopTimer();
     M.view = v; M.replay = []; save('mentor-view', v === 'modules' || v === 'practice' ? v : null);
-    $$('.views button').forEach(b => b.setAttribute('aria-pressed', b.dataset.view === v));
+    $$('.views button').forEach(b => b.setAttribute('aria-pressed', b.dataset.view === (v === 'session' ? 'today' : v)));    // a session belongs to Today
     // the picker and the counts belong to Study and Lessons (as before), the settings to Study; Today and a session have their own
     const pick = $('.pick'), ms = $('#mstats'), st = $('.msettings');
     if (pick) pick.hidden = v === 'today' || v === 'session'; if (ms) ms.hidden = v === 'today' || v === 'session'; if (st) st.hidden = v !== 'practice';
@@ -193,7 +193,7 @@
     // a timed session ends between cards: the time is up (the card on screen was finished) and no "5 more" are left
     if (S && !again && !replaying && S.done && S.more <= 0) return summary();
     const r = again ? {card: again} : replaying ? await get('next?replay=' + encodeURIComponent(M.replay.shift()))
-      : S ? await get('next?session=1')
+      : S ? await get('next?session=1' + (S.early ? '&extra=1' : ''))
       : await get('next?' + (M.deck ? 'deck=' + encodeURIComponent(M.deck) + '&' : '') + (extra ? 'extra=1' : ''));
     if (seq !== M.seq || !studying()) return;
     if (S && !r.card) return summary(true);
@@ -289,6 +289,7 @@
     if (M.card !== c) return;
     if (!r.card) { b.disabled = false; return toast("Couldn't load the lesson card. Try again in a moment."); }
     $('#teachbox').innerHTML = `<section class="taught" aria-label="The lesson card">${teachHtml(r.card)}</section>`;
+    c.taught = true;              // read before answering: Mentor suggests at most Hard, and a drill stays at its level (4.37)
     b.hidden = true; b.setAttribute('aria-expanded', 'true');
     const f = $('#qform input.blank, #qform textarea#ans') || $('#checkBtn'); f.focus();
   }
@@ -391,7 +392,7 @@
     const open = $('#hints .hint:not(.offer):last-child textarea'); if (open && !open.disabled) M.reflections.push(open.value.trim().slice(0, 300));
     const conf = +($('input[name=conf]:checked')?.value || 0) || null;
     const btn = $('#checkBtn'); btn.disabled = true; clearIdle();
-    let r; try { r = await send('answer', {card: c.id, text: c.think ? '' : text, confidence: conf, ms: Math.round(performance.now() - M.t0), hints: M.hints, reflections: M.reflections, think: !!c.think && M.hints < 4}); } catch (e) { r = {ok: false}; }
+    let r; try { r = await send('answer', {card: c.id, text: c.think ? '' : text, confidence: conf, ms: Math.round(performance.now() - M.t0), hints: M.hints, reflections: M.reflections, think: !!c.think && M.hints < 4, taught: !!c.taught}); } catch (e) { r = {ok: false}; }
     if (!r.ok) { btn.disabled = false; return toast("Couldn't reach Mentor to check that answer. Check that the server is on, then try again."); }
     M.result = r; M.grade_wrong = false; r.shown = M.hints === 4;
     const n = r.hits.length + r.missed.length, pct = Math.round(r.coverage * 100);
@@ -674,20 +675,26 @@
     const pins = t.tracks.filter(x => x.pinned), shelf = t.tracks.filter(x => x.shelved), rest = t.tracks.filter(x => !x.pinned && !x.shelved);
     const waiting = [t.due ? `${t.due} due` : '', t.new_left ? `${t.new_left} new` : ''].filter(Boolean).join(' · ');
     const total = t.week.reduce((a, d) => a + d.minutes, 0);
-    const row = x => `<li class="trow"><div class="tname"><h4>${esc(x.name)}</h4><p class="meta">${plural(x.cards, 'question')}${x.lessons > 1 ? ` in ${x.lessons} lessons` : ''} · ${x.learned} learned${x.last ? ` · studied ${esc(ago(x.last))}` : ''}</p></div>
+    const row = x => `<li class="trow"><div class="tname"><h4>${esc(x.name)}</h4><p class="meta">${plural(x.cards, 'question')}${x.lessons > 1 ? ` in ${x.lessons} lessons` : ''} · ${x.learned} started${x.last ? ` · studied ${esc(ago(x.last))}` : ''}</p></div>
         <div class="tacts">${x.pinned ? `<button type="button" data-unpin="${esc(x.id)}">Unpin<span class="sr"> ${esc(x.name)}</span></button>` : `<button type="button" data-pin="${esc(x.id)}">Pin<span class="sr"> ${esc(x.name)}</span></button>`}
           ${x.shelved ? `<button type="button" data-unshelve="${esc(x.id)}">Take off the shelf<span class="sr">: ${esc(x.name)}</span></button>` : `<button type="button" data-shelve="${esc(x.id)}">Shelve<span class="sr"> ${esc(x.name)}</span></button>`}
           <button type="button" data-preview="${esc(x.id)}" aria-expanded="false" aria-controls="pv-${esc(x.id)}">Preview<span class="sr"> ${esc(x.name)}</span></button></div>
         <div class="pview" id="pv-${esc(x.id)}" hidden></div></li>`;
+    // everything done today (4.37): say so, with the next date, and no big button; "Study a little more" really asks for
+    // the next cards early (next?extra=1), so it is offered only when some card is scheduled
+    const go = waiting ? `<section class="go" aria-labelledby="go-h"><h2 id="go-h" class="sr">Study now</h2>
+        <button type="button" class="primary gobtn" id="go10">Study ${t.minutes} minutes</button>
+        <p class="meta" id="golist">${esc(waiting)}${pins.length ? ', from your pinned tracks first' : ''}</p>
+        ${pins.length ? '' : `<p class="help">Nothing is pinned yet, so a session mixes every track that is not on the shelf, with ${plural(t.new_left, 'new card')} at most today. Pin up to ${t.pin_max} tracks under Shelf to choose what you study.</p>`}</section>`
+      : `<section class="go done" aria-labelledby="go-h"><h2 id="go-h" class="lesson-title">All done for today.</h2>
+        <p class="meta" id="golist">${t.later ? `${plural(t.later, 'card')} come${t.later === 1 ? 's' : ''} back later today. ` : ''}${t.next_due ? `Next: ${esc(when(t.next_due))}.` : 'Nothing is scheduled to come back yet.'}</p>
+        ${t.next_due ? `<button type="button" id="goMore" aria-describedby="morehelp">Study a little more</button><p class="help" id="morehelp">Brings the next cards forward instead of waiting for them.</p>` : ''}</section>`;
     $('#mpanel').innerHTML = `<div class="today enter">
-      <section class="go" aria-labelledby="go-h"><h2 id="go-h" class="sr">Study now</h2>
-        <button type="button" class="primary gobtn" id="go10" ${t.due || t.new_left ? '' : 'aria-describedby="golist"'}>Study ${t.minutes} minutes</button>
-        <p class="meta" id="golist">${waiting ? `${esc(waiting)}${pins.length ? ', from your pinned tracks first' : ''}` : 'Nothing waiting today. A session goes over what comes back soonest.'}</p>
-        ${pins.length ? '' : `<p class="help">Nothing is pinned yet, so a session mixes every track that is not on the shelf. Pin up to ${t.pin_max} tracks under Shelf to choose what you study.</p>`}</section>
+      ${go}
       ${pins.length ? `<section class="pins" aria-label="Pinned tracks">${pins.map(x => { const pct = Math.round(100 * x.progress);
         return `<article class="tcard" aria-labelledby="tc-${esc(x.id)}"><h3 id="tc-${esc(x.id)}">${esc(x.name)}</h3>${x.goal ? `<p class="goal">${esc(x.goal)}</p>` : ''}
           <p class="meta">${esc(trackMeta(x))}</p>
-          <div class="tprog"><span class="lpbar" role="progressbar" aria-label="${esc(x.name)}: questions learned" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="width:${pct}%"></span></span><small>${x.learned} of ${x.cards} learned</small></div>
+          <div class="tprog"><span class="lpbar" role="progressbar" aria-label="${esc(x.name)}: questions started" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="width:${pct}%"></span></span><small>${x.learned} of ${x.cards} started</small></div>
           <button type="button" data-study="${esc(x.id)}">Study this<span class="sr">: ${esc(x.name)}</span></button></article>`; }).join('')}</section>` : ''}
       <section class="week" aria-labelledby="wk-h"><h3 id="wk-h" class="label">This week · ${plural(total, 'minute')}</h3>
         <ol class="dots">${t.week.map((d, i) => `<li><span class="dot d${dotSize(d.minutes)}" aria-hidden="true"></span><small aria-hidden="true">${esc(dayName(d.day, i))}</small><span class="sr">${esc(dayName(d.day, i))}: ${plural(d.minutes, 'minute')}</span></li>`).join('')}</ol></section>
@@ -697,7 +704,8 @@
         ${rest.length ? `<h3 class="label">Not pinned</h3><ul class="tlist">${rest.map(row).join('')}</ul>` : ''}
         ${shelf.length ? `<h3 class="label">On the shelf</h3><ul class="tlist">${shelf.map(row).join('')}</ul>` : ''}
         ${t.tracks.length ? '' : `<p class="coach">No tracks yet. Lessons appear here once they are copied to the server.</p>`}</details></div>`;
-    $('#go10').onclick = startSession;
+    const g10 = $('#go10'), gm = $('#goMore');
+    if (g10) g10.onclick = () => startSession(false); if (gm) gm.onclick = () => startSession(true);
     $('#shelf').ontoggle = e => M.shelfOpen = e.target.open;
     $$('#mpanel [data-study]').forEach(b => b.onclick = () => { M.deck = b.dataset.study; save('mentor-deck', M.deck); fillPicker(); setView('practice'); });
     const keep = (sel, id) => { const b = $(`#mpanel [${sel}="${CSS.escape(id)}"]`); if (b) b.focus(); else $('#shelf summary').focus(); };
@@ -724,9 +732,9 @@
   /* ----- "Study 10 minutes": a mixed session from the pinned tracks with a thin bar that fills over the time; when the time
      is up the card on screen is finished, then a summary. A client timer: nothing about it is stored on the server ----- */
   let TICK = null;
-  function startSession() {
+  function startSession(early) {
     const mins = (M.today && M.today.minutes) || 10;
-    M.timed = {start: Date.now(), ms: mins * 60000, mins, done: false, more: 0, cards: 0, right: 0, missed: []};
+    M.timed = {start: Date.now(), ms: mins * 60000, mins, done: false, more: 0, cards: 0, right: 0, missed: [], early: early === true};
     M.replay = []; M.again = null; M.card = null;
     setView('session'); startTimer();
   }
@@ -799,7 +807,7 @@
   // name, one line, progress, one action); everything else (breakdown, Learn cards to read again, sources) one click away
   function modulesView() {
     stats().then(() => {
-      const s = M.stats, mods = M.modules;
+      const s = M.stats, mods = M.modules, owner = !M.people || M.people.role === 'owner';    // a learner never sees the owner's steps
       const tally = m => Object.values(m.cards || {}).reduce((t, c) => ({n: t.n + c.n, seen: t.seen + c.seen}), {n: 0, seen: 0});
       const action = m => { const t = tally(m); return m.to_learn === m.learn.length && !t.seen ? 'Start' : m.to_learn || t.seen < t.n ? 'Continue' : 'Review'; };
       const cont = moduleOf(M.deck) && !moduleOf(M.deck).locked && (moduleOf(M.deck).to_learn || tally(moduleOf(M.deck)).seen < tally(moduleOf(M.deck)).n) ? moduleOf(M.deck)
@@ -823,17 +831,20 @@
           return `<section class="group" aria-labelledby="g-${gi}"><div class="ghead"><h2 id="g-${gi}">${esc(g)}</h2>${ms.length > 1 && g !== 'Lessons' ? `<button type="button" class="link" data-study="group:${esc(g)}">Study all ${ms.length}</button>` : ''}</div>
             ${courseOf(ms) ? courseOf(ms).modules.map(md => cmod(md, ms, row)).join('') : `<ul class="course-list">${ms.map(row).join('')}</ul>`}
             ${files.length ? `<details class="srcs"><summary>Where these lessons come from (${files.length})</summary><ul>${files.map(f => `<li>${esc(f)}</li>`).join('')}</ul></details>` : ''}</section>`; }).join('')
-          : `<div class="empty"><b>No lessons yet</b>Add one with the steps under "Add a lesson".</div>`}
+          : `<div class="empty"><b>No lessons here</b>${owner ? 'Add one with the steps under "About Mentor and adding a lesson". ' : ''}Your questions are on Today.<div class="row"><button type="button" id="toToday2">Go to Today</button></div></div>`}
         ${imp.length ? `<p class="label">Inbox files that need a look</p><ul class="ideas">${imp.map(i => `<li class="${i.ok ? 'hit' : 'miss'}"><code>${esc(i.path)}</code>: ${esc(i.msg)}</li>`).join('')}</ul>` : ''}
-        <details class="about"><summary>About Mentor and adding a lesson</summary>
+        ${owner ? `<details class="about"><summary>About Mentor and adding a lesson</summary>
           <p class="coach">Each lesson breaks down real work from your projects. You learn first (an overview, the terms, worked examples, the ideas behind each bug hunt), then practise, and reviews come back when you're about to forget.</p>
           <p class="meta">Calibration: ${calText(s.calibration)}${s.labels ? ` · ${plural(s.labels, 'graded answer')} saved for the learning grader` : ''}</p><p class="meta" id="ailine">Local AI: checking…</p>
-          <ol class="steps">
+          ${s.inbox ? `<ol class="steps">
             <li>In Claude Code, right after building something, run <code>/mentor</code> (or <code>/mentor</code> plus a file or function name). It writes a JSON file to the project's <code>mentor_inbox</code> folder.</li>
-            <li>Copy that file to <code>${esc(s.inbox || '~/.local/share/argus-ui/decks-<id>')}</code> on the machine that runs Argus.</li>
-            <li>Open this page again: the lesson shows up here and in Study.</li></ol></details>
+            <li>Copy that file to <code>${esc(s.inbox)}</code> on the machine that runs Argus.</li>
+            <li>Open this page again: the lesson shows up here and in Study.</li></ol>`
+          : `<p class="coach">This person's lessons are the files in <code>${esc(s.deck_folder || '')}</code> on the machine that runs Argus. Copy a lesson or deck file there; it shows up on the next visit.</p>`}</details>`
+          : `<details class="about"><summary>About Mentor</summary><p class="coach">Questions come first; the lesson behind each one comes with the answer. Reviews come back when you are about to forget.</p></details>`}
       </div>`;
-      get('ai').then(a => { const p = $('#ailine'); if (p) p.textContent = aiLine(a); }).catch(() => {});   // after the panel is drawn
+      if (owner) get('ai').then(a => { const p = $('#ailine'); if (p) p.textContent = aiLine(a); }).catch(() => {});   // after the panel is drawn
+      const tt = $('#toToday2'); if (tt) tt.onclick = () => setView('today');
       $$('[data-study]').forEach(b => b.onclick = () => { M.deck = b.dataset.study; save('mentor-deck', M.deck); fillPicker(); setView('practice'); });
       const ra = $('#reviewAll'); if (ra) ra.onclick = () => { M.deck = null; save('mentor-deck', null); fillPicker(); setView('practice'); };
       $$('[data-read]').forEach(b => b.onclick = async () => { const {card} = await get('next?card=' + encodeURIComponent(b.dataset.read)); if (card) { M.card = card; M.result = null; learnCard(card, true); } });

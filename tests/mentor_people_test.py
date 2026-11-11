@@ -4,7 +4,7 @@
 
 The plugin is loaded the way Elaia loads it, inside a temporary HOME; every path (people file, databases, decks, the AI
 config) is in that folder. Names are placeholders ("Owner One", "Learner Two")."""
-import importlib.util, json, os, shutil, sqlite3, sys, tempfile, time, types, unittest
+import contextlib, importlib.util, io, json, os, shutil, sqlite3, sys, tempfile, threading, time, types, unittest
 
 R = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TMP = tempfile.mkdtemp(prefix='mentor-people-')
@@ -198,6 +198,95 @@ class People(unittest.TestCase):
         self.assertEqual(self.get('stats', LEARNER)[1]['cards'], 2)
         write(os.path.join(SHARE, 'decks-learner-two', 'more.json'), {**LDECK, 'id': 'more', 'name': 'More'})
         self.assertEqual(self.get('stats', LEARNER)[1]['cards'], 4, 'a file copied into her folder shows up on the next request')
+
+    # ---- 4.37: the fix round after review ----
+    def test_lesson_folder_reload_holds_the_lock(self):
+        """Review B2: several threads study as Learner Two while one keeps changing her lesson files. Before the fix the
+        reload wrote on her connection outside its lock: SQLite errors and ratings lost. Three rounds."""
+        self.start()
+        cards = [{'id': f'c{i}', 'prompt': f'Define: placeholder {i}', 'answer': f'placeholder answer {i}',
+                  'points': [{'idea': 'answer', 'any': ['answer']}]} for i in range(40)]
+        for round_ in range(3):
+            errors, lost, stop = [], [0], threading.Event()
+            def study():
+                for _ in range(25):
+                    try:
+                        code, r = self.get('today', LEARNER)
+                        code, r = self.get('next', LEARNER)
+                        c = r.get('card') if code == 200 else None
+                        if not c: continue
+                        code, a = self.post('answer', {'card': c['id'], 'text': 'answer', 'ms': 900}, LEARNER)
+                        if code != 200: errors.append(a); continue
+                        code, x = self.post('rate', {'attempt': a['attempt'], 'rating': 1}, LEARNER)
+                        if code != 200: lost[0] += 1
+                    except Exception as e: errors.append(repr(e))
+            def churn():
+                i = 0
+                while not stop.is_set():
+                    write(os.path.join(SHARE, 'decks-learner-two', 'busy.json'), {'id': 'busy', 'name': 'Busy', 'cards': cards[: 10 + i % 30]})
+                    i += 1; time.sleep(.002)
+            ws = [threading.Thread(target=study) for _ in range(4)]; ch = threading.Thread(target=churn)
+            ch.start(); [w.start() for w in ws]; [w.join() for w in ws]; stop.set(); ch.join()
+            self.assertEqual((errors[:3], lost[0]), ([], 0), f'round {round_ + 1}: no errors, no lost ratings')
+            db = sqlite3.connect(os.path.join(SHARE, 'mentor-learner-two.db'))
+            unrated = db.execute("SELECT COUNT(*) FROM attempts WHERE rating IS NULL").fetchone()[0]; db.close()
+            self.assertEqual(unrated, 0, 'every answer has its rating')
+
+    def test_two_owners_keep_their_histories(self):
+        """Review S1: mentor.db belongs to a person id stored in it, not to the order of lines in the people file."""
+        two = {'people': [{'id': 'owner-one', 'name': 'Owner One', 'role': 'owner'}, {'id': 'owner-b', 'name': 'Owner B', 'role': 'owner'},
+                          PEOPLE['people'][1]]}
+        self.start(two)
+        write(os.path.join(SHARE, 'decks-owner-b', 'own.json'), LDECK)        # a second owner studies her own lessons, as a learner does
+        one = {'person': 'owner-one', 'name': 'Owner One', 'role': 'owner'}; ob = {'person': 'owner-b', 'name': 'Owner B', 'role': 'owner'}
+        self.study(one, n=1, text='ONE-WAS-HERE'); self.study(ob, n=1, text='B-WAS-HERE')
+        def mine(path):
+            with contextlib.closing(sqlite3.connect(path)) as db: return {r[0] for r in db.execute("SELECT answer FROM attempts")}
+        self.assertEqual(mine(OWNER_DB), {'ONE-WAS-HERE'}); self.assertEqual(mine(os.path.join(SHARE, 'mentor-owner-b.db')), {'B-WAS-HERE'})
+        self.people({'people': [two['people'][1], two['people'][0], two['people'][2]]})      # lines swapped: Owner B first now
+        self.study(one, n=1, text='ONE-AGAIN'); self.study(ob, n=1, text='B-AGAIN')
+        self.assertEqual(mine(OWNER_DB), {'ONE-WAS-HERE', 'ONE-AGAIN'}, "Owner One keeps mentor.db")
+        self.assertEqual(mine(os.path.join(SHARE, 'mentor-owner-b.db')), {'B-WAS-HERE', 'B-AGAIN'}, "Owner B keeps hers")
+        self.assertFalse(os.path.exists(os.path.join(SHARE, 'mentor-owner-one.db')), 'no new empty database for Owner One')
+        self.assertEqual(self.get('learners', None)[1]['me'], 'owner-one', 'not told who: the person mentor.db belongs to')
+
+    def test_owner_id_renamed_takes_mentor_db_over(self):
+        self.start()
+        self.study(OWNER, n=1, text='OLD-ID')
+        renamed = {'people': [{'id': 'owner-renamed', 'name': 'Owner One', 'role': 'owner'}, PEOPLE['people'][1]]}
+        self.people(renamed)
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err): code, r = self.get('stats', {'person': 'owner-renamed', 'name': 'Owner One', 'role': 'owner'})
+        self.assertEqual((code, r['labels']), (200, 1), 'the renamed owner still studies mentor.db')
+        self.assertIn('owner-one', err.getvalue()); self.assertIn('owner-renamed', err.getvalue())
+        self.assertEqual(self.p.mentor.meta(self.p.book_for(None).db, 'person'), 'owner-renamed', 'the stored id is updated')
+
+    def test_role_comes_from_the_people_file(self):
+        """Mentor reads the role from its own people file, never from `who` alone."""
+        self.start()
+        code, r = self.get('next', {'person': 'stranger', 'name': 'Stranger', 'role': 'owner'})
+        self.assertEqual(code, 403); self.assertIn('people file', r['msg'])
+        code, r = self.get('next', {'person': None, 'role': 'owner'})
+        self.assertEqual(code, 403, 'an owner claim with no person is refused')
+        lt = {'person': 'learner-two', 'name': 'Learner Two', 'role': 'owner'}
+        self.assertEqual(self.get('learners', lt)[1]['role'], 'learner', 'an owner claim for a learner counts as learner')
+        self.assertTrue(self.get('next', lt, learner='owner-one')[1]['card']['id'].startswith('own-deck:'), '... and studies only as herself')
+        self.assertEqual(self.get('ai', lt)[1]['enabled'], False)
+        down = {'person': 'owner-one', 'name': 'Owner One', 'role': 'learner'}
+        self.assertEqual(self.get('learners', down)[1]['role'], 'learner', 'the smaller of the two roles counts')
+
+    def test_no_people_file_any_who_is_the_owner(self):
+        self.start(people=None)
+        self.assertEqual(self.get('learners', {'person': 'someone', 'role': 'owner'})[1]['me'], 'owner')
+        self.assertEqual(self.get('next', {'person': 'someone', 'role': 'none'})[0], 403)
+
+    def test_duplicate_id_is_logged(self):
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            self.start({'people': PEOPLE['people'] + [{'id': 'learner-two', 'name': 'Second Learner', 'role': 'learner'}]})
+            self.get('learners', OWNER)
+        self.assertIn('"learner-two" is used twice', err.getvalue())
+        self.assertEqual([x['name'] for x in self.get('learners', OWNER)[1]['people']], ['Owner One', 'Learner Two'])
 
 if __name__ == '__main__':
     try: unittest.main(verbosity=1 if '-v' not in sys.argv else 2)

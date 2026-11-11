@@ -41,7 +41,9 @@ def _read():
         for p in rows:
             if not isinstance(p, dict) or not str(p.get('name') or '').strip(): continue
             pid = ident(p.get('id') or p['name'])
-            if not pid or pid in seen: continue
+            if not pid: continue
+            if pid in seen:            # the first entry with that id counts; the second is named once in the log (4.37)
+                log_once(f'{FILE}: the id "{pid}" is used twice; only its first entry counts ({str(p["name"]).strip()[:60]} is left out)'); continue
             seen.add(pid)
             role = p.get('role') if p.get('role') in ('owner', 'learner') else 'learner'     # an unknown role gets the smaller one
             logins = [str(x).lower() for x in p.get('logins') or [] if isinstance(x, str)]
@@ -62,27 +64,36 @@ def people():
     return _cache[1]
 
 def owner_id():
-    """The first owner in the file: the person whose database is today's mentor.db."""
+    """The first owner in the file (mentor.db goes to them when it does not say whose it is: plugin.holder())."""
     return next(p['id'] for p in people()[0] if p['role'] == 'owner')
+
+def from_file():
+    """True when a people file was read; False with no file or a file that cannot be read (one person: the owner)."""
+    return os.path.isfile(FILE) and not people()[1]
 
 def find(pid):
     return next((p for p in people()[0] if p['id'] == pid), None)
 
-def studying(who, requested=None, write=False):
+def studying(who, requested=None, write=False, holder=None):
     """The person whose lessons and progress this request reads or writes: {id, name, role, owner_db}. A learner is always
     themself; an owner (or a request the server told nothing about: who is None) may name anyone with `requested`.
-    Raises Refused: 403 for nobody (role none), 404 for an id that is not in the file, 503 for a write while the file is broken."""
+    holder: whose history mentor.db is (plugin.holder(); None = the first owner, or the one person when there is no file).
+    The role comes from the people file Mentor reads itself, never from `who` alone: a person the file does not know is
+    refused, and the smaller of the two roles counts (4.37). With no people file every `who` but role none is the owner.
+    Raises Refused: 403 for nobody (role none) or a stranger, 404 for an id that is not in the file, 503 for a write while
+    the file is broken."""
     ps, problem = people()
     if write and problem: raise Refused(503, problem)
-    first = owner_id()
-    if who is None: me = find(first)
+    first = holder if holder and find(holder) else owner_id()
+    if who is None: me = find(first)                                  # not told: the owner, as before people existed
     else:
         role = who.get('role') if isinstance(who, dict) else None
         if role not in ('owner', 'learner'): raise Refused(403, 'Mentor is only for the people in the people file. Ask the owner to add you.')
-        me = find(ident(who.get('person')))
-        if me is None and role == 'owner': me = find(first)       # the server's owner without an entry of their own: the owner's lessons
-        if me is None: raise Refused(403, 'Mentor does not know you yet. Ask the owner to add you to the people file.')
-        if role == 'learner' and me['role'] != 'learner': me = dict(me, role='learner')    # the server's word on the role wins
+        if not from_file(): me = find(first)                          # no people file: everybody let in is the one person
+        else:
+            me = find(ident(who.get('person')))
+            if me is None: raise Refused(403, 'Mentor does not know you yet. Ask the owner to add you to the people file.')
+            if role == 'learner' and me['role'] != 'learner': me = dict(me, role='learner')    # the smaller role counts
     if me['role'] == 'learner': p = me                                # learner=... from a learner is ignored
     elif requested:
         p = find(ident(requested))
@@ -90,9 +101,9 @@ def studying(who, requested=None, write=False):
     else: p = me
     return {'id': p['id'], 'name': p['name'], 'role': p['role'], 'owner_db': p['id'] == first, 'me': me['id'], 'my_role': me['role']}
 
-def listing(who):
+def listing(who, holder=None):
     """GET api/mentor/learners: {me, role, people: [{id, name, role}]}; a learner sees only their own entry."""
-    me = studying(who)
+    me = studying(who, holder=holder)
     ps, problem = people()
     rows = [{'id': p['id'], 'name': p['name'], 'role': p['role']} for p in ps]
     if me['my_role'] == 'learner': rows = [r for r in rows if r['id'] == me['me']]
