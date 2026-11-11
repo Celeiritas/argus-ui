@@ -198,3 +198,29 @@ dialog .confirm{border-color:var(--danger);color:var(--danger)}
    bar becomes a rail down the left edge (scene.css, after the bar's own rules), and content may run wider. Short screens (a phone on its
    side, scene.css): Argus shrinks so the page starts on the first screen. */
 @media (min-width:1200px){.home{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 var(--s4);align-items:start;max-width:1400px}.home>.places{grid-column:1 / -1}}
+/* Watch: trouble first (core.js troubleBlock, docs/home.md "Trouble first"). One block per broken thing, three plain lines, the
+   declared fix as one press-and-hold button in the bolt's look. Compact rows for checks with no card; "What happened lately". */
+.trouble,.lately{position:relative;z-index:2;background:rgb(28 33 39 / .92);border-radius:12px;padding:var(--s2) var(--s4) var(--s3);margin-top:var(--s4)}
+.trouble{border:1px solid var(--bad)}
+.trouble>h2,.lately>h2{margin:var(--s2) 0;font-size:var(--fs-h2);font-weight:600;line-height:1.25}
+.tblock{position:relative;padding:var(--s3) 0;border-top:1px solid var(--line)}
+.tblock h3{margin:0;font-size:var(--fs-body);font-weight:600;line-height:1.35;color:var(--snow)}
+.tw{margin:2px 0 var(--s2);font-size:var(--fs-meta);line-height:1.4;color:var(--powder)}
+.tl{margin:var(--s1) 0 0;font-size:var(--fs-sec);line-height:1.45;color:var(--snow);max-width:70ch}.tl b{color:var(--powder);font-weight:600}
+.fixbtn{margin-top:var(--s3);background:var(--bolt);color:#1C2127;border-color:var(--bolt)}.fixbtn:hover{border-color:#fff}
+.fixbtn.hold .hold-ring{background:conic-gradient(#1C2127 calc(var(--p,0) * 360deg),rgba(28,33,39,.3) 0)}
+.need .nb{min-width:0}.need .nb .tl{font-size:var(--fs-sec)}
+.need .nacts{display:flex;flex-wrap:wrap;gap:var(--s2);align-items:center;justify-content:flex-end}.need .nacts .fixbtn{margin-top:0}
+@media (max-width:600px){.need .nacts{grid-column:1 / -1;justify-content:stretch}.need .nacts>*{flex:1 1 auto;justify-content:center}}
+.crows{list-style:none;margin:0 0 var(--s2);padding:var(--s1) var(--s3);background:var(--card);border:1px solid var(--line);border-radius:12px}
+.crow{display:flex;align-items:center;gap:var(--s3);min-height:var(--hit);padding:var(--s1) 0;border-top:1px solid var(--line)}.crow:first-child{border-top:0}
+.cdot{width:10px;height:10px;border-radius:50%;flex:none;background:var(--frost)}
+.crow.ok .cdot{background:var(--ok)}.crow.bad .cdot{background:var(--bad)}.crow.busy .cdot{background:var(--run)}
+.cw{display:flex;flex-wrap:wrap;gap:0 var(--s2);align-items:baseline;min-width:0}.cw b{font-size:var(--fs-sec);font-weight:600}.cw span{font-size:var(--fs-sec);color:var(--powder)}
+.crow.bad .cw span{color:var(--snow)}
+.worksline{margin:var(--s2) 0 0;font-size:var(--fs-sec);line-height:1.4;color:var(--powder)}.worksline b{color:var(--ok);font-weight:600}
+.events{list-style:none;margin:0;padding:0}
+.ev{padding:var(--s2) 0 var(--s2) var(--s3);border-top:1px solid var(--line);box-shadow:inset 3px 0 0 var(--ok)}.ev:first-child{border-top:0}
+.ev.bad{box-shadow:inset 3px 0 0 var(--bad)}.ev.warn{box-shadow:inset 3px 0 0 var(--run)}
+.ev p{margin:0;max-width:70ch}.et{font-size:var(--fs-sec);font-weight:600;color:var(--snow)}.eb{font-size:var(--fs-sec);color:var(--powder);line-height:1.45}
+.ew{font-size:var(--fs-meta);color:var(--powder)}

@@ -127,11 +127,67 @@ function askStatus() {
 }
 // Trouble on Watch, counted once everywhere (the bar, Argus's badge, Today's line): tasks that failed, tasks that run but do not
 // do their job (works === false, docs/checks.md), and alert-level alerts that are not already about one of those tasks.
+// Checks with no task card of their own (a media program, a drive: docs/checks.md) count too, once each: the alert the server
+// makes from such a check is that check, not a second thing.
+const jobIs = (j, name) => !!name && (j.job === name || (!!j.base && j.base === name));
+const checksFor = j => (S?.watch || []).filter(w => jobIs(j, w.job));
+const hasCard = w => (S?.jobs || []).some(j => jobIs(j, w.job));
 function trouble() {
   const tasks = (S?.jobs || []).filter(j => j.state === 'failed' || j.works === false);
-  const alerts = (S?.alerts || []).filter(a => a.level === 'alert' && !tasks.some(j => a.job === j.job || (j.base && a.job === j.base)));
-  return {tasks, alerts, n: tasks.length + alerts.length};
+  const checks = (S?.watch || []).filter(w => w.works === false && w.code !== 'read-hung' && !hasCard(w));
+  const alerts = (S?.alerts || []).filter(a => a.level === 'alert' && !checks.some(w => a.file === 'watch-' + w.id) && !tasks.some(j => jobIs(j, a.job)));
+  return {tasks, alerts, checks, n: tasks.length + alerts.length + checks.length};
 }
+// One entry per broken thing, in the page's order (programs that run but do not work first: they have a fix; then failed tasks,
+// then agents' alerts), each in three plain lines: what is wrong and since when, what Argus did (or would have done), what you
+// can do; and the one fix that checks.json declares, when there is one (docs/home.md "Trouble first").
+const agentOf = w => { const k = (w.job || '').split('-')[0]; return AGENT_KEYS.includes(k) && !SIDE.includes(k) ? k : 'argus'; };
+const agentName = k => (S.personas.find(p => p.key === k) || {name: k}).name;
+const sinceText = t => { const s = since(t); return s ? `since ${s}` : ''; };
+const CAN = {'drive-missing': 'Plug the drive in again. Programs that use it may need a restart after that.',
+  'drive-dropped': 'Plug the drive in again. Programs that use it may need a restart after that.',
+  'drive-readonly': 'The drive needs a look on the server: it stopped taking writes, usually after errors.',
+  'unit-down': 'Start it again on the server, or read its log there.', 'no-answer': 'Open its web address to see what it says. A restart often helps.'};
+function checkItem(w, j) {
+  const agent = j ? j.persona : agentOf(w), can = !/^drive-/.test(w.code) && w.fix;
+  const say = w.drive ? (w.title_line || w.reason) : w.code === 'unit-down' ? `${w.title} is not running` : `${w.title} is running but not working`;
+  return {key: 'check-' + w.id, agent, who: `${agentName(agent)} · Watch`, what: w.title_line || `${w.title}: ${w.reason}`, when: sinceText(w.since), say,
+    did: w.fixing ? 'Restarting it now, as you asked. Argus looks again for up to 90 seconds.' : w.note || (w.fix ? 'Argus did not restart it and waits for your yes.' : 'Argus cannot fix this by himself, so he tells you.'),
+    can: w.fixing ? 'Wait a moment: this changes when Argus knows how it went.' : can ? `Hold the button to restart ${w.fix_say}. Argus then looks again and tells you how it went.` : CAN[w.code] || 'Look at it on the server.',
+    fix: can && !w.fixing && role() === 'owner' ? {id: w.id, label: `Restart ${w.fix_say}`} : null, href: WATCH};
+}
+function taskItem(j) {
+  const why = j.works_reason || j.reason;
+  return {key: 'task-' + j.job, agent: j.persona, who: `${agentName(j.persona)} · Watch`, what: `${j.name} failed${why ? `: ${why}` : ''}`, say: `${j.name} failed`,
+    when: j.last && j.last !== '—' ? `last ran ${j.last}` : '', did: 'Argus does not restart a failed task by himself.',
+    can: `Read its log on its card, then press ${always(j) ? 'Restart' : 'Run'} to try again.`, fix: null, href: WATCH};
+}
+function alertItem(a) {
+  const k = a.job.split('-')[0], g = S.personas.find(p => p.key === k), name = g ? g.name : k, watch = g && !SIDE.includes(k);
+  return {key: `alert-${a.file || a.job}`, agent: k, who: g ? `${name} · Watch` : a.job, what: a.message, say: a.message, when: sinceText(a.since), of: a.link || 'argus',
+    did: `${name} raised this; Argus passes it on.`, can: a.link ? `Open ${sectionName(a.link)} to deal with it.` : `Look at ${name}'s tasks on Watch.`, fix: null,
+    label: a.link ? `Open ${sectionName(a.link)}` : `Look at ${name} on Watch`, href: a.link ? url(a.link) : watch ? (k === 'argus' ? WATCH + '/argus' : url(k)) : WATCH};
+}
+function troubleItems() {
+  const {tasks, alerts, checks} = trouble(), bad = j => checksFor(j).find(w => w.works === false);
+  return [...tasks.filter(bad).map(j => checkItem(bad(j), j)), ...checks.map(w => checkItem(w)), ...tasks.filter(j => !bad(j)).map(taskItem), ...alerts.map(alertItem)];
+}
+const troubleLines = it => `<p class="tl"><b>Argus:</b> ${esc(it.did)}</p><p class="tl"><b>You:</b> ${esc(it.can)}</p>`;
+const fixButton = it => it.fix ? `<button type="button" class="fixbtn" data-fix="${esc(it.fix.id)}">${esc(it.fix.label)}</button>` : '';
+function troubleBlock(it) {
+  return `<article class="tblock" data-trouble="${esc(it.key)}" aria-labelledby="t-${esc(it.key)}"><h3 id="t-${esc(it.key)}">${esc(it.what)}</h3>
+    <p class="tw">${esc(it.who)}${it.when ? ` · ${esc(it.when)}` : ''}</p>${troubleLines(it)}${fixButton(it)}</article>`;
+}
+// The owner's yes (POST api/watch/fix): only the fix checks.json declares for that check runs. Press and hold, like every
+// action that changes what runs; the toast says what the server said, and the next refresh shows "Restarting" on the block.
+async function askFix(id) {
+  try {
+    const r = await fetch(url('api/watch/fix'), {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id})});
+    const j = await r.json(); toast(j.msg || (j.ok ? 'Restarting.' : "Couldn't start the fix. Try again in a moment."));
+    setTimeout(refresh, 300); return !!j.ok;
+  } catch (e) { toast("Couldn't reach the server to restart it. Check that it's on, then try again."); return false; }
+}
+function wireFixes() { $$('#main button[data-fix]:not(.hold)').forEach(b => holdConfirm(b, () => askFix(b.dataset.fix))); }
 // what needs you in a place: a number when it is known, true when the place needs you but gives no number, 0 when nothing
 function needCount(id) {
   if (id === 'argus') return trouble().n;
@@ -255,7 +311,8 @@ function render() {
   phoneAlerts.hint();                                                            // Today's one quiet line about phone alerts (alerts.js)
   const by = {}; S.jobs.forEach(j => (by[j.persona] ||= []).push(j));
   const lone = {}; loneAlerts().forEach(a => (lone[a.job.split('-')[0]] ||= []).push(a));   // alerts with no task card of their own
-  const shown = S.personas.filter(p => (by[p.key] || lone[p.key] || p.key === only) && !SIDE.includes(p.key));
+  const rows = {}; (S.watch || []).filter(w => !hasCard(w)).forEach(w => (rows[agentOf(w)] ||= []).push(w));   // checks with no card: compact rows
+  const shown = S.personas.filter(p => (by[p.key] || lone[p.key] || rows[p.key] || p.key === only) && !SIDE.includes(p.key));
   const chip = (k, label, href) => `<a href="${href}" class="${only === k ? 'on' : ''}" ${only === k ? 'aria-current="page"' : ''}>${esc(label)}</a>`;
   $('#nav').innerHTML = chip(null, 'All', WATCH) + shown.map(p => chip(p.key, p.name, p.key === 'argus' ? WATCH + '/argus' : url(p.key))).join('');
   if (plugin) { look.retarget(); return leafy.show(plugin); }
@@ -264,22 +321,31 @@ function render() {
   if (here === 'phone') { look.retarget(); return phoneAlerts.show(); }
   // trouble first: failed (or alerted), then running, then ok, then the rest; groups ordered by their worst card
   const rank = j => j.state === 'failed' || j.works === false || alertsFor(j).some(a => a.level === 'alert') ? 0 : j.state === 'running' ? 1 : j.state === 'ok' ? 2 : 3;
-  const worst = p => Math.min(4, ...(by[p.key] || []).map(rank), ...(lone[p.key] || []).map(a => a.level === 'alert' ? 0 : 2));
+  const worst = p => Math.min(4, ...(by[p.key] || []).map(rank), ...(lone[p.key] || []).map(a => a.level === 'alert' ? 0 : 2), ...(rows[p.key] || []).map(w => w.works === false ? 0 : 2));
   const list = (only ? shown.filter(p => p.key === only) : shown).map((p, i) => [p, i]).sort((a, b) => worst(a[0]) - worst(b[0]) || a[1] - b[1]).map(x => x[0]);
-  $('#main').innerHTML = list.map(p => {
+  // Trouble first: one block per broken thing, above the groups (docs/home.md "Trouble first"); "What happened lately" at the end
+  const items = only ? troubleItems().filter(it => it.agent === only) : troubleItems();
+  const top = items.length ? `<section class="trouble" aria-labelledby="trouble-h"><h2 id="trouble-h">${items.length === 1 ? 'One thing needs a look' : `${items.length} things need a look`}</h2>${items.map(troubleBlock).join('')}</section>` : '';
+  const end = only ? '' : `<section class="lately" aria-labelledby="lately-h"><h2 id="lately-h">What happened lately</h2><div id="lately">${lately.html || '<p class="quiet">Loading…</p>'}</div></section>`;
+  $('#main').innerHTML = top + (list.map(p => {
     const js = (by[p.key] || []).map((j, i) => [j, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(x => x[0]), ls = lone[p.key] || [];
+    const cr = (rows[p.key] || []).map((w, i) => [w, i]).sort((a, b) => (a[0].works === false ? 0 : 1) - (b[0].works === false ? 0 : 1) || a[1] - b[1]).map(x => x[0]);
     const c = s => js.filter(j => j.state === s).length, na = (S.alerts || []).filter(a => a.level === 'alert' && a.job.split('-')[0] === p.key).length;
     const counts = (na ? [`<span class="failed">${na} alert${na === 1 ? '' : 's'}</span>`] : []).concat(['failed', 'running', 'frozen'].filter(s => c(s)).map(s => `<span class="${s}">${c(s)} ${s}</span>`)).concat(`${js.length} task${js.length === 1 ? '' : 's'}`).join(' · ');
     return `<section class="persona" aria-labelledby="h-${p.key}"><a class="ph" href="${p.key === 'argus' ? WATCH + '/argus' : url(p.key)}"><img src="static/icons/${p.key}.png" alt=""><div><h2 id="h-${p.key}">${esc(p.name)}</h2><div class="dom">${esc(p.domain)}</div></div><div class="counts">${counts}</div></a>
-      ${js.length || ls.length ? `<div class="grid">${ls.map(alertCard).join('')}${js.map(card).join('')}</div>` : `<div class="empty"><b>No ${esc(p.name)} tasks yet</b>Background jobs named <code>${esc(p.key)}-…</code> appear here on their own, so you can watch and run them. <a href="https://github.com/Celeiritas/argus-ui#which-jobs-show-up">Learn how to add a task</a></div>`}</section>`;
-  }).join('') || `<div class="empty"><b>No tasks found</b>Argus shows systemd --user jobs whose names start with an agent's key. <a href="https://github.com/Celeiritas/argus-ui#which-jobs-show-up">Learn how to add a task</a></div>`;
+      ${cr.length ? `<ul class="crows" aria-label="${esc(p.name)}: checks">${cr.map(checkRow).join('')}</ul>` : ''}
+      ${js.length || ls.length ? `<div class="grid">${ls.map(alertCard).join('')}${js.map(card).join('')}</div>` : cr.length ? '' : `<div class="empty"><b>No ${esc(p.name)} tasks yet</b>Background jobs named <code>${esc(p.key)}-…</code> appear here on their own, so you can watch and run them. <a href="https://github.com/Celeiritas/argus-ui#which-jobs-show-up">Learn how to add a task</a></div>`}</section>`;
+  }).join('') || `<div class="empty"><b>No tasks found</b>Argus shows systemd --user jobs whose names start with an agent's key. <a href="https://github.com/Celeiritas/argus-ui#which-jobs-show-up">Learn how to add a task</a></div>`) + end;
+  if (!only) askLately();
+  wireFixes();
   $$('.card.frozen').forEach(addStone);
   if (armed) arm(armed, true);
   look.retarget();
 }
 /* ---------- alert files (docs/alerts.md): an agent's message on its task's card, or a card of its own ---------- */
 const alertsFor = j => (S.alerts || []).filter(a => a.job === j.job || (j.base && a.job === j.base));
-const loneAlerts = () => (S.alerts || []).filter(a => !S.jobs.some(j => alertsFor(j).includes(a)));
+// alerts with no task card; an alert the server made from a check is shown as that check's row instead (checkRow)
+const loneAlerts = () => (S.alerts || []).filter(a => !S.jobs.some(j => alertsFor(j).includes(a)) && !(S.watch || []).some(w => a.file === 'watch-' + w.id));
 function sectionName(id) {
   return (S.personas.find(p => p.key === id) || PLUGINS.find(p => p.id === id) || {name: id === 'olympus' ? 'Olympus' : id}).name;
 }
@@ -299,13 +365,44 @@ function alertCard(a) {
 }
 // A task's card. Words: "frozen" (Medusa's stone), Pause / Resume, and Run for a task that starts and ends, Restart for an
 // always-on one (as the server's bolt does). Pause sits apart from Run (24 px), so a thumb can't hit the wrong one.
-const always = j => j.next === 'always on';
+const always = j => typeof j.restarts === 'boolean' ? j.restarts : j.next === 'always on';   // the server says (api/state `restarts`); an older one did not
+// Every check is on Watch while it works too (docs/checks.md): on its task's card as one line, or as a compact row of its own
+// under the agent that owns it (a check whose job has no card: a media program, a drive).
+function worksLine(j) {
+  const rs = checksFor(j); if (!rs.length || j.works !== true) return '';
+  const w = rs[0];
+  return `<p class="worksline"><b>${w.again ? 'Works again' : 'Works'}</b>${w.since ? ` · ${esc(sinceText(w.since))}` : ''}${rs.length > 1 ? ` · ${rs.length} checks` : ''}</p>`;
+}
+function checkRow(w) {
+  const st = w.fixing ? ['busy', 'Restarting…'] : w.works === true ? ['ok', w.again ? 'Works again' : 'Works']
+    : w.works === false ? ['bad', w.drive ? w.reason : w.code === 'unit-down' ? 'Not running' : `Running, but not working: ${w.reason}`]
+    : ['unknown', `Not known yet${w.reason ? `: ${w.reason}` : ''}`];
+  return `<li class="crow ${st[0]}" data-check="${esc(w.id)}"><span class="cdot" aria-hidden="true"></span><span class="cw"><b>${esc(w.title)}</b><span>${esc(st[1])}${w.since && !w.fixing ? ` · ${esc(sinceText(w.since))}` : ''}</span></span></li>`;
+}
+// "What happened lately": the newest 10 events (api/events) as plain sentences, each with a relative and an exact time.
+const lately = {html: '', at: 0, since: ''};
+function ago(t) {
+  const d = new Date(t), s = (Date.now() - d) / 1000; if (isNaN(d)) return '';
+  const n = (v, w) => `${v} ${w}${v === 1 ? '' : 's'} ago`;
+  return s < 60 ? 'just now' : s < 3600 ? n(Math.floor(s / 60), 'minute') : s < 86400 ? n(Math.floor(s / 3600), 'hour') : n(Math.floor(s / 86400), 'day');
+}
+const exact = t => { const d = new Date(t); return isNaN(d) ? '' : d.toLocaleString([], {weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'}); };
+function latelyHtml(evs, sinceAt) {
+  if (!evs.length) return `<p class="quiet">Nothing has happened since ${esc(exact(sinceAt) || 'the server started')}.</p>`;
+  return `<ol class="events">${evs.map(e => `<li class="ev ${e.level === 'alert' ? 'bad' : e.level === 'warn' ? 'warn' : 'good'}"><p class="et">${esc(e.title)}</p>${e.body ? `<p class="eb">${esc(e.body)}</p>` : ''}<p class="ew"><time datetime="${esc(e.at)}">${esc(ago(e.at))}</time> · ${esc(exact(e.at))}</p></li>`).join('')}</ol>`;
+}
+async function askLately() {
+  if (Date.now() - lately.at < 10000) return; lately.at = Date.now();
+  try { const r = await fetch(url('api/events?limit=10'), {cache: 'no-store'}); const j = await r.json(); lately.html = latelyHtml(j.events || [], j.since); }
+  catch (e) { lately.html = '<p class="quiet">Could not load what happened. It tries again with the next refresh.</p>'; lately.at = 0; }
+  const el = $('#lately'); if (el && el.innerHTML !== lately.html) el.innerHTML = lately.html;
+}
 function card(j) {
   const fz = j.state === 'frozen', al = alertsFor(j), lvl = al.some(a => a.level === 'alert') ? 'alerted' : al.length ? 'warned' : '';
   const go = always(j) ? 'Restart' : 'Run', why = (j.state === 'failed' || j.works === false) && (j.works_reason || j.reason);   // why, when the server says
   return `<article class="card ${fz ? 'frozen' : ''} ${lvl}${j.works === false ? ' notworking' : ''}" data-job="${esc(j.job)}" data-state="${j.state}" data-canfreeze="${j.canfreeze}" data-canrun="${j.canrun !== false}" aria-label="${esc(j.job)}, ${fz ? 'frozen (paused)' : j.state}">
    <div class="top"><div><div class="job">${esc(j.name)}</div><div class="unit">${esc(j.job)}${j.runs > 1 ? ` · latest of ${j.runs} runs` : ''}</div></div><span class="pill ${j.state}">${fz ? 'frozen' : j.state}</span></div>
-   ${why ? `<p class="why"><b>${j.works === false && j.state !== 'failed' ? 'Running, but not working' : 'Why'}:</b> ${esc(why)}</p>` : ''}
+   ${why ? `<p class="why"><b>${j.works === false && j.state !== 'failed' ? 'Running, but not working' : 'Why'}:</b> ${esc(why)}</p>` : worksLine(j)}
    <dl><dt>Last</dt><dd title="${esc(j.last)}">${esc(j.last)}</dd><dt>Mem</dt><dd>${j.mem}</dd><dt>Next</dt><dd title="${esc(j.next)}">${esc(j.next)}</dd><dt>Wrote</dt><dd>${j.wrote}</dd>${fz ? `<dt>Frozen</dt><dd class="wide">since ${esc(j.frozen_at)}</dd>` : ''}</dl>
    ${j.notes ? `<p class="notes">${esc(j.notes)}</p>` : ''}${al.map(alertNote).join('')}
    <div class="actions"><details data-log="${esc(j.job)}"><summary>Show log</summary><pre>Loading…</pre></details>
@@ -319,7 +416,7 @@ function addStone(c) {
   s.innerHTML = `<svg viewBox="0 0 100 60" preserveAspectRatio="none"><path d="M8 0 L14 12 L10 22 L18 34 M60 0 L56 10 L64 18 L58 30 L66 44 M92 60 L86 48 L90 40 L82 30 M30 60 L34 50 L28 42" stroke="#22302a" stroke-width=".7" fill="none" opacity=".6" vector-effect="non-scaling-stroke"/></svg>`;
   c.prepend(s);
 }
-async function refresh() { if (busy) return; try { const r = await fetch(url('api/state'), {cache: 'no-store'}); S = await r.json(); const open = $$('details[open]').map(d => d.dataset.log); render(); open.forEach(k => { const d = $(`details[data-log="${CSS.escape(k)}"]`); if (d) { d.open = true; loadLog(d); } }); } catch (e) {} }
+async function refresh() { if (busy || $('.hold.holding,.hold[aria-busy]')) return;   /* never redraw a button that is being held */ try { const r = await fetch(url('api/state'), {cache: 'no-store'}); S = await r.json(); const open = $$('details[open]').map(d => d.dataset.log); render(); open.forEach(k => { const d = $(`details[data-log="${CSS.escape(k)}"]`); if (d) { d.open = true; loadLog(d); } }); } catch (e) {} }
 async function post(what, job) { const r = await fetch(url('api/' + what), {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({job})}); return r.json(); }
 async function loadLog(d) { try { const r = await fetch(url('api/log/' + encodeURIComponent(d.dataset.log))); const j = await r.json(); $('pre', d).textContent = j.log || 'Nothing logged yet.'; } catch (e) { $('pre', d).textContent = "Couldn't load the log. Close and reopen it to try again."; } }
 document.addEventListener('toggle', e => { if (e.target.matches('details[data-log]') && e.target.open) loadLog(e.target); }, true);
@@ -353,13 +450,13 @@ const look = (() => {
     // A learner does not get him at all: no badge, no words about the owner's tasks, no chime, no way into Watch.
     const owner = role() === 'owner'; A.hidden = !owner; A.tabIndex = owner && side ? 0 : -1;
     if (!owner) { A.removeAttribute('aria-label'); alarmed = false; lastBad = null; return; }
-    const {tasks: bad, alerts: up, n} = trouble();
-    target = $('.card[data-state="failed"]') || $('.card.alerted') || $('.card.notworking');
+    const {tasks: bad, alerts: up, checks: ck, n} = trouble();
+    target = $(".tblock") || $('.card[data-state="failed"]') || $('.card.alerted') || $('.card.notworking');
     alarmed = n > 0; A.classList.toggle('glare', alarmed); A.classList.toggle('calm', !n);
     $('#alarm').hidden = !n; $('#alarmN').textContent = n > 1 ? n : '';
     const fl = bad.filter(j => j.state === 'failed'), nw = bad.filter(j => j.state !== 'failed');
     const say = n ? [fl.length && `${fl.length} task${fl.length === 1 ? '' : 's'} failed: ${fl.map(j => j.job).join(', ')}`, nw.length && `${nw.length} running but not working: ${nw.map(j => j.job).join(', ')}`,
-      up.length && `${up.length} alert${up.length === 1 ? '' : 's'}: ${up.map(a => `${a.job}, ${a.message}`).join('; ')}`].filter(Boolean).join('. ') : 'all tasks well';
+      ck.length && `${ck.length} not working: ${ck.map(w => w.title).join(", ")}`, up.length && `${up.length} alert${up.length === 1 ? '' : 's'}: ${up.map(a => `${a.job}, ${a.message}`).join('; ')}`].filter(Boolean).join('. ') : 'all tasks well';
     A.setAttribute('aria-label', side ? `Argus: ${say}. Open the watch page` : `Argus, the watchman: ${say}`);
     if (lastBad !== null && n > lastBad) alarmChime();               // a short alarm only when something newly fails
     lastBad = n;

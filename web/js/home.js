@@ -10,31 +10,22 @@ const home = (() => {
   let had = null;                          // how many things needed you at the last draw (null: not drawn yet)
   let seen = null;                         // the rows drawn last time, by key (null: not drawn yet)
   const plural = (n, one, many = one + 's') => `${n} ${n === 1 ? one : many}`;
-  // the things to do: tasks in trouble first, then alerts, then each section that says it needs you. `of`: the place it belongs
-  // to; `n`: how many things the row stands for, so the line above counts what the bar counts (trouble() in core.js).
+  // the things to do: one row per broken thing on Watch first (troubleItems() in core.js: what is wrong and since when, what Argus
+  // did, what you can do, and the declared fix as a hold button), then each section that says it needs you. `of`: the place it
+  // belongs to; `n`: how many things the row stands for, so the line above counts what the bar counts (trouble() in core.js).
   function needs() {
-    const out = [], {tasks, alerts} = trouble(), agent = k => S.personas.find(p => p.key === k);
-    const failed = tasks.filter(j => j.state === 'failed'), broken = tasks.filter(j => j.state !== 'failed');
-    const why = tasks.length === 1 && (tasks[0].works_reason || tasks[0].reason) ? `: ${tasks[0].works_reason || tasks[0].reason}` : '';
-    const said = [failed.length && `${plural(failed.length, 'task')} failed: ${failed.map(j => j.job).join(', ')}`,
-      broken.length && `${plural(broken.length, 'task')} running but not working: ${broken.map(j => j.job).join(', ')}`].filter(Boolean).join(' · ');
-    if (tasks.length) out.push({key: 'failed', of: 'argus', n: tasks.length, mark: icon('argus'), who: 'Argus · Watch', level: 'alert',
-      text: said + why, label: `Look at ${plural(tasks.length, failed.length === tasks.length ? 'failed task' : 'task')}`, href: WATCH});
-    alerts.forEach(a => { const k = a.job.split('-')[0], g = agent(k), name = g ? g.name : k, watch = g && !SIDE.includes(k);
-      out.push({key: `alert-${a.file || a.job}`, of: a.link || 'argus', n: 1, mark: icon(k), level: 'alert', text: a.message,
-        who: g ? `${name} · Watch` : a.job,                          // who, in the same plain words as the other rows
-        label: a.link ? `Open ${sectionName(a.link)}` : `Look at ${name} on Watch`,
-        href: a.link ? url(a.link) : watch ? (k === 'argus' ? WATCH + '/argus' : url(k)) : WATCH}); });   // Watch, showing that agent's tasks
+    const out = troubleItems().map(it => ({key: it.key, of: it.of || 'argus', n: 1, mark: icon(AGENT_KEYS.includes(it.agent) ? it.agent : 'argus'), level: 'alert',
+      who: it.who, text: it.what, item: it, label: it.label || 'Look at it on Watch', href: it.href}));
     PLUGINS.forEach(p => { const s = STATUS[p.id], c = needCount(p.id); if (s && s.needs) out.push({key: `needs-${p.id}`, of: p.id, n: c === true ? 1 : c,
       mark: pluginMark(p), who: placeName(p.id, p.name), level: 'needs', text: s.line, label: s.action || `Open ${p.name}`, href: url(p.id)}); });
     return visible(out.map(n => ({...n, id: n.of})));
   }
   const placeName = (id, name) => { const w = WORDS[id]; return w ? `${w.word}${w.realm && w.realm !== w.word ? ` · ${w.realm}` : ''}` : name; };
-  const row = (n, fresh) => `<li class="need ${n.level}${fresh ? ' fresh' : ''}" data-key="${esc(n.key)}"><span class="nmark">${n.mark}</span><p><small>${esc(n.who)}</small>${esc(n.text)}</p><a class="go" href="${esc(n.href)}">${esc(n.label)}</a></li>`;
+  const row = (n, fresh) => `<li class="need ${n.level}${fresh ? ' fresh' : ''}" data-key="${esc(n.key)}"><span class="nmark">${n.mark}</span><div class="nb"><p><small>${esc(n.who)}${n.item?.when ? ` · ${esc(n.item.when)}` : ''}</small>${esc(n.text)}</p>${n.item ? troubleLines(n.item) : ''}</div><div class="nacts">${n.item ? fixButton(n.item) : ''}<a class="go" href="${esc(n.href)}">${esc(n.label)}</a></div></li>`;
   // one card per section, in the bar's order: Watch, then each plugin with its status line (a static one with its version)
   function cards() {
     const st = s => s === undefined ? 'Checking…' : s === null ? 'No news' : s.line;
-    const tr = trouble(), fails = tr.n, allFailed = !tr.alerts.length && tr.tasks.every(j => j.state === 'failed');
+    const tr = trouble(), fails = tr.n, allFailed = !tr.alerts.length && !tr.checks.length && tr.tasks.every(j => j.state === 'failed');
     return sections().filter(e => !e.kind && e.id !== 'home' && e.id !== 'olympus' && e.id !== 'phone' && visible([e]).length).map(e => {
       const p = PLUGINS.find(x => x.id === e.id);
       const line = e.id === 'argus' ? (!fails ? `All ${plural(S.jobs.length, 'task')} well` : allFailed ? `${plural(fails, 'task')} failed` : `${plural(fails, 'thing')} need${fails === 1 ? 's' : ''} a look`)
@@ -67,6 +58,7 @@ const home = (() => {
     gone.forEach(([li, i]) => { li.classList.remove('fresh'); li.classList.add('leaving'); li.setAttribute('aria-hidden', 'true'); li.inert = true;
       ul.insertBefore(li, ul.children[i] || null);
       li.animate([{opacity: 1, transform: 'none'}, {opacity: 0, transform: 'translateX(12px)'}], {duration: 200, easing: 'ease-in', fill: 'forwards'}).finished.then(() => li.remove(), () => li.remove()); });
+    wireFixes();                           // the fix buttons are press-and-hold (holdConfirm), as on Watch
     if (focused) $$('#main a').find(a => a.getAttribute('href') === focused)?.focus();
     if (had > 0 && !list.length) look.react('content');       // Needs you just emptied: Argus gives a slow, contented blink
     had = list.length; seen = keys;

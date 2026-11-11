@@ -22,8 +22,11 @@ run(async b => {
   await need('deploy waiting').waitFor({timeout: 5000});
   const n = await p.locator('.needlist .need').count();
   check((await p.locator('#needs-h').textContent()).trim() === `${n} things need you`, `one line says the state in words ("${(await p.locator('#needs-h').textContent()).trim()}")`);
-  check(/task failed/.test(await p.locator('.need').first().textContent()) && await p.locator('.need').first().locator('a.go').textContent() === 'Look at 1 failed task', 'the failed thing comes first, with "Look at 1 failed task"');
-  check(/\/argus\/argus$/.test(await need('task failed').locator('a.go').getAttribute('href')), 'and the button goes to Watch');
+  const task = p.locator('.need[data-key^="task-"]');           // one row per broken thing (4.39.0): what, since, what Argus did, what you can do
+  const t1 = (await p.locator('.need').first().textContent()).replace(/\s+/g, ' ');
+  check(/rename failed/.test(t1) && await p.locator('.need').first().locator('a.go').textContent() === 'Look at it on Watch', 'the failed thing comes first, with "Look at it on Watch": ' + t1);
+  check(/Argus: Argus does not restart a failed task by himself\./.test(t1) && /You: Read its log on its card, then press Run to try again\./.test(t1), 'in plain words: what Argus did and what you can do');
+  check(/\/argus\/argus$/.test(await task.first().locator('a.go').getAttribute('href')), 'and the button goes to Watch');
   check(await need('deploy waiting').locator('a.go').textContent() === 'Review app 9.9.9' && /Approvals · Zeus/.test(await need('deploy waiting').textContent()), 'a section that needs you: its line, its plain name, its verb-first button');
   const place = t => p.locator('.place', {hasText: t});
   for (const t of ['Watch', 'Study', 'Approvals', 'Spartamelee', 'Demo Server']) check(await place(t).count() === 1, `a card for ${t}`);
@@ -56,7 +59,7 @@ run(async b => {
   fs.writeFileSync(path.join(AL, 'zeus.json'), JSON.stringify({job: 'zeus-approve', level: 'alert', message: 'Janus could not verify the approval; the request is held', link: 'demo-server'}));
   await p.evaluate(() => refresh()); await p.waitForTimeout(700);
   const al = need('Janus could not verify');
-  check(await al.count() === 1 && await al.locator('a.go').textContent() === 'Open Demo Server' && /task failed/.test(await p.locator('.need').first().textContent()), 'an alert gets a row, with its link as the button, after the failed task');
+  check(await al.count() === 1 && await al.locator('a.go').textContent() === 'Open Demo Server' && /rename failed/.test(await p.locator('.need').first().textContent()), 'an alert gets a row, with its link as the button, after the failed task');
   check(/^Zeus · Watch/.test(await al.locator('small').textContent()), 'an alert row says who in plain words (Zeus · Watch)');
   fs.writeFileSync(path.join(AL, 'hermes.json'), JSON.stringify({job: 'hermes-sort', level: 'alert', message: 'A delivery waits in quarantine'}));
   await p.evaluate(() => refresh()); await need('waits in quarantine').waitFor({timeout: 5000}).catch(() => {});
@@ -70,7 +73,7 @@ run(async b => {
   await p.evaluate(() => { S.jobs.forEach((j, i) => { if (i < 3) j.state = 'failed'; }); home.show(); }); await p.waitForTimeout(300);
   [line, bar] = await sums();
   const nf = await p.evaluate(() => S.jobs.filter(j => j.state === 'failed').length);
-  check(nf >= 3 && line === bar && new RegExp(`^Argus · Watch${nf} tasks failed`).test(await p.locator('.need').first().textContent()), `with ${nf} failed tasks too, each counted (${line} = ${bar})`);
+  check(nf >= 3 && line === bar && await task.count() === nf, `with ${nf} failed tasks too, one row each, each counted (${line} = ${bar})`);
   fs.rmSync(path.join(AL, 'hermes.json'), {force: true}); await p.evaluate(() => refresh()); await p.waitForTimeout(700);
   await shot(p, 'home');
   // a met need fades out where it stood, then is gone
@@ -91,7 +94,7 @@ run(async b => {
   await p.waitForTimeout(900); await p.evaluate(() => home.show()); await p.waitForTimeout(300);
   check(!await p.locator('#argus').evaluate(e => e.classList.contains('content')), 'a redraw while it stays empty does not blink again');
   await p.unroute('**/api/*/status'); await p.evaluate(() => refresh()); await p.waitForTimeout(700);
-  check(await need('task failed').count() === 1, 'the next refresh shows the failed task again');
+  check(await task.count() === 1, 'the next refresh shows the failed task again');
 
   await place('Spartamelee').focus(); await p.evaluate(() => refresh()); await p.waitForTimeout(500);
   check(await p.evaluate(() => document.activeElement?.getAttribute('href')?.endsWith('spartamelee')), 'the refresh keeps keyboard focus');
