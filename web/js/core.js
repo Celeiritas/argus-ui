@@ -341,6 +341,7 @@ function render() {
   $$('.card.frozen').forEach(addStone);
   if (armed) arm(armed, true);
   look.retarget();
+  satellite.place(items);
 }
 /* ---------- alert files (docs/alerts.md): an agent's message on its task's card, or a card of its own ---------- */
 const alertsFor = j => (S.alerts || []).filter(a => a.job === j.job || (j.base && a.job === j.base));
@@ -431,7 +432,7 @@ document.addEventListener('click', e => {
 /* ---------- Argus eyes: follow the pointer, glare at a failed task, calm when all is well ---------- */
 const look = (() => {
   const A = $('#argus'), svg = $('svg[viewBox="0 0 234 234"]', A), eyes = $$('.eye', svg).map(g => ({iris: $('.iris', g), max: +g.dataset.max, cx: +g.dataset.cx, cy: +g.dataset.cy}));
-  let pointer = null, lastMove = 0, target = null, wander = {x: 0, y: 0, t: 0}, cur = eyes.map(() => [0, 0]), watched = null;   // watched: kept in view ahead of the pointer
+  let pointer = null, lastMove = 0, target = null, wander = {x: 0, y: 0, t: 0}, cur = eyes.map(() => [0, 0]), watched = null, fixed = null;   // watched: kept in view ahead of the pointer; fixed: what is wrong (satellite)
   let lastInput = performance.now(), dozeAfter = 60000, drowsy = false, alarmed = false;   // a minute with no input and nothing wrong: he dozes (docs/fx.md "At rest")
   function aim(px, py) {
     const m = svg.getScreenCTM(); if (!m) return;
@@ -478,6 +479,7 @@ const look = (() => {
     if (!drowsy && !RM.matches && !alarmed && !drag && !watched && !gaze && t - lastInput > dozeAfter) { drowsy = true; A.classList.add('drowsy'); }   // never while something failed or is held
     if (drag) aim(drag.x, drag.y);                                   // he watches whatever you carry
     else if (watched?.isConnected) { const r = watched.getBoundingClientRect(); aim(r.left + r.width / 2, r.top + r.height / 2); }   // a button being held
+    else if (fixed?.isConnected) { const r = fixed.getBoundingClientRect(); aim(r.left + r.width / 2, r.top + r.height / 2); }   // something is wrong: not the pointer
     else if (gaze) aim(gaze.x, gaze.y);
     else if (pointer && t - lastMove < 2500) aim(...pointer);
     else if (target) { const r = target.getBoundingClientRect(); aim(r.left + r.width / 2, r.top + r.height / 2); }
@@ -499,5 +501,72 @@ const look = (() => {
     if (RM.matches) return;
     [A, side && $('#hero')].filter(e => e && !e.hidden && e.offsetWidth).forEach(e => e.animate(MOVES[kind], {duration: kind === 'nod' ? 700 : 420, easing: 'ease-in-out'}));
   }
-  return {retarget, react, watch: el => { watched = el || null; }, doze: ms => { dozeAfter = ms; }};   // doze: how long before he dozes (tests shorten it)
+  return {retarget, react, watch: el => { watched = el || null; }, fix: el => { fixed = el || null; }, doze: ms => { dozeAfter = ms; }};   // doze: how long before he dozes (tests shorten it)
+})();
+
+/* ---------- the satellite eye: one of Argus's eyes leaves him and glares at what is wrong (docs/home.md "The satellite eye") ---------- */
+// On Watch, when something is wrong, a copy of his red eye (his own markup, nothing new drawn) travels once (750 ms, fx.travel) from
+// his face to the top-right corner of the first trouble block and stays there; his red eye shows shut meanwhile, and his other eyes
+// look at that block, not at the pointer (look.fix). The glare pulses 4 times (4.8 s), then holds still. Several broken things: a
+// small "2 more" under it. The block keeps a gutter on its right, so the eye never covers its words or its button. When the block is
+// scrolled out of view, an edge marker (44 px, an arrow) brings it back. Reduced motion: no travel, no pulse, the eye is just there.
+// The eye is aria-hidden; one polite sentence says the same, once per change. When the trouble ends the eye flies home and the
+// sentence says so. Only the owner, only on Watch.
+const satellite = (() => {
+  const A = $('#argus'), red = $('svg .eye.red', A);
+  const live = document.createElement('p'); live.className = 'sr'; live.id = 'satSay'; live.setAttribute('aria-live', 'polite'); document.body.append(live);
+  const edge = document.createElement('button'); edge.type = 'button'; edge.id = 'satEdge'; edge.className = 'satedge'; edge.hidden = true;
+  edge.setAttribute('aria-label', 'Scroll to what needs a look'); document.body.append(edge);
+  let key = null, at = null, seen = null;                     // the block it glares at, where it last sat (page coordinates), the observer
+  const say = t => { live.textContent = t; };
+  function eye() {                                            // a copy of his red eye in a small frame, its iris turned down-left onto the block
+    const g = red.cloneNode(true); g.classList.remove('red'); $('.iris', g).setAttribute('transform', 'translate(-2.2 1.4)');
+    return `<svg viewBox="90.2 64.1 28 28" aria-hidden="true">${g.outerHTML}</svg>`;
+  }
+  const centre = el => { const r = el.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; };
+  function edgeFor(block) {                                   // the edge marker: shown only while the block is out of view
+    seen?.disconnect(); seen = null; edge.hidden = true;
+    if (!block || !('IntersectionObserver' in window)) return;
+    seen = new IntersectionObserver(([e]) => {
+      if (e.isIntersecting) { edge.hidden = true; return; }
+      const up = e.boundingClientRect.top < 0, bar = $('#tabbar'), barH = bar && bar.offsetHeight && getComputedStyle(bar).display !== 'none' ? bar.offsetHeight : 0;
+      edge.className = `satedge ${up ? 'up' : 'down'}`; edge.style.top = up ? '12px' : ''; edge.style.bottom = up ? '' : `${barH + 12}px`;
+      edge.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${up ? 'M12 5 5 13h4v6h6v-6h4z' : 'M12 19 5 11h4V5h6v6h4z'}" fill="currentColor"/></svg><span>Look</span>`;
+      edge.hidden = false;
+    }, {threshold: .25});
+    seen.observe(block);
+  }
+  edge.onclick = () => { const b = $('#main .tblock.eyed'); if (!b) return; b.scrollIntoView({block: 'center', behavior: RM.matches ? 'auto' : 'smooth'}); ($('button,a', b) || b).focus?.({preventScroll: true}); };
+  function home() {                                           // the trouble ended: the eye flies back from where it sat, and his own opens again
+    const back = () => { A.classList.remove('sat-out'); };
+    if (!at || RM.matches || A.hidden) return back();
+    const tmp = document.createElement('span'); tmp.className = 'sat flying'; tmp.innerHTML = eye();
+    const [x, y] = centre(red), w = 44; tmp.style.cssText = `position:fixed;left:${x - w / 2}px;top:${y - w / 2}px;width:${w}px;height:${w}px`;
+    $('#fx').append(tmp);
+    fx.travel(tmp, [at[0] - scrollX, at[1] - scrollY], {ms: 700, scale: 1}).then(() => { tmp.remove(); back(); });
+  }
+  // called by render() on Watch with the trouble items in the page's order (the blocks are already in #main)
+  function place(items) {
+    const blocks = !side && role() === 'owner' && !A.hidden ? $$('#main .tblock') : [], first = blocks[0] || null;
+    look.fix(first);
+    if (!first) {
+      edgeFor(null);
+      if (key !== null) { key = null; say('All is well again: nothing on Watch needs a look.'); home(); }
+      return;
+    }
+    const k = first.dataset.trouble, it = items.find(i => i.key === k), more = blocks.length - 1;
+    first.classList.add('eyed');
+    const sat = document.createElement('span'); sat.className = 'sat'; sat.setAttribute('aria-hidden', 'true');
+    sat.innerHTML = eye() + (more ? `<span class="satn">${more} more</span>` : '');
+    first.append(sat); A.classList.add('sat-out');
+    const r = sat.getBoundingClientRect(); at = [r.left + r.width / 2 + scrollX, r.top + 22 + scrollY];
+    if (k !== key) {                                          // a change: travel once and pulse, and say it once
+      const from = key === null ? centre(red) : null;
+      key = k; sat.classList.add('glaring');
+      if (from) fx.travel($('svg', sat), from);
+      say(`${(it ? it.say : 'Something is wrong').replace(/[.\s]+$/, '')}${more ? `, and ${more} more thing${more === 1 ? ' needs' : 's need'} a look` : ''}.`);
+    }
+    edgeFor(first);
+  }
+  return {place, get key() { return key; }};
 })();
