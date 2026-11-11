@@ -3,25 +3,28 @@
 // size: plain bars until the owner approves the jar art), and Back up now behind hold-to-confirm. Nothing here deletes,
 // restores or opens a snapshot. The 15-second refresh fills the parts again but never replaces the button, so a hold in
 // progress is not cut off.
+// Since 1.1.0 each copy is one plain sentence from the server (what it is, when it was last made, what to do only when
+// something is not fine), with a mark beside it so the state never rests on colour; no status words (docs/memory.md).
 (() => {
-  const MARK = {yes: '✓', no: '✕', unknown: '?', stale: '!'};
+  const MARK = {yes: '✓', no: '✕', unknown: '?', stale: '!', running: '↻'};
   const plural = (n, one) => `${n} ${one}${n === 1 ? '' : 's'}`;
 
   function facts(v, e) {
-    const rows = [['Last snapshot', v.last ? `${e(v.last.age)} <small>${e(v.last.when)}</small>` : 'None yet'],
+    const rows = [['Last snapshot', v.last ? `${e(v.last.age)} <small>${e(v.last.when)}</small>` : 'No snapshot yet'],
       ['Its size', v.last ? e(v.last.size_h) : '—'],
-      ['Next run', v.job ? e(v.job.next || '—') : 'No brain job found'],
+      ['Next run', v.job ? e(v.job.next || '—') : 'No weekly job found'],
       ['On the server', `${plural(v.count, 'snapshot')}, ${e(v.total_h)} in all`]];
     let warn = '';
-    if (v.job && v.job.state === 'failed') warn = `<p class="mem-warn"><span aria-hidden="true">!</span> The last run failed (${e(v.job.last)}): its card on the Watch page has the log.</p>`;
-    else if (v.stale) warn = `<p class="mem-warn"><span aria-hidden="true">!</span> The newest snapshot is older than ${v.stale_days} days: the weekly job may have stopped.</p>`;
+    if (v.job && v.job.state === 'failed') warn = `<p class="mem-warn"><span aria-hidden="true">!</span> The last try failed (${e(v.job.last)}): its card under Mnemosyne on the Watch page has the log.</p>`;
+    else if (v.stale) warn = `<p class="mem-warn"><span aria-hidden="true">!</span> The newest snapshot is older than a week: look at its weekly job under Mnemosyne on the Watch page.</p>`;
     if (v.running) warn = `<p class="mem-run"><span aria-hidden="true">●</span> Backing up now: the new snapshot fills its jar on the shelf.</p>`;
     return `<dl class="mem-facts">${rows.map(([k, d]) => `<div><dt>${k}</dt><dd>${d}</dd></div>`).join('')}</dl>${warn}`;
   }
 
+  // one row per copy: the mark (hidden from screen readers), the copy's name, and its sentence, which is also the row's name
   function copies(v, e) {
-    return v.copies.map(c => `<li class="${e(c.state)}" data-key="${e(c.key)}"><span class="mark" aria-hidden="true">${MARK[c.state] || '?'}</span>
-      <span class="what"><b>${e(c.label)}</b> <span class="word">${e(c.word)}</span></span><span class="detail">${e(c.detail)}</span></li>`).join('');
+    return v.copies.map(c => `<li class="${e(c.state)}" data-key="${e(c.key)}" data-kind="${e(c.kind || '')}" aria-label="${e(c.say)}">
+      <span class="mark" aria-hidden="true">${MARK[c.state] || '?'}</span><b class="name">${e(c.label)}</b><span class="say">${e(c.say)}</span></li>`).join('');
   }
 
   function shelf(v, e) {
@@ -74,9 +77,9 @@
           <p class="mem-why" id="mem-why" role="status" aria-live="polite"></p>
         </section>
         <section class="panel mem-321" aria-labelledby="mem-copies-h">
-          <h3 id="mem-copies-h">Copies</h3>
+          <h3 id="mem-copies-h">Where your backups are</h3>
           <ul class="mem-copies" id="mem-copies"></ul>
-          <p class="mem-meta">3-2-1: three copies, on two kinds of storage, one of them away from home. What isn't done yet shows as not done.</p>
+          <p class="mem-meta">The 3-2-1 rule: three copies, on two kinds of storage, one of them outside your home. Each line says when that copy was last made.</p>
         </section>
         <section class="panel mem-shelfp" aria-labelledby="mem-shelf-h">
           <h3 id="mem-shelf-h">The shelf</h3>
