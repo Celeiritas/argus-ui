@@ -1,4 +1,4 @@
-// Mentor 4.37 in the browser: Today first ("Who is studying?", one button "Study 10 minutes", pinned tracks, the week, the
+// Mentor 4.38 in the browser: Today first ("Who is studying?", one button "Study 10 minutes", pinned tracks, the week, the
 // shelf), the timed session and its summary, think-it on a phone and typing on a wide screen, reduced motion, 375 px.
 // It studies as "Learner Two" (a placeholder person in a people file inside the throwaway HOME), so the owner's database,
 // which tests/mentor.test.js walks through next, is only read. The people file is taken away again at the end.
@@ -91,7 +91,7 @@ run(async b => {
     await p.unroute('**/api/mentor/today*');
     check(p.errors.length === 0, 'no page errors ' + p.errors.join(' | '));
 
-    // everything done today (4.37): no false promise and no big button; "Study a little more" brings cards forward
+    // everything done today (4.38): no false promise and no big button; "Study a little more" brings cards forward
     for (let i = 0; i < 6; i++) { const {card} = await api(p, 'next?session=1&' + L); if (!card) break;
       const a = await api(p, 'answer', {learner: 'learner-two', card: card.id, text: '', think: true}); await api(p, 'rate', {learner: 'learner-two', attempt: a.attempt, rating: 3}); }
     await p.goto(BASE + 'mentor'); await p.waitForTimeout(900);

@@ -1,4 +1,4 @@
-"""Mentor with people (4.37, docs/mentor.md "People"): who is studying, one database per person, and the AI fence.
+"""Mentor with people (4.38, docs/mentor.md "People"): who is studying, one database per person, and the AI fence.
 
     python3 tests/mentor_people_test.py -v        (tests/run.sh runs it under "== mentor people")
 
@@ -199,7 +199,7 @@ class People(unittest.TestCase):
         write(os.path.join(SHARE, 'decks-learner-two', 'more.json'), {**LDECK, 'id': 'more', 'name': 'More'})
         self.assertEqual(self.get('stats', LEARNER)[1]['cards'], 4, 'a file copied into her folder shows up on the next request')
 
-    # ---- 4.37: the fix round after review ----
+    # ---- 4.38: the fix round after review ----
     def test_lesson_folder_reload_holds_the_lock(self):
         """Review B2: several threads study as Learner Two while one keeps changing her lesson files. Before the fix the
         reload wrote on her connection outside its lock: SQLite errors and ratings lost. Three rounds."""

@@ -60,9 +60,9 @@ if [ -z "$1" ] || [ "$1" = mentor ]; then
   grep -q "INFO C8" <<<"$out" && { echo "FAIL a reference was not checked"; echo "$out"; fail=1; }
   echo "== mentor model"   # courses, Loose lessons, the review log: no browser (tests/mentor_model_test.py)
   $PYTHON "$R/tests/mentor_model_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1
-  echo "== mentor people"  # 4.34: who is studying, one database per person, the AI fence (tests/mentor_people_test.py)
+  echo "== mentor people"  # 4.38: who is studying, one database per person, the AI fence (tests/mentor_people_test.py)
   $PYTHON "$R/tests/mentor_people_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1
-  echo "== mentor today"   # 4.34: tracks, pin and shelf, question first, the daily new limit (tests/mentor_today_test.py)
+  echo "== mentor today"   # 4.38: tracks, pin and shelf, question first, the daily new limit (tests/mentor_today_test.py)
   $PYTHON "$R/tests/mentor_today_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1
 fi
 if [ -z "$1" ] || [ "$1" = mentor ] || [ "$1" = items ]; then

@@ -1,7 +1,7 @@
 # Mentor as a bundled server plugin (docs/leafy-plugin.md, docs/mentor.md): the Learn section and api/mentor/...
 # The study logic is mentor.py next to this file; this is only the door between Elaia's server and it.
 # The owner's database stays where Mentor has always kept it (~/.local/share/argus-ui/mentor.db, or ARGUS_MENTOR_DB),
-# not in ctx.data_dir, so moving Mentor into a plugin moved no one's review history. Since 4.37 every other person in the
+# not in ctx.data_dir, so moving Mentor into a plugin moved no one's review history. Since 4.38 every other person in the
 # people file (learners.py) has a database of their own next to it, mentor-<id>.db, holding only their own lessons
 # (~/.local/share/argus-ui/decks-<id>/): never the theme's decks, never the inbox.
 import importlib.util, os, threading
@@ -73,7 +73,7 @@ def fresh(b):
     if b.reload: b.load()
 
 def holder():
-    """Whose history mentor.db is (4.37): the person id stored in mentor.db itself, so the order of lines in the people file
+    """Whose history mentor.db is (4.38): the person id stored in mentor.db itself, so the order of lines in the people file
     never decides it. The first open under a people file stores the first owner; if the stored id has left the file, the
     first owner takes mentor.db over, the stored id is updated and one line is logged. None without a people file (the
     one person there is, the owner, has mentor.db, as before people)."""

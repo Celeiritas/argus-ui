@@ -807,7 +807,7 @@ def next_level(db, card, srow, attempt, g):
     if g < 3 or attempt['coverage'] < 0.99 or lv >= 3: return lv, False
     if (attempt['hints'] or 0) >= 3: return lv, False       # a near example or the answer was shown: no step up this time
     feats = json.loads(attempt['features'] or '{}')
-    if feats.get('taught'): return lv, False                 # "Teach me first" was read before answering (4.37): no step up either
+    if feats.get('taught'): return lv, False                 # "Teach me first" was read before answering (4.38): no step up either
     prev = db.execute("SELECT coverage FROM attempts WHERE card_id=? AND id<? AND level=? AND rating IS NOT NULL AND COALESCE(undone, 0)=0 ORDER BY id DESC LIMIT 1",
                       (card['id'], attempt['id'], lv)).fetchone()
     if attempt['ms'] <= fast_ms(lv, feats.get('blanks', 1)) or (prev and prev['coverage'] >= 0.99):
@@ -853,7 +853,7 @@ def hint_rungs(c, level=None):
 
 def card_payload(db, c, read_only=False, st=None, tm=None):
     """What the page needs to ask the question - never the answer (a Learn card is the lesson, so it carries it).
-    4.37: its track, whether the track asks "How sure?" on every card, and teach_id: the Learn card "Teach me first" opens
+    4.38: its track, whether the track asks "How sure?" on every card, and teach_id: the Learn card "Teach me first" opens
     (the card's own, else its lesson's orientation; None when there is nothing to read first)."""
     c = filled(c)
     data = json.loads(c['data'] or '{}')
@@ -936,7 +936,7 @@ def deck_where(db, deck):
     if not ids: return "0", []
     return "c.deck IN (" + ",".join("?" * len(ids)) + ")", ids
 
-# ---------- tracks (4.37): what Today pins and the shelf holds ----------
+# ---------- tracks (4.38): what Today pins and the shelf holds ----------
 # A track is what a person picks to study: a plain deck (its id), or every lesson of one project or course ("group:<name>",
 # submenus included: "GAME_RESEARCH › Topics" and "GAME_RESEARCH › Games" are one track), or a lesson without a project
 # (its own id). The ids are ones deck_where() already takes, so a track is studied like any choice in the picker.
@@ -987,12 +987,12 @@ def new_limit(st, track):
 
 def unpinned_room(st, made):
     """With nothing pinned, a session's new questions share ONE daily limit (the "*" value, else NEW_PER_DAY) across every
-    track off the shelf, so a database with 24 tracks does not open on "240 new cards waiting" (4.37). How many are left today."""
+    track off the shelf, so a database with 24 tracks does not open on "240 new cards waiting" (4.38). How many are left today."""
     return max(0, st['new_per_day'].get('*', NEW_PER_DAY) - sum(made.values()))
 
 # ---------- study settings (stored in each person's database, next to the history they shape) ----------
 # bury: siblings wait until tomorrow (spec section 15.3). teach_first: the old order, every practice card after its Learn
-# card (4.37: off; a practice card comes first and its teaching is the feedback). pinned: up to PIN_MAX tracks on Today;
+# card (4.38: off; a practice card comes first and its teaching is the feedback). pinned: up to PIN_MAX tracks on Today;
 # shelved: tracks hidden from study and from every count, history kept. new_per_day: {track: n} ("*" = every track),
 # NEW_PER_DAY when not set. goal: {track: one line}, the owner's words. ask_confidence: tracks that ask "How sure?" on
 # every card (others ask on every CONF_EVERY-th card).
@@ -1167,7 +1167,7 @@ def locked_reason(db, deck):
 
 def next_card(db, deck=None, extra=False, session=False, out=None):
     """The next card to study: a Learn card sent back first, then reviews due, a module's check, then new cards.
-    4.37: a track on the shelf is never served. Question first (unless the teach_first setting is on): a lesson's new
+    4.38: a track on the shelf is never served. Question first (unless the teach_first setting is on): a lesson's new
     practice cards come without their Learn cards in front, and the teaching arrives as feedback (answer()); a Learn card
     is served on its own only in a lesson that has nothing else, or when stuck detection sends it back. New practice cards
     stop at each track's daily limit (new_per_day). session=True (Study 10 minutes): reviews of the pinned tracks first,
@@ -1273,10 +1273,10 @@ def learn_answer(db, c, text, ms, skipped):
     return {'attempt': cur.lastrowid, 'kind': kind, 'coverage': cov, 'hits': hits, 'missed': missed, 'reference': c['answer'],
             'suggested': 0, 'previews': {}, 'level_after': None, 'coach': coach, 'learn': True, **extra}
 
-THINK_KINDS = ('define', 'explain', 'predict', 'write')      # cards a phone shows as "think it, reveal it, rate it" (4.37)
+THINK_KINDS = ('define', 'explain', 'predict', 'write')      # cards a phone shows as "think it, reveal it, rate it" (4.38)
 
 def answer(db, card_id, text, confidence, ms, hints=0, reflections=None, skipped=False, think=False, taught=False):
-    """Grade one answer. think=True (4.37, "think it, reveal it, rate it"): nothing was typed, so nothing is graded; the
+    """Grade one answer. think=True (4.38, "think it, reveal it, rate it"): nothing was typed, so nothing is graded; the
     attempt is stored with grader "self" and coverage 0.0 (a number, so an older Mentor still reads it), Mentor suggests no
     rating, and the person rates it. taught=True: "Teach me first" was open while answering, so it counts as help: the
     suggestion is capped at Hard and a drill does not move up a level from it."""
@@ -1348,7 +1348,7 @@ def answer(db, card_id, text, confidence, ms, hints=0, reflections=None, skipped
         previews = {g: round((p[2] - now) / DAY, 6) for g, p in plans.items()}      # days until it returns (to the second: steps are minutes)
         level_after = {g: p[7] for g, p in plans.items()} if c['kind'] == 'drill' else None
     n = len(hits) + len(missed)
-    # question first (4.37): the card's teaching comes with the result, and counts as read the first time it does
+    # question first (4.38): the card's teaching comes with the result, and counts as read the first time it does
     teach, teach_new = teaching(db, c, now)
     extra.update({'teach': teach, 'teach_new': teach_new})
     return {'attempt': cur.lastrowid, 'kind': c['kind'], 'coverage': round(cov, 2), 'hits': hits, 'missed': missed,
@@ -1356,7 +1356,7 @@ def answer(db, card_id, text, confidence, ms, hints=0, reflections=None, skipped
             'stuck': stuck, 'check': bool(c['is_check']), 'coach': coach_line(c['kind'], cov, confidence, n, extra), **extra}
 
 def teaching(db, c, now):
-    """The card's Learn card as feedback (question first, 4.37): its payload, and whether this is the first time (then it
+    """The card's Learn card as feedback (question first, 4.38): its payload, and whether this is the first time (then it
     counts as read). (None, False) for a card without one."""
     if not c['learn_of'] or c['is_check']: return None, False
     lr = db.execute(CARD_Q + " WHERE c.id=?", (c['learn_of'],)).fetchone()
@@ -1567,7 +1567,7 @@ def stats(db, deck=None):
     locked = {k for k, v in info['lessons'].items() if v['locked']}
     # a locked lesson's cards don't wait to be studied yet (only its reviews, if it was studied before it was locked)
     st, tm = settings(db), track_map(db)
-    shelf = set(st['shelved'])          # a track on the shelf is in no count (4.37); its history stays
+    shelf = set(st['shelved'])          # a track on the shelf is in no count (4.38); its history stays
     cards = [c for c in db.execute(f"SELECT c.id, c.deck, c.kind, c.note, s.due, s.reps, s.step FROM cards c LEFT JOIN sched s ON s.card_id=c.id {w}", args)
              if not hidden(c) and not (c['deck'] in locked and c['due'] is None) and track_of(tm, c['deck']) not in shelf]
     # question first: a Learn card waits to be read only in a lesson that has nothing to answer (the rest come as feedback)
@@ -1604,7 +1604,7 @@ def stats(db, deck=None):
             'modules': modules(db, info), 'courses': courses(db, info), 'imports': imports, 'settings': settings(db),
             'inbox': INBOX.replace(os.path.expanduser('~'), '~', 1) if getattr(db, 'own_inbox', True) else ''}
 
-# ---------- Today (4.37): the first view, and Elaia's Today card ----------
+# ---------- Today (4.38): the first view, and Elaia's Today card ----------
 SESSION_MIN = 10            # "Study 10 minutes"
 CARD_MS_CAP = 120_000       # a card counts at most 2 minutes toward the week's minutes (a page left open is not study)
 

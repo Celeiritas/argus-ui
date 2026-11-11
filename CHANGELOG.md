@@ -1,7 +1,5 @@
 # Changelog
 
-## 4.37.0 – 2026-11-11
-
 ## 4.38.0 – 2026-11-11
 - **Mentor opens on Today.** One primary button, **Study 10 minutes**: due reviews of your pinned tracks first, then other reviews, then new questions from the pinned tracks up to each one's daily limit. A thin bar fills over the ten minutes; when it is full you finish the card on screen, then a summary says how it went and what comes next (*12 cards, 9 right. Next: tomorrow, 8 due.*), with **Keep going 5 more** and **Replay my 3 mistakes**. Under the button: up to three **pinned tracks** (name, goal, due today, new, a progress bar, **Study this**), the **week** as seven dots of minutes studied (no streak to break), and the **shelf** as one row (*Shelf: 18 tracks · Browse*) where every track has **Pin**, **Shelve** and **Preview**. Study and Lessons are still one tap away.
 - **Who is studying?** Mentor knows people: `~/.config/argus-ui/people.json` (outside git; `ARGUS_PEOPLE`) names an owner and learners. Each person has **their own database**: the owner keeps `mentor.db` exactly as it is (never moved or rewritten), anyone else gets `mentor-<id>.db` with only their own lessons from `~/.local/share/argus-ui/decks-<id>/`, never the theme's decks or the inbox. The owner picks who is studying (*Who is studying? Owner One · change*, remembered per device); a learner always studies as herself. No people file: one person, as before. A people file that is not JSON: everything reads as before and every change is refused with a sentence naming the file. `plugin.json` declares every Mentor route as open to learners (`roles`), for the server's role check.
@@ -9,6 +7,19 @@
 - **Question first.** A new lesson asks a question first; its lesson card comes with the result (the first time, open), or before it with **Teach me first**. A wrong answer still sends the lesson card back. The old order is one setting away (*Show a lesson's reading cards before its questions*).
 - **Fewer steps per card.** *How sure are you?* on every fifth card; the three-word reflection from the second hint on. On a phone, cards answered in words are **thought, revealed and rated** (no typing, no grade, no suggested rating); **Type my answer instead** is one tap away and remembered, and typing stays the default on a wide screen. A long question shows about 80 words, the rest behind **More**.
 - **The local AI runs only for the owner.** A learner's answer (or the owner's while studying as a learner) never starts it; the host's AI configuration is not changed.
+- **After review, before it ships:**
+  - A self-rated answer stores coverage 0.0, never empty, so a rollback to an older Mentor still reads every count.
+  - A learner's lesson folder is read again under her database's lock: no lost ratings when a file changes while she studies.
+  - `mentor.db` belongs to a person id stored in it, not to the order of lines in the people file. A second owner gets her own database; a renamed owner id is logged and handed over.
+  - The role comes from the people file, never from what the server says alone. The people file fails closed in every case the server's own reader refuses: no name, an unknown role, an id used twice, or logins that are not a list.
+  - **Teach me first** counts as help: at most *Hard* is suggested, and a drill does not move up a level.
+  - When everything is done, Today says *All done for today. Next: ...*, with no big button; **Study a little more** brings cards forward.
+  - A card answered once is *started*, not *learned*.
+  - "Who is studying?" and the open shelf sit on cards.
+  - A learner never sees the owner's steps for adding a lesson; the owner sees the person's real folder.
+  - With nothing pinned, the day's new cards share one limit.
+  - During a session the Today tab stays marked.
+  - The rating's save button and *grade was wrong* are 44 px targets.
 - **Home's line and Elaia's Today card** per person: *6 due* with the action *Study 10 minutes*.
 - API: `GET api/mentor/learners`, `GET today`, `GET track?id=`, `GET next?session=1`, `POST answer {think: true}`, settings `pinned`, `shelved`, `new_per_day`, `goal`, `ask_confidence`, `teach_first`; every route takes `learner=` from an owner. Mentor's `get`/`post` take the optional fourth parameter `who` that the server hands a plugin (docs/mentor.md, *People, Today and tracks*).
 - Tests: `tests/mentor_people_test.py` (no people file behaves as before; two people never see each other's cards, answers or stats; a learner cannot study as someone else; the owner studies as a learner; unknown id 404; a broken file refuses changes; the owner's old database row for row; the AI fence; the goal is the owner's; a new lesson file without a restart), `tests/mentor_today_test.py` (tracks; a fourth pin refused; pinned or shelved; a shelved track never served, never counted, history kept, restored exactly; sessions take new questions from pinned tracks; question first and the teaching as feedback; the old order as a setting; a miss still sends the teaching back; the daily limit across sessions and midnight; think-it answers; the week's minutes; Preview never shows an answer), `tests/mentor-today.test.js` (Today with one primary button, the picker, pin, shelve, preview, the session's bar and summary, think it and type it, 44 px, 412 and 375 px, reduced motion). `tests/mentor.test.js` keeps walking the 4.32 order with the setting.

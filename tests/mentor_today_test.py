@@ -1,4 +1,4 @@
-"""Mentor 4.37 without a browser: tracks, pin and shelf, question first, the daily limit of new cards, Today's numbers.
+"""Mentor 4.38 without a browser: tracks, pin and shelf, question first, the daily limit of new cards, Today's numbers.
 
     python3 tests/mentor_today_test.py -v        (tests/run.sh runs it under "== mentor today")
 
@@ -92,7 +92,7 @@ class PinShelf(Base):
                          'nothing pinned: one shared limit of new questions for the day, not one per track')
 
     def test_nothing_pinned_one_limit_for_the_day(self):
-        # 4.37 (review N1): four tracks with 59 new questions open on 10 waiting, and a session stops at 10 new
+        # 4.38 (review N1): four tracks with 59 new questions open on 10 waiting, and a session stops at 10 new
         t = m.today(self.db)
         self.assertGreater(sum(x['new_left'] for x in t['tracks']), m.NEW_PER_DAY)
         self.assertEqual(t['new_left'], m.NEW_PER_DAY)
@@ -151,7 +151,7 @@ class ThinkIt(Base):
         self.assertNotIn('think', m.answer(self.db, drill, '[]', None, 1000, think=True), 'a drill is always graded')
 
 class Rollback(Base):
-    """4.37 (review B1): a self-rated answer stores coverage 0.0, never NULL, so the Mentor before 4.37 still reads the
+    """4.38 (review B1): a self-rated answer stores coverage 0.0, never NULL, so the Mentor before 4.38 still reads the
     database after a rollback; the new counts leave grader 'self' out."""
     def test_no_null_coverage_and_the_old_sums_still_run(self):
         g = m.answer(self.db, 'ux-hci:affordance', 'what an element lets you do, its perceived action', 3, 2000)
@@ -163,7 +163,7 @@ class Rollback(Base):
         st = m.stats(self.db)
         self.assertEqual(st['avg_coverage'], round(g['coverage'], 2), 'self-rated rows are not graded coverage')
         self.assertEqual(st['labels'], 4)
-        # the two sums of the Mentor before 4.37 (mentor.py:1382 and :1393 at 4.34.0), over every rated attempt
+        # the two sums of the Mentor before 4.38 (mentor.py:1382 and :1393 at 4.34.0), over every rated attempt
         att = self.db.execute("SELECT * FROM attempts ORDER BY id DESC LIMIT 500").fetchall()
         rated = [a for a in att if a['rating'] and not a['undone']]
         conf = [a for a in rated if a['confidence']]
@@ -177,7 +177,7 @@ class Rollback(Base):
         self.assertNotEqual(b['stuck'], 'repeat', 'a self-rated attempt before a blank one is not "wrong twice in a row"')
 
 class TeachFirst(Base):
-    """4.37 (review S2): reading the lesson card first ("Teach me first") counts as help."""
+    """4.38 (review S2): reading the lesson card first ("Teach me first") counts as help."""
     def test_capped_at_hard(self):
         free = m.answer(self.db, 'ux-hci:affordance', 'perceived action possibility an object offers', 4, 1000)
         taught = m.answer(self.db, 'ux-hci:affordance', 'perceived action possibility an object offers', 4, 1000, taught=True)

@@ -37,7 +37,7 @@ def _read():
         with open(FILE, encoding='utf-8') as f: doc = json.load(f)
         rows = doc.get('people') if isinstance(doc, dict) else None
         if not isinstance(rows, list): raise ValueError('it has no "people" list')
-        # fail closed (4.37), as strict as the server's own reader: one bad entry makes the whole file unusable
+        # fail closed (4.38), as strict as the server's own reader: one bad entry makes the whole file unusable
         out, seen = [], set()
         for i, p in enumerate(rows, 1):
             if not isinstance(p, dict): raise ValueError(f'entry {i} is not an object')
@@ -81,7 +81,7 @@ def studying(who, requested=None, write=False, holder=None):
     themself; an owner (or a request the server told nothing about: who is None) may name anyone with `requested`.
     holder: whose history mentor.db is (plugin.holder(); None = the first owner, or the one person when there is no file).
     The role comes from the people file Mentor reads itself, never from `who` alone: a person the file does not know is
-    refused, and the smaller of the two roles counts (4.37). With no people file every `who` but role none is the owner.
+    refused, and the smaller of the two roles counts (4.38). With no people file every `who` but role none is the owner.
     Raises Refused: 403 for nobody (role none) or a stranger, 404 for an id that is not in the file, 503 for a write while
     the file is broken."""
     ps, problem = people()
