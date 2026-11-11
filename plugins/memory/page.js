@@ -79,7 +79,7 @@
         <section class="panel mem-321" aria-labelledby="mem-copies-h">
           <h3 id="mem-copies-h">Where your backups are</h3>
           <ul class="mem-copies" id="mem-copies"></ul>
-          <p class="mem-meta">The 3-2-1 rule: three copies, on two kinds of storage, one of them outside your home. Each line says when that copy was last made.</p>
+          <p class="mem-meta">The 3-2-1 rule: three copies, on two kinds of storage, one of them outside your home. Each line is one place your backups live, and when it was last brought up to date.</p>
         </section>
         <section class="panel mem-shelfp" aria-labelledby="mem-shelf-h">
           <h3 id="mem-shelf-h">The shelf</h3>

@@ -27,8 +27,8 @@ MAX_BYTES = 2 ** 44     # 16 TB: no weekly PC backup is bigger; a larger number 
 MAX_SETS = 999
 MARKER_MAX = 65536      # the marker is a few dozen bytes; more than this is not read
 # the row names (docs/memory.md): what each copy is, in plain words
-NAMES = {'server': 'Snapshots the server keeps of itself', 'pc': "Your PC's own weekly backup", 'offsite': 'A copy outside your home'}
-KEYS = 'it leaves out your passwords and keys, which need you at the keyboard to type the passphrase'
+NAMES = {'server': 'Snapshots the server keeps of itself', 'pc': "Your PC's own weekly backup", 'offsite': "The server's copy outside your home"}
+KEYS = 'your passwords and keys are left out on purpose: you back those up by hand, typing the passphrase'
 WATCH = 'look at its weekly job under Mnemosyne on the Watch page'
 
 def init(ctx):
@@ -91,8 +91,13 @@ def age(at, now):
     if s < 60: return 'just now'
     if s < 3600: return f'{int(s // 60)} min ago'
     if s < 86400: h = int(s // 3600); return f"{h} hour{'s' if h != 1 else ''} ago"
-    d = (now.date() - at.date()).days
+    d = days_between(at, now)
     return 'yesterday' if d == 1 else f'{d} days ago'
+
+def days_between(at, now):
+    """Whole calendar days from `at` to `now`: the number the age shows ('9 days ago'), so a rule using it can never
+    disagree with the words beside it (midnight and daylight-saving hours do not matter)."""
+    return (now.date() - at.date()).days
 
 def when(at):
     return at.strftime('%b %d, %I:%M %p').replace(' 0', ' ')
@@ -178,8 +183,9 @@ def server_copy(s, now, job, stale, total_h):
         return copy('server', 'no', 'failed', f"The server's newest snapshot of itself is from {ago(last, now)}{', older than a week,' if stale else ','} and its last try failed, so {WATCH}."
                     if last else f"The server's first try to take a snapshot of itself failed, so {WATCH}.", a)
     if not last:
-        return copy('server', 'no', 'none', 'The server has no snapshot of itself yet: hold Back up now to take the first one.' if job
-                    else 'The server has no snapshot of itself yet, and no weekly job to take one was found.')
+        return copy('server', 'no', 'none', 'The server has no snapshot of itself yet: its weekly job is paused; press Resume on its card on the Watch page first.'
+                    if job and job.get('state') == 'frozen' else
+                    'The server has no snapshot of itself yet: hold Back up now to take the first one.' if job else 'The server has no snapshot of itself yet, and no weekly job to take one was found.')
     if stale:
         return copy('server', 'stale', 'stale', f"The server's newest snapshot of itself is from {ago(last, now)}, older than a week, so {WATCH}.", a)
     n = len(s)
@@ -210,7 +216,7 @@ def pc_copy(c, now):
         return copy('pc', 'unknown', 'unread', f"Word came from your PC's weekly backup but could not be read, so this page cannot tell when it last ran (the next backup sends it again); {KEYS}.")
     if (at - now).total_seconds() > AHEAD:
         return copy('pc', 'unknown', 'ahead', f"Word came from your PC's weekly backup with a time still ahead of this server's clock ({stamp(at, now)}), so check the date and time on your PC; {KEYS}.")
-    if (now - at).days > STALE_DAYS:
+    if days_between(at, now) > STALE_DAYS:
         return copy('pc', 'stale', 'stale', f"Your PC's weekly backup last finished {ago(at, now)}, older than a week, so check its scheduled task on your PC; {KEYS}.", age(at, now))
     sets, size = count(m.get('sets')), mb_gb(m.get('bytes'))
     parts = [f"{sets} set{'s' if sets != 1 else ''} of files"] if sets else []
@@ -222,17 +228,17 @@ def offsite_copy(js, now):
     """Copy 3, outside the home: the mnemosyne-<server>-offsite job, once it exists."""
     j = next((j for j in js if OFFSITE.match(j.get('job', ''))), None)
     if not j:
-        return copy('offsite', 'no', 'missing', 'No copy of your backups is kept outside your home yet: the job that will keep one is planned but not built.')
+        return copy('offsite', 'no', 'missing', "The server's backups are not copied outside your home yet: the job that will do that is planned but not built.")
     st, t = j.get('state'), job_time(j)
     a = age(t, now) if t else None
     if st == 'never':
-        return copy('offsite', 'unknown', 'never', 'The job that keeps a copy of your backups outside your home is set up but has not run yet: see when it runs under Mnemosyne on the Watch page.')
+        return copy('offsite', 'unknown', 'never', "The job that copies the server's backups outside your home is set up but has not run yet: see when it runs under Mnemosyne on the Watch page.")
     if st == 'running':
-        return copy('offsite', 'running', 'running', 'Your backups are being copied outside your home now.', a)
+        return copy('offsite', 'running', 'running', "The server's backups are being copied outside your home now.", a)
     if st == 'failed':
-        return copy('offsite', 'no', 'failed', f"The last try to copy your backups outside your home failed{' ' + ago(t, now) if t else ''}, so look at its job under Mnemosyne on the Watch page.", a)
-    return copy('offsite', 'yes', 'done', f'Your backups were last copied outside your home {ago(t, now)}.' if t
-                else 'Your backups have been copied outside your home.', a)
+        return copy('offsite', 'no', 'failed', f"The last try to copy the server's backups outside your home failed{' ' + ago(t, now) if t else ''}, so look at its job under Mnemosyne on the Watch page.", a)
+    return copy('offsite', 'yes', 'done', f"The server's backups were last copied outside your home {ago(t, now)}." if t
+                else "The server's backups have been copied outside your home.", a)
 
 def view(ctx, now=None):
     """Everything the page and Home's line show. Reads only."""
@@ -243,7 +249,7 @@ def view(ctx, now=None):
     job = brain_job(c, js, snaps[0]['host'] if snaps else '')
     s = snaps or []
     last = s[0] if s else None
-    stale = bool(last) and (now - last['at']).days > STALE_DAYS
+    stale = bool(last) and days_between(last['at'], now) > STALE_DAYS
     total_h = size_h(sum(x['size'] for x in s))
     running = bool(job) and job.get('state') == 'running'
     why = ''
@@ -270,21 +276,27 @@ def today(v):
     the home. Every combination is in docs/memory.md."""
     sv, pc, off = (next(x for x in v['copies'] if x['key'] == k) for k in ('server', 'pc', 'offsite'))
     if sv['kind'] == 'fresh' and pc['kind'] == 'fresh': first = f"Backups are fresh: the server {sv['age']}, your PC {pc['age']}."
+    elif sv['kind'] == 'fresh' and pc['kind'] == 'stale':        # the PC is the problem: say so first, the card shows only the start
+        first = f"Check your PC's backup: it last finished {pc['age']}; the server backed up {sv['age']}."
     else:
-        first = {'running': 'Backing up the server now', 'failed': "The server's last backup failed", 'none': 'The server has no backup yet',
-                 'stale': f"The server's backup is older than a week ({sv['age']})", 'fresh': f"The server backed up {sv['age']}"}[sv['kind']]
-        first += '; ' + ({'fresh': f"your PC backed up {pc['age']}", 'stale': f"your PC's backup is older than a week ({pc['age']})"}
-                         .get(pc['kind'], "no word from your PC's backup yet")) + '.'
-    second = {'running': 'Copying outside your home now.', 'failed': 'The copy outside your home failed.',
-              'done': f"Copied outside your home {off['age']}." if off['age'] else 'Copied outside your home.'}.get(off['kind'], 'No copy outside your home yet.')
+        head = {'running': 'Backing up the server now' + (f" (last one: {sv['age']})" if v['stale'] and sv['age'] else ''),
+                'failed': "The server's last backup failed", 'none': 'The server has no backup yet',
+                'stale': f"The server's backup is older than a week ({sv['age']})", 'fresh': f"The server backed up {sv['age']}"}[sv['kind']]
+        first = head + '; ' + ({'fresh': f"your PC backed up {pc['age']}", 'stale': f"your PC's backup is older than a week ({pc['age']})",
+                                'unread': "your PC's backup sent word this page cannot read", 'ahead': "your PC's clock looks wrong"}
+                               .get(pc['kind'], "no word from your PC's backup yet")) + '.'
+    second = {'running': "Copying the server's backups outside your home now.", 'failed': "The copy of the server's backups outside your home failed.",
+              'done': f"The server's backups were copied outside your home {off['age']}." if off['age'] else "The server's backups were copied outside your home."
+              }.get(off['kind'], "The server has no copy outside your home yet.")
     return f'{first} {second}'
 
 def status(v):
     """Home's line (today()), and Needs you when the newest snapshot is older than STALE_DAYS or the last run failed."""
     j = v['job']
     failed = bool(j and j['state'] == 'failed')
-    return {'line': today(v), 'needs': failed or v['stale'],
-            'action': 'Look at the failed backup' if failed else 'Check backups' if v['stale'] else ''}
+    pc_old = any(x['key'] == 'pc' and x['kind'] == 'stale' for x in v['copies'])      # the PC's backup is older than a week
+    return {'line': today(v), 'needs': failed or v['stale'] or pc_old,
+            'action': 'Look at the failed backup' if failed else 'Check backups' if v['stale'] else "Check the PC's backup" if pc_old else ''}
 
 def get(path, query, ctx):
     if path == 'state': return 200, view(ctx)

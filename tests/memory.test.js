@@ -12,7 +12,7 @@ const BRAIN = 'mnemosyne-server-brain', OFFSITE = 'mnemosyne-server-offsite';
 const CONFIG = path.join(HOME, '.config/argus-ui/memory.json');
 const MINE = path.join(HOME, 'backups'), SNAPS = path.join(MINE, 'Server-brain'), MARKER = path.join(MINE, 'last-backup.json');
 const STATUS_WORDS = /\b(Done|Old|None|Unknown|Not yet|Failed|Not run)\b/;
-const KEYS = 'it leaves out your passwords and keys, which need you at the keyboard to type the passphrase';
+const KEYS = 'your passwords and keys are left out on purpose: you back those up by hand, typing the passphrase';
 const WATCH = 'look at its weekly job under Mnemosyne on the Watch page';
 const brain = () => JSON.parse(fs.readFileSync(path.join(process.env.FIXTURES, 'units.json')))[BRAIN];
 async function hold(p, btn, ms) { await btn.focus(); await p.keyboard.down('Space'); await p.waitForTimeout(ms); await p.keyboard.up('Space'); }
@@ -59,7 +59,7 @@ run(async b => {
     const kind = k => p.locator(`.mem-copies li[data-key="${k}"]`).getAttribute('data-kind');
     check(/^(fresh|stale)$/.test(await kind('server')) && /^The server(?: took|'s newest snapshot)/.test(await say(p, 'server'))
       && await say(p, 'pc') === `No word has come from your PC's weekly backup yet (the PC sends word each time one finishes); ${KEYS}.`
-      && await say(p, 'offsite') === 'No copy of your backups is kept outside your home yet: the job that will keep one is planned but not built.',
+      && await say(p, 'offsite') === "The server's backups are not copied outside your home yet: the job that will do that is planned but not built.",
       '3-2-1 in sentences: the server\'s snapshots, no word from the PC yet (never a guess), nothing outside the home yet');
     check(await p.locator('.mem-copies .mark[aria-hidden="true"]').count() === 3 && await p.locator('.mem-copies li .name').count() === 3, 'each copy has a mark and a name, never colour alone');
     const named = await p.locator('.mem-copies li').evaluateAll(ls => ls.map(l => [l.getAttribute('aria-label'), l.querySelector('.say')?.textContent]));
@@ -90,7 +90,7 @@ run(async b => {
 
     const h = await page(b);
     await h.goto(BASE); await h.locator('.place', {hasText: 'Backups'}).locator('.pl', {hasText: 'Backing up'}).waitFor({timeout: 5000}).catch(() => {});
-    check(await h.locator('.place', {hasText: 'Backups'}).locator('.pl').textContent() === "Backing up the server now; no word from your PC's backup yet. No copy outside your home yet.",
+    check(await h.locator('.place', {hasText: 'Backups'}).locator('.pl').textContent() === "Backing up the server now; no word from your PC's backup yet. The server has no copy outside your home yet.",
       "Today: the Backups card shows Memory's line, the running backup first");
     await p.close(); await h.close();              // their 15-second refreshes would only slow the checks below
 
@@ -109,18 +109,24 @@ run(async b => {
       {name: 'fine', snaps: [[2, 1500], [9, 1200]], marker: pcFresh, offsite: fine, rows: {
         server: `The server took its newest snapshot of itself 2 days ago (${stamp(day(2, 4), 2)}) and keeps 2 of them, 2.6 KB in all.`,
         pc: `Your PC's weekly backup finished 3 days ago (${stamp(day(3, 5), 3)}) with 6 sets of files, 117.7 MB; ${KEYS}.`,
-        offsite: `Your backups were last copied outside your home 3 days ago (${stamp(day(3, 5, 30), 3)}).`},
-        marks: '✓✓✓', today: 'Backups are fresh: the server 2 days ago, your PC 3 days ago. Copied outside your home 3 days ago.', needs: false},
+        offsite: `The server's backups were last copied outside your home 3 days ago (${stamp(day(3, 5, 30), 3)}).`},
+        marks: '✓✓✓', today: "Backups are fresh: the server 2 days ago, your PC 3 days ago. The server's backups were copied outside your home 3 days ago.", needs: false},
       {name: 'pc-never-heard', snaps: [[2, 1500], [9, 1200]], marker: null, offsite: null, rows: {
         server: `The server took its newest snapshot of itself 2 days ago (${stamp(day(2, 4), 2)}) and keeps 2 of them, 2.6 KB in all.`,
         pc: `No word has come from your PC's weekly backup yet (the PC sends word each time one finishes); ${KEYS}.`,
-        offsite: 'No copy of your backups is kept outside your home yet: the job that will keep one is planned but not built.'},
-        marks: '✓?✕', today: "The server backed up 2 days ago; no word from your PC's backup yet. No copy outside your home yet.", needs: false},
+        offsite: "The server's backups are not copied outside your home yet: the job that will do that is planned but not built."},
+        marks: '✓?✕', today: "The server backed up 2 days ago; no word from your PC's backup yet. The server has no copy outside your home yet.", needs: false},
       {name: 'server-older-than-a-week', snaps: [[10, 1500], [17, 1200]], marker: pcFresh, offsite: null, rows: {
         server: `The server's newest snapshot of itself is from 10 days ago (${stamp(day(10, 4), 10)}), older than a week, so ${WATCH}.`,
         pc: `Your PC's weekly backup finished 3 days ago (${stamp(day(3, 5), 3)}) with 6 sets of files, 117.7 MB; ${KEYS}.`,
-        offsite: 'No copy of your backups is kept outside your home yet: the job that will keep one is planned but not built.'},
-        marks: '!✓✕', today: "The server's backup is older than a week (10 days ago); your PC backed up 3 days ago. No copy outside your home yet.", needs: true}];
+        offsite: "The server's backups are not copied outside your home yet: the job that will do that is planned but not built."},
+        marks: '!✓✕', today: "The server's backup is older than a week (10 days ago); your PC backed up 3 days ago. The server has no copy outside your home yet.", needs: true, action: 'Check backups'},
+      {name: 'pc-older-than-a-week', snaps: [[2, 1500], [9, 1200]], marker: {at: `${ymd(day(12, 5))}T05:00:00`, sets: 6, bytes: 123456789}, offsite: null, rows: {
+        server: `The server took its newest snapshot of itself 2 days ago (${stamp(day(2, 4), 2)}) and keeps 2 of them, 2.6 KB in all.`,
+        pc: `Your PC's weekly backup last finished 12 days ago (${stamp(day(12, 5), 12)}), older than a week, so check its scheduled task on your PC; ${KEYS}.`,
+        offsite: "The server's backups are not copied outside your home yet: the job that will do that is planned but not built."},
+        marks: '✓!✕', today: "Check your PC's backup: it last finished 12 days ago; the server backed up 2 days ago. The server has no copy outside your home yet.", needs: true,
+        action: "Check the PC's backup", verdict: "Check your PC's backup"}];
     for (const s of scenarios) {
       scenario(s);
       const q = await page(b, 412, 915);
@@ -149,9 +155,17 @@ run(async b => {
       await card.filter({hasText: s.today}).waitFor({timeout: 5000}).catch(() => {});
       check(await card.textContent() === s.today, `${s.name}: Today's line: ${await card.textContent()}`);
       const row = t.locator('.need', {hasText: s.today});
-      check(s.needs ? await row.count() === 1 && await row.locator('a.go').textContent() === 'Check backups' : await row.count() === 0,
-        `${s.name}: ${s.needs ? 'Needs you shows the line with Check backups' : 'nothing in Needs you'}`);
+      check(s.needs ? await row.count() === 1 && await row.locator('a.go').textContent() === (s.action || 'Check backups') : await row.count() === 0,
+        `${s.name}: ${s.needs ? 'Needs you shows the line with ' + (s.action || 'Check backups') : 'nothing in Needs you'}`);
       await t.close();
+      if (s.verdict) for (const [w, h] of [[360, 800], [412, 915], [1440, 900]]) {        // the card shows only the start of the line: the verdict must be in it
+        const v = await page(b, w, h); await v.goto(BASE);
+        const pl = v.locator('.place', {hasText: 'Backups'}).locator('.pl'); await pl.filter({hasText: s.verdict}).waitFor({timeout: 5000}).catch(() => {});
+        const shown = await pl.evaluate(el => { const n = el.firstChild, r = document.createRange(), box = el.getBoundingClientRect(); let i = 0;
+          for (; i < n.length; i++) { r.setStart(n, i); r.setEnd(n, i + 1); if (r.getBoundingClientRect().right > box.right + 0.5) break; } return i; });
+        check(shown >= s.verdict.length, `${s.name}, ${w} px: Today's card shows the verdict first (${shown} of ${s.verdict.length} characters visible)`);
+        await v.close();
+      }
     }
   } finally {
     units(u => { delete u[BRAIN]; delete u[OFFSITE]; });     // the later checks see the fixtures as they were

@@ -5,7 +5,7 @@
 The fixture folder tests/fixtures/memory/Server-brain/ holds three snapshots plus decoys the plugin must never list.
 Each test gets its own temporary folders; the fixture itself is never changed, and no systemctl is ever run."""
 import importlib.util, json, os, re, shutil, sys, tempfile, types, unittest
-from datetime import datetime
+from datetime import datetime, timedelta
 
 R = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FIX = os.path.join(R, 'tests', 'fixtures', 'memory', 'Server-brain')
@@ -74,10 +74,10 @@ class Snapshots(Base):
     def test_folder_from_config_and_missing(self):
         self.write(m.CONFIG, {'folder': os.path.join(self.tmp, 'nowhere')})
         v = self.view(); self.assertFalse(v['found']); self.assertEqual(v['count'], 0)
-        self.assertEqual(m.status(v)['line'], "The server has no backup yet; no word from your PC's backup yet. No copy outside your home yet.")
+        self.assertEqual(m.status(v)['line'], "The server has no backup yet; no word from your PC's backup yet. The server has no copy outside your home yet.")
         os.remove(m.CONFIG); shutil.rmtree(self.mn); os.makedirs(self.mn)
         v = self.view(); self.assertIsNone(v['folder'])
-        self.assertEqual(m.status(v)['line'], "The server has no backup yet; no word from your PC's backup yet. No copy outside your home yet.")
+        self.assertEqual(m.status(v)['line'], "The server has no backup yet; no word from your PC's backup yet. The server has no copy outside your home yet.")
 
     def test_several_folders_pick_the_brain_units_server(self):
         other = os.path.join(self.mn, 'Aaa-brain'); os.makedirs(other)
@@ -93,7 +93,7 @@ class Job(Base):
         self.ctx = types.SimpleNamespace(theme_dir=self.tmp)
         v = self.view(); self.assertEqual(v['count'], 3); self.assertIsNone(v['job']); self.assertFalse(v['can_backup'])
 
-KEYS = 'it leaves out your passwords and keys, which need you at the keyboard to type the passphrase'
+KEYS = 'your passwords and keys are left out on purpose: you back those up by hand, typing the passphrase'
 WATCH = 'look at its weekly job under Mnemosyne on the Watch page'
 STATUS_WORDS = re.compile(r'\b(Done|Old|None|Unknown|Not yet|Failed|Not run)\b')   # 1.1.0: never in what the owner reads
 
@@ -108,7 +108,7 @@ class Copies(Base):
 
     def test_row_names(self):
         self.assertEqual([(c['key'], c['label']) for c in self.view()['copies']],
-                         [('server', 'Snapshots the server keeps of itself'), ('pc', "Your PC's own weekly backup"), ('offsite', 'A copy outside your home')])
+                         [('server', 'Snapshots the server keeps of itself'), ('pc', "Your PC's own weekly backup"), ('offsite', "The server's copy outside your home")])
 
     # ---- the server's snapshots of itself
     def test_server_fresh(self):
@@ -232,31 +232,72 @@ class Copies(Base):
     def test_offsite_no_job(self):
         c = self.copy('offsite')
         self.assertEqual((c['state'], c['kind']), ('no', 'missing'))
-        self.assertEqual(c['say'], 'No copy of your backups is kept outside your home yet: the job that will keep one is planned but not built.')
+        self.assertEqual(c['say'], "The server's backups are not copied outside your home yet: the job that will do that is planned but not built.")
 
     def test_offsite_never_run(self):
         self.jobs.append(dict(job('mnemosyne-server-offsite', 'never', last='—'), started=''))
         c = self.copy('offsite')
         self.assertEqual((c['state'], c['kind']), ('unknown', 'never'))
-        self.assertEqual(c['say'], 'The job that keeps a copy of your backups outside your home is set up but has not run yet: see when it runs under Mnemosyne on the Watch page.')
+        self.assertEqual(c['say'], "The job that copies the server's backups outside your home is set up but has not run yet: see when it runs under Mnemosyne on the Watch page.")
 
     def test_offsite_failed(self):
         self.jobs.append(dict(job('mnemosyne-server-offsite', 'failed'), started='2026-11-08 04:30:00'))
         c = self.copy('offsite')
         self.assertEqual((c['state'], c['kind']), ('no', 'failed'))
-        self.assertEqual(c['say'], 'The last try to copy your backups outside your home failed 2 days ago (Sunday, 4:30 AM), so look at its job under Mnemosyne on the Watch page.')
+        self.assertEqual(c['say'], "The last try to copy the server's backups outside your home failed 2 days ago (Sunday, 4:30 AM), so look at its job under Mnemosyne on the Watch page.")
 
     def test_offsite_done(self):
         self.jobs.append(dict(job('mnemosyne-server-offsite'), started='2026-11-08 04:30:00'))
         c = self.copy('offsite')
         self.assertEqual((c['state'], c['kind']), ('yes', 'done'))
-        self.assertEqual(c['say'], 'Your backups were last copied outside your home 2 days ago (Sunday, 4:30 AM).')
+        self.assertEqual(c['say'], "The server's backups were last copied outside your home 2 days ago (Sunday, 4:30 AM).")
         del self.jobs[-1]['started']                                           # an older Elaia without "started"
-        self.assertEqual(self.say('offsite'), 'Your backups have been copied outside your home.')
+        self.assertEqual(self.say('offsite'), "The server's backups have been copied outside your home.")
 
     def test_offsite_running(self):
         self.jobs.append(dict(job('mnemosyne-server-offsite', 'running'), started='2026-11-10 11:55:00'))
-        self.assertEqual((self.copy('offsite')['state'], self.say('offsite')), ('running', 'Your backups are being copied outside your home now.'))
+        self.assertEqual((self.copy('offsite')['state'], self.say('offsite')), ('running', "The server's backups are being copied outside your home now."))
+
+    # ---- fix round after the review (R11)
+    def test_offsite_row_is_about_the_servers_copy_only(self):
+        """The PC's weekly archives go to a cloud folder and count as a copy outside the home, so no sentence may say that no
+        copy of "your backups" exists outside it: the row is about the server's copy, whose job is not built yet."""
+        states = [None, 'never', 'running', 'failed', 'ok']
+        for st in states:
+            self.jobs[2:] = [dict(job('mnemosyne-server-offsite', st), started='2026-11-08 04:30:00')] if st else []
+            v = self.view(); t = self.say('offsite', v) + ' ' + self.copy('offsite', v)['label'] + ' ' + m.status(v)['line']
+            self.assertIn("server", self.say('offsite', v)); self.assertIn("server", m.status(v)['line'].split('. ')[-1].lower())
+            self.assertNotRegex(t, r'(?i)no copy of your backups|your backups (are|is) not|backups (is|are) kept outside|(?<!server has )no copy outside your home')
+
+    def test_age_and_staleness_agree_across_midnight_and_the_clock_change(self):
+        """A check mark must never sit beside '9 days ago': staleness counts the calendar days the age shows."""
+        os.makedirs(os.path.join(self.tmp, 'one')); shutil.copy(os.path.join(FIX, SNAPS[0]), os.path.join(self.tmp, 'one', 'Server-brain_2026-11-01_2330.tar.gz'))
+        self.write(m.CONFIG, {'folder': os.path.join(self.tmp, 'one')})           # Nov 1 is the day daylight-saving time ends in the US
+        n = 0
+        for mins in range(0, 12 * 24 * 60, 37):
+            now = datetime(2026, 11, 5) + timedelta(minutes=mins)
+            self.marker({'at': '2026-11-01T23:30:00'})
+            for key in ('server', 'pc'):
+                c = self.copy(key, self.view(now)); mt = re.search(r'(\d+) days ago', c['say'])
+                if not mt: continue
+                n += 1; days = int(mt.group(1))
+                self.assertEqual(c['kind'] == 'stale', days > 8, f'{key} at {now}: {c["kind"]} beside "{days} days ago"')
+        self.assertGreater(n, 400)
+        # the named cases: 9 calendar days after 23:59, one minute past midnight
+        self.write(m.CONFIG, {'folder': os.path.join(self.tmp, 'one')})
+        os.rename(os.path.join(self.tmp, 'one', 'Server-brain_2026-11-01_2330.tar.gz'), os.path.join(self.tmp, 'one', 'Server-brain_2026-11-02_2359.tar.gz'))
+        v = self.view(datetime(2026, 11, 11, 0, 1)); c = self.copy('server', v)
+        self.assertEqual((c['kind'], v['stale']), ('stale', True)); self.assertIn('9 days ago', c['say'])
+        self.marker({'at': '2026-11-02T03:00:00'})                              # 8 days 21 hours before: "9 days ago" on the calendar
+        c = self.copy('pc', self.view(datetime(2026, 11, 11, 0, 1)))
+        self.assertEqual(c['kind'], 'stale'); self.assertIn('9 days ago', c['say'])
+        c = self.copy('pc', self.view(datetime(2026, 11, 10, 23, 58)))           # still 8 calendar days: fresh, and says "8 days ago"
+        self.assertEqual(c['kind'], 'fresh'); self.assertIn('8 days ago', c['say'])
+
+    def test_server_frozen_with_no_snapshot_does_not_say_to_hold_the_button(self):
+        os.makedirs(os.path.join(self.tmp, 'empty')); self.write(m.CONFIG, {'folder': os.path.join(self.tmp, 'empty')})
+        self.jobs[1]['state'] = 'frozen'
+        self.assertEqual(self.say('server'), 'The server has no snapshot of itself yet: its weekly job is paused; press Resume on its card on the Watch page first.')
 
 class Times(Base):
     def test_ages_and_clock_times(self):
@@ -280,7 +321,7 @@ class Status(Base):
         code, s = m.get('status', {}, self.ctx)                              # the endpoint, on today's clock
         self.assertEqual((code, sorted(s)), (200, ['action', 'line', 'needs']))
         s = m.status(self.view())
-        self.assertEqual(s['line'], "The server backed up 2 days ago; no word from your PC's backup yet. No copy outside your home yet.")
+        self.assertEqual(s['line'], "The server backed up 2 days ago; no word from your PC's backup yet. The server has no copy outside your home yet.")
         self.assertFalse(s['needs']); self.assertEqual(s['action'], '')
         s = m.status(self.view(datetime(2026, 11, 20)))
         self.assertTrue(s['needs']); self.assertEqual(s['action'], 'Check backups')
@@ -294,30 +335,56 @@ class Status(Base):
         fresh, old = {'at': '2026-11-09T03:00:00', 'sets': 6, 'bytes': 123456789}, {'at': '2026-10-01T03:00:00'}
         line = lambda now=NOW: m.status(self.view(now))['line']
         self.marker(fresh)
-        self.assertEqual(line(), 'Backups are fresh: the server 2 days ago, your PC yesterday. No copy outside your home yet.')
+        self.assertEqual(line(), 'Backups are fresh: the server 2 days ago, your PC yesterday. The server has no copy outside your home yet.')
         self.marker(old)
-        self.assertEqual(line(), "The server backed up 2 days ago; your PC's backup is older than a week (40 days ago). No copy outside your home yet.")
+        self.assertEqual(line(), "Check your PC's backup: it last finished 40 days ago; the server backed up 2 days ago. The server has no copy outside your home yet.")
         self.marker({'at': '2026-11-19T03:00:00'})
-        self.assertEqual(line(datetime(2026, 11, 20)), "The server's backup is older than a week (12 days ago); your PC backed up 21 hours ago. No copy outside your home yet.")
+        self.assertEqual(line(datetime(2026, 11, 20)), "The server's backup is older than a week (12 days ago); your PC backed up 21 hours ago. The server has no copy outside your home yet.")
         self.marker(old)
-        self.assertEqual(line(datetime(2026, 11, 20)), "The server's backup is older than a week (12 days ago); your PC's backup is older than a week (50 days ago). No copy outside your home yet.")
+        self.assertEqual(line(datetime(2026, 11, 20)), "The server's backup is older than a week (12 days ago); your PC's backup is older than a week (50 days ago). The server has no copy outside your home yet.")
         self.marker(fresh); self.jobs[1]['state'] = 'failed'
-        self.assertEqual(line(), "The server's last backup failed; your PC backed up yesterday. No copy outside your home yet.")
+        self.assertEqual(line(), "The server's last backup failed; your PC backed up yesterday. The server has no copy outside your home yet.")
         self.jobs[1]['state'] = 'running'
-        self.assertEqual(line(), 'Backing up the server now; your PC backed up yesterday. No copy outside your home yet.')
+        self.assertEqual(line(), 'Backing up the server now; your PC backed up yesterday. The server has no copy outside your home yet.')
         self.jobs[1]['state'] = 'ok'
         self.jobs.append(dict(job('mnemosyne-server-offsite'), started='2026-11-08 04:30:00'))
-        self.assertEqual(line(), 'Backups are fresh: the server 2 days ago, your PC yesterday. Copied outside your home 2 days ago.')
+        self.assertEqual(line(), "Backups are fresh: the server 2 days ago, your PC yesterday. The server's backups were copied outside your home 2 days ago.")
         self.jobs[-1]['state'] = 'failed'
-        self.assertEqual(line(), 'Backups are fresh: the server 2 days ago, your PC yesterday. The copy outside your home failed.')
+        self.assertEqual(line(), "Backups are fresh: the server 2 days ago, your PC yesterday. The copy of the server's backups outside your home failed.")
         self.jobs[-1]['state'] = 'running'
-        self.assertEqual(line(), 'Backups are fresh: the server 2 days ago, your PC yesterday. Copying outside your home now.')
+        self.assertEqual(line(), "Backups are fresh: the server 2 days ago, your PC yesterday. Copying the server's backups outside your home now.")
         self.jobs[-1]['state'] = 'never'
-        self.assertEqual(line(), 'Backups are fresh: the server 2 days ago, your PC yesterday. No copy outside your home yet.')
+        self.assertEqual(line(), 'Backups are fresh: the server 2 days ago, your PC yesterday. The server has no copy outside your home yet.')
         self.write(m.CONFIG, {'folder': os.path.join(self.tmp, 'empty')})
-        self.assertEqual(line(), 'The server has no backup yet; your PC backed up yesterday. No copy outside your home yet.')
+        self.assertEqual(line(), 'The server has no backup yet; your PC backed up yesterday. The server has no copy outside your home yet.')
         self.jobs[1]['state'] = 'running'          # said first, also before the first snapshot
-        self.assertEqual(line(), 'Backing up the server now; your PC backed up yesterday. No copy outside your home yet.')
+        self.assertEqual(line(), 'Backing up the server now; your PC backed up yesterday. The server has no copy outside your home yet.')
+
+    def test_pc_older_than_a_week_reaches_needs_you(self):
+        self.marker({'at': '2026-10-01T03:00:00'})                               # server fresh, PC 40 days
+        st = m.status(self.view())
+        self.assertTrue(st['needs']); self.assertEqual(st['action'], "Check the PC's backup")
+        self.assertTrue(st['line'].startswith("Check your PC's backup: it last finished 40 days ago; the server backed up 2 days ago."), st['line'])
+        self.marker({'at': '2026-11-09T03:00:00'})                              # the PC fresh again: calm
+        self.assertEqual((m.status(self.view())['needs'], m.status(self.view())['action']), (False, ''))
+        self.marker({'at': '2026-10-01T03:00:00'})                              # both old: the server's action wins
+        st = m.status(self.view(datetime(2026, 11, 20)))
+        self.assertEqual((st['needs'], st['action']), (True, 'Check backups'))
+        self.jobs[1]['state'] = 'failed'; self.assertEqual(m.status(self.view())['action'], 'Look at the failed backup')
+
+    def test_today_says_word_came_when_it_came(self):
+        for text, want in (('not json {', "your PC's backup sent word this page cannot read"), ('{"at": "2026-11-20T03:00:00"}', "your PC's clock looks wrong")):
+            with open(os.path.join(self.mn, 'last-backup.json'), 'w', encoding='utf-8') as f: f.write(text)
+            line = m.status(self.view())['line']
+            self.assertIn(want, line); self.assertNotIn('no word', line)
+        os.remove(os.path.join(self.mn, 'last-backup.json'))
+        self.assertIn("no word from your PC's backup yet", m.status(self.view())['line'])
+
+    def test_running_over_an_old_snapshot_says_how_old(self):
+        self.marker({'at': '2026-11-19T03:00:00'}); self.jobs[1]['state'] = 'running'
+        self.assertEqual(m.status(self.view(datetime(2026, 11, 20)))['line'],
+                         "Backing up the server now (last one: 12 days ago); your PC backed up 21 hours ago. The server has no copy outside your home yet.")
+        self.assertTrue(m.status(self.view(datetime(2026, 11, 20)))['needs'])
 
 class Words(Base):
     """1.1.0: what the owner reads has no status words and never the word 'secrets', in every state the tests can make."""
@@ -337,7 +404,7 @@ class Words(Base):
                         for t in [c['say'] for c in v['copies']] + [c['label'] for c in v['copies']] + [line]:
                             self.assertIsNone(STATUS_WORDS.search(t), t); self.assertNotIn('secret', t.lower())
                         self.assertTrue(all(c['say'].endswith('.') and 'word' not in c and 'detail' not in c for c in v['copies']))
-                        self.assertLessEqual(len(line), 160, line)
+                        self.assertLessEqual(len(line), 175, line)
                         seen += 1
         self.assertEqual(seen, 5 * 5 * 5 * 2)
 

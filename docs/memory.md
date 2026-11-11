@@ -8,7 +8,7 @@ Memory (`<base>/memory`) answers **"are my backups fresh, and how many copies ex
 - **The shelf:** one bar per snapshot (the newest 12), oldest on the left, height by size, labelled by date; the newest is marked. While a backup runs, a dashed bar fills at the right. Under it, **All N snapshots** lists each one with its time, age and exact size in bytes (the same number as `ls -l`). These are plain bars and words: **the jar, shelf and vessel art waits for the owner's approval** (ui-plan §13).
 
 ### The rows, every state, word for word
-Times read as the rest of the page writes them: an age, then the clock time in brackets: *3 hours ago (9:00 AM)* today, *2 days ago (Sunday, 4:00 AM)* within the week, *12 days ago (Nov 8, 4:00 AM)* before that (with the year when it is another year's). Ages count hours within a day, then calendar days, so the age and the weekday never disagree. A time ahead of the server's clock reads *just now*, never *in 3 hours*. "Older than a week" is the same 8-day rule as before: more than 8 whole days.
+Times read as the rest of the page writes them: an age, then the clock time in brackets: *3 hours ago (9:00 AM)* today, *2 days ago (Sunday, 4:00 AM)* within the week, *12 days ago (Nov 8, 4:00 AM)* before that (with the year when it is another year's). Ages count hours within a day, then calendar days, so the age and the weekday never disagree. A time ahead of the server's clock reads *just now*, never *in 3 hours*. "Older than a week" is the same 8-day rule as before, counted in the calendar days the age shows: more than 8 calendar days, so a check mark never sits beside *9 days ago*, at midnight or when the clocks change.
 
 **Snapshots the server keeps of itself** (the snapshot files, and what the brain job is doing):
 
@@ -16,12 +16,12 @@ Times read as the rest of the page writes them: an age, then the clock time in b
 |---|---|---|
 | fresh | ✓ | The server took its newest snapshot of itself 2 days ago (Sunday, 4:00 AM) and keeps 3 of them, 2.6 KB in all. *(one snapshot: "and keeps only that one, 900 bytes.")* |
 | older than 8 days | ! | The server's newest snapshot of itself is from 12 days ago (Nov 8, 4:00 AM), older than a week, so look at its weekly job under Mnemosyne on the Watch page. |
-| none, a brain job exists | ✕ | The server has no snapshot of itself yet: hold Back up now to take the first one. |
+| none, a brain job exists | ✕ | The server has no snapshot of itself yet: hold Back up now to take the first one. *(the job is paused: "…yet: its weekly job is paused; press Resume on its card on the Watch page first.")* |
 | none, no brain job | ✕ | The server has no snapshot of itself yet, and no weekly job to take one was found. |
 | last run failed | ✕ | The server's newest snapshot of itself is from 2 days ago (Sunday, 4:00 AM), and its last try failed, so look at its weekly job under Mnemosyne on the Watch page. *(older than 8 days: "…(Nov 8, 4:00 AM), older than a week, and its last try failed, so …"; no snapshot: "The server's first try to take a snapshot of itself failed, so look at its weekly job under Mnemosyne on the Watch page.")* |
 | running | ↻ | The server is taking a new snapshot of itself now; its newest finished one is from 2 days ago (Sunday, 4:00 AM). *(no snapshot yet: "The server is taking its first snapshot of itself now.")* |
 
-**Your PC's own weekly backup** (the marker file, below). Every sentence ends with what the weekly run leaves out: *it leaves out your passwords and keys, which need you at the keyboard to type the passphrase* (shortened to "; …" below):
+**Your PC's own weekly backup** (the marker file, below). Every sentence ends with what the weekly run leaves out: *your passwords and keys are left out on purpose: you back those up by hand, typing the passphrase* (shortened to "; …" below):
 
 | State | Mark | Sentence |
 |---|---|---|
@@ -35,15 +35,15 @@ Times read as the rest of the page writes them: an age, then the clock time in b
 | marker is not JSON, not an object, too big (over 64 KB), or its `at` is not a time | ? | Word came from your PC's weekly backup but could not be read, so this page cannot tell when it last ran (the next backup sends it again); … |
 | `at` more than a day ahead (a wrong clock, not a fresh backup) | ? | Word came from your PC's weekly backup with a time still ahead of this server's clock (Nov 20, 3:00 AM), so check the date and time on your PC; … |
 
-**A copy outside your home** (the `mnemosyne-<server>-offsite` job, once it exists; its time is the task's last start):
+**The server's copy outside your home** (the `mnemosyne-<server>-offsite` job, once it exists; its time is the task's last start):
 
 | State | Mark | Sentence |
 |---|---|---|
-| no job yet | ✕ | No copy of your backups is kept outside your home yet: the job that will keep one is planned but not built. |
-| never run | ? | The job that keeps a copy of your backups outside your home is set up but has not run yet: see when it runs under Mnemosyne on the Watch page. |
-| failed | ✕ | The last try to copy your backups outside your home failed 2 days ago (Sunday, 4:30 AM), so look at its job under Mnemosyne on the Watch page. |
-| running | ↻ | Your backups are being copied outside your home now. |
-| done | ✓ | Your backups were last copied outside your home 2 days ago (Sunday, 4:30 AM). *(no start time known: "Your backups have been copied outside your home.")* |
+| no job yet | ✕ | The server's backups are not copied outside your home yet: the job that will do that is planned but not built. |
+| never run | ? | The job that copies the server's backups outside your home is set up but has not run yet: see when it runs under Mnemosyne on the Watch page. |
+| failed | ✕ | The last try to copy the server's backups outside your home failed 2 days ago (Sunday, 4:30 AM), so look at its job under Mnemosyne on the Watch page. |
+| running | ↻ | The server's backups are being copied outside your home now. |
+| done | ✓ | The server's backups were last copied outside your home 2 days ago (Sunday, 4:30 AM). *(no start time known: "The server's backups have been copied outside your home.")* |
 
 ## Back up now
 A hold-to-confirm button (`api.holdConfirm`: 3 seconds, or Space/Enter held; docs/fx.md). The note beside it says Jellyfin pauses for about a minute. It POSTs `api/memory/backup`, which runs exactly one command, as an argument list with no shell:
@@ -70,11 +70,15 @@ Its line on Today is one plain sentence about the server and the PC, then one ab
 | older than 8 days | The server's backup is older than a week (12 days ago); *(the PC's part)*. |
 | fresh, the PC not | The server backed up 2 days ago; *(the PC's part)*. |
 
-The PC's part: *your PC backed up 21 hours ago* (fresh), *your PC's backup is older than a week (40 days ago)*, or *no word from your PC's backup yet* (no marker, or one that cannot be read). The second sentence: *No copy outside your home yet.* (no job, or never run), *The copy outside your home failed.*, *Copying outside your home now.*, or *Copied outside your home 2 days ago.*
+The PC's part: *your PC backed up 21 hours ago* (fresh), *your PC's backup is older than a week (40 days ago)*, *your PC's backup sent word this page cannot read* (a marker that cannot be read), *your PC's clock looks wrong* (a marker more than a day ahead), or *no word from your PC's backup yet* (no marker). While a backup runs over a snapshot older than a week, the first part says so: *Backing up the server now (last one: 12 days ago)*.
 
-For example: *Backups are fresh: the server 2 days ago, your PC 3 days ago. No copy outside your home yet.*
+**The PC is the problem** (the server is fresh, the PC's backup is older than a week): the line starts with the verdict, because the card on Today shows only the start of it: *Check your PC's backup: it last finished 12 days ago; the server backed up 2 days ago.*
 
-It goes to **Needs you** when the newest snapshot is older than 8 days (**Check backups**) or the last run failed (**Look at the failed backup**); this did not change in 4.39.0.
+The second sentence is about the server's copy outside the home only (the PC's weekly archives go to a cloud folder, which this page cannot see): *The server has no copy outside your home yet.* (no job, or never run), *The copy of the server's backups outside your home failed.*, *Copying the server's backups outside your home now.*, or *The server's backups were copied outside your home 2 days ago.*
+
+For example: *Backups are fresh: the server 2 days ago, your PC 3 days ago. The server has no copy outside your home yet.*
+
+It goes to **Needs you** when the newest snapshot is older than 8 days (**Check backups**), the last run failed (**Look at the failed backup**) or, since 4.41.0, the PC's backup is older than a week (**Check the PC's backup**).
 
 ## Settings
 Nothing is needed when the snapshots are in the only `~/.mnemosyne/<Server>-brain/` folder and there is one brain job. Otherwise, `~/.config/argus-ui/memory.json` (read on every refresh, all fields optional):
