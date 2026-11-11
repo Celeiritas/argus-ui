@@ -1,0 +1,2 @@
+36 1 0:30 / / rw,relatime shared:1 - btrfs /dev/nvme0n1p3 rw,ssd
+91 36 8:33 / /mnt/media ro,relatime shared:50 - ext4 /dev/sdc1 rw,errors=remount-ro
