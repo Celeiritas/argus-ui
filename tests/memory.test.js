@@ -37,7 +37,7 @@ function scenario({snaps, marker, offsite}) {
   fs.writeFileSync(CONFIG, JSON.stringify({folder: '~/backups/Server-brain', pc_marker: '~/backups/last-backup.json'}));
   units(u => { u[BRAIN].ActiveState = 'inactive'; if (offsite) u[OFFSITE] = offsite; else delete u[OFFSITE]; });
 }
-const say = (p, k) => p.locator(`.mem-copies li[data-key="${k}"] .say`).textContent();
+const say = (p, k) => p.locator(`.mem-copies li[data-key="${k}"] .say`).textContent({timeout: 3000}).catch(() => null);   // a missing sentence fails a check, not the run
 
 run(async b => {
   units(u => { u[BRAIN] = {Result: 'success', ActiveState: 'inactive', ExecMainStartTimestamp: 'Sun 2026-11-08 04:00:00 MST',
@@ -62,7 +62,7 @@ run(async b => {
       && await say(p, 'offsite') === 'No copy of your backups is kept outside your home yet: the job that will keep one is planned but not built.',
       '3-2-1 in sentences: the server\'s snapshots, no word from the PC yet (never a guess), nothing outside the home yet');
     check(await p.locator('.mem-copies .mark[aria-hidden="true"]').count() === 3 && await p.locator('.mem-copies li .name').count() === 3, 'each copy has a mark and a name, never colour alone');
-    const named = await p.locator('.mem-copies li').evaluateAll(ls => ls.map(l => [l.getAttribute('aria-label'), l.querySelector('.say').textContent]));
+    const named = await p.locator('.mem-copies li').evaluateAll(ls => ls.map(l => [l.getAttribute('aria-label'), l.querySelector('.say')?.textContent]));
     check(named.length === 3 && named.every(([a, s]) => a && a === s) && await p.getByRole('listitem', {name: await say(p, 'pc'), exact: true}).count() === 1, "each row's accessible name is its sentence");
     const read = await p.locator('.memory').innerText();
     check(!STATUS_WORDS.test(read) && !/secret/i.test(read + named.flat().join(' ')), `no status word and never "secrets" on the page${STATUS_WORDS.test(read) ? ': ' + read.match(STATUS_WORDS)[0] : ''}`);
@@ -124,7 +124,7 @@ run(async b => {
     for (const s of scenarios) {
       scenario(s);
       const q = await page(b, 412, 915);
-      await q.goto(BASE + 'memory'); await q.locator('.mem-copies li[data-key="server"] .say').waitFor({timeout: 5000}); await q.waitForTimeout(300);
+      await q.goto(BASE + 'memory'); await q.locator('.mem-copies li[data-key="server"]').waitFor({timeout: 5000}); await q.waitForTimeout(300);
       const got = {server: await say(q, 'server'), pc: await say(q, 'pc'), offsite: await say(q, 'offsite')};
       const bad = Object.keys(s.rows).filter(k => got[k] !== s.rows[k]);
       check(!bad.length, `${s.name}: each row says its sentence${bad.map(k => `\n        ${k}: ${got[k]}\n        want: ${s.rows[k]}`).join('')}`);
@@ -139,7 +139,7 @@ run(async b => {
       await q.close();
       for (const w of [360, 375]) {
         const n = await page(b, w, 800);
-        await n.goto(BASE + 'memory'); await n.locator('.mem-copies li[data-key="server"] .say').waitFor({timeout: 5000}); await n.waitForTimeout(300);
+        await n.goto(BASE + 'memory'); await n.locator('.mem-copies li[data-key="server"]').waitFor({timeout: 5000}); await n.waitForTimeout(300);
         const fits = await n.locator('.mem-copies li').evaluateAll(ls => ls.every(l => l.scrollWidth <= l.clientWidth + 1 && l.getBoundingClientRect().right <= innerWidth));
         check(await noOverflow(n) && fits, `${s.name}, ${w} px: no sideways scrolling, every sentence wraps inside its row`);
         await n.close();
