@@ -85,6 +85,8 @@ fi
 if [ -z "$1" ] || [ "$1" = works ]; then
   echo "== watch works"
   $PYTHON "$R/tests/watch_works_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1
+  echo "== watch routes"   # the owner's yes from the page, api/events, count, restarts, podman's events off (tests/watch_routes_test.py)
+  $PYTHON -W ignore::ResourceWarning "$R/tests/watch_routes_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1
 fi
 # people and roles (docs/people.md): the connection tables and the people file, then every route against each role on a
 # real server; no browser. The Linux run reads the real /proc and says so ("real /proc lookup"); elsewhere it is simulated.
