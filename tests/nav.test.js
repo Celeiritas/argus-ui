@@ -4,7 +4,8 @@
 const {BASE, check, page, noOverflow, units, run} = require('./lib');
 const slots = p => p.locator('#tabbar .tab').evaluateAll(ts => ts.map(t => [t.querySelector('b').textContent, t.querySelector('small')?.textContent || '']));
 run(async b => {
-  units(u => { u['hermes-rename'].Result = 'exit-code'; });   // one failed task, whatever the checks before did
+  let saved; units(u => { saved = JSON.stringify(u); });          // given back at the end, for the checks after this one
+  units(u => Object.entries(u).forEach(([k, v]) => { if (k.startsWith('hermes-')) { v.Result = 'exit-code'; v.ActiveState = 'failed'; } }));   // failed tasks, whatever the checks before did (one may be frozen)
   for (const w of [360, 412]) {
     const p = await page(b, w, 800); await p.goto(BASE); await p.waitForTimeout(1200);
     const s = await slots(p);
@@ -31,6 +32,19 @@ run(async b => {
     const hidden = await p.evaluate(() => { scrollTo(0, document.documentElement.scrollHeight); const top = document.getElementById('tabbar').getBoundingClientRect().top;
       return [...document.querySelectorAll('main a[href],main button,main summary')].filter(e => { const r = e.getBoundingClientRect(); return r.height && r.bottom > top + 1; }).length; });
     check(hidden === 0, `${w}: scrolled to the end of Watch, nothing is behind the bar`);
+    for (const where of ['', 'argus']) {
+      await p.goto(BASE + where); await p.waitForTimeout(900);
+      const under = [];
+      for (let i = 0; i < 60; i++) {
+        await p.keyboard.press('Tab');
+        const f = await p.evaluate(() => { const e = document.activeElement, bar = document.getElementById('tabbar');
+          if (!e || e === document.body || bar.contains(e)) return {bar: !!e && bar.contains(e)};
+          const r = e.getBoundingClientRect(); return {t: (e.getAttribute('aria-label') || e.textContent).trim().slice(0, 24), bottom: Math.round(r.bottom), top: Math.round(bar.getBoundingClientRect().top)}; });
+        if (f.bar) break;
+        if (f.bottom > f.top) under.push(`${f.t} ${f.bottom}>${f.top}`);
+      }
+      check(under.length === 0, `${w}: Tab through ${where || 'Today'}: no focused control is under the bar ${under.join(', ')}`);
+    }
 
     // More: a sheet with the rest; Escape and Close shut it and give focus back to More
     await p.goto(BASE); await p.waitForTimeout(800);
@@ -51,6 +65,9 @@ run(async b => {
     await more.click(); await p.waitForTimeout(250);
     await p.locator('#moreList .srow', {hasText: 'Backups'}).click(); await p.waitForURL(/\/memory$/); await p.waitForTimeout(600);
     check(await p.locator('#tabbar [data-more]').evaluate(e => e.classList.contains('on')) && /Backups/.test(await p.locator('#tabbar [data-more] small').textContent()), `${w}: inside More, the More slot is current and names the place`);
+    await p.locator('#tabbar [data-more]').click(); await p.waitForTimeout(300);
+    check(/255, 226, 122/.test(await p.locator('#moreSheet .srow.on').evaluate(e => getComputedStyle(e).boxShadow)), `${w}: in the sheet, the current place has a gold left edge`);
+    await p.keyboard.press('Escape');
     check(p.errors.length === 0, `${w}: no page errors ` + p.errors.join(' | '));
   }
 
@@ -75,6 +92,11 @@ run(async b => {
   check(await q.evaluate(() => placeMarker.slid !== true && document.querySelector('.tabmark').getAnimations().length === 0), 'reduced motion: the marker does not slide');
   await q.locator('#tabbar [data-more]').click(); await q.waitForTimeout(50);
   check(await q.locator('#moreSheet').evaluate(e => getComputedStyle(e).animationName) === 'none', 'reduced motion: the sheet does not slide up');
+  await q.keyboard.press('Escape'); await q.goto(BASE + 'argus'); await q.waitForTimeout(600);
+  check(await q.evaluate(() => { S.jobs[0].state = 'failed'; look.retarget(); return getComputedStyle(document.getElementById('argus'), '::before').animationName; }) === 'none', "reduced motion: Argus's red pulse (drawn in ::before) does not run");
+
+  // a section's count is made a number before it is shown
+  check(await p.evaluate(() => { STATUS.throne = {line: 'x', needs: true, count: '2'}; const a = needCount('throne'); STATUS.throne.count = '<img src=x>'; const b = needCount('throne'); return a === 2 && b === true; }), 'a count of "2" shows 2; a count that is not a number shows the plain mark');
 
   // roles: until the server says who is asking, everyone is the owner; a learner sees Today and Study only
   check(await p.evaluate(() => role()) === 'owner', 'no role from the server: the owner');
@@ -85,10 +107,24 @@ run(async b => {
   check(await p.locator('#main .need:not(.leaving) a.go', {hasText: /failed|Review/}).count() === 0 && await p.locator('#main .place', {hasText: 'Watch'}).count() === 0, `a learner: no failed tasks, deploys or Watch on Today (${lr.join(' | ')})`);
   await p.setViewportSize({width: 1440, height: 900}); await p.evaluate(() => render());
   check(JSON.stringify(await p.locator('#realms a.realm b').allTextContents()) === '["Today","Study"]', 'a learner on a wide screen: the strip shows the same two');
+  await p.evaluate(() => { window.chimed = 0; alarmChime = () => { window.chimed++; }; S.jobs.forEach((j, i) => { if (i < 2) j.state = 'failed'; }); look.retarget(); });
+  check(await p.locator('#argus').isHidden() && await p.locator('#argus').getAttribute('aria-label') === null && await p.locator('#alarm').evaluate(e => !e.offsetParent), 'a learner: no Argus in the corner, no alarm badge, no words about the owner\'s tasks');
+  check(await p.evaluate(() => { S.jobs.forEach(j => { j.state = 'failed'; }); look.retarget(); return window.chimed; }) === 0, 'a learner: no alarm chime when something newly fails');
+  for (const deep of ['argus', 'hermes', 'throne', 'memory']) {
+    const l = await page(b, 412, 900); await l.goto(BASE + deep); await l.waitForTimeout(400);
+    await l.evaluate(() => { S.role = 'learner'; render(); });
+    await l.waitForURL(u => new URL(u).pathname === new URL(BASE).pathname, {timeout: 5000}).catch(() => {});
+    check(new URL(l.url()).pathname === new URL(BASE).pathname, `a learner who opens ${deep} lands on Today (${new URL(l.url()).pathname})`);
+    await l.close();
+  }
+  const m = await page(b, 412, 900); await m.goto(BASE + 'mentor'); await m.waitForTimeout(400);
+  await m.evaluate(() => { S.role = 'learner'; render(); }); await m.waitForTimeout(400);
+  check(/\/mentor$/.test(m.url()), 'a learner on Study stays there'); await m.close();
 
   // wide screens: the same places as a strip, in the same order, no bottom bar
   const d = await page(b, 1440, 900); await d.goto(BASE); await d.waitForTimeout(800);
   const strip = await d.locator('#realms a.realm b').allTextContents();
   check(strip.slice(0, 6).join(' ') === 'Today Watch Study Approvals Backups Playground' && await d.locator('#tabbar').isHidden(), `1440: the strip, in the same order (${strip.slice(0, 7).join(', ')}), and no bottom bar`);
   check(await noOverflow(d), '1440: no sideways scrolling');
+  units(u => { Object.keys(u).forEach(k => delete u[k]); Object.assign(u, JSON.parse(saved)); });
 });

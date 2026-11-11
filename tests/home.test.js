@@ -57,6 +57,21 @@ run(async b => {
   await p.evaluate(() => refresh()); await p.waitForTimeout(700);
   const al = need('Janus could not verify');
   check(await al.count() === 1 && await al.locator('a.go').textContent() === 'Open Demo Server' && /task failed/.test(await p.locator('.need').first().textContent()), 'an alert gets a row, with its link as the button, after the failed task');
+  check(/^Zeus · Watch/.test(await al.locator('small').textContent()), 'an alert row says who in plain words (Zeus · Watch)');
+  fs.writeFileSync(path.join(AL, 'hermes.json'), JSON.stringify({job: 'hermes-sort', level: 'alert', message: 'A delivery waits in quarantine'}));
+  await p.evaluate(() => refresh()); await need('waits in quarantine').waitFor({timeout: 5000}).catch(() => {});
+  const hl = need('waits in quarantine');
+  check(/^Hermes · Watch/.test(await hl.locator('small').textContent()) && await hl.locator('a.go').textContent() === 'Look at Hermes on Watch' && /\/argus\/hermes$/.test(await hl.locator('a.go').getAttribute('href')), 'an alert without a link opens Watch showing that agent\'s tasks');
+  // one number: the line counts what the bar counts (every task in trouble, every alert, each section that needs you)
+  const sums = async () => p.evaluate(() => { drawNav(); const line = parseInt(document.getElementById('needs-h').textContent, 10);
+    const bar = [...document.querySelectorAll('#realms .realm .dot')].reduce((t, d) => t + (parseInt(d.textContent, 10) || 1), 0); return [line, bar]; });
+  let [line, bar] = await sums();
+  check(line === bar && line >= 4, `the line on Today equals the sum of the counts on the bar (${line} = ${bar})`);
+  await p.evaluate(() => { S.jobs.forEach((j, i) => { if (i < 3) j.state = 'failed'; }); home.show(); }); await p.waitForTimeout(300);
+  [line, bar] = await sums();
+  const nf = await p.evaluate(() => S.jobs.filter(j => j.state === 'failed').length);
+  check(nf >= 3 && line === bar && new RegExp(`^Argus · Watch${nf} tasks failed`).test(await p.locator('.need').first().textContent()), `with ${nf} failed tasks too, each counted (${line} = ${bar})`);
+  fs.rmSync(path.join(AL, 'hermes.json'), {force: true}); await p.evaluate(() => refresh()); await p.waitForTimeout(700);
   await shot(p, 'home');
   // a met need fades out where it stood, then is gone
   fs.rmSync(path.join(AL, 'zeus.json'), {force: true});

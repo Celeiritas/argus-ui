@@ -8,12 +8,15 @@ opens on: the bare address `<base>/`, and `<base>/home`, its old address, which 
 1. **The header**: the page's name, Elaia, and under it a greeting by the viewer's clock, the date and the weather
    ("Good evening · Friday, October 23 · Light rain · 48°F").
 2. **One line that says the state in words**: *Nothing needs you* (with "The realm is quiet." under it), *1 thing needs you*,
-   *3 things need you*, or *Asking every section…* while the sections are still answering. It is the heading of the list:
+   *3 things need you*, or *Asking every section…* while the sections are still answering. It counts what the bar counts:
+   every task in trouble, every alert, and each section that needs you (its `count`, else one). It is the heading of the list:
 3. **The rows that need you**, the failed thing first. Each row has the place's mark, who it is from (the plain word and the
    realm's name, e.g. *Approvals · Zeus*), one sentence, and one verb-first button that goes there:
-   - failed tasks, as one row: "1 task failed: hermes-rename" → **Look at 1 failed task** (to Watch). When the server sends a
-     `reason` for a single failed task, the sentence ends with it.
-   - every `alert`-level alert file (docs/alerts.md): its message, and "Open <section>" when it links to one
+   - tasks in trouble, as one row: failed ones ("1 task failed: hermes-rename") and ones that run but cannot do their job
+     (`works: false`, docs/checks.md: "1 task running but not working: …") → **Look at 1 failed task** (to Watch). When there is
+     one, the sentence ends with its reason (`works_reason`, else `reason`).
+   - every `alert`-level alert (docs/alerts.md) that is not about one of those tasks: its agent in plain words ("Hermes · Watch"),
+     its message, and "Open <section>" when it links to one, else "Look at Hermes on Watch" (Watch showing that agent's tasks)
    - every server plugin whose status says it needs you: its line → its `action` ("Study 5 due cards", "Review argus-ui 4.15.0")
 
    A row whose need is met **fades out** where it stood (200 ms, hidden from screen readers while it goes); a row that is new
@@ -54,7 +57,10 @@ Controllers, Spartamelee, Ariad-Node**, any other plugin, then the links to othe
 
 ## Who sees what
 `role()` in `core.js` reads `role` from the server's state: `owner` sees every place; `learner` sees Today and Study only
-(and on Today only Study's row and card). Until the server sends a role, everyone is the owner. Sign-in is not built here.
+(and on Today only Study's row and card). Until the server sends a role, everyone is the owner. A learner who opens any other place (an old link, a typed address) lands
+on Today, and the page shows her no Argus: no alarm badge, no words about the owner's tasks, no chime, no way into Watch.
+**This only hides places in the page; it protects nothing.** Every address and every `api/...` still answers to anyone who can
+reach the server. The server's own check comes with sign-in.
 
 ## Links to other pages (4.25.0)
 Pages on the same machine that aren't Elaia sections (a studio, a media server) can sit in the bar and on Today. List them in

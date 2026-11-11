@@ -10,16 +10,23 @@ const home = (() => {
   let had = null;                          // how many things needed you at the last draw (null: not drawn yet)
   let seen = null;                         // the rows drawn last time, by key (null: not drawn yet)
   const plural = (n, one, many = one + 's') => `${n} ${n === 1 ? one : many}`;
-  // the things to do: failed tasks first, then alerts, then each section that says it needs you. `of`: the place it belongs to.
+  // the things to do: tasks in trouble first, then alerts, then each section that says it needs you. `of`: the place it belongs
+  // to; `n`: how many things the row stands for, so the line above counts what the bar counts (trouble() in core.js).
   function needs() {
-    const out = [];
-    const failed = S.jobs.filter(j => j.state === 'failed'), why = failed.length === 1 && failed[0].reason ? `: ${failed[0].reason}` : '';
-    if (failed.length) out.push({key: 'failed', of: 'argus', mark: icon('argus'), who: 'Argus · Watch', level: 'alert',
-      text: `${plural(failed.length, 'task')} failed: ${failed.map(j => j.job).join(', ')}${why}`, label: `Look at ${plural(failed.length, 'failed task')}`, href: WATCH});
-    (S.alerts || []).filter(a => a.level === 'alert').forEach(a => out.push({key: `alert-${a.file || a.job}`, of: a.link || 'argus', mark: icon(a.job.split('-')[0]),
-      who: a.job, level: 'alert', text: a.message, label: a.link ? `Open ${sectionName(a.link)}` : 'Look at the alert', href: a.link ? url(a.link) : WATCH}));
-    PLUGINS.forEach(p => { const s = STATUS[p.id]; if (s && s.needs) out.push({key: `needs-${p.id}`, of: p.id, mark: pluginMark(p), who: placeName(p.id, p.name),
-      level: 'needs', text: s.line, label: s.action || `Open ${p.name}`, href: url(p.id)}); });
+    const out = [], {tasks, alerts} = trouble(), agent = k => S.personas.find(p => p.key === k);
+    const failed = tasks.filter(j => j.state === 'failed'), broken = tasks.filter(j => j.state !== 'failed');
+    const why = tasks.length === 1 && (tasks[0].works_reason || tasks[0].reason) ? `: ${tasks[0].works_reason || tasks[0].reason}` : '';
+    const said = [failed.length && `${plural(failed.length, 'task')} failed: ${failed.map(j => j.job).join(', ')}`,
+      broken.length && `${plural(broken.length, 'task')} running but not working: ${broken.map(j => j.job).join(', ')}`].filter(Boolean).join(' · ');
+    if (tasks.length) out.push({key: 'failed', of: 'argus', n: tasks.length, mark: icon('argus'), who: 'Argus · Watch', level: 'alert',
+      text: said + why, label: `Look at ${plural(tasks.length, failed.length === tasks.length ? 'failed task' : 'task')}`, href: WATCH});
+    alerts.forEach(a => { const k = a.job.split('-')[0], g = agent(k), name = g ? g.name : k, watch = g && !SIDE.includes(k);
+      out.push({key: `alert-${a.file || a.job}`, of: a.link || 'argus', n: 1, mark: icon(k), level: 'alert', text: a.message,
+        who: g ? `${name} · Watch` : a.job,                          // who, in the same plain words as the other rows
+        label: a.link ? `Open ${sectionName(a.link)}` : `Look at ${name} on Watch`,
+        href: a.link ? url(a.link) : watch ? (k === 'argus' ? WATCH + '/argus' : url(k)) : WATCH}); });   // Watch, showing that agent's tasks
+    PLUGINS.forEach(p => { const s = STATUS[p.id], c = needCount(p.id); if (s && s.needs) out.push({key: `needs-${p.id}`, of: p.id, n: c === true ? 1 : c,
+      mark: pluginMark(p), who: placeName(p.id, p.name), level: 'needs', text: s.line, label: s.action || `Open ${p.name}`, href: url(p.id)}); });
     return visible(out.map(n => ({...n, id: n.of})));
   }
   const placeName = (id, name) => { const w = WORDS[id]; return w ? `${w.word}${w.realm && w.realm !== w.word ? ` · ${w.realm}` : ''}` : name; };
@@ -27,10 +34,10 @@ const home = (() => {
   // one card per section, in the bar's order: Watch, then each plugin with its status line (a static one with its version)
   function cards() {
     const st = s => s === undefined ? 'Checking…' : s === null ? 'No news' : s.line;
-    const fails = S.jobs.filter(j => j.state === 'failed').length;
+    const tr = trouble(), fails = tr.n, allFailed = !tr.alerts.length && tr.tasks.every(j => j.state === 'failed');
     return sections().filter(e => !e.kind && e.id !== 'home' && e.id !== 'olympus' && visible([e]).length).map(e => {
       const p = PLUGINS.find(x => x.id === e.id);
-      const line = e.id === 'argus' ? (fails ? `${plural(fails, 'task')} failed` : `All ${plural(S.jobs.length, 'task')} well`)
+      const line = e.id === 'argus' ? (!fails ? `All ${plural(S.jobs.length, 'task')} well` : allFailed ? `${plural(fails, 'task')} failed` : `${plural(fails, 'thing')} need${fails === 1 ? 's' : ''} a look`)
         : !p ? '' : p.kind === 'server' ? st(STATUS[p.id]) : p.version ? `Version ${p.version}` : 'Open it';
       const mood = e.id === 'argus' ? (fails ? ' bad' : '') : STATUS[e.id]?.needs ? ' needs' : '';   // red: something failed; gold: waits for you
       return `<li><a class="place${mood}" href="${esc(e.href)}" data-id="${esc(e.id)}">${e.mark}<span class="pw">${words(e)}</span><span class="pl">${esc(line)}</span></a></li>`;
@@ -43,7 +50,8 @@ const home = (() => {
   function draw() {
     if (here !== 'home') return;
     const list = needs(), asking = PLUGINS.some(p => p.kind === 'server' && STATUS[p.id] === undefined);
-    const state = list.length ? `${plural(list.length, 'thing')} need${list.length === 1 ? 's' : ''} you` : asking ? 'Asking every section…' : 'Nothing needs you';
+    const total = list.reduce((t, n) => t + n.n, 0);              // every failed task and every alert counts, as on the bar
+    const state = total ? `${plural(total, 'thing')} need${total === 1 ? 's' : ''} you` : asking ? 'Asking every section…' : 'Nothing needs you';
     const keys = new Set(list.map(n => n.key)), links = role() === 'owner' ? opens() : '';
     const html = `<section class="home" aria-label="Today">
       <section class="needs" aria-labelledby="needs-h"><h2 class="state${list.length ? ' bad' : ''}" id="needs-h">${state}</h2>

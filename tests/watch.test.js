@@ -26,7 +26,8 @@ run(async b => {
   check(await p.locator('.card[data-job="hermes-mail"] button[data-act="bolt"]').textContent() === 'Restart', 'an always-on task says Restart');
   check(await p.locator('.card[data-job="hermes-sort"] button[data-act="bolt"]').textContent() === 'Run' && await p.locator('.card[data-job="hermes-sort"] button[data-act="freeze"]').textContent() === 'Pause', 'a task that runs and ends says Run, and Pause');
   const gap = await p.locator('.card[data-job="hermes-sort"]').evaluate(c => c.querySelector('[data-act=bolt]').getBoundingClientRect().left - c.querySelector('[data-act=freeze]').getBoundingClientRect().right);
-  check(gap >= 8, `Pause and Run stand apart (${Math.round(gap)} px)`);
+  check(gap >= 24, `Pause and Run stand 24 px apart (${Math.round(gap)} px)`);
+  check(await p.locator('#medusaHome .hint').evaluate(e => { const c = getComputedStyle(e).backgroundColor.match(/[\d.]+/g).map(Number); return c.length === 4 && c[3] >= .85; }), 'the tools\' words sit on a dark backing (readable over the trees)');
   check(/Pause \/ resume/.test(await p.locator('#medusaHome .hint').textContent()) && /Medusa/.test(await p.locator('#medusaHome .hint small').textContent()), "Medusa's tool says Pause / resume, her name small");
   const sm = await small(p);
   check(sm.length === 0, 'every control is at least 44 by 44 px ' + JSON.stringify(sm));
@@ -44,6 +45,15 @@ run(async b => {
   // a failed task whose state says why shows it in words
   await p.evaluate(() => { const j = S.jobs.find(j => j.state === 'failed') || S.jobs[0]; j.state = 'failed'; j.reason = 'could not reach the share'; render(); });
   check(/Why: could not reach the share/.test(await p.locator('.card[data-state="failed"] .why').first().textContent()), 'a failed card says why, when the server sends a reason');
+  // "works, not just runs" (docs/checks.md, the server's checks): a running task that cannot do its job is trouble
+  await p.evaluate(() => { S.jobs.forEach(j => { delete j.reason; if (j.state === 'failed') j.state = 'ok'; });
+    const j = S.jobs.find(j => j.job === 'hermes-media'); j.state = 'running'; j.works = false; j.works_reason = 'cannot read its drive';
+    S.jobs.find(j => j.job === 'hermes-mail').works = null; S.alerts = []; render(); });
+  const nw = p.locator('.card[data-job="hermes-media"]');
+  check(await p.locator('section.persona').first().locator('.card').first().getAttribute('data-job') === 'hermes-media', 'a running task that does not work comes first');
+  check(/Running, but not working: cannot read its drive/.test(await nw.locator('.why').textContent()), 'its card says so, with the reason from the server (works_reason)');
+  check(await p.locator('.card[data-job="hermes-mail"] .why').count() === 0, 'works: null shows nothing new');
+  check(await p.locator('#argus').evaluate(e => e.classList.contains('glare')) && await p.evaluate(() => needCount('argus')) === 1, 'Argus glares, and Watch counts it once');
   // all well: the alarm goes away
   units(u => Object.values(u).forEach(v => { if (v.Result !== 'success') v.Result = 'success'; }));
   await p.evaluate(() => refresh()); await p.waitForTimeout(800);
@@ -56,6 +66,8 @@ run(async b => {
     const a = await ph.locator('.argus').boundingBox();
     check(a.height <= 100, `phone ${w}: Argus is about 96 px high (${Math.round(a.height)})`);
     check(await ph.locator('#boltHome .hint').isVisible() && await ph.locator('#medusaHome .hint').isVisible(), `phone ${w}: the two round tools have their words`);
+    const hr = await ph.locator('#medusaHome .hint').evaluate(e => Math.round(e.getBoundingClientRect().right));
+    check(hr <= w, `phone ${w}: the tools' words end inside the screen (${hr} px)`);
     const psm = await small(ph);
     check(psm.length === 0, `phone ${w}: every control is at least 44 by 44 px ` + JSON.stringify(psm));
     if (w === 412) await shot(ph, 'watch-phone');

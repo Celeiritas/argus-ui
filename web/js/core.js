@@ -115,6 +115,9 @@ const PRIMARY = ['home', 'argus', 'mentor', 'throne'];        // the phone's bot
 const LEARNER = ['home', 'mentor'];
 const role = () => S?.role === 'learner' ? 'learner' : 'owner';
 function visible(list, who = role()) { return who === 'owner' ? list : list.filter(e => LEARNER.includes(e.id)); }
+// This only hides places in the page; it protects nothing. Every address and api/... still answers to anyone who can reach the
+// server: the server's own check comes with sign-in. A learner who opens a place outside her list lands on Today.
+const placeOf = () => side ? here : 'argus';
 // Status v2 of every server plugin (docs/home.md): Today's rows and cards and the counts on the bar.
 const STATUS = {};                                            // id -> its last answer (undefined: still asking, null: none)
 let statusAsk = null;
@@ -122,10 +125,18 @@ function askStatus() {
   return statusAsk ||= Promise.all(PLUGINS.filter(p => p.kind === 'server').map(p => fetch(url(`api/${p.id}/status`), {cache: 'no-store'})
     .then(r => r.json()).then(j => j && j.line ? j : null).catch(() => null).then(v => { STATUS[p.id] = v; }))).then(() => { statusAsk = null; });
 }
+// Trouble on Watch, counted once everywhere (the bar, Argus's badge, Today's line): tasks that failed, tasks that run but do not
+// do their job (works === false, docs/checks.md), and alert-level alerts that are not already about one of those tasks.
+function trouble() {
+  const tasks = (S?.jobs || []).filter(j => j.state === 'failed' || j.works === false);
+  const alerts = (S?.alerts || []).filter(a => a.level === 'alert' && !tasks.some(j => a.job === j.job || (j.base && a.job === j.base)));
+  return {tasks, alerts, n: tasks.length + alerts.length};
+}
 // what needs you in a place: a number when it is known, true when the place needs you but gives no number, 0 when nothing
 function needCount(id) {
-  if (id === 'argus') return (S?.jobs || []).filter(j => j.state === 'failed').length + (S?.alerts || []).filter(a => a.level === 'alert').length;
-  const s = STATUS[id]; return s && s.needs ? (s.count > 0 ? s.count : true) : 0;
+  if (id === 'argus') return trouble().n;
+  const s = STATUS[id], c = Math.floor(Number(s?.count));          // the server's count, if any, made a plain number first
+  return s && s.needs ? (c > 0 ? c : true) : 0;
 }
 const icon = k => `<img src="static/icons/${esc(k)}.png" alt="">`;
 const LINK_MARK = `<svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="16" fill="#1C2127" stroke="#2A9D8F" stroke-width="1.5"/><path d="M20 11h5v5M25 11l-8 8M23 20v4a1 1 0 0 1-1 1H12a1 1 0 0 1-1-1V14a1 1 0 0 1 1-1h4" fill="none" stroke="#A7B6C4" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
@@ -212,6 +223,7 @@ $('#moreClose').onclick = () => $('#moreSheet').close();
 /* ---------- render ---------- */
 function render() {
   if (!S) return;
+  if (role() !== 'owner' && !LEARNER.includes(placeOf())) { location.replace(url('')); return; }   // not her place: Today
   const me = S.personas.find(p => p.key === here), name = S.title || 'Elaia';
   const head = (h1, sub, title) => { $('.title h1').textContent = h1; $('#sub').textContent = sub; document.title = `${title} · ${name}`; };
   if (plugin) {
@@ -240,7 +252,7 @@ function render() {
   if (onOlympus) { look.retarget(); return playground.show(); }
   if (here === 'home') { look.retarget(); return home.show(); }
   // trouble first: failed (or alerted), then running, then ok, then the rest; groups ordered by their worst card
-  const rank = j => j.state === 'failed' || alertsFor(j).some(a => a.level === 'alert') ? 0 : j.state === 'running' ? 1 : j.state === 'ok' ? 2 : 3;
+  const rank = j => j.state === 'failed' || j.works === false || alertsFor(j).some(a => a.level === 'alert') ? 0 : j.state === 'running' ? 1 : j.state === 'ok' ? 2 : 3;
   const worst = p => Math.min(4, ...(by[p.key] || []).map(rank), ...(lone[p.key] || []).map(a => a.level === 'alert' ? 0 : 2));
   const list = (only ? shown.filter(p => p.key === only) : shown).map((p, i) => [p, i]).sort((a, b) => worst(a[0]) - worst(b[0]) || a[1] - b[1]).map(x => x[0]);
   $('#main').innerHTML = list.map(p => {
@@ -279,10 +291,10 @@ function alertCard(a) {
 const always = j => j.next === 'always on';
 function card(j) {
   const fz = j.state === 'frozen', al = alertsFor(j), lvl = al.some(a => a.level === 'alert') ? 'alerted' : al.length ? 'warned' : '';
-  const go = always(j) ? 'Restart' : 'Run', why = (j.state === 'failed' || j.works === false) && j.reason;   // why it failed, when the server says
-  return `<article class="card ${fz ? 'frozen' : ''} ${lvl}" data-job="${esc(j.job)}" data-state="${j.state}" data-canfreeze="${j.canfreeze}" data-canrun="${j.canrun !== false}" aria-label="${esc(j.job)}, ${fz ? 'frozen (paused)' : j.state}">
+  const go = always(j) ? 'Restart' : 'Run', why = (j.state === 'failed' || j.works === false) && (j.works_reason || j.reason);   // why, when the server says
+  return `<article class="card ${fz ? 'frozen' : ''} ${lvl}${j.works === false ? ' notworking' : ''}" data-job="${esc(j.job)}" data-state="${j.state}" data-canfreeze="${j.canfreeze}" data-canrun="${j.canrun !== false}" aria-label="${esc(j.job)}, ${fz ? 'frozen (paused)' : j.state}">
    <div class="top"><div><div class="job">${esc(j.name)}</div><div class="unit">${esc(j.job)}${j.runs > 1 ? ` · latest of ${j.runs} runs` : ''}</div></div><span class="pill ${j.state}">${fz ? 'frozen' : j.state}</span></div>
-   ${why ? `<p class="why"><b>Why:</b> ${esc(j.reason)}</p>` : ''}
+   ${why ? `<p class="why"><b>${j.works === false && j.state !== 'failed' ? 'Running, but not working' : 'Why'}:</b> ${esc(why)}</p>` : ''}
    <dl><dt>Last</dt><dd title="${esc(j.last)}">${esc(j.last)}</dd><dt>Mem</dt><dd>${j.mem}</dd><dt>Next</dt><dd title="${esc(j.next)}">${esc(j.next)}</dd><dt>Wrote</dt><dd>${j.wrote}</dd>${fz ? `<dt>Frozen</dt><dd class="wide">since ${esc(j.frozen_at)}</dd>` : ''}</dl>
    ${j.notes ? `<p class="notes">${esc(j.notes)}</p>` : ''}${al.map(alertNote).join('')}
    <div class="actions"><details data-log="${esc(j.job)}"><summary>Show log</summary><pre>Loading…</pre></details>
@@ -326,12 +338,16 @@ const look = (() => {
   }
   let lastBad = null;
   function retarget() {
-    // a failed task, or an agent's alert file at level "alert" (docs/alerts.md): both make him glare and count in the badge
-    const bad = (S?.jobs || []).filter(j => j.state === 'failed'), up = (S?.alerts || []).filter(a => a.level === 'alert'), n = bad.length + up.length;
-    target = $('.card[data-state="failed"]') || $('.card.alerted');
+    // a failed or not-working task, or an agent's alert file at level "alert" (docs/alerts.md): he glares and counts them (trouble()).
+    // A learner does not get him at all: no badge, no words about the owner's tasks, no chime, no way into Watch.
+    const owner = role() === 'owner'; A.hidden = !owner; A.tabIndex = owner && side ? 0 : -1;
+    if (!owner) { A.removeAttribute('aria-label'); alarmed = false; lastBad = null; return; }
+    const {tasks: bad, alerts: up, n} = trouble();
+    target = $('.card[data-state="failed"]') || $('.card.alerted') || $('.card.notworking');
     alarmed = n > 0; A.classList.toggle('glare', alarmed); A.classList.toggle('calm', !n);
     $('#alarm').hidden = !n; $('#alarmN').textContent = n > 1 ? n : '';
-    const say = n ? [bad.length && `${bad.length} task${bad.length === 1 ? '' : 's'} failed: ${bad.map(j => j.job).join(', ')}`,
+    const fl = bad.filter(j => j.state === 'failed'), nw = bad.filter(j => j.state !== 'failed');
+    const say = n ? [fl.length && `${fl.length} task${fl.length === 1 ? '' : 's'} failed: ${fl.map(j => j.job).join(', ')}`, nw.length && `${nw.length} running but not working: ${nw.map(j => j.job).join(', ')}`,
       up.length && `${up.length} alert${up.length === 1 ? '' : 's'}: ${up.map(a => `${a.job}, ${a.message}`).join('; ')}`].filter(Boolean).join('. ') : 'all tasks well';
     A.setAttribute('aria-label', side ? `Argus: ${say}. Open the watch page` : `Argus, the watchman: ${say}`);
     if (lastBad !== null && n > lastBad) alarmChime();               // a short alarm only when something newly fails
@@ -339,7 +355,7 @@ const look = (() => {
   }
   if (side) {
     A.setAttribute('role', 'link'); A.tabIndex = 0;
-    A.onclick = () => location.href = WATCH;
+    A.onclick = () => { if (role() === 'owner') location.href = WATCH; };
     A.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); A.click(); } };
   }
   addEventListener('pointermove', e => { pointer = [e.clientX, e.clientY]; lastMove = performance.now(); }, {passive: true});
