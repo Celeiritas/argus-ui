@@ -86,7 +86,7 @@ if [ -z "$1" ] || [ "$1" = people ] || [ "$1" = plugins ]; then
   echo "== people and roles"
   for t in identity_test gate_test; do       # the line saying which identity path ran, the summary; everything when it fails
     st=0; out=$($PYTHON -W ignore::ResourceWarning "$R/tests/$t.py" 2>&1) || st=$?
-    if [ $st = 0 ]; then grep -E "real /proc|identity path|^Ran|^OK" <<<"$out" || true; else echo "$out"; fail=1; fi
+    if [ $st = 0 ]; then grep -E "real /proc|identity path|^Ran|^OK|skipped" <<<"$out" || true; else echo "$out"; fail=1; fi
   done
 fi
 if [ -z "$1" ] || [ "$1" = plugins ]; then

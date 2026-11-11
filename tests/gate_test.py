@@ -9,7 +9,7 @@ login counts only when the connection belongs to the Serve user. On Linux the te
 so its requests ARE the Serve process and the real /proc lookup runs. Without /proc (Windows, macOS) that lookup cannot
 work, so the test stands in for it and says so ("simulated"); the Linux run in CI is the one that counts.
 Set ROLE_TABLE=<file> to write the route-by-role table as this test found it."""
-import http.client, importlib.util, json, os, shutil, socket, subprocess, sys, tempfile, textwrap, threading, time, unittest
+import http.client, importlib.util, json, os, re, shutil, socket, subprocess, sys, tempfile, textwrap, threading, time, unittest
 
 R = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HAS_PROC = os.path.isfile('/proc/net/tcp')
@@ -67,18 +67,22 @@ for pid, code, extra in (('heracles', WHO_PLUGIN, {'agent': True, 'roles': {'get
                          ('closed', WHO_PLUGIN, {'name': 'Closed'})):
     put(os.path.join(PLUG, pid, 'plugin.json'), dict(id=pid, kind='server', page='page.js', **extra))
     put(os.path.join(PLUG, pid, 'plugin.py'), code); put(os.path.join(PLUG, pid, 'page.js'), f'// {pid}')
+put(os.path.join(PLUG, 'kwonly', 'plugin.json'), {'id': 'kwonly', 'kind': 'server', 'page': 'page.js'})
+put(os.path.join(PLUG, 'kwonly', 'page.js'), '// kwonly')
+put(os.path.join(PLUG, 'kwonly', 'plugin.py'), 'def get(path, query, ctx, *, who=None):\n    return 200, {"who": who}\n')
 for pid in ('spartamelee', 'controllers'):
     put(os.path.join(PLUG, pid, 'plugin.json'), {'id': pid, 'name': pid.title()}); put(os.path.join(PLUG, pid, 'index.html'), '<p>game</p>')
 
 os.environ.update(HOME=HOME, USERPROFILE=HOME, ARGUS_STATIC=STATIC, ARGUS_PLUGINS=PLUG, ARGUS_BUNDLED=os.path.join(TMP, 'bundled'),
                   ARGUS_LINKS=os.path.join(CONF, 'links.json'), ARGUS_REGISTRY=os.path.join(TMP, 'agents'), ARGUS_ALERTS=os.path.join(TMP, 'alerts'),
-                  ARGUS_PEOPLE=PEOPLE, ARGUS_SERVE_UID=str(ME), ARGUS_WATCH='0',
+                  ARGUS_PEOPLE_LAST_GOOD=os.path.join(TMP, 'state', 'people.last-good.json'),   # the people file: the default, in HOME
+                  ARGUS_SERVE_UID=str(ME), ARGUS_DEV='1', ARGUS_WATCH='0',          # ARGUS_DEV: our own uid may stand in for Serve
                   ARGUS_SYSTEMCTL=wrapper('systemctl', 'fake_systemctl.py'), ARGUS_JOURNALCTL=wrapper('journalctl', 'fake_journal.py'))
-for k in ('ARGUS_BIND', 'ARGUS_WEATHER', 'ARGUS_DEV'): os.environ.pop(k, None)
+for k in ('ARGUS_BIND', 'ARGUS_WEATHER', 'ARGUS_PEOPLE'): os.environ.pop(k, None)
 _spec = importlib.util.spec_from_file_location('argus_ui_gate_test', os.path.join(R, 'server', 'argus_ui.py'))
 a = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(a)
 if not HAS_PROC:                                     # no /proc: stand in for the lookup (see the top of this file)
-    a.identity.connection_uid = lambda peer, ours, proc='/proc': ME
+    a.identity.connection_uid = lambda peer, ours, proc='/proc', our_inode=None: ME
 print(f'\n  [identity path: {"real /proc lookup, ARGUS_SERVE_UID=" + str(ME) if HAS_PROC else "simulated (no /proc on this machine)"}]', file=sys.stderr)
 
 OWNER, LEARNER, STRANGER = 'owner@example.com', 'learner@example.com', 'stranger@example.com'
@@ -89,7 +93,7 @@ def write_people(doc):
     os.utime(PEOPLE, ns=(st.st_atime_ns, st.st_mtime_ns + write_people.n * 1_000_000_000))   # a new time even on a coarse clock
 def no_people():
     if os.path.exists(PEOPLE): shutil.move(PEOPLE, os.path.join(TMP, f'people-set-aside-{time.time_ns()}.json'))
-    a.PEOPLE = a.identity.People(PEOPLE)           # as at start
+    a.PEOPLE = a.identity.People(PEOPLE)           # as at start, with no saved copy
 
 # ---- every route of the server, from H.get() and H.do_POST() (and what each should answer per role) ----
 G, P = 'GET', 'POST'
@@ -144,8 +148,9 @@ class Base(unittest.TestCase):
         cls.srv.shutdown(); cls.srv.server_close()
 
     def req(self, verb, path, login=None, body=None, **headers):
+        # as Serve passes a request on: the sender's address in X-Forwarded-For (a documentation address: not this machine)
         c = http.client.HTTPConnection('127.0.0.1', self.srv.server_address[1], timeout=20)
-        h = {'Host': '127.0.0.1', **headers}
+        h = {'Host': '127.0.0.1', 'X-Forwarded-For': '192.0.2.20', **headers}
         if login: h['Tailscale-User-Login'] = login
         data = None
         if verb == P: h.setdefault('Content-Type', 'application/json'); data = json.dumps(body if body is not None else {'job': 'hermes-secretsort'})
@@ -218,9 +223,12 @@ class Roles(Base):
         self.assertEqual(self.js(G, 'api/heracles/lessons', LEARNER)[1]['who'], {'person': 'learner-two', 'name': 'Learner Two', 'role': 'learner'})
         self.assertEqual(self.js(G, 'api/heracles/secret', OWNER)[1]['who'], {'person': 'owner-one', 'name': 'Owner One', 'role': 'owner'})
         self.assertEqual(self.js(P, 'api/heracles/answer', LEARNER, {'x': 1})[1]['who']['role'], 'learner')
-        self.assertEqual(self.js(G, 'api/quiet/ping', LEARNER)[1], {'path': 'ping', 'headers': {'Tailscale-User-Login': LEARNER}, 'three': True},
+        self.assertEqual(self.js(G, 'api/quiet/ping', LEARNER)[1], {'path': 'ping', 'headers': {'Tailscale-User-Login': LEARNER, 'X-Forwarded-For': '192.0.2.20'}, 'three': True},
                          'a plugin with three parameters is called as before')
-        self.assertEqual(self.js(G, 'api/heracles/lessons', LEARNER)[1]['headers'], {'Tailscale-User-Login': LEARNER}, 'a trusted login is passed on')
+        self.assertEqual(self.js(G, 'api/heracles/lessons', LEARNER)[1]['headers'], {'Tailscale-User-Login': LEARNER, 'X-Forwarded-For': '192.0.2.20'},
+                         'a trusted login is passed on')
+        self.assertEqual(self.js(G, 'api/kwonly/x', OWNER)[1]['who'], {'person': 'owner-one', 'name': 'Owner One', 'role': 'owner'},
+                         'a keyword-only who is found too')
 
     def test_home_status_lines(self):
         self.assertEqual(self.js(G, 'api/heracles/status', LEARNER), (200, {'line': 'line of heracles', 'needs': False, 'action': ''}))
@@ -241,6 +249,23 @@ class Roles(Base):
         self.assertIn(STRANGER, self.js(G, 'api/state', STRANGER)[1]['error'])
         self.assertIn('did not come through Tailscale', self.js(G, 'api/state')[1]['error'])
 
+    def test_a_request_from_the_server_itself_is_nobody(self):
+        # a program on the server that goes in through Serve's front door: Serve stamps it with the machine's own login
+        for own in ('127.0.0.1', '::1', '::ffff:127.0.0.1', '127.0.0.1, 192.0.2.20', '192.0.2.20, 127.0.0.1'):
+            code, d = self.js(G, 'api/whoami', OWNER, **{'X-Forwarded-For': own})
+            self.assertEqual((d['trusted'], d['through_serve'], d['from_this_server'], d['role']), (False, True, True, 'none'), own)
+            self.assertEqual(d['note'], 'This request came from the server itself, so it has no person.')
+        for other in ('192.0.2.20', '2001:db8::7, 192.0.2.21', 'garbage'):
+            d = self.js(G, 'api/whoami', OWNER, **{'X-Forwarded-For': other})[1]
+            self.assertEqual((d['trusted'], d['role'], d['note']), (True, 'owner', None), other + ': another device, or unreadable: unchanged')
+        self.assertEqual(self.req(P, 'api/bolt', OWNER, **{'X-Forwarded-For': '127.0.0.1'})[0], 403)
+        code, h, body = self.req(G, '', OWNER, **{'X-Forwarded-For': '127.0.0.1'})
+        self.assertEqual(code, 403); self.assertIn(b'came from the server itself', body)
+        no_people()
+        code, d = self.js(G, 'api/closed/data', OWNER, **{'X-Forwarded-For': '127.0.0.1'})
+        self.assertEqual((code, d['headers']), (200, {}), 'no people file: still the owner, but no login is passed to a plugin')
+        self.assertEqual(self.js(G, 'api/whoami', OWNER, **{'X-Forwarded-For': '192.0.2.20'})[1]['from_this_server'], False)
+
     def test_upper_and_lower_case_logins(self):
         self.assertEqual(self.js(G, 'api/whoami', 'Learner@EXAMPLE.com')[1]['role'], 'learner')
 
@@ -255,18 +280,38 @@ class Roles(Base):
         self.assertEqual(self.req(P, 'api/thaw', 'three@example.com')[0], 200)
 
 class BrokenPeopleFile(Base):
-    def test_broken_at_start(self):
+    def test_restart_with_a_broken_file_keeps_the_saved_copy(self):
+        no_people(); a.PEOPLE = a.identity.People(PEOPLE, last_good=os.environ['ARGUS_PEOPLE_LAST_GOOD'])
+        write_people(GOOD); self.assertEqual(self.js(G, 'api/whoami', LEARNER)[1]['role'], 'learner')
+        write_people('{"people": [ oops')
+        a.PEOPLE = a.identity.People(PEOPLE, last_good=os.environ['ARGUS_PEOPLE_LAST_GOOD'])     # a restart
+        code, d = self.js(G, 'api/whoami', STRANGER)
+        self.assertEqual(d['role'], 'none', 'after a restart a stranger still is nobody')
+        self.assertEqual(self.req(G, 'api/log/hermes-secretsort', LEARNER)[0], 403, 'and a learner still gets no logs')
+        self.assertIn('last good copy', self.js(G, 'api/whoami', OWNER)[1]['problem'])
+
+    def test_broken_at_first_start_is_closed(self):
+        # no good copy known (the hub's decision): nobody is a person; health and whoami stay open; the private page and
+        # every refusal carry one plain way back for the owner, never the detail (that goes to the log)
+        deep = '{"people": ' + '[' * 100000 + ']' * 100000 + '}'
         for doc in ('{"people": [', {'people': [{'name': 'Learner Two', 'role': 'learner', 'logins': [LEARNER]}]},
-                    {'people': [GOOD['people'][0], {'name': 'Learner Two', 'role': 'learner', 'logins': [OWNER.upper()]}]}):
-            write_people(doc); a.PEOPLE = a.identity.People(PEOPLE)     # as if the server had just started
-            code, d = self.js(G, 'api/whoami', LEARNER)
-            self.assertEqual((d['role'], d['person']), ('owner', 'owner'), 'viewing as if there were no file')
-            self.assertIn('people file', d['problem']); self.assertIn('nothing on this page can be changed', d['problem'])
-            self.assertEqual(self.js(G, 'api/state', OWNER)[1]['people_problem'], d['problem'])
-            for path in ('api/bolt', 'api/heracles/answer'):
-                code, d2 = self.js(P, path, OWNER, {'job': 'hermes-secretsort'})
-                self.assertEqual((code, d2['error']), (503, d['problem']), path + ': every POST is refused with the sentence')
-            self.assertNotIn(HOME, d['problem'], 'the sentence never names the home folder')
+                    {'people': [GOOD['people'][0], {'name': 'Learner Two', 'role': 'learner', 'logins': [OWNER.upper()]}]}, deep):
+            write_people(doc); a.PEOPLE = a.identity.People(PEOPLE)     # as if the server had just started, no saved copy
+            for login in (OWNER, LEARNER, STRANGER, None):
+                code, d = self.js(G, 'api/whoami', login)
+                self.assertEqual((code, d['role'], d['person']), (200, 'none', None), f'{login}: closed')
+                self.assertEqual(d['problem'], a.identity.CLOSED, 'whoami says what happened in general words')
+                self.assertEqual(self.req(G, 'api/health', login)[0], 200)
+                self.assertEqual(self.req(G, 'api/state', login)[0], 403)
+                code, d2 = self.js(P, 'api/bolt', login, {'job': 'hermes-secretsort'})
+                self.assertEqual((code, d2['error']), (403, a.identity.CLOSED))
+                code, h, body = self.req(G, '', login)
+                self.assertEqual(code, 403); self.assertIn(b'move the people file aside to a dated name', body)
+            for secret in (OWNER, 'entry', 'line 1', HOME):
+                self.assertNotIn(secret, a.identity.CLOSED)
+        os.makedirs(os.path.join(CONF, 'aside'), exist_ok=True)
+        shutil.move(PEOPLE, os.path.join(CONF, 'aside', 'people.json.set-aside-20261111-0430'))
+        self.assertEqual(self.js(G, 'api/whoami', STRANGER)[1]['role'], 'owner', 'the file moved aside: no-file behaviour at once, no restart')
 
     def test_broken_after_a_good_read(self):
         no_people(); write_people(GOOD)
@@ -281,6 +326,18 @@ class BrokenPeopleFile(Base):
         self.assertEqual(self.req(P, 'api/thaw', LEARNER)[0], 403)
         self.assertEqual(self.req(G, 'api/state', STRANGER)[0], 403)
     def tearDown(self): no_people()
+
+class RoutesAreAllListed(unittest.TestCase):
+    def test_every_route_in_the_router_is_in_ROUTES(self):
+        src = open(os.path.join(R, 'server', 'argus_ui.py'), encoding='utf-8').read()
+        body = src[src.index('    def get(self):'):src.index("if __name__ == '__main__':")]
+        found = set(re.findall(r"p == '([^']+)'", body)) | set(re.findall(r"p\.startswith\('([^']+)'\)", body))
+        found |= {x for t in re.findall(r"p in \(([^)]*)\)", body) for x in re.findall(r"'([^']+)'", t)}
+        found |= set(re.findall(r"'(api/[a-z]+)': ", body))           # the powers' table in do_POST
+        listed = {path for _, path, *_ in ROUTES}
+        missing = sorted(r for r in found if not any(x == r or x.startswith(r) for x in listed))
+        self.assertEqual(missing, [], 'a route in H.get() / H.do_POST() that ROUTES does not try')
+        self.assertGreater(len(found), 10, found)
 
 class Headers(Base):
     def setUp(self): no_people()
@@ -308,14 +365,16 @@ class Headers(Base):
 class FakedHeaderOnADirectConnection(unittest.TestCase):
     """The server in its own process, started with ARGUS_SERVE_UID set to a user id that is NOT this test's: the test's own
     connection then is "a program on this machine", and the Tailscale-User-Login it sends must count for nothing."""
+    SERVE_UID = ME + 1
     @classmethod
     def setUpClass(cls):
         with socket.socket() as s: s.bind(('127.0.0.1', int(os.environ.get('GATE_PORT2') or 0))); cls.port = s.getsockname()[1]
         env = {k: v for k, v in os.environ.items() if not k.startswith('ARGUS_')}
-        env.update(HOME=HOME, USERPROFILE=HOME, ARGUS_PORT=str(cls.port), ARGUS_STATIC=STATIC, ARGUS_PLUGINS=PLUG,
-                   ARGUS_BUNDLED=os.path.join(TMP, 'bundled'), ARGUS_PEOPLE=os.path.join(TMP, 'none.json'), ARGUS_SERVE_UID=str(ME + 1),
+        home = os.path.join(TMP, f'home-{cls.SERVE_UID}'); os.makedirs(home, exist_ok=True)     # its own HOME: no people file
+        env.update(HOME=home, USERPROFILE=home, ARGUS_PORT=str(cls.port), ARGUS_STATIC=STATIC, ARGUS_PLUGINS=PLUG,
+                   ARGUS_BUNDLED=os.path.join(TMP, 'bundled'), ARGUS_SERVE_UID=str(cls.SERVE_UID),
                    ARGUS_SYSTEMCTL=os.environ['ARGUS_SYSTEMCTL'], ARGUS_WATCH='0')
-        cls.log = open(os.path.join(TMP, 'direct.log'), 'w')
+        cls.log = open(os.path.join(TMP, f'direct-{cls.SERVE_UID}.log'), 'w')
         cls.proc = subprocess.Popen([sys.executable, '-B', os.path.join(R, 'server', 'argus_ui.py')], env=env, stdout=cls.log, stderr=cls.log)
         for _ in range(150):
             try: socket.create_connection(('127.0.0.1', cls.port), timeout=1).close(); break
@@ -336,6 +395,14 @@ class FakedHeaderOnADirectConnection(unittest.TestCase):
         self.assertEqual((code, d['login'], d['trusted'], d['through_serve']), (200, OWNER, False, False))
         code, d = self.get('api/closed/data', **faked)
         self.assertEqual((code, d['headers']), (200, {}), "ctx.headers carries none of the faked headers")
+
+class ServeUidIsThePagesOwnUser(FakedHeaderOnADirectConnection):
+    """Started with ARGUS_SERVE_UID = its own user (and no ARGUS_DEV): refused with a loud line, nothing counts as Serve."""
+    SERVE_UID = ME
+    def test_refused_with_a_loud_line(self):
+        if not hasattr(os, 'getuid'): self.skipTest('no user ids here')
+        self.log.flush()
+        with open(self.log.name) as f: self.assertIn("is the page's own user", f.read())
 
 def tearDownModule():
     shutil.rmtree(TMP, ignore_errors=True)

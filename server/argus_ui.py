@@ -63,8 +63,10 @@ PLUGIN_BODY = {}         # id -> its POST size limit ("max_body" in plugin.json,
 # ---------- People and roles (docs/people.md) ----------
 # ~/.config/argus-ui/people.json (ARGUS_PEOPLE) says which Tailscale login is which person and their role: owner (everything)
 # or learner (Today and the study pages). No file: everyone is the owner, as before. Read again whenever it changes.
-PEOPLE = identity.People(os.path.expanduser(os.environ.get('ARGUS_PEOPLE', '~/.config/argus-ui/people.json')))
-SERVE_UID = identity.serve_uid()          # the user Tailscale Serve's connections come from (ARGUS_SERVE_UID, default 0)
+PEOPLE = identity.People(os.path.expanduser(os.environ.get('ARGUS_PEOPLE') or '~/.config/argus-ui/people.json'),
+                         last_good=os.path.expanduser(os.environ.get('ARGUS_PEOPLE_LAST_GOOD') or '~/.local/state/argus-ui/people.last-good.json'),
+                         must_exist=bool(os.environ.get('ARGUS_PEOPLE')))   # a path set on purpose that is missing: broken, not "no file"
+SERVE_UID = identity.serve_uid()          # the user Tailscale Serve's connections come from (ARGUS_SERVE_UID, default 0; never our own)
 
 def safe_file(d, name):
     # a file named in a manifest: relative, inside the folder, and there
@@ -496,10 +498,14 @@ class H(BaseHTTPRequestHandler):
         """Once per request: the login as sent, whether it came through Tailscale Serve, the person (who) and the people
         file's state. The login header counts only when the connection's other end belongs to the Serve user."""
         login = identity.header_value(self.headers.get('Tailscale-User-Login')) or None
-        try: uid = identity.connection_uid(self.client_address[:2], self.connection.getsockname()[:2])
+        try: inode = os.fstat(self.connection.fileno()).st_ino or None     # our own end, to match in the tables (Linux)
+        except (OSError, ValueError, AttributeError): inode = None
+        try: uid = identity.connection_uid(self.client_address[:2], self.connection.getsockname()[:2], our_inode=inode)
         except (OSError, TypeError, ValueError): uid = None
-        self.via_serve = uid is not None and uid == SERVE_UID
-        self.login, self.trusted = login, bool(self.via_serve and login)
+        self.via_serve = SERVE_UID is not None and uid == SERVE_UID
+        # through Serve, but sent from this machine itself (a program here using Serve's front door): no person
+        self.from_self = self.via_serve and identity.from_this_machine(self.headers.get('X-Forwarded-For'))
+        self.login, self.trusted = login, bool(self.via_serve and login and not self.from_self)
         self.people = PEOPLE.current()
         self.who = identity.resolve(self.people, login, self.trusted)
 
@@ -527,18 +533,25 @@ class H(BaseHTTPRequestHandler):
         """403 with one plain sentence; a page address opened by someone without a role gets the small private page."""
         role = self.who['role']
         if role == 'none' and verb == 'get' and not p.startswith('api/'):
-            html = identity.private_page(self.login, self.trusted, '../' * p.count('/') + 'api/whoami')
+            html = identity.private_page(self.login, self.trusted, '../' * p.count('/') + 'api/whoami', self.from_self,
+                                         closed=self.people[0] == 'broken')
             return self.out(html, code=403, headers={'Content-Security-Policy': identity.PRIVATE_CSP})
-        if role == 'none':
+        if role == 'none' and self.people[0] == 'broken': msg = identity.CLOSED
+        elif role == 'none':
             msg = (f'This page is private and {self.login} is not on its list of people. Ask the owner to add this Tailscale login.'
-                   if self.trusted else 'This page is private, and this request did not come through Tailscale, so the server cannot tell who you are.')
+                   if self.trusted else 'This page is private, and a request from the server itself never counts as a person.'
+                   if self.from_self else 'This page is private, and this request did not come through Tailscale, so the server cannot tell who you are.')
         else:
             msg = f'Only the owner of this page can {"do" if verb == "post" else "open"} this. You are signed in as {self.who["name"]}.'
         return self.out(json.dumps({'ok': False, 'error': msg, 'msg': msg}), 'application/json', 403)
 
     def whoami(self):
-        problem = self.people[2] if self.who['role'] == 'owner' else None
+        problem = self.people[2] if self.who['role'] == 'owner' else identity.CLOSED if self.people[0] == 'broken' else None
+        note = ('This request came from the server itself, so it has no person.' if self.from_self else
+                'This request did not come through Tailscale Serve, so it has no person.' if not self.via_serve else
+                'This request came through Tailscale Serve without a login (a tagged device), so it has no person.' if not self.login else None)
         return self.out(json.dumps({'login': self.login, 'trusted': self.trusted, 'through_serve': self.via_serve,
+                                    'from_this_server': self.from_self, 'note': note,
                                     **self.who, 'problem': problem}), 'application/json')
 
     def plugin_file(self, rest):
@@ -578,12 +591,17 @@ class H(BaseHTTPRequestHandler):
 
     @classmethod
     def takes_who(cls, fn):
+        """'kw' when fn has a parameter named who it can take by name (also keyword-only), 'pos' when it takes a fourth
+        positional parameter, '' when it takes no who (an old plugin, called as before)."""
         if fn not in cls.TAKES_WHO:
             try:
-                ps = list(inspect.signature(fn).parameters.values())
-                cls.TAKES_WHO[fn] = any(x.kind == x.VAR_POSITIONAL for x in ps) or \
-                    len([x for x in ps if x.kind in (x.POSITIONAL_ONLY, x.POSITIONAL_OR_KEYWORD)]) >= 4
-            except (TypeError, ValueError): cls.TAKES_WHO[fn] = False
+                ps = inspect.signature(fn).parameters
+                if 'who' in ps and ps['who'].kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY): way = 'kw'
+                elif any(x.kind == x.VAR_POSITIONAL for x in ps.values()) or \
+                        len([x for x in ps.values() if x.kind in (x.POSITIONAL_ONLY, x.POSITIONAL_OR_KEYWORD)]) >= 4: way = 'pos'
+                else: way = ''
+            except (TypeError, ValueError): way = ''
+            cls.TAKES_WHO[fn] = way
         return cls.TAKES_WHO[fn]
 
     def plugin_call(self, pid, verb, path, arg):
@@ -591,14 +609,15 @@ class H(BaseHTTPRequestHandler):
         # The role was checked before this; who is passed on every call to a function that takes it, never None.
         fn = getattr(SERVER_PLUGINS[pid], verb, None)
         ctx = plugin_ctx(pid, PLUGIN_DIR[pid])
-        ctx.headers = {k: self.headers[k] for k in self.PASS_HEADERS if self.headers.get(k)} if self.via_serve else {}
+        ctx.headers = {k: self.headers[k] for k in self.PASS_HEADERS if self.headers.get(k)} if self.via_serve and not self.from_self else {}
         r = None
         if callable(fn):
-            args = (path, arg, ctx) + ((dict(self.who),) if self.takes_who(fn) else ())
+            way = self.takes_who(fn)
+            args, kw = (path, arg, ctx) + ((dict(self.who),) if way == 'pos' else ()), ({'who': dict(self.who)} if way == 'kw' else {})
             try:
                 if verb == 'post':
-                    with PLUGIN_LOCKS[pid]: code, obj = fn(*args)
-                else: code, obj = fn(*args)
+                    with PLUGIN_LOCKS[pid]: code, obj = fn(*args, **kw)
+                else: code, obj = fn(*args, **kw)
                 if not isinstance(code, int) or not 100 <= code <= 599: raise ValueError(f'status {code!r} is not an HTTP status')
                 r = code, obj, json.dumps(obj)
             except Exception:
@@ -672,9 +691,7 @@ class H(BaseHTTPRequestHandler):
         pid, _, rest = p[4:].partition('/')
         try: self.identify(); need = self.need('post', p)
         except Exception: return self.deny(500, 'server error')
-        if not identity.allows(self.who['role'], need): return self.refuse('post', p, need)
-        if self.people[0] == 'broken':                     # a people file that never read well: nothing changes until it is fixed
-            return self.out(json.dumps({'ok': False, 'error': self.people[2], 'msg': self.people[2]}), 'application/json', 503)
+        if not identity.allows(self.who['role'], need): return self.refuse('post', p, need)   # a closed page (people file broken, no good copy) ends here too
         try: n = int(self.headers.get('Content-Length', 0) or 0)
         except ValueError: n = -1
         limit = PLUGIN_BODY.get(pid, MAX_BODY) if p.startswith('api/') and pid in SERVER_PLUGINS else MAX_BODY
