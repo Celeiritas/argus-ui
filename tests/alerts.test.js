@@ -21,7 +21,7 @@ run(async b => {
   try {
     // ---- registry fallback (#11) ----
     const p = await page(b);
-    await p.goto(BASE); await p.waitForTimeout(800);
+    await p.goto(BASE + 'argus'); await p.waitForTimeout(800);
     const dep = p.locator('.card', {has: p.locator('.job', {hasText: /^deploy$/})});
     check(await dep.count() === 1, 'registry: two zeus-deploy-<id> runs make one card, named after the base entry');
     check(/Zeus deploys an approved commit/.test(await dep.locator('.notes').textContent()), 'registry: the card gets zeus-deploy.json\'s notes');
@@ -49,7 +49,7 @@ run(async b => {
     await shot(p, 'alerts');
 
     fs.unlinkSync(path.join(AL, 'hermes.json'));
-    put(AL, 'zeus.json', {job: 'zeus-approve', level: 'warn', since: '2026-10-21T09:05:00-06:00', message: 'argus-ui 4.9.1 failed and 4.9.0 was put back', link: 'throne'});
+    put(AL, 'zeus.json', {job: 'zeus-approve', level: 'warn', since: '2026-10-21T09:05:00-06:00', message: 'argus-ui 4.9.1 failed and 4.9.0 was put back', link: 'not-installed'});
     await p.evaluate(() => refresh()); await p.waitForTimeout(500);
     check(!(await p.locator('#argus').evaluate(e => e.classList.contains('glare'))), 'warn: no glare; the alert file going away calmed him');
     check(await p.locator('#alarm').isHidden(), 'warn: and no alarm badge');
@@ -69,7 +69,7 @@ run(async b => {
     check(['broken.json', 'badlevel.json', 'stranger.json'].every(n => lines.filter(l => l.includes(n)).length === 1), 'malformed: one log line each, not one per refresh');
     check(p.errors.length === 0, 'no page errors ' + p.errors.join(' | '));
 
-    const ph = await page(b, 375, 760); await ph.goto(BASE); await ph.waitForTimeout(800);
+    const ph = await page(b, 375, 760); await ph.goto(BASE + 'argus'); await ph.waitForTimeout(800);
     check(await noOverflow(ph), 'phone: no sideways scrolling with an alert card');
   } finally {
     units(u => { for (const k of Object.keys(u)) delete u[k]; Object.assign(u, JSON.parse(before)); });

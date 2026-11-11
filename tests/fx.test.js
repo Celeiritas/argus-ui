@@ -4,7 +4,7 @@
 const {BASE, check, page, center, run} = require('./lib');
 run(async b => {
   const p = await page(b);
-  await p.goto(BASE); await p.waitForTimeout(800);
+  await p.goto(BASE + 'argus'); await p.waitForTimeout(800);
   const fxCount = () => p.evaluate(() => document.querySelectorAll('#fx > *').length);
   const before = await fxCount();
   let r = await p.evaluate(async () => { const done = fx.burst([200, 200], {n: 12}); const during = document.querySelectorAll('#fx > .p').length; await done; return during; });
@@ -80,7 +80,7 @@ run(async b => {
 
   // ---- reduced motion: no particles, no ring; the hold still works by its words
   const q = await page(b); await q.emulateMedia({reducedMotion: 'reduce'});
-  await q.goto(BASE); await q.waitForTimeout(800);
+  await q.goto(BASE + 'argus'); await q.waitForTimeout(800);
   r = await q.evaluate(async () => { const t = performance.now(); await fx.burst([200, 200]); await fx.motes([0, 0], [300, 300]); await fx.pieces(document.querySelector('.card'));
     return [document.querySelectorAll('#fx > .p').length, performance.now() - t]; });
   check(r[0] === 0 && r[1] < 100, 'reduced motion: burst, motes and pieces draw nothing and finish at once');

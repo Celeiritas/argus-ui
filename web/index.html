@@ -6,7 +6,7 @@
 <script>(function () { var b = document.createElement('base'); b.href = /^\/argus(\/|$)/.test(location.pathname) ? '/argus/' : '/'; document.head.appendChild(b); })();</script>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#1C2127">
-<title>Argus</title>
+<title>Elaia</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="static/argus-192.png">
 <link rel="apple-touch-icon" href="static/argus-192.png">
@@ -45,7 +45,7 @@
 <div class="realms" role="navigation" aria-label="Sections"><span id="realms" style="display:contents"></span><span class="wx" id="wxText"></span><button class="mute" id="mute" type="button">Mute sounds</button></div>
 <header>
  <img class="hero" id="hero" alt="">
- <div class="title"><h1>Argus</h1><div class="sub" id="sub"></div></div>
+ <div class="title"><h1>Elaia</h1><div class="sub" id="sub"></div></div>
  <div class="argus calm" id="argus" role="img" aria-label="Argus, the watchman">
   <img src="static/icons/argus.png" alt="">
   <span class="alarm" id="alarm" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 0 0-6 6v4l-2 3h16l-2-3V9a6 6 0 0 0-6-6zm-2 15a2 2 0 0 0 4 0" fill="#fff"/></svg><span id="alarmN"></span></span>
@@ -63,18 +63,27 @@
     <circle cx="50" cy="50" r="46" fill="url(#bg-bolt)" stroke="#A7B6C4" stroke-width="3.5"/><circle cx="50" cy="50" r="42" fill="none" stroke="#E7C35A" stroke-width="1.2"/>
     <path d="M56 12 L30 54 L47 54 L38 88 L70 42 L52 42 L62 12 Z" fill="#FFE27A" stroke="#fff" stroke-width="2" stroke-linejoin="round"/>
    </svg>
-   <span class="hint" aria-hidden="true">Run</span>
-   <span class="tip" id="tip-bolt" role="tooltip"><b>Run a task</b> – drag a bolt from here onto a task (on Olympus, drop or fling it at a tree), or press <kbd>Enter</kbd> here and then <kbd>Enter</kbd> on a task. Always-on tasks restart. <kbd>Esc</kbd> cancels.</span>
+   <span class="hint" aria-hidden="true">Run<small>Zeus</small></span>
+   <span class="tip" id="tip-bolt" role="tooltip"><b>Run or restart a task</b> – drag a bolt from here onto a task (on Olympus, drop or fling it at a tree), or press <kbd>Enter</kbd> here and then <kbd>Enter</kbd> on a task. A task that runs and ends starts; an always-on one restarts. <kbd>Esc</kbd> cancels.</span>
   </button>
-  <button class="tool" id="medusaHome" data-tool="medusa" type="button" aria-pressed="false" aria-describedby="tip-medusa" aria-label="Freeze or thaw a task with Medusa">
+  <button class="tool" id="medusaHome" data-tool="medusa" type="button" aria-pressed="false" aria-describedby="tip-medusa" aria-label="Pause or resume a task with Medusa">
    <!--MEDUSA-->
-   <span class="hint" aria-hidden="true">Freeze / thaw</span>
-   <span class="tip" id="tip-medusa" role="tooltip"><b>Freeze or thaw a task</b> – drag Medusa onto a task to turn it to stone (stops it and pauses its timer), or onto stone to thaw it. Keyboard: <kbd>Enter</kbd> here, then <kbd>Enter</kbd> on a task. <kbd>Esc</kbd> cancels.</span>
+   <span class="hint" aria-hidden="true">Pause / resume<small>Medusa</small></span>
+   <span class="tip" id="tip-medusa" role="tooltip"><b>Pause or resume a task</b> – drag Medusa onto a task to freeze it (stops it and holds its timer), or onto a frozen task to resume it. Keyboard: <kbd>Enter</kbd> here, then <kbd>Enter</kbd> on a task. <kbd>Esc</kbd> cancels.</span>
   </button>
  </div>
 </header>
-<nav aria-label="Agents"><span id="nav" style="display:contents"></span></nav>
+<nav class="chips" aria-label="Agents"><span id="nav" style="display:contents"></span></nav>
 <main id="main"></main>
+<!-- On a phone (under 600 px) the sections sit in a bar at the bottom, in thumb reach: Today, Watch, Study, Approvals, More.
+     More opens a sheet with the other places. core.js drawNav() fills both from one list (docs/home.md "Finding your way"). -->
+<nav class="tabbar" id="tabbar" aria-label="Sections"><span class="tabmark" aria-hidden="true" hidden></span><span id="tabs" style="display:contents"></span></nav>
+<dialog id="moreSheet" class="sheet" aria-labelledby="moreH"><div class="sheet-in">
+ <div class="sheet-head"><h2 id="moreH">More</h2><button type="button" id="moreClose">Close</button></div>
+ <ul class="sheetlist" id="moreList"></ul>
+ <h3 id="moreAwayH">Other pages</h3><ul class="sheetlist" id="moreAway" aria-labelledby="moreAwayH"></ul>
+ <div class="sheet-foot"><button type="button" class="mute" id="muteMore">Mute sounds</button></div>
+</div></dialog>
 <div id="flash"></div><div id="fx"></div>
 <div class="toast" id="toast" role="status" aria-live="polite"><span id="toastText"></span><button type="button" id="toastAct" hidden></button></div>
 <dialog id="confirm" aria-labelledby="cTitle" aria-describedby="cBody"><h3 id="cTitle"></h3><p id="cBody"></p>

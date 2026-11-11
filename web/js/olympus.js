@@ -74,7 +74,7 @@ const playground = (() => {
     e.style.rotate = I.aim === 'spin' ? ang + 'deg' : I.aim === null ? '0deg' : (ang + I.aim) + 'deg'; }
   const tipOf = (k, x, y, a) => { const I = ITEM[k]; if (I.aim === 'spin' || I.aim === null) return [x, y + I.lead]; const r = a * Math.PI / 180; return [x + Math.cos(r) * I.lead, y + Math.sin(r) * I.lead]; };
   const fade = (e, ms = 300) => e && e.animate([{opacity: 1}, {opacity: 0}], {duration: RM.matches ? 1 : ms, fill: 'forwards'}).finished.then(() => e.remove());
-  const onUI = (x, y) => { const el = document.elementFromPoint(x, y); return !!(el && el.closest('.dock,.lab,.realms,header,.toast')); };
+  const onUI = (x, y) => { const el = document.elementFromPoint(x, y); return !!(el && el.closest('.dock,.lab,.realms,.tabbar,header,.toast')); };
   const skelAt = (x, y) => scene.covered(x, y) ? null : $$('.skel:not(.dying)').find(s => scene.inside(s, x, y, 4)) || null;
   // what each item reacts to on its way down (the ground is always last)
   function targetAt(k, x, y) {
@@ -361,7 +361,7 @@ const playground = (() => {
   }
   // click (or tap) an owl: she hoots and says one maxim. The scene is behind the page, so this finds her by her box.
   document.addEventListener('pointerdown', ev => {
-    if (!onOlympus || armedK || held || ev.target.closest('.dock,.lab,.realms,header,.toast,dialog,button,a')) return;
+    if (!onOlympus || armedK || held || ev.target.closest('.dock,.lab,.realms,.tabbar,header,.toast,dialog,button,a')) return;
     const o = owls.find(o => scene.inside(o.e, ev.clientX, ev.clientY, 6)); if (!o) return;
     hoot(); if (!RM.matches) o.e.animate([{rotate: '0deg'}, {rotate: '-14deg'}, {rotate: '8deg'}, {rotate: '0deg'}], {duration: 600, easing: 'ease-out'});
     $$('.owlsay').forEach(b => b.remove());
@@ -465,7 +465,7 @@ const playground = (() => {
     launch(k, e, x, sy, 0, 150);
   }
   document.addEventListener('click', ev => {
-    if (!armedK || ev.target.closest('.dock,.lab,.realms,header,.toast,dialog')) return;
+    if (!armedK || ev.target.closest('.dock,.lab,.realms,.tabbar,header,.toast,dialog')) return;
     ev.preventDefault(); const k = armedK; disarm(); useAt(k, ev.clientX, ev.clientY);
   }, true);
   addEventListener('keydown', ev => { if (ev.key === 'Escape' && armedK) { disarm(); toast('Cancelled.'); } });
