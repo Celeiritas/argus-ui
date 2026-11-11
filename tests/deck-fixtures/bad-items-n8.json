@@ -1,0 +1,1050 @@
+{
+ "format": "mentor-items/1",
+ "title": "Tea practice items",
+ "disclaimer": "Made-up practice items for tests, not advice.",
+ "sources": {
+  "S1": {
+   "title": "A made-up tea guide",
+   "url": "https://example.org/tea",
+   "read": "2026-11-11"
+  }
+ },
+ "items": [
+  {
+   "id": "tea-mcq",
+   "type": "mcq",
+   "status": "unverified",
+   "client_needs": "Tea making",
+   "ncjmm_step": "take-action",
+   "scoring": "zero_one",
+   "max_points": 1,
+   "stem": "Which water is best for green tea?",
+   "options": [
+    {
+     "id": "a",
+     "text": "Boiling water",
+     "key": false,
+     "reason": "Reason for: boiling water.",
+     "src": [
+      "S1"
+     ]
+    },
+    {
+     "id": "b",
+     "text": "Water that has cooled a little",
+     "key": true,
+     "reason": "Reason for: water that has cooled a little.",
+     "src": [
+      "S1"
+     ]
+    },
+    {
+     "id": "c",
+     "text": "Ice water",
+     "key": false,
+     "reason": "Reason for: ice water.",
+     "src": [
+      "S1"
+     ]
+    },
+    {
+     "id": "d",
+     "text": "Milk",
+     "key": false,
+     "reason": "Reason for: milk.",
+     "src": [
+      "S1"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "tea-sata",
+   "type": "sata",
+   "status": "unverified",
+   "client_needs": "Tea making",
+   "ncjmm_step": "recognize-cues",
+   "scoring": "plus_minus",
+   "max_points": 3,
+   "stem": "Which are signs the tea has steeped too long?",
+   "options": [
+    {
+     "id": "a",
+     "text": "It tastes bitter",
+     "key": true,
+     "reason": "Reason for: it tastes bitter.",
+     "src": [
+      "S1"
+     ]
+    },
+    {
+     "id": "b",
+     "text": "It looks very dark",
+     "key": true,
+     "reason": "Reason for: it looks very dark.",
+     "src": [
+      "S1"
+     ]
+    },
+    {
+     "id": "c",
+     "text": "It feels dry on the tongue",
+     "key": true,
+     "reason": "Reason for: it feels dry on the tongue.",
+     "src": [
+      "S1"
+     ]
+    },
+    {
+     "id": "d",
+     "text": "It smells of flowers",
+     "key": false,
+     "reason": "Reason for: it smells of flowers.",
+     "src": [
+      "S1"
+     ]
+    },
+    {
+     "id": "e",
+     "text": "It is still warm",
+     "key": false,
+     "reason": "Reason for: it is still warm.",
+     "src": [
+      "S1"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "tea-drop-rationale",
+   "type": "dropdown",
+   "status": "unverified",
+   "client_needs": "Tea making",
+   "ncjmm_step": "analyze-cues",
+   "scoring": "rationale",
+   "max_points": 2,
+   "stem": "Complete the sentence.",
+   "template": "Black tea steeps for {d1} minutes because {d2}. Serve it {d3}.",
+   "dropdowns": [
+    {
+     "id": "d1",
+     "options": [
+      {
+       "id": "a",
+       "text": "3 to 5",
+       "key": true,
+       "reason": "Reason for: 3 to 5.",
+       "src": [
+        "S1"
+       ]
+      },
+      {
+       "id": "b",
+       "text": "30",
+       "key": false,
+       "reason": "Reason for: 30.",
+       "src": [
+        "S1"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "d2",
+     "options": [
+      {
+       "id": "a",
+       "text": "longer makes it bitter",
+       "key": true,
+       "reason": "Reason for: longer makes it bitter.",
+       "src": [
+        "S1"
+       ]
+      },
+      {
+       "id": "b",
+       "text": "shorter makes it sweeter",
+       "key": false,
+       "reason": "Reason for: shorter makes it sweeter.",
+       "src": [
+        "S1"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "d3",
+     "options": [
+      {
+       "id": "a",
+       "text": "warm",
+       "key": true,
+       "reason": "Reason for: warm.",
+       "src": [
+        "S1"
+       ]
+      },
+      {
+       "id": "b",
+       "text": "frozen",
+       "key": false,
+       "reason": "Reason for: frozen.",
+       "src": [
+        "S1"
+       ]
+      }
+     ]
+    }
+   ],
+   "pairs": [
+    {
+     "id": "p1",
+     "of": [
+      "d1",
+      "d2"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "tea-drop-01",
+   "type": "dropdown",
+   "status": "unverified",
+   "client_needs": "Tea making",
+   "ncjmm_step": "analyze-cues",
+   "scoring": "zero_one",
+   "max_points": 3,
+   "stem": "Complete the sentence.",
+   "template": "Black tea steeps for {d1} minutes because {d2}. Serve it {d3}.",
+   "dropdowns": [
+    {
+     "id": "d1",
+     "options": [
+      {
+       "id": "a",
+       "text": "3 to 5",
+       "key": true,
+       "reason": "Reason for: 3 to 5.",
+       "src": [
+        "S1"
+       ]
+      },
+      {
+       "id": "b",
+       "text": "30",
+       "key": false,
+       "reason": "Reason for: 30.",
+       "src": [
+        "S1"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "d2",
+     "options": [
+      {
+       "id": "a",
+       "text": "longer makes it bitter",
+       "key": true,
+       "reason": "Reason for: longer makes it bitter.",
+       "src": [
+        "S1"
+       ]
+      },
+      {
+       "id": "b",
+       "text": "shorter makes it sweeter",
+       "key": false,
+       "reason": "Reason for: shorter makes it sweeter.",
+       "src": [
+        "S1"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "d3",
+     "options": [
+      {
+       "id": "a",
+       "text": "warm",
+       "key": true,
+       "reason": "Reason for: warm.",
+       "src": [
+        "S1"
+       ]
+      },
+      {
+       "id": "b",
+       "text": "frozen",
+       "key": false,
+       "reason": "Reason for: frozen.",
+       "src": [
+        "S1"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "tea-matrix",
+   "type": "matrix",
+   "status": "unverified",
+   "client_needs": "Tea making",
+   "ncjmm_step": "generate-solutions",
+   "scoring": "zero_one",
+   "max_points": 3,
+   "stem": "Mark what each tea needs.",
+   "columns": [
+    {
+     "id": "hot",
+     "text": "Hot water"
+    },
+    {
+     "id": "cool",
+     "text": "Cooled water"
+    },
+    {
+     "id": "milk",
+     "text": "Milk"
+    }
+   ],
+   "rows": [
+    {
+     "id": "r1",
+     "text": "Black tea",
+     "keys": [
+      "hot"
+     ],
+     "reason": "Black tea likes hot water.",
+     "src": [
+      "S1"
+     ]
+    },
+    {
+     "id": "r2",
+     "text": "Green tea",
+     "keys": [
+      "cool"
+     ],
+     "reason": "Green tea burns in hot water.",
+     "src": [
+      "S1"
+     ]
+    },
+    {
+     "id": "r3",
+     "text": "Chai latte",
+     "keys": [
+      "hot"
+     ],
+     "reason": "A latte is hot and may have milk.",
+     "src": [
+      "S1"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "tea-matrix-multi",
+   "type": "matrix",
+   "status": "unverified",
+   "client_needs": "Tea making",
+   "ncjmm_step": "generate-solutions",
+   "scoring": "plus_minus",
+   "max_points": 4,
+   "stem": "Mark what each tea needs.",
+   "columns": [
+    {
+     "id": "hot",
+     "text": "Hot water"
+    },
+    {
+     "id": "cool",
+     "text": "Cooled water"
+    },
+    {
+     "id": "milk",
+     "text": "Milk"
+    }
+   ],
+   "rows": [
+    {
+     "id": "r1",
+     "text": "Black tea",
+     "keys": [
+      "hot"
+     ],
+     "reason": "Black tea likes hot water.",
+     "src": [
+      "S1"
+     ]
+    },
+    {
+     "id": "r2",
+     "text": "Green tea",
+     "keys": [
+      "cool"
+     ],
+     "reason": "Green tea burns in hot water.",
+     "src": [
+      "S1"
+     ]
+    },
+    {
+     "id": "r3",
+     "text": "Chai latte",
+     "keys": [
+      "hot",
+      "milk"
+     ],
+     "reason": "A latte is hot and may have milk.",
+     "src": [
+      "S1"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "tea-bowtie",
+   "type": "bowtie",
+   "status": "unverified",
+   "client_needs": "Tea making",
+   "ncjmm_step": "all",
+   "scoring": "zero_one",
+   "max_points": 5,
+   "stem": "Fill the bow-tie.",
+   "condition": {
+    "pick": 1,
+    "options": [
+     {
+      "id": "a",
+      "text": "Tea is too weak",
+      "key": true,
+      "reason": "Reason for: tea is too weak.",
+      "src": [
+       "S1"
+      ]
+     },
+     {
+      "id": "b",
+      "text": "Tea is too hot",
+      "key": false,
+      "reason": "Reason for: tea is too hot.",
+      "src": [
+       "S1"
+      ]
+     },
+     {
+      "id": "c",
+      "text": "Tea is cold",
+      "key": false,
+      "reason": "Reason for: tea is cold.",
+      "src": [
+       "S1"
+      ]
+     },
+     {
+      "id": "d",
+      "text": "Tea is spilled",
+      "key": false,
+      "reason": "Reason for: tea is spilled.",
+      "src": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "actions": {
+    "pick": 2,
+    "options": [
+     {
+      "id": "a",
+      "text": "Steep longer",
+      "key": true,
+      "reason": "Reason for: steep longer.",
+      "src": [
+       "S1"
+      ]
+     },
+     {
+      "id": "b",
+      "text": "Use more leaves",
+      "key": true,
+      "reason": "Reason for: use more leaves.",
+      "src": [
+       "S1"
+      ]
+     },
+     {
+      "id": "c",
+      "text": "Add ice",
+      "key": false,
+      "reason": "Reason for: add ice.",
+      "src": [
+       "S1"
+      ]
+     },
+     {
+      "id": "d",
+      "text": "Throw it out",
+      "key": false,
+      "reason": "Reason for: throw it out.",
+      "src": [
+       "S1"
+      ]
+     },
+     {
+      "id": "e",
+      "text": "Add salt",
+      "key": false,
+      "reason": "Reason for: add salt.",
+      "src": [
+       "S1"
+      ]
+     }
+    ]
+   },
+   "parameters": {
+    "pick": 2,
+    "options": [
+     {
+      "id": "a",
+      "text": "Colour of the tea",
+      "key": true,
+      "reason": "Reason for: colour of the tea.",
+      "src": [
+       "S1"
+      ]
+     },
+     {
+      "id": "b",
+      "text": "Minutes steeped",
+      "key": true,
+      "reason": "Reason for: minutes steeped.",
+      "src": [
+       "S1"
+      ]
+     },
+     {
+      "id": "c",
+      "text": "Colour of the cup",
+      "key": false,
+      "reason": "Reason for: colour of the cup.",
+      "src": [
+       "S1"
+      ]
+     },
+     {
+      "id": "d",
+      "text": "Weather",
+      "key": false,
+      "reason": "Reason for: weather.",
+      "src": [
+       "S1"
+      ]
+     },
+     {
+      "id": "e",
+      "text": "Day of the week",
+      "key": false,
+      "reason": "Reason for: day of the week.",
+      "src": [
+       "S1"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "tea-trend",
+   "type": "trend",
+   "status": "unverified",
+   "client_needs": "Tea making",
+   "ncjmm_step": "evaluate-outcomes",
+   "answer_type": "mcq",
+   "scoring": "zero_one",
+   "max_points": 1,
+   "exhibit": {
+    "title": "Temperature log",
+    "columns": [
+     "Minute",
+     "Temp"
+    ],
+    "rows": [
+     [
+      "0",
+      "95"
+     ],
+     [
+      "5",
+      "80"
+     ],
+     [
+      "10",
+      "65"
+     ]
+    ]
+   },
+   "stem": "What does the log show?",
+   "options": [
+    {
+     "id": "a",
+     "text": "The tea is cooling",
+     "key": true,
+     "reason": "Reason for: the tea is cooling.",
+     "src": [
+      "S1"
+     ]
+    },
+    {
+     "id": "b",
+     "text": "The tea is heating",
+     "key": false,
+     "reason": "Reason for: the tea is heating.",
+     "src": [
+      "S1"
+     ]
+    },
+    {
+     "id": "c",
+     "text": "The tea is frozen",
+     "key": false,
+     "reason": "Reason for: the tea is frozen.",
+     "src": [
+      "S1"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "tea-case",
+   "type": "case",
+   "status": "unverified",
+   "client_needs": "Tea making",
+   "ncjmm_step": "all",
+   "scenario": "A friend asks for help with a pot of tea.",
+   "chart": {
+    "tabs": {
+     "Notes": [
+      {
+       "time": "09:00",
+       "text": "Pot brewed."
+      }
+     ]
+    }
+   },
+   "items": [
+    {
+     "id": "tea-case-6",
+     "type": "matrix",
+     "ncjmm_step": "evaluate-outcomes",
+     "scoring": "zero_one",
+     "max_points": 3,
+     "stem": "Mark what each tea needs.",
+     "columns": [
+      {
+       "id": "hot",
+       "text": "Hot water"
+      },
+      {
+       "id": "cool",
+       "text": "Cooled water"
+      },
+      {
+       "id": "milk",
+       "text": "Milk"
+      }
+     ],
+     "rows": [
+      {
+       "id": "r1",
+       "text": "Black tea",
+       "keys": [
+        "hot"
+       ],
+       "reason": "Black tea likes hot water.",
+       "src": [
+        "S1"
+       ]
+      },
+      {
+       "id": "r2",
+       "text": "Green tea",
+       "keys": [
+        "cool"
+       ],
+       "reason": "Green tea burns in hot water.",
+       "src": [
+        "S1"
+       ]
+      },
+      {
+       "id": "r3",
+       "text": "Chai latte",
+       "keys": [
+        "hot"
+       ],
+       "reason": "A latte is hot and may have milk.",
+       "src": [
+        "S1"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "tea-case-5",
+     "type": "mcq",
+     "ncjmm_step": "take-action",
+     "scoring": "zero_one",
+     "max_points": 1,
+     "stem": "Which water is best for green tea?",
+     "options": [
+      {
+       "id": "a",
+       "text": "Boiling water",
+       "key": false,
+       "reason": "Reason for: boiling water.",
+       "src": [
+        "S1"
+       ]
+      },
+      {
+       "id": "b",
+       "text": "Water that has cooled a little",
+       "key": true,
+       "reason": "Reason for: water that has cooled a little.",
+       "src": [
+        "S1"
+       ]
+      },
+      {
+       "id": "c",
+       "text": "Ice water",
+       "key": false,
+       "reason": "Reason for: ice water.",
+       "src": [
+        "S1"
+       ]
+      },
+      {
+       "id": "d",
+       "text": "Milk",
+       "key": false,
+       "reason": "Reason for: milk.",
+       "src": [
+        "S1"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "tea-case-4",
+     "type": "sata",
+     "ncjmm_step": "generate-solutions",
+     "scoring": "plus_minus",
+     "max_points": 3,
+     "stem": "Which are signs the tea has steeped too long?",
+     "options": [
+      {
+       "id": "a",
+       "text": "It tastes bitter",
+       "key": true,
+       "reason": "Reason for: it tastes bitter.",
+       "src": [
+        "S1"
+       ]
+      },
+      {
+       "id": "b",
+       "text": "It looks very dark",
+       "key": true,
+       "reason": "Reason for: it looks very dark.",
+       "src": [
+        "S1"
+       ]
+      },
+      {
+       "id": "c",
+       "text": "It feels dry on the tongue",
+       "key": true,
+       "reason": "Reason for: it feels dry on the tongue.",
+       "src": [
+        "S1"
+       ]
+      },
+      {
+       "id": "d",
+       "text": "It smells of flowers",
+       "key": false,
+       "reason": "Reason for: it smells of flowers.",
+       "src": [
+        "S1"
+       ]
+      },
+      {
+       "id": "e",
+       "text": "It is still warm",
+       "key": false,
+       "reason": "Reason for: it is still warm.",
+       "src": [
+        "S1"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "tea-case-3",
+     "type": "mcq",
+     "ncjmm_step": "prioritize-hypotheses",
+     "scoring": "zero_one",
+     "max_points": 1,
+     "stem": "Which water is best for green tea?",
+     "options": [
+      {
+       "id": "a",
+       "text": "Boiling water",
+       "key": false,
+       "reason": "Reason for: boiling water.",
+       "src": [
+        "S1"
+       ]
+      },
+      {
+       "id": "b",
+       "text": "Water that has cooled a little",
+       "key": true,
+       "reason": "Reason for: water that has cooled a little.",
+       "src": [
+        "S1"
+       ]
+      },
+      {
+       "id": "c",
+       "text": "Ice water",
+       "key": false,
+       "reason": "Reason for: ice water.",
+       "src": [
+        "S1"
+       ]
+      },
+      {
+       "id": "d",
+       "text": "Milk",
+       "key": false,
+       "reason": "Reason for: milk.",
+       "src": [
+        "S1"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "tea-case-2",
+     "type": "dropdown",
+     "ncjmm_step": "analyze-cues",
+     "scoring": "rationale",
+     "max_points": 2,
+     "stem": "Complete the sentence.",
+     "template": "Black tea steeps for {d1} minutes because {d2}. Serve it {d3}.",
+     "dropdowns": [
+      {
+       "id": "d1",
+       "options": [
+        {
+         "id": "a",
+         "text": "3 to 5",
+         "key": true,
+         "reason": "Reason for: 3 to 5.",
+         "src": [
+          "S1"
+         ]
+        },
+        {
+         "id": "b",
+         "text": "30",
+         "key": false,
+         "reason": "Reason for: 30.",
+         "src": [
+          "S1"
+         ]
+        }
+       ]
+      },
+      {
+       "id": "d2",
+       "options": [
+        {
+         "id": "a",
+         "text": "longer makes it bitter",
+         "key": true,
+         "reason": "Reason for: longer makes it bitter.",
+         "src": [
+          "S1"
+         ]
+        },
+        {
+         "id": "b",
+         "text": "shorter makes it sweeter",
+         "key": false,
+         "reason": "Reason for: shorter makes it sweeter.",
+         "src": [
+          "S1"
+         ]
+        }
+       ]
+      },
+      {
+       "id": "d3",
+       "options": [
+        {
+         "id": "a",
+         "text": "warm",
+         "key": true,
+         "reason": "Reason for: warm.",
+         "src": [
+          "S1"
+         ]
+        },
+        {
+         "id": "b",
+         "text": "frozen",
+         "key": false,
+         "reason": "Reason for: frozen.",
+         "src": [
+          "S1"
+         ]
+        }
+       ]
+      }
+     ],
+     "pairs": [
+      {
+       "id": "p1",
+       "of": [
+        "d1",
+        "d2"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "tea-case-1",
+     "type": "sata",
+     "ncjmm_step": "recognize-cues",
+     "scoring": "plus_minus",
+     "max_points": 3,
+     "stem": "Which are signs the tea has steeped too long?",
+     "options": [
+      {
+       "id": "a",
+       "text": "It tastes bitter",
+       "key": true,
+       "reason": "Reason for: it tastes bitter.",
+       "src": [
+        "S1"
+       ]
+      },
+      {
+       "id": "b",
+       "text": "It looks very dark",
+       "key": true,
+       "reason": "Reason for: it looks very dark.",
+       "src": [
+        "S1"
+       ]
+      },
+      {
+       "id": "c",
+       "text": "It feels dry on the tongue",
+       "key": true,
+       "reason": "Reason for: it feels dry on the tongue.",
+       "src": [
+        "S1"
+       ]
+      },
+      {
+       "id": "d",
+       "text": "It smells of flowers",
+       "key": false,
+       "reason": "Reason for: it smells of flowers.",
+       "src": [
+        "S1"
+       ]
+      },
+      {
+       "id": "e",
+       "text": "It is still warm",
+       "key": false,
+       "reason": "Reason for: it is still warm.",
+       "src": [
+        "S1"
+       ]
+      }
+     ]
+    }
+   ],
+   "max_points": 13
+  },
+  {
+   "id": "tea-sata-pick",
+   "type": "sata",
+   "status": "unverified",
+   "client_needs": "Tea making",
+   "ncjmm_step": "recognize-cues",
+   "scoring": "zero_one",
+   "max_points": 3,
+   "stem": "Which are signs the tea has steeped too long?",
+   "options": [
+    {
+     "id": "a",
+     "text": "It tastes bitter",
+     "key": true,
+     "reason": "Reason for: it tastes bitter.",
+     "src": [
+      "S1"
+     ]
+    },
+    {
+     "id": "b",
+     "text": "It looks very dark",
+     "key": true,
+     "reason": "Reason for: it looks very dark.",
+     "src": [
+      "S1"
+     ]
+    },
+    {
+     "id": "c",
+     "text": "It feels dry on the tongue",
+     "key": true,
+     "reason": "Reason for: it feels dry on the tongue.",
+     "src": [
+      "S1"
+     ]
+    },
+    {
+     "id": "d",
+     "text": "It smells of flowers",
+     "key": false,
+     "reason": "Reason for: it smells of flowers.",
+     "src": [
+      "S1"
+     ]
+    },
+    {
+     "id": "e",
+     "text": "It is still warm",
+     "key": false,
+     "reason": "Reason for: it is still warm.",
+     "src": [
+      "S1"
+     ]
+    }
+   ],
+   "pick": 3
+  }
+ ]
+}
