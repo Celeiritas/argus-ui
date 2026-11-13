@@ -214,6 +214,8 @@ class Config(unittest.TestCase):
         # the port is taken: Elaia keeps the frame and says so loudly, with an alert file Watch shows (docs/alerts.md), until
         # a start where every own listener starts
         f = os.path.join(a.ALERTS, a.OWN_ALERT)
+        def message():
+            with open(f, encoding='utf-8') as fh: return json.load(fh)['message']
         self.assertFalse(os.path.exists(f), 'no alert while every own listener started')
         socks = []
         def taken():
@@ -235,13 +237,30 @@ class Config(unittest.TestCase):
             shown = [x for x in json.loads(main('api/state', host=TS)[2])['alerts'] if x['job'] == 'argus-own-origin']
             self.assertEqual([x['level'] for x in shown], ['alert'], 'Watch shows it')
             a.start_own_origins(self.conf({'busy-game': {'port': busy, 'public': q}, 'busy-two': {'port': busy2, 'public': q2}}))
-            with open(f, encoding='utf-8') as fh: doc = json.load(fh)
-            self.assertTrue(f'busy-game {busy}' in doc['message'] and f'busy-two {busy2}' in doc['message'], doc['message'])
-            self.assertLessEqual(len(doc['message']), 300)
+            two = message()
+            self.assertTrue(two.startswith(f'Turn off HTTPS ports {q}, {q2} on tailscale serve (sudo tailscale serve --https={q} off'), two)
+            self.assertIn(f'free local ports {busy}, {busy2}', two); self.assertLessEqual(len(two), 300)
         finally:
             for s in socks: s.close()
         self.assertEqual(a.start_own_origins(self.conf({})), {})
         self.assertFalse(os.path.exists(f), 'the next start where every own listener starts takes it away')
+
+    def test_many_busy_ports_fit_in_watch(self):
+        # Watch shows 300 characters: every public port while they fit, else the count and the first one's command
+        f = os.path.join(a.ALERTS, a.OWN_ALERT)
+        def say(n, name):
+            a.own_alert([(name(i), {'port': 20000 + i, 'public': 30000 + i}) for i in range(n)])
+            with open(f, encoding='utf-8') as fh: return json.load(fh)['message']
+        three = say(3, lambda i: f'game-{i}')
+        self.assertTrue(three.startswith('Turn off HTTPS ports 30000, 30001, 30002 on tailscale serve (sudo tailscale serve --https=30000 off'), three)
+        self.assertIn('free local ports 20000, 20001, 20002,', three); self.assertLessEqual(len(three), 300)
+        self.assertTrue(say(4, lambda i: f'g{i}' + 'x' * 30).startswith('Turn off HTTPS ports 30000, 30001, 30002, 30003 '), 'four still fit')
+        for n, name in ((5, lambda i: f'game-{i}'), (12, lambda i: f'g{i}' + 'x' * 30), (200, lambda i: f'g{i:03d}' + 'x' * 28)):
+            m = say(n, name)
+            self.assertLessEqual(len(m), 300, m)
+            self.assertTrue(m.startswith(f'Turn off the HTTPS ports of {n} plugins on tailscale serve, the first with sudo tailscale serve --https=30000 off ({name(0)};'), m)
+        a.own_alert([])
+        self.assertFalse(os.path.exists(f))
 
 class Cookies(unittest.TestCase):
     """Cookies belong to a host name, not a port: the game on its own address can set up to about a megabyte of them, and

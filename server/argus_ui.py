@@ -958,10 +958,16 @@ def own_alert(busy):
             msg = (f'{pid} has no own address: port {c["port"]} was taken at start, so it opens in its frame, and tailscale serve still '
                    f'sends HTTPS port {c["public"]} to whatever holds it. Turn that off (sudo tailscale serve --https={c["public"]} off), '
                    'free the port, restart Argus, then publish the port again.')
-        else:
-            which = ', '.join(f"{pid} {c['port']}" for pid, c in busy)
-            msg = (f'{len(busy)} plugins have no own address: their local ports were taken when Argus started ({which}), so they '
-                   'open in their frames. Turn off their HTTPS ports on tailscale serve, free the ports, then restart Argus.')
+        else:                                     # the instruction first: Watch shows the first 300 characters
+            pubs, locs = (', '.join(str(e[k]) for _, e in busy) for k in ('public', 'port'))
+            pid, c = busy[0]
+            msg = (f'Turn off HTTPS ports {pubs} on tailscale serve (sudo tailscale serve --https={c["public"]} off, and the same '
+                   f'for each), free local ports {locs}, then restart Argus. {len(busy)} plugins have no own address: their ports '
+                   'were taken at start, so they open in their frames.')
+            if len(msg) > 300:                    # too many to list: the count and the first one's command (the log names each)
+                msg = (f'Turn off the HTTPS ports of {len(busy)} plugins on tailscale serve, the first with sudo tailscale serve '
+                       f'--https={c["public"]} off ({pid}; the log names the rest), free their local ports, then restart Argus. '
+                       'Their ports were taken at start, so they open in their frames.')
         os.makedirs(ALERTS, exist_ok=True)
         tmp = f + '.tmp'
         with open(tmp, 'w', encoding='utf-8') as fh:
