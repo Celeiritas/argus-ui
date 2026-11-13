@@ -2,7 +2,14 @@
 // has: nothing is squeezed into a one-word column, the sections bar becomes a left rail on ultrawides, and Argus never takes
 // more than about a fifth of the height.
 const {BASE, check, page, noOverflow, shot, run} = require('./lib');
-const box = (p, s) => p.locator(s).first().evaluate(e => { const r = e.getBoundingClientRect(); return {x: r.x, y: r.y, w: r.width, h: r.height}; });
+// Find and measure in one step. A locator's evaluate finds the node, then measures it in a second round trip; Today draws
+// twice (what it knows, then again when every section has answered), and a redraw between the two steps left a node that
+// was no longer on the page, measured as 0 x 0 (the flaky "phone: Home is one column", 4.44.0).
+const rect = s => { const e = document.querySelector(s); if (!e) return null; const r = e.getBoundingClientRect(); return {x: r.x, y: r.y, w: r.width, h: r.height}; };
+const box = (p, s) => p.evaluate(`(${rect})(${JSON.stringify(s)})`);
+const boxes = (p, ...ss) => p.evaluate(`[${ss.map(s => `(${rect})(${JSON.stringify(s)})`).join(',')}]`);
+// Today has settled: every section has answered (no "Checking…" card, no "Asking every section…")
+const settled = p => p.waitForFunction(() => { const h = document.querySelector('#main .home'); return h && !/Checking…|Asking every section/.test(h.textContent); });
 run(async b => {
   for (const [w, h, tag] of [[3440, 1440, 'ultrawide 3440'], [2560, 1080, 'ultrawide 2560']]) {
     const p = await page(b, w, h); await p.goto(BASE + 'home'); await p.locator('.home .places').waitFor(); await p.waitForTimeout(500);
@@ -68,9 +75,9 @@ run(async b => {
   const tb = await box(ph, '.tabbar'), more = ph.locator('.tabbar [data-more]');
   check(tb.y + tb.h >= 759 && tb.w >= 374 && await ph.locator('.realms').isHidden(), 'phone: the sections sit in a bar at the bottom instead of the strip');
   check(await more.evaluate(e => e.classList.contains('on')) && /Playground/.test(await more.textContent()), 'phone: on a place inside More, the More slot is the current one and names it');
-  await ph.goto(BASE + 'home'); await ph.locator('.home .places').waitFor();
-  const pn = await box(ph, '.home .needs'), pp = await box(ph, '.home .places');
-  check(pp.y > pn.y && pn.w >= 340, 'phone: Home is one column, full width');
+  await ph.goto(BASE + 'home'); await settled(ph);
+  const [pn, pp] = await boxes(ph, '.home .needs', '.home .places');
+  check(pn && pp && pp.y > pn.y && pn.w >= 340, `phone: Home is one column, full width (rows ${pn && pn.w} px wide)`);
   check(await noOverflow(ph), 'phone: no sideways scrolling');
   await ph.goto(BASE + 'argus'); await ph.locator('.card').first().waitFor();
   check((await box(ph, '.argus')).w <= 96, 'phone: Argus is 96 px, so the first task card shows sooner');
