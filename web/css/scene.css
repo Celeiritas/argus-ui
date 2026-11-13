@@ -118,7 +118,7 @@ header{grid-template-areas:"title argus tools"}.title{grid-area:title}.argus{gri
   padding:0 max(env(safe-area-inset-right,0px),var(--s1)) env(safe-area-inset-bottom,0px) max(env(safe-area-inset-left,0px),var(--s1));
   background:rgb(22 27 33 / .97);border-top:1px solid var(--line)}
 }
-.tab{all:unset;box-sizing:border-box;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:1px;min-width:var(--hit);min-height:var(--tabh,72px);padding:6px 2px var(--s1);color:var(--powder);text-align:center;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.tab{all:unset;box-sizing:border-box;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:1px;min-width:var(--hit);min-height:var(--tabh,72px);padding:6px 0 var(--s1);color:var(--powder);text-align:center;cursor:pointer;-webkit-tap-highlight-color:transparent}   /* no side padding: at 360 px "Phone alerts" (68 px) needs the slot's whole width (4.44.0) */
 .tab .tabicon{position:relative;display:block;width:26px;height:26px;margin-bottom:2px}
 .tab .tabicon img,.tab .tabicon svg{width:26px;height:26px;display:block;transition:transform var(--t2)}
 .tab b{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-sec);font-weight:600;line-height:1.2;color:var(--powder)}

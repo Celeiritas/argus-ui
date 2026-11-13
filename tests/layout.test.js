@@ -117,6 +117,14 @@ run(async b => {
     }
     await q.close();
   }
+  // the phone bar's More names the open place in full: "Phone alerts" was cut to "Phone ale…" at 360 px (review of 4.44.0)
+  for (const [w, h] of [[360, 800], [375, 812]]) {
+    const q = await page(b, w, h); await q.goto(BASE + 'phone'); await q.locator('#tabs .more.on small').waitFor();
+    await q.evaluate(() => document.fonts.ready);
+    const fit = await q.evaluate(() => { const e = document.querySelector('#tabs .more.on small'); return {text: e.textContent, need: e.scrollWidth, has: e.clientWidth}; });
+    check(fit.text === 'Phone alerts' && fit.need <= fit.has, `${w} x ${h}: the phone bar's More says "${fit.text}" in full (${fit.need} px of text in ${fit.has} px)`);
+    await q.close();
+  }
 
   const ph = await page(b, 375, 760); await ph.goto(BASE + 'olympus'); await ph.waitForTimeout(800);
   const tb = await box(ph, '.tabbar'), more = ph.locator('.tabbar [data-more]');
