@@ -50,13 +50,21 @@ These are the steps as you will read them; nothing here needs a terminal.
 5. Choose with the three switches what this phone gets. Each switch changes at once.
 
 On the same page: **Turn off on this phone**, and **Your other devices** with **Remove** for each. At most 8 devices per
-person. Each device in the list says when Elaia last handed it a message, in words that claim no more than the server
-knows: *Last message delivered to its message service: yesterday, 8:00 AM.*, *No message delivered to its message service
-yet.*, or *Last try:* and what went wrong. It never says a message reached the phone: the message service (Google's, for
-Chrome on Android) can keep accepting messages for an address no phone listens to any more. A device with **this** device's
-name whose last delivery (or, with none, its sign-up) is more than a minute older than this device's gets one more line
-next to its **Remove**: *This looks like an old copy of this phone. Remove it.* (*computer* on a computer). It is only a
-hint: two real phones of the same make have the same name too. On a computer the page is not in the strip of sections at the top (it would crowd it); open Elaia's address with
+person. Each device in the list says when it was set up and when Elaia last handed it a message, in words that claim no
+more than the server knows: *Set up November 11. Last message delivered to its message service: yesterday, 8:00 AM.*, or
+*… No message delivered to its message service yet.* When the last try failed, the row shows *Last try:* and what went
+wrong, and still the last success. It never says a message reached the phone: the message service (Google's, for Chrome
+on Android) can keep accepting messages for an address no phone listens to any more.
+
+A device with **this** device's name whose last delivery is more than a minute older than this device's gets one more
+line next to its **Remove**: *If this is an old copy of this phone, Remove it.* (*computer* on a computer). It is only a
+hint, and the page words it as one: the name is only the kind of device and the browser (*Android phone, Chrome*,
+*Windows computer, Chrome*), so two real devices of the same kind share it. Both need a delivery: a device that has taken
+no message yet is never called a copy, and two live devices that took the same message are seconds apart. A test buzz
+goes to one device only, so right after one, a same-named device whose last message was the morning summary can get the
+hint until the next summary; its set-up date helps tell which is which.
+
+On a computer the page is not in the strip of sections at the top (it would crowd it); open Elaia's address with
 `phone` at the end (`<base>/phone`).
 
 If the page says *Notifications are blocked for this page*, the phone said no earlier; the page lists the three taps that
@@ -82,6 +90,11 @@ messages for an address that leads nowhere, and Turn on made a second one. Since
   with the same server key (the one it kept, or the server's) and tells the server, naming the old record. That name
   comes from the event's old address, or from the kept id when the event brings none. The record keeps its name and
   switches. If the server cannot be reached, the kept id stays, so the next Turn on still names it.
+- **A removed device stays removed.** The worker asks with `only_if_known`: the server takes the new address only when
+  it finds the record it replaces (or the same address) for the same person. If that record is gone (**Remove** was
+  tapped on another device, or the server dropped an address its message service called dead), nothing is added and the
+  kept id stays as it was. **Turn on** on that device signs it up again, when you want it. The answer for an id that
+  is unknown and for another person's is the same.
 - **Without storage** (a private window, storage blocked) everything works as before 4.43, only nothing is replaced. An
   old record then shows under **Your other devices** with the hint above.
 
@@ -130,9 +143,10 @@ now:
 | something waits | 1 thing is waiting for your yes | Media player needs a restart, and Argus waits for your yes. |
 
 **One backups line, only when backups need a look** (4.43.0). The body then ends with one more line from the Memory page
-(plugin 1.2.0, `docs/memory.md`), by the same rules as its **Needs you**: *Backups: the server has no snapshot yet.* (only
-when its weekly brain job exists), *Backups: your PC's last backup was 9 days ago.* (more than 8 days), or both in one
-sentence. It is the same summary message: no extra buzz and no new kind. When backups are fine there is no line. Without
+(plugin 1.2.0, `docs/memory.md`), by two of the rules behind its **Needs you**: *Backups: the server has no snapshot
+yet.* (only when its weekly brain job exists; also when that job's first try failed), *Backups: your PC's last backup
+was 9 days ago.* (more than 8 days), or both in one sentence. Other reasons for Needs you (an old snapshot, a failed
+run that left older ones) add no line. It is the same summary message: no extra buzz and no new kind. When backups are fine there is no line. Without
 the Memory plugin, or when it fails, the summary goes out without the line and the server's log says so once (until
 Elaia restarts).
 
@@ -161,7 +175,8 @@ with the reason, and everything else works as before.
 
 Routes (all the owner's, `docs/people.md`): `GET api/push/status` (available or why not; your devices without their
 addresses; the public key the browser needs), `POST api/push/subscribe` (optional `replaces`: the id of the same person's
-record this address takes over), `api/push/kinds`, `api/push/forget`,
+record this address takes over; optional `only_if_known: true`, sent by the service worker: add nothing unless that record
+or this address is already the person's, answer 404 otherwise), `api/push/kinds`, `api/push/forget`,
 `api/push/test` (one test message to one device, at most one per 10 seconds). Turning on and testing also need a trusted
 request: one that came through the secure front door with a sign-in, and not from the server itself.
 
@@ -197,12 +212,16 @@ verified, the host rule, a fake push service on `127.0.0.1`: 201, 410, 500 then 
 followed; the sink's rules; the summary's words, once a day across a restart, the 4-hour rule; the routes for owner,
 learner and untrusted requests, no address or key in any answer, mode 600 on Linux; `replaces`: the same person's new
 address keeps one record, another person's or an unknown id keeps both with the same answer, a learner cannot retire the
-owner's, no `replaces` works as before; the summary's backups line: fine, no snapshot, the PC 8 and 9 days old, the
+owner's, no `replaces` works as before; `only_if_known`: the worker keeps the name and switches, and adds nothing after
+Remove, after the server dropped a dead address, or for an unknown or another person's id (one answer for all three);
+the summary's backups line: fine, no snapshot, the PC 8 and 9 days old, the
 plugin missing or failing, logged once, no extra buzz). `tests/phone-alerts.test.js` (the
 page's states, one call per switch, 44 px, 360 px, computed contrast, a learner has no way in, the test buzz decrypted as
 a phone would; the service worker in Chromium: a push message delivered with Chromium's own hook shows a notification and
 a tap opens the right place; a new address: Turn on sends `replaces` and leaves one record, Turn off clears the kept id,
 IndexedDB blocked or never answering changes nothing; `pushsubscriptionchange` dispatched in the real worker replaces the
-record, and every case of it in a stand-in browser; **Your other devices** at 412 x 915, 360 x 800 and 1920 x 1080: the
-wording, the old-copy hint, Remove next to it). `ARGUS_PUSH_TEST_ORIGIN` lets the tests use their fake push service; it is honoured only
+record and does not sign a removed device back up, and every case of it in a stand-in browser; **Your other devices** at
+412 x 915, 360 x 800 and 1920 x 1080, with the names the page really makes: the set-up date and the last success, an
+error row with both, the hedged old-copy hint, no hint right after Turn on or for two live devices with one name (seen
+from both), each Remove's word inside its button, Remove next to the hint). `ARGUS_PUSH_TEST_ORIGIN` lets the tests use their fake push service; it is honoured only
 together with `ARGUS_DEV=1` and only for an `http` address on the same machine. `bash tests/run.sh phone-alerts`.

@@ -148,7 +148,19 @@ async function serviceWorker() {
       check(r0.status() === 200 && !s.devices.some(d => d.id === idOf(kOld.sub.endpoint)) && !!nd && nd.label === 'Android phone, Chrome' && JSON.stringify(nd.kinds) === '["broke"]',
         `pushsubscriptionchange in the real worker: the old record is replaced by the new address, keeping its name and switches (${JSON.stringify(s.devices.map(d => [d.id, d.label, d.kinds]))})`);
       check(after.id === idOf(kNew.sub.endpoint) && after.key === key, `and the worker keeps the new id with the same server key (${JSON.stringify(after)})`);
+      // Removed (on another device, or by the sender after a dead address): the next new address must not sign it back up
+      // (review F3, fix round 1; on 0b294e4 it came back as "This device" with every kind on)
       await ctx.request.post(BASE + 'api/push/forget', {data: {id: idOf(kNew.sub.endpoint)}});
+      const kThird = phoneKeys('sw-third');
+      const after2 = await worker.evaluate(async ([s, login]) => {
+        const f = self.fetch.bind(self); self.fetch = (u, o = {}) => f(u, {...o, headers: {...(o.headers || {}), 'Tailscale-User-Login': login, 'X-Forwarded-For': '192.0.2.20'}});
+        let w; const e = new Event('pushsubscriptionchange'); e.waitUntil = x => { w = x; }; e.newSubscription = {endpoint: s.endpoint, toJSON: () => s};
+        self.dispatchEvent(e); await w; self.fetch = f; return deviceStore('get');
+      }, [kThird.sub, OWNER]);
+      const s2 = await (await ctx.request.get(BASE + 'api/push/status')).json();
+      check(!s2.devices.some(d => d.id === idOf(kThird.sub.endpoint) || d.id === idOf(kNew.sub.endpoint)),
+        `a removed device: its worker does not sign it back up at a new address (${JSON.stringify(s2.devices.map(d => [d.id, d.label]))})`);
+      check(after2.id === idOf(kNew.sub.endpoint), `and the kept id stays as it was (${JSON.stringify(after2)})`);
     }
     check(p.errors.length === 0, 'service worker: no page errors ' + p.errors.join(' | '));
   } finally { await b2.close(); }
@@ -398,36 +410,73 @@ run(async b => {
     const backdate = (id, fields) => { const ds = JSON.parse(fs.readFileSync(DEVICES, 'utf8')); for (const d of ds) if (d.id === id) Object.assign(d, fields); fs.writeFileSync(DEVICES, JSON.stringify(ds, null, 1)); };
     const rowsOf = q => q.locator('.pdevices li').evaluateAll(es => es.map(e => ({id: e.querySelector('[data-do=forget]')?.dataset.id, name: e.querySelector('b').textContent,
       said: e.querySelector('small').textContent, old: e.querySelector('.pold')?.textContent || ''})));
+    // Names are what label() makes: platform and browser only, so two live devices of the same kind share one (review F1).
+    const dayOf = (q, iso) => q.evaluate(iso => new Date(iso).toLocaleDateString([], {month: 'long', day: 'numeric'}), iso);
+    const SLOW = "The phone maker's message service did not answer in time. Elaia tried twice.";   // say_failure('timeout') in server/push.py
+    // every Remove keeps its word inside its own border, and all of them are one width (review F4)
+    const removeFits = q => q.locator('.pdevices [data-do=forget]').evaluateAll(es => es.map(e => { const r = document.createRange(); r.selectNodeContents(e);
+      const t = r.getBoundingClientRect(), o = e.getBoundingClientRect(); return {fits: t.left >= o.left && t.right <= o.right, w: Math.round(o.width)}; }));
     for (const [w, h, ua, name] of [[412, 915, PHONE_UA, 'phone'], [360, 800, PHONE_UA, 'phone'], [1920, 1080, DESK_UA, 'computer']]) {
-      const kn = phoneKeys(`list-${w}-this`), ko = phoneKeys(`list-${w}-old`), kt = phoneKeys(`list-${w}-tablet`), kf = phoneKeys(`list-${w}-newer`);
+      const kn = phoneKeys(`list-${w}-this`), ko = phoneKeys(`list-${w}-old`), kt = phoneKeys(`list-${w}-other`), kf = phoneKeys(`list-${w}-newer`), kl = phoneKeys(`list-${w}-live`);
       const lc = await phone(b, {width: w, height: h, ua, sub: kn.sub}), q = await open(lc);
       await forgetAll(q);
       await q.locator('[data-do=on]').click(); await q.locator('#main .pstate.on').waitFor({timeout: 8000});
-      const mine = (await status(q)).devices.find(d => d.id === idOf(kn.sub.endpoint)), L = mine.label;
-      for (const [k, label] of [[ko, L], [kt, 'Android tablet, Chrome'], [kf, L]]) await q.request.post(BASE + 'api/push/subscribe', {data: {subscription: k.sub, label, kinds: ['summary']}});
+      const mine = (await status(q)).devices.find(d => d.id === idOf(kn.sub.endpoint)), L = mine.label, OTHER = name === 'phone' ? 'Windows computer, Chrome' : 'Android phone, Chrome';
+      check(L === (name === 'phone' ? 'Android phone, Chrome' : 'Windows computer, Chrome'), `${w}x${h}: this device's name is the one label() makes (${L})`);
+      for (const [k, label] of [[ko, L], [kt, OTHER], [kf, L], [kl, L]]) await q.request.post(BASE + 'api/push/subscribe', {data: {subscription: k.sub, label, kinds: ['summary']}});
       const y = new Date(); y.setDate(y.getDate() - 1); y.setHours(8, 0, 8, 0);
-      backdate(idOf(ko.sub.endpoint), {made: new Date(+y - 864e5).toISOString(), last_ok: y.toISOString()});   // this device before: yesterday 08:00 was its last
-      backdate(idOf(kt.sub.endpoint), {last_ok: new Date().toISOString()});                                    // another device: took one just now
-      await q.reload(); await q.waitForTimeout(1500);                                                           // kf: the same name, turned on after this one
-      const rows = await rowsOf(q), row = k => rows.find(r => r.id === idOf(k.sub.endpoint)) || {};
+      const made2 = new Date(+y - 864e5).toISOString();
+      backdate(idOf(ko.sub.endpoint), {made: made2, last_ok: y.toISOString()});                    // the same name, yesterday 08:00 was its last
+      // 1) Right after Turn on this device has taken nothing yet: a same-named device that took yesterday's summary is not
+      //    called a copy of it (on 0b294e4 the set-up time stood in for a delivery, and it was)
+      await q.reload(); await q.waitForTimeout(1500);
+      let rows = await rowsOf(q);
+      check(rows.length === 4 && !rows.some(r => r.old), `${w}x${h}: just turned on, nothing taken yet: no row is called an old copy (${rows.map(r => r.name + ': ' + r.old).join(' | ')})`);
+      // 2) This device took a message 5 minutes ago; kl, live with the same name, took the same one 2 s earlier; kt's last
+      //    try failed after it took yesterday's; kf has the same name and has taken nothing yet
+      const t0 = new Date(Date.now() - 5 * 6e4);
+      backdate(idOf(kn.sub.endpoint), {last_ok: t0.toISOString()});
+      backdate(idOf(kl.sub.endpoint), {made: made2, last_ok: new Date(+t0 - 2000).toISOString()});
+      backdate(idOf(kt.sub.endpoint), {made: made2, last_ok: y.toISOString(), last_error: SLOW});
+      await q.reload(); await q.waitForTimeout(1500);
+      rows = await rowsOf(q); const row = k => rows.find(r => r.id === idOf(k.sub.endpoint)) || {};
       const eight = await q.evaluate(iso => new Date(iso).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'}), y.toISOString());   // 8:00 AM in the browser's own words
-      check(rows.length === 3, `${w}x${h}: three other devices listed (${rows.map(r => r.name).join(' | ')})`);
-      check(row(ko).said === `Last message delivered to its message service: yesterday, ${eight}.` && row(ko).old === `This looks like an old copy of this ${name}. Remove it.`,
-        `${w}x${h}: the old copy says when it last took a message, and that it looks like an old copy of this ${name} (${row(ko).said} / ${row(ko).old})`);
-      check(/^Last message delivered to its message service: today, /.test(row(kt).said) && !row(kt).old, `${w}x${h}: another device says today, and is not called a copy (${row(kt).said})`);
-      check(row(kf).said === 'No message delivered to its message service yet.' && !row(kf).old, `${w}x${h}: the same name, but newer than this one: not called a copy (${row(kf).said})`);
+      const set2 = `Set up ${await dayOf(q, made2)}.`, setNow = `Set up ${await dayOf(q, new Date().toISOString())}.`;
+      check(rows.length === 4 && rows.filter(r => r.name === L).length === 3, `${w}x${h}: four other devices listed, three with this device's name (${rows.map(r => r.name).join(' | ')})`);
+      check(row(ko).said === `${set2} Last message delivered to its message service: yesterday, ${eight}.` && row(ko).old === `If this is an old copy of this ${name}, Remove it.`,
+        `${w}x${h}: the older same-named one says when it was set up and last took a message, and the hint is an "if" (${row(ko).said} / ${row(ko).old})`);
+      check(row(kl).said.startsWith(`${set2} Last message delivered to its message service: `) && !row(kl).old,
+        `${w}x${h}: two live devices with one name, the same broadcast seconds apart: not called a copy (${row(kl).said})`);
+      check(row(kf).said === `${setNow} No message delivered to its message service yet.` && !row(kf).old, `${w}x${h}: the same name, nothing taken yet: not called a copy (${row(kf).said})`);
+      check(row(kt).said === `${set2} Last try: ${SLOW} Last message delivered to its message service: yesterday, ${eight}.` && !row(kt).old,
+        `${w}x${h}: an error row shows the failed try and the last success together (${row(kt).said})`);
       check(!/reached|arrived|showed|on the phone|on your phone/i.test(await q.locator('.pdevices').innerText()), `${w}x${h}: no row claims a message reached the device itself`);
       check(!/push|subscription|endpoint|vapid|service worker/i.test(await q.locator('#main').innerText()), `${w}x${h}: no technical word anywhere a person reads`);
       check(await q.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${w}x${h}: no sideways scroll`);
       check((await targets(q)).length === 0, `${w}x${h}: every control at least 44 px ` + (await targets(q)).join(', '));
+      const fit = await removeFits(q);
+      check(fit.length === 4 && fit.every(f => f.fits) && Math.max(...fit.map(f => f.w)) - Math.min(...fit.map(f => f.w)) <= 1,
+        `${w}x${h}: every Remove keeps its word inside its button, all one width (${JSON.stringify(fit)})`);
       const c = await contrast(q, '.pdevices');
-      check(c.bad.length === 0 && c.n >= 6, `${w}x${h}: the device list's text at least 4.5 to 1 (computed, ${c.n} texts, lowest ${c.min}) ${c.bad.join(', ')}`);
-      await q.locator('#pothers-h').scrollIntoViewIfNeeded(); await q.waitForTimeout(200);
-      await shot(q, `e1-${w}-other-devices`);
+      check(c.bad.length === 0 && c.n >= 8, `${w}x${h}: the device list's text at least 4.5 to 1 (computed, ${c.n} texts, lowest ${c.min}) ${c.bad.join(', ')}`);
+      const listEnd = x => x.evaluate(() => document.querySelector('.pdevices').scrollIntoView({block: 'end'}));   // every row in the picture, above the bottom bar
+      await listEnd(q); await q.waitForTimeout(200);
+      await shot(q, `${w}x${h}-devices-fix1`);
       if (w === 412) {
+        // the same two live devices seen from the other one: this device is not called a copy there either
+        const oc = await phone(b, {mode: 'subscribed', width: w, height: h, ua, sub: kl.sub}), o = await open(oc);
+        await o.evaluate(async () => { await navigator.serviceWorker.register('sw.js'); await navigator.serviceWorker.ready; });
+        await o.reload(); await o.waitForTimeout(1500);
+        const there = await rowsOf(o), back = there.find(r => r.id === idOf(kn.sub.endpoint)) || {};
+        check(await heading(o) === 'Alerts are on for this phone' && there.length === 4 && back.name === L && !back.old && there.filter(r => r.old).map(r => r.id).join() === idOf(ko.sub.endpoint),
+          `two live devices with one name, seen from the other: neither is called a copy, only the older one is (${there.map(r => r.name + ': ' + (r.old || '-')).join(' | ')})`);
+        await listEnd(o); await o.waitForTimeout(200);
+        await shot(o, `${w}x${h}-devices-fix1-other-live`);
+        check(o.errors.length === 0, 'the other live device: no page errors ' + o.errors.join(' | '));
+        await oc.close();
         await q.locator(`.pdevices [data-do=forget][data-id="${idOf(ko.sub.endpoint)}"]`).click(); await q.waitForTimeout(1200);
         const left = await rowsOf(q);
-        check(left.length === 2 && !left.some(r => r.old) && !(await status(q)).devices.some(d => d.id === idOf(ko.sub.endpoint)), `Remove next to the hint: the old copy is gone (${left.map(r => r.name).join(' | ')})`);
+        check(left.length === 3 && !left.some(r => r.old) && !(await status(q)).devices.some(d => d.id === idOf(ko.sub.endpoint)), `Remove next to the hint: the old copy is gone (${left.map(r => r.name).join(' | ')})`);
       }
       check(q.errors.length === 0, `${w}x${h}: no page errors ` + q.errors.join(' | '));
       await q.locator('[data-do=off]').click(); await q.waitForTimeout(1200);
@@ -508,8 +557,9 @@ run(async b => {
       const posts = w => w.fetched.filter(f => f.method === 'POST');
       let w = world({store: {id: OLD, key: KEY}}); await w.change({}); let pp = posts(w);
       check(w.subscribed.join() === KEY && pp.length === 1 && pp[0].url === 'https://home.example/argus/api/push/subscribe' && pp[0].credentials === 'same-origin' && pp[0].type === 'application/json'
-        && pp[0].body.replaces === OLD && pp[0].body.subscription.endpoint === 'https://push.example/new' && !('label' in pp[0].body) && !('kinds' in pp[0].body),
-        `new address, the event names no old one: it signs up again with the kept key and replaces the kept id (${JSON.stringify(pp.map(x => x.body))})`);
+        && pp[0].body.replaces === OLD && pp[0].body.subscription.endpoint === 'https://push.example/new' && !('label' in pp[0].body) && !('kinds' in pp[0].body)
+        && pp[0].body.only_if_known === true,
+        `new address, the event names no old one: it signs up again with the kept key and replaces the kept id, only if that record is still there (${JSON.stringify(pp.map(x => x.body))})`);
       check(w.store.id === idOf('https://push.example/new') && w.store.key === KEY, 'and it keeps the new id, with the same key, for the next change');
       w = world({store: {id: '0123456789abcdef', key: KEY}});
       await w.change({oldSubscription: {endpoint: 'https://push.example/old', options: {}}, newSubscription: mk('https://push.example/given')}); pp = posts(w);

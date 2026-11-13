@@ -112,18 +112,24 @@ const phoneAlerts = (() => {
     const t = d.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
     return d.toDateString() === new Date().toDateString() ? 'today, ' + t : d.toDateString() === y.toDateString() ? 'yesterday, ' + t : when(iso);
   };
-  // when a device last took a message: the server only knows its message service took it, never that the device showed it
-  const lastSeen = d => d.last_error ? 'Last try: ' + esc(d.last_error) : d.last_ok ? `Last message delivered to its message service: ${esc(ago(d.last_ok))}.`
-    : 'No message delivered to its message service yet.';
-  // A record with this device's name that last took a message clearly before this one did: most likely this device from
-  // before its address changed (its message service may still take messages for a while, so the server cannot tell).
-  const fresh = d => Date.parse(d.last_ok || d.made) || 0;
-  const oldCopy = d => !!me?.dev && (d.label || '').trim().toLowerCase() === (me.dev.label || '').trim().toLowerCase() && fresh(d) < fresh(me.dev) - 60000;
+  const day = iso => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString([], {month: 'long', day: 'numeric'}); };
+  // One device row: when it was set up, its last failed try (if the last try failed), and when its message service last
+  // took a message. The server only knows the service took it, never that the device showed it.
+  const lastSeen = d => [day(d.made) ? `Set up ${esc(day(d.made))}.` : '', d.last_error ? 'Last try: ' + esc(d.last_error) : '',
+    d.last_ok ? `Last message delivered to its message service: ${esc(ago(d.last_ok))}.` : 'No message delivered to its message service yet.'].filter(Boolean).join(' ');
+  // A record with this device's name whose message service last took a message clearly before this device's did: perhaps
+  // this device from before its address changed (its message service may still take messages for a while, so the server
+  // cannot tell). Only a hint, worded as an "if": names are not unique (every Windows PC on Chrome has the same one), so
+  // it needs a delivery on both sides. A device with no delivery yet is never flagged, and two devices that took the same
+  // broadcast are seconds apart.
+  const fresh = d => Date.parse(d.last_ok) || 0;
+  const oldCopy = d => !!me?.dev && (d.label || '').trim().toLowerCase() === (me.dev.label || '').trim().toLowerCase()
+    && fresh(d) > 0 && fresh(d) < fresh(me.dev) - 60000;
   function othersPanel(n) {
     const list = (st?.devices || []).filter(d => !d.this);
     return `<section class="ppanel" aria-labelledby="pothers-h"><h2 id="pothers-h" tabindex="-1">Your other devices</h2>${n}${list.length
       ? `<ul class="pdevices">${list.map(d => `<li><span><b>${esc(d.label || 'A device')}</b><small>${lastSeen(d)}</small>${oldCopy(d)
-        ? `<small class="pold">This looks like an old copy of this ${THING}. Remove it.</small>` : ''}</span><button type="button" class="pbtn" data-do="forget" data-id="${esc(d.id)}"${dis()} aria-label="Remove ${esc(d.label || 'this device')}">Remove</button></li>`).join('')}</ul>`
+        ? `<small class="pold">If this is an old copy of this ${THING}, Remove it.</small>` : ''}</span><button type="button" class="pbtn" data-do="forget" data-id="${esc(d.id)}"${dis()} aria-label="Remove ${esc(d.label || 'this device')}">Remove</button></li>`).join('')}</ul>`
       : '<p>No other device gets alerts.</p>'}</section>`;
   }
   // The answer to a tap appears inside the panel whose control was used, and is scrolled into view above the bottom bar
