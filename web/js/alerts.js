@@ -20,6 +20,31 @@ const phoneAlerts = (() => {
   // the id the server gives this browser's address (the same sum, so the address itself never comes back to the page)
   const idOf = async endpoint => hex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode('argus-push:' + endpoint))).slice(0, 16);
   const keyBytes = k => { const s = atob(k.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - k.length % 4) % 4)); return Uint8Array.from(s, c => c.charCodeAt(0)); };
+  // This browser's id and the server's key, kept where this page AND sw.js can read them (IndexedDB "elaia", store "push",
+  // key "device"), so a new address can name the record it replaces, also while Elaia is closed. Keep in step with
+  // deviceStore in sw.js. Any failure (no storage, a private window, blocked) answers {} within 3 s: alerts work without
+  // it; only an old copy can then stay behind, and "Your other devices" points it out.
+  function deviceStore(op, rec) {
+    return new Promise(done => {
+      const t = setTimeout(() => done({}), 3000), end = v => { clearTimeout(t); done(v); };
+      try {
+        const o = indexedDB.open('elaia', 1);
+        o.onupgradeneeded = () => o.result.createObjectStore('push');
+        o.onerror = () => end({});
+        o.onsuccess = () => {
+          const db = o.result;
+          try {
+            const tx = db.transaction('push', op === 'get' ? 'readonly' : 'readwrite'), s = tx.objectStore('push');
+            const q = op === 'put' ? s.put(rec, 'device') : op === 'clear' ? s.delete('device') : s.get('device');
+            tx.oncomplete = () => { db.close(); end(op === 'get' && q.result && typeof q.result === 'object' ? q.result : {}); };
+            tx.onerror = tx.onabort = () => { db.close(); end({}); };
+          } catch (e) { db.close(); end({}); }
+        };
+      } catch (e) { end({}); }
+    });
+  }
+  let kept = {};                                     // what this page last put there (written again only when it changes)
+  const keep = (id, key) => { if (kept.id === id && kept.key === key) return Promise.resolve(); kept = {id, key}; return deviceStore('put', kept); };
   async function registration() { try { return await navigator.serviceWorker.getRegistration(url('')); } catch (e) { return null; } }
   async function subscription() { const r = can() && await registration(); try { return r ? await r.pushManager.getSubscription() : null; } catch (e) { return null; } }
   async function send(path, body) {
@@ -36,6 +61,7 @@ const phoneAlerts = (() => {
       st = r.ok ? await r.json() : {available: false, why: 'Elaia could not ask the server about alerts. Reload this page to try again.', devices: []};
     } catch (e) { st = {available: false, why: 'Elaia could not reach the server. Check that this ' + THING + ' is online, then reload this page.', devices: []}; }
     me = {sub, id, dev: (st.devices || []).find(d => d.this) || null}; asked = Date.now();
+    if (me.dev && st.key) keep(id, st.key);           // the server knows this address: remember it as this browser's
     return st;
   }
   const when = iso => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString([], {month: 'long', day: 'numeric'}) + ', ' + d.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'}); };
@@ -79,10 +105,25 @@ const phoneAlerts = (() => {
     return `<section class="ppanel" aria-labelledby="ptest-h"><h2 id="ptest-h">Try it</h2><p>It should arrive within a few seconds, also when Elaia is closed.</p>
       <div class="prow"><button type="button" class="pbtn" data-do="test"${dis()}>${PHONE ? 'Send a test buzz' : 'Send a test alert'}</button><button type="button" class="pbtn" data-do="off"${dis()}>Turn off on this ${THING}</button></div>${n}${res}</section>`;
   }
+  // "today, 8:00 AM", "yesterday, 8:00 AM" or "November 11, 8:00 AM" (calendar days, so a clock change never shifts them)
+  const ago = iso => {
+    const d = new Date(iso); if (isNaN(d)) return '';
+    const y = new Date(); y.setDate(y.getDate() - 1);
+    const t = d.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
+    return d.toDateString() === new Date().toDateString() ? 'today, ' + t : d.toDateString() === y.toDateString() ? 'yesterday, ' + t : when(iso);
+  };
+  // when a device last took a message: the server only knows its message service took it, never that the device showed it
+  const lastSeen = d => d.last_error ? 'Last try: ' + esc(d.last_error) : d.last_ok ? `Last message delivered to its message service: ${esc(ago(d.last_ok))}.`
+    : 'No message delivered to its message service yet.';
+  // A record with this device's name that last took a message clearly before this one did: most likely this device from
+  // before its address changed (its message service may still take messages for a while, so the server cannot tell).
+  const fresh = d => Date.parse(d.last_ok || d.made) || 0;
+  const oldCopy = d => !!me?.dev && (d.label || '').trim().toLowerCase() === (me.dev.label || '').trim().toLowerCase() && fresh(d) < fresh(me.dev) - 60000;
   function othersPanel(n) {
     const list = (st?.devices || []).filter(d => !d.this);
     return `<section class="ppanel" aria-labelledby="pothers-h"><h2 id="pothers-h" tabindex="-1">Your other devices</h2>${n}${list.length
-      ? `<ul class="pdevices">${list.map(d => `<li><span><b>${esc(d.label || 'A device')}</b><small>${d.last_error ? esc(d.last_error) : 'On since ' + esc(when(d.made))}</small></span><button type="button" class="pbtn" data-do="forget" data-id="${esc(d.id)}"${dis()} aria-label="Remove ${esc(d.label || 'this device')}">Remove</button></li>`).join('')}</ul>`
+      ? `<ul class="pdevices">${list.map(d => `<li><span><b>${esc(d.label || 'A device')}</b><small>${lastSeen(d)}</small>${oldCopy(d)
+        ? `<small class="pold">This looks like an old copy of this ${THING}. Remove it.</small>` : ''}</span><button type="button" class="pbtn" data-do="forget" data-id="${esc(d.id)}"${dis()} aria-label="Remove ${esc(d.label || 'this device')}">Remove</button></li>`).join('')}</ul>`
       : '<p>No other device gets alerts.</p>'}</section>`;
   }
   // The answer to a tap appears inside the panel whose control was used, and is scrolled into view above the bottom bar
@@ -133,14 +174,19 @@ const phoneAlerts = (() => {
     catch (e) { return say('This ' + THING + ' could not get ready for alerts. Reload the page and try again.'); }
     try { sub = await reg.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: keyBytes(st.key)}); }
     catch (e) { return say('This ' + THING + ' could not sign up for alerts. Check that it is online, then try again.'); }
-    const r = await send('subscribe', {subscription: sub.toJSON(), label: label(), kinds: KINDS.map(k => k[0])});
+    // the record this browser had before its address changed (the browser can drop an address, e.g. when notifications are
+    // switched off and on): the server retires it if it is his, and this one keeps its choices of what buzzes
+    const was = await deviceStore('get'), id = await idOf(sub.endpoint), replaces = was.id && was.id !== id ? String(was.id) : '';
+    const r = await send('subscribe', {subscription: sub.toJSON(), label: label(), ...(replaces ? {replaces} : {kinds: KINDS.map(k => k[0])})});
     if (!r.ok) { try { await sub.unsubscribe(); } catch (e) {} await load(); return say(r.msg || 'The server did not turn alerts on. Try again.'); }
+    await keep(r.id || id, st.key);
     await load(); focusNext = '[data-do="test"]';     // "Turn on" is gone: the next step, Send a test buzz, takes its place
     say(`Done. ${PHONE ? 'Send a test buzz' : 'Send a test alert'} to see one.`);   // the heading above already says it is on
   }
   async function turnOff() {
     const id = me.dev?.id;
     try { await me.sub?.unsubscribe(); } catch (e) {}
+    kept = {}; await deviceStore('clear');             // turned off on purpose: nothing for a later turn-on to replace
     const r = id ? await send('forget', {id}) : {ok: true};
     await load(); focusNext = '[data-do="on"], #pstate-h';
     say(r.ok ? `Done. This ${THING} gets no more alerts.` : r.msg);

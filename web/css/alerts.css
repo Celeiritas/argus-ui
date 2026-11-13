@@ -31,6 +31,7 @@
 .pdevices li:first-child{border-top:0}
 .pdevices li>span{min-width:0;overflow-wrap:anywhere}
 .pdevices b{display:block;font-size:var(--fs-body);font-weight:600}.pdevices small{display:block;font-size:var(--fs-sec);color:var(--powder)}
+.pdevices small.pold{margin-top:var(--s1);padding-left:var(--s2);border-left:3px solid var(--run);color:var(--snow)}   /* "looks like an old copy of this phone" (alerts.js oldCopy) */
 .pres{font-size:var(--fs-sec)!important;color:var(--powder)!important}.pres.bad{color:var(--bad)!important}
 .phone .psay{margin:var(--s2) 0;padding:var(--s2) var(--s3);border-left:3px solid var(--teal);background:var(--card);font-size:var(--fs-sec);color:var(--snow)}   /* the answer to a tap, in its own panel */
 .pbtn[aria-disabled="true"]{opacity:.45;cursor:progress}   /* busy with the last tap: looks and reads unavailable (alerts.js) */
