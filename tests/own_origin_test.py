@@ -132,8 +132,10 @@ class Config(unittest.TestCase):
         self.assertEqual(a.load_own_origin(os.path.join(TMP, 'no-such-file.json')), {})
 
     def test_broken_files_are_nothing(self):
-        for doc in ('{"spartamelee": ', '[]', '"x"', '7', 'null'):
-            self.assertEqual(a.load_own_origin(self.conf(doc)), {}, doc)
+        deep = 100_000                                   # nested this deep, json.load runs out of recursion (RecursionError)
+        for doc in ('{"spartamelee": ', '[]', '"x"', '7', 'null', '{"a":' * deep + '1' + '}' * deep, '[' * deep + ']' * deep):
+            self.assertEqual(a.load_own_origin(self.conf(doc)), {}, doc[:40])
+        self.assertEqual(a.start_own_origins(self.conf('{"a":' * deep + '1' + '}' * deep)), {}, 'and Argus starts without them')
 
     def test_bad_entries_are_left_out(self):
         p1, p2, p3, p4, p5, q1, q2, q3 = ports(8)

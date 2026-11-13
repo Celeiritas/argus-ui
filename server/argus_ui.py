@@ -213,7 +213,8 @@ def load_own_origin(path=None):
     try:
         with open(path or OWN_ORIGIN, encoding='utf-8') as f: raw = json.load(f)
     except FileNotFoundError: return {}
-    except (OSError, ValueError): say('cannot be read as JSON, so no plugin gets its own address'); return {}
+    except (OSError, ValueError, RecursionError):     # RecursionError: nested thousands deep
+        say('cannot be read as JSON, so no plugin gets its own address'); return {}
     if not isinstance(raw, dict): say('must be an object of plugin ids, so no plugin gets its own address'); return {}
     num = lambda v, lo: isinstance(v, int) and not isinstance(v, bool) and lo <= v <= 65535
     found, used, published = {}, {PORT}, {80, 443}
@@ -918,7 +919,8 @@ def start_own_origins(path=None):
 
 if __name__ == '__main__':
     load_server_plugins()
-    start_own_origins()
+    try: start_own_origins()                     # a mistake in own-origin.json never stops Argus: the frames stay
+    except Exception: print(f'argus-ui: no plugin gets its own address:\n{traceback.format_exc()}', file=sys.stderr, flush=True)
     if WATCH_ON: watch.start(watch_env(), WATCH_INTERVAL)
     push.start(lambda person: push.role_in(PEOPLE.current(), person),      # phone alerts: owners' devices only (docs/phone-alerts.md)
                lambda s: next((w.get('title', '') for w in watch.snapshot(WATCH_INTERVAL or 60) if w.get('id') == s), ''))
