@@ -285,7 +285,9 @@ CLOSED = ('The list of people this page uses cannot be read, so the page is clos
           'did before the file existed.')
 
 def private_page(login, trusted, whoami_href='api/whoami', from_self=False, closed=False):
-    """The small page a person without a role gets at any page address: no script, nothing loaded from elsewhere."""
+    """The small page a person without a role gets at any page address: no script, nothing loaded from elsewhere.
+    whoami_href None leaves out the "Show what the server sees" link (a plugin's own address has no API to show it)."""
+    who_link = f'<p class="small"><a href="{_esc(whoami_href)}">Show what the server sees</a></p>' if whoami_href else ''
     if from_self:
         seen = ('<p>This request came from the server itself, through its own Tailscale address. A program on the server '
                 'cannot use the page as a person, so the server does not count the login it carries.</p>'
@@ -320,6 +322,6 @@ a:focus-visible {{ outline: 2px solid var(--accent); outline-offset: 2px; }}
 <h1>This page is private</h1>
 {seen}
 <p class="owner">{_esc(CLOSED) if closed else 'If you are the owner and this is your own device: on the server, move the people file aside to a dated name, and the page opens for you again at once.'}</p>
-<p class="small"><a href="{_esc(whoami_href)}">Show what the server sees</a></p>
+{who_link}
 </main></body></html>
 '''

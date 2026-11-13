@@ -108,6 +108,13 @@ if [ -z "$1" ] || [ "$1" = plugins ]; then
   echo "== plugin cache"   # ETag, Last-Modified, 304 and Cache-Control on raw headers: no browser (tests/plugin_cache_test.py)
   $PYTHON -W ignore::ResourceWarning "$R/tests/plugin_cache_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1
 fi
+# a plugin on its own address (own-origin.json, docs/leafy-plugin.md): the second listener, its paths, methods and roles, and
+# Elaia refusing the game's origin; no browser (tests/own_origin_test.py). The browser side is tests/own-origin.test.js.
+if [ -z "$1" ] || [ "$1" = plugins ] || [ "$1" = own-origin ]; then
+  echo "== own origin"
+  st=0; out=$($PYTHON -W ignore::ResourceWarning "$R/tests/own_origin_test.py" 2>&1) || st=$?
+  if [ $st = 0 ]; then grep -E "identity path|^Ran|^OK" <<<"$out" || true; else echo "$out"; fail=1; fi
+fi
 if [ "$1" = demo ]; then   # bash tests/run.sh demo: record the README preview GIF
   BASE="http://127.0.0.1:$PORT/argus/" FIXTURES="$T/fx" SHOTS="$T" node "$R/tests/demo.js" || exit 1
   ffmpeg -loglevel error -y -ss 1.5 -i "$T/demo.webm" -vf "setpts=PTS/1.5,fps=10,scale=720:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=64:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle" "$R/docs/screenshots/preview.gif"

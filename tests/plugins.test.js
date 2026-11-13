@@ -20,6 +20,7 @@ run(async b => {
   check(await out.getAttribute('data-freeze') !== '200', 'the plugin cannot use Medusa: its POST to api/freeze is refused');
   check(await out.getAttribute('data-state') === 'blocked', 'the plugin cannot read api/state');
   check(await out.getAttribute('data-server') === 'blocked', 'the plugin cannot read a server plugin\'s API');
+  check(await out.getAttribute('data-storage') === 'blocked', 'the sandbox has no storage of its own (its own address does: own-origin.test.js)');
   const st = await (await p.request.get(BASE + 'api/state')).json();
   check(st.jobs.find(j => j.job === 'hermes-sort')?.state !== 'frozen', 'and the task it tried to freeze is untouched');
 
