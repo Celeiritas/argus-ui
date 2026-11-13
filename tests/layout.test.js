@@ -39,12 +39,13 @@ run(async b => {
   await shot(d, 'layout-1920-home');
 
   // the strip on laptops, 16:9 and a phone on its side (4.44.0): one row inside the screen. Second lines go first, then the
-  // weather, then the last pills fold into More (never Today or the place you are on); Mute sounds covers no pill and nothing
+  // weather, then the last pills fold into More (never Today or the place you are on); Mute sounds covers no pill and the
+  // weather is whole or not on the strip (it is always under the name on Today); nothing
   // scrolls sideways. Before 4.44.0 the strip scrolled under Mute sounds at 1024 and on a phone on its side (915 x 412, 800 x 360).
   const strip = p => p.evaluate(() => { const r = e => e.getBoundingClientRect(), bar = document.querySelector('.realms'), more = document.getElementById('realmMore');
-    const shown = [...bar.querySelectorAll('.realm,.mute')].filter(e => e.offsetWidth), m = r(document.getElementById('mute'));
+    const shown = [...bar.querySelectorAll('.realm,.wx,.mute')].filter(e => e.offsetWidth), m = r(document.getElementById('mute'));
     const hit = (a, c) => a.left < c.right - 1 && c.left < a.right - 1 && a.top < c.bottom - 1 && c.top < a.bottom - 1;
-    return {n: shown.length - 1, row: shown.every(e => r(e).top < r(shown[0]).bottom), inside: shown.every(e => r(e).left >= 0 && r(e).right <= innerWidth),
+    return {n: shown.filter(e => e.matches('.realm')).length, row: shown.every(e => r(e).top < r(shown[0]).bottom), inside: shown.every(e => r(e).left >= 0 && r(e).right <= innerWidth),
       clear: shown.every(e => e.id === 'mute' || !hit(r(e), m)), scrolls: bar.scrollWidth > bar.clientWidth + 1,
       over: [...bar.querySelectorAll('#realms .realm.over')].map(e => e.dataset.id), more: !!more && !more.hidden && more.offsetWidth > 0,
       compact: bar.classList.contains('compact'), bare: bar.classList.contains('bare')}; });
@@ -110,15 +111,18 @@ run(async b => {
   check((await box(ls, '.argus')).w <= 96 && (await box(ls, lead)).y < 390, `phone on its side: Argus shrinks and the first ${lead === '.tblock' ? 'trouble block' : 'task card'} shows on the first screen`);
   check(await noOverflow(ls), 'phone on its side: no sideways scrolling');
 
-  // the weather in the line under the name stays inside the screen on a narrow phone, even one long word (4.44.0)
+  // the weather in the line under the name stays in its own column on a narrow phone, even one word with no place to break
+  // (4.44.0): before, the title's column grew to the word's width and pushed Argus 40 px past the edge of a 360 px screen
+  // (the page hides sideways overflow, so the no-scrolling check never saw it)
   for (const w of [412, 360]) {
     const wp = await page(b, w, 800);
-    await wp.route('**/api/sky', r => r.fulfill({json: {sky: 'snow', desc: 'Thundersnow-with-freezing-drizzle-and-hail', is_day: true, temp: -12, unit: 'F',
+    await wp.route('**/api/sky', r => r.fulfill({json: {sky: 'snow', desc: 'Thundersnowwithfreezingdrizzleandsmallhailallafternoon', is_day: true, temp: -12, unit: 'F',
       precip: 1, clouds: 90, wind: 10, south: false, at: Math.floor(Date.now() / 1000), source: 'Open-Meteo'}}));
     await wp.goto(BASE); await wp.locator('#sub', {hasText: 'hail'}).waitFor({timeout: 5000}).catch(() => {});
     const r = await wp.evaluate(() => { const s = document.getElementById('sub'), g = document.createRange(); g.selectNodeContents(s);
-      return {text: s.textContent, right: Math.max(...[...g.getClientRects()].map(x => x.right)), w: innerWidth}; });
-    check(/hail · -12°F$/.test(r.text) && r.right <= r.w, `${w}: the weather under the name stays inside the screen, a long word wraps (text ends at ${Math.round(r.right)} of ${r.w} px)`);
+      const a = document.getElementById('argus').getBoundingClientRect();
+      return {text: s.textContent, right: Math.max(...[...g.getClientRects()].map(x => x.right)), w: innerWidth, al: a.left, ar: a.right}; });
+    check(/allafternoon · -12°F$/.test(r.text) && r.right <= r.al && r.ar <= r.w, `${w}: a long weather word wraps; the text stays clear of Argus and Argus stays whole on the screen (text ends at ${Math.round(r.right)}, Argus ${Math.round(r.al)}-${Math.round(r.ar)} of ${r.w} px)`);
     check(await noOverflow(wp), `${w}: no sideways scrolling with it`);
     await wp.close();
   }
