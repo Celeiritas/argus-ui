@@ -4,7 +4,7 @@
 # Powers on the page: Medusa freezes/thaws a task (stop + pause its timer; thaw restores it), Zeus's bolt runs/restarts it.
 # Which agents exist, their names and the page title come from the theme (static/theme.json).
 import json, os, re, socket, subprocess, sys, threading, mimetypes, ipaddress, importlib.util, inspect, traceback, types
-from urllib.parse import urlsplit, parse_qs
+from urllib.parse import urlsplit, parse_qs, unquote, quote
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from datetime import datetime, timezone
 from email.utils import formatdate, parsedate_to_datetime
@@ -184,6 +184,53 @@ def not_modified(headers, etag, mtime):
     except (TypeError, ValueError, IndexError): return False
     if d.tzinfo is None: d = d.replace(tzinfo=timezone.utc)
     return int(mtime) <= d.timestamp()
+
+# ---------- A static plugin on its own address (4.42.0, docs/leafy-plugin.md "Its own address") ----------
+# The sandbox gives a plugin an opaque origin: no cache it can keep, no storage, no nested frames, no downloads. A game
+# that needs those gets its own address instead: a second listener on this machine only, published on its own HTTPS port
+# by tailscale serve. A different port is a different origin, so the browser keeps it out of Argus's answers and its POSTs
+# fail do_POST's checks, without a sandbox. The host file (never in git) says which plugins and which ports:
+#   {"<id>": {"port": <local port>, "public": <https port>, "links": [{"name": "Frame data", "path": "frames/"}]}}
+# No file: nothing changes. It is read once, at startup (a change needs a restart).
+OWN_ORIGIN = os.path.expanduser(os.environ.get('ARGUS_OWN_ORIGIN') or '~/.config/argus-ui/own-origin.json')
+OWN = {}                 # id -> its checked entry, for each own listener that started (start_own_origins)
+OWN_LINK = re.compile(r'^[A-Za-z0-9._~-][A-Za-z0-9._~/-]{0,199}$')     # a relative path inside the plugin, nothing else
+# A game on its own origin: its own files, inline scripts and styles (an import map), blob and data URLs for loaded models
+# and exports, WebAssembly, frames of its own pages. Framed by nobody else. No sandbox, so storage and the cache work.
+OWN_HEADERS = {'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; "
+                                          "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; "
+                                          "font-src 'self' data:; connect-src 'self' data: blob:; worker-src 'self' blob:; "
+                                          "frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'",
+               'X-Frame-Options': 'SAMEORIGIN', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'same-origin',
+               'Cross-Origin-Resource-Policy': 'same-origin', 'Cross-Origin-Opener-Policy': 'same-origin'}
+
+def load_own_origin(path=None):
+    """The checked own-origin.json: {id: {port, public, links}}. A missing file is {}; a broken file or entry is logged
+    and left out, so a mistake there never stops Elaia."""
+    say = lambda m: print(f'argus-ui: own-origin.json: {m}', file=sys.stderr, flush=True)
+    try:
+        with open(path or OWN_ORIGIN, encoding='utf-8') as f: raw = json.load(f)
+    except FileNotFoundError: return {}
+    except (OSError, ValueError): say('cannot be read as JSON, so no plugin gets its own address'); return {}
+    if not isinstance(raw, dict): say('must be an object of plugin ids, so no plugin gets its own address'); return {}
+    num = lambda v, lo: isinstance(v, int) and not isinstance(v, bool) and lo <= v <= 65535
+    found, used, published = {}, {PORT}, {80, 443}
+    for pid, c in raw.items():
+        if not (isinstance(pid, str) and PLUGIN_ID.match(pid) and pid not in RESERVED and pid not in PAGES and isinstance(c, dict)):
+            say(f'skipped {str(pid)[:40]!r}: not a plugin id with settings'); continue
+        port, public = c.get('port'), c.get('public')
+        if not num(port, 1024) or port in used:
+            say(f'skipped {pid}: "port" must be a local port from 1024 to 65535 that nothing else here uses'); continue
+        if not num(public, 1) or public in published:
+            say(f'skipped {pid}: "public" must be its own HTTPS port on tailscale serve, never 443 (Argus\'s address) or another plugin\'s'); continue
+        links = []
+        for ln in (c.get('links') if isinstance(c.get('links'), list) else []):
+            name, rel = (ln.get('name'), ln.get('path')) if isinstance(ln, dict) else (None, None)
+            if isinstance(name, str) and 0 < len(name.strip()) <= 40 and isinstance(rel, str) and OWN_LINK.match(rel) and '..' not in rel.split('/'):
+                links.append({'name': name.strip(), 'path': rel})
+            else: say(f'{pid}: skipped a link (it needs a "name" and a "path" inside the plugin, like "frames/")')
+        found[pid] = {'port': port, 'public': public, 'links': links[:4]}; used.add(port); published.add(public)
+    return found
 
 GODS = re.compile(r'^(%s)-' % '|'.join(PKEYS))
 
@@ -398,7 +445,17 @@ def plugin_view(p):
         for k in ('page', 'style'):
             try: v[k] = f"plugins/{p['id']}/{p[k]}?v={int(os.path.getmtime(os.path.join(p['dir'], p[k])))}" if p[k] else ''
             except OSError: v[k] = ''
+    if p['kind'] == 'static' and p['id'] in OWN:
+        # its own address: the page builds it from the host name it was opened at and these ports (https: public, http: local)
+        c = OWN[p['id']]
+        v['own'] = {'public': c['public'], 'local': c['port'], 'links': [x for x in c['links'] if own_link_ok(p['dir'], x['path'])]}
     return v
+
+def own_link_ok(d, rel):
+    # a link of an own address is shown only while it points at a page inside the plugin (a file, or a folder with index.html)
+    root = os.path.realpath(d); f = os.path.realpath(os.path.join(root, rel))
+    if os.path.commonpath([root, f]) != root: return False
+    return os.path.isfile(os.path.join(f, 'index.html') if os.path.isdir(f) else f)
 
 def log(u):
     return run(JOURNALCTL, '--user', '-u', u, '-n', '40', '--no-pager', '-o', 'short-iso')
@@ -498,7 +555,8 @@ class H(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header('Content-Type', ctype); self.send_header('Content-Length', str(len(b)))
         for k, v in (headers or {}).items(): self.send_header(k, v)
-        self.send_header('Cache-Control', cache); self.end_headers(); self.wfile.write(b)
+        self.send_header('Cache-Control', cache); self.end_headers()
+        if self.command != 'HEAD': self.wfile.write(b)          # HEAD: the same headers, no body (only an own address answers it)
 
     # ---------- who is asking (docs/people.md) ----------
     def identify(self):
@@ -571,7 +629,11 @@ class H(BaseHTTPRequestHandler):
         if '/' not in rest:                                   # plugins/<id> -> plugins/<id>/ so relative URLs resolve
             self.send_response(301); self.send_header('Location', self.path.split('?', 1)[0] + '/')
             self.send_header('Content-Length', '0'); self.end_headers(); return
-        own = PLUGIN_HEADERS if p['kind'] == 'static' else SERVER_FILE_HEADERS
+        return self.send_plugin_file(p, sub, PLUGIN_HEADERS if p['kind'] == 'static' else SERVER_FILE_HEADERS)
+
+    def send_plugin_file(self, p, sub, own):
+        # one file of plugin p by its path inside the folder (sub; '' is the entry page), with the headers own: the
+        # sandbox in Elaia (plugin_file), the plugin's own origin on its own address (OwnH). Nothing outside the folder.
         root = os.path.realpath(p['dir']); f = os.path.realpath(os.path.join(root, sub or p.get('entry', '')))
         if os.path.isdir(f): f = os.path.join(f, 'index.html')
         hidden = os.path.basename(f) == 'plugin.json' or (p['kind'] == 'server' and (f.endswith(('.py', '.pyc')) or '__pycache__' in f))
@@ -748,8 +810,76 @@ class H(BaseHTTPRequestHandler):
         except Exception: ok, msg = False, 'server error'
         self.out(json.dumps({'ok': ok, 'msg': msg}), 'application/json')
 
+class OwnH(H):
+    """A static plugin on its own address (own-origin.json): that one plugin's files at the root, to GET and HEAD only.
+    The same host check, identity and role as opening plugins/<id>/ inside Elaia, the same caching, no API and no POST.
+    No sandbox header: its own origin is the wall (OWN_HEADERS). start_own_origins() makes one subclass per plugin (pid)."""
+    pid = ''
+
+    def parse_request(self):
+        # every method but GET and HEAD ends here, before any handler: 405, never a route
+        if not super().parse_request(): return False
+        self._plugin_file = True; self._sent = set()
+        if self.command not in ('GET', 'HEAD'):
+            self.close_connection = True
+            self.out('method not allowed', 'text/plain; charset=utf-8', 405, headers={'Allow': 'GET, HEAD'})
+            return False
+        return True
+
+    def end_headers(self):
+        # the own origin's headers on every answer (errors and refusals too), never Elaia's PROTECT or the sandbox
+        for k, v in OWN_HEADERS.items():
+            if k.lower() not in getattr(self, '_sent', set()): self.send_header(k, v)
+        BaseHTTPRequestHandler.end_headers(self)
+
+    def refuse(self, verb, path, need):
+        # the private page without its API link (there is none here), or one plain sentence for a learner
+        if self.who['role'] == 'none':
+            html = identity.private_page(self.login, self.trusted, None, self.from_self, closed=self.people[0] == 'broken')
+            return self.out(html, code=403, headers={'Content-Security-Policy': identity.PRIVATE_CSP})
+        return self.out(f'Only the owner of this page can open this. You are signed in as {self.who["name"]}.',
+                        'text/plain; charset=utf-8', 403)
+
+    def do_GET(self):
+        self._plugin_file = True; self._sent = set()
+        if not host_ok(self.headers.get('Host')): return self.out('unknown host', 'text/plain', 421)
+        try:
+            self.identify()
+            raw = self.path.split('?', 1)[0].split('#', 1)[0]
+            sub = unquote(raw[1:]) if raw.startswith('/') else None
+            # only a plain path inside the folder: no .., no empty or backslash segment, no NUL, no drive (send_plugin_file checks again)
+            if sub is None or sub.startswith('/') or '//' in sub or '\\' in sub or '\x00' in sub or '..' in sub.split('/') or os.path.splitdrive(sub)[0]:
+                return self.out('not found', 'text/plain', 404)
+            need = self.need('get', f'plugins/{self.pid}/{sub}')         # what Elaia asks for this plugin's files
+            if not identity.allows(self.who['role'], need): return self.refuse('get', sub, need)
+            plug = next((x for x in plugins() if x['id'] == self.pid and x['kind'] == 'static'), None)
+            if not plug: return self.out('not found', 'text/plain', 404)
+            root = os.path.realpath(plug['dir']); f = os.path.realpath(os.path.join(root, sub))
+            if sub and not sub.endswith('/') and os.path.isdir(f) and os.path.commonpath([root, f]) == root:
+                self.send_response(301); self.send_header('Location', '/' + quote(sub) + '/')   # frames -> frames/ so relative URLs resolve
+                self.send_header('Content-Length', '0'); self.end_headers(); return
+            return self.send_plugin_file(plug, sub, OWN_HEADERS)
+        except Exception: self.out('server error', 'text/plain', 500)
+
+    do_HEAD = do_GET
+
+def start_own_origins(path=None):
+    """One listener on 127.0.0.1 for each plugin in own-origin.json. One that cannot start is logged and skipped, and Elaia
+    keeps the sandboxed frame for it. Returns {id: server} (the tests stop them)."""
+    started = {}
+    for pid, c in load_own_origin(path).items():
+        try: srv = ThreadingHTTPServer(('127.0.0.1', c['port']), type('OwnH_' + pid.replace('-', '_'), (OwnH,), {'pid': pid}))
+        except OSError as e:
+            print(f'argus-ui: {pid} gets no own address: its port cannot be used ({e.strerror or e})', file=sys.stderr, flush=True)
+            continue
+        threading.Thread(target=srv.serve_forever, name='own-' + pid, daemon=True).start()
+        OWN[pid] = c; started[pid] = srv
+        print(f'argus-ui: {pid} has its own address (127.0.0.1:{c["port"]}, HTTPS port {c["public"]})', file=sys.stderr, flush=True)
+    return started
+
 if __name__ == '__main__':
     load_server_plugins()
+    start_own_origins()
     if WATCH_ON: watch.start(watch_env(), WATCH_INTERVAL)
     push.start(lambda person: push.role_in(PEOPLE.current(), person),      # phone alerts: owners' devices only (docs/phone-alerts.md)
                lambda s: next((w.get('title', '') for w in watch.snapshot(WATCH_INTERVAL or 60) if w.get('id') == s), ''))
