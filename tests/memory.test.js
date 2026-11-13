@@ -151,19 +151,21 @@ run(async b => {
         await n.close();
       }
       const t = await page(b, 412, 915);
-      await t.goto(BASE); const card = t.locator('.place', {hasText: 'Backups'}).locator('.pl');
-      await card.filter({hasText: s.today}).waitFor({timeout: 5000}).catch(() => {});
-      check(await card.textContent() === s.today, `${s.name}: Today's line: ${await card.textContent()}`);
-      const row = t.locator('.need', {hasText: s.today});
-      check(s.needs ? await row.count() === 1 && await row.locator('a.go').textContent() === (s.action || 'Check backups') : await row.count() === 0,
-        `${s.name}: ${s.needs ? 'Needs you shows the line with ' + (s.action || 'Check backups') : 'nothing in Needs you'}`);
+      // Today: the line is in one place (4.44.0): the row in Needs you when it needs you, else the Backups card
+      await t.goto(BASE); const card = t.locator('.place', {hasText: 'Backups'}).locator('.pl'), row = t.locator('.need', {hasText: s.today});
+      await (s.needs ? row : card.filter({hasText: s.today})).waitFor({timeout: 5000}).catch(() => {});
+      await t.waitForFunction(() => !/Checking…|Asking every section/.test(document.querySelector('#main .home').textContent), null, {timeout: 5000}).catch(() => {});
+      if (!s.needs) check(await card.textContent() === s.today, `${s.name}: Today's line: ${await card.textContent()}`);
+      check(s.needs ? await row.count() === 1 && await row.locator('a.go').textContent() === (s.action || 'Check backups') && await card.count() === 0 : await row.count() === 0,
+        `${s.name}: ${s.needs ? 'Needs you shows the line with ' + (s.action || 'Check backups') + ', and no Backups card' : 'nothing in Needs you'}`);
       await t.close();
-      if (s.verdict) for (const [w, h] of [[360, 800], [412, 915], [1440, 900]]) {        // the card shows only the start of the line: the verdict must be in it
+      if (s.verdict) for (const [w, h] of [[360, 800], [412, 915], [1440, 900]]) {        // a card shows only the start of the line, a row all of it: the verdict must be in what shows
         const v = await page(b, w, h); await v.goto(BASE);
-        const pl = v.locator('.place', {hasText: 'Backups'}).locator('.pl'); await pl.filter({hasText: s.verdict}).waitFor({timeout: 5000}).catch(() => {});
-        const shown = await pl.evaluate(el => { const n = el.firstChild, r = document.createRange(), box = el.getBoundingClientRect(); let i = 0;
+        const pl = s.needs ? v.locator('.need', {hasText: s.verdict}).locator('.nb p') : v.locator('.place', {hasText: 'Backups'}).locator('.pl');
+        await pl.filter({hasText: s.verdict}).waitFor({timeout: 5000}).catch(() => {});
+        const shown = await pl.evaluate(el => { const n = el.lastChild, r = document.createRange(), box = el.getBoundingClientRect(); let i = 0;
           for (; i < n.length; i++) { r.setStart(n, i); r.setEnd(n, i + 1); if (r.getBoundingClientRect().right > box.right + 0.5) break; } return i; });
-        check(shown >= s.verdict.length, `${s.name}, ${w} px: Today's card shows the verdict first (${shown} of ${s.verdict.length} characters visible)`);
+        check(shown >= s.verdict.length, `${s.name}, ${w} px: Today's ${s.needs ? 'row' : 'card'} shows the verdict first (${shown} of ${s.verdict.length} characters visible)`);
         await v.close();
       }
     }

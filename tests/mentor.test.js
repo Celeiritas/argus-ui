@@ -28,7 +28,10 @@ run(async b => {
   check((await api(p, 'settings', {teach_first: true, new_per_day: {'*': 999}, ask_confidence: ['group:argus-ui']})).ok, 'the 4.32 order is one setting away');
   await p.goto(BASE + 'mentor'); await p.waitForTimeout(1000);
   check(await p.locator('body.side').count() === 1, 'Mentor is a side page (Argus in the corner)');
-  check(await p.locator('#mdeck option[value="argus-code"]').count() === 1, 'the built-in lesson is in the Study picker');
+  check(await p.locator('#mdeck option[value="argus-code"]').count() === 1, 'the built-in lesson is in the topic picker');
+  const bar = await p.locator('.mbar').evaluate(e => { const c = e.cloneNode(true); c.querySelectorAll('select').forEach(s => s.remove()); return c.textContent.replace(/\s+/g, ' ').trim(); });
+  check(await p.locator('label[for="mdeck"]').textContent() === 'Topic' && (bar.match(/\bStudy\b/g) || []).length === 1,
+    `the picker is called Topic: "Study" once in the bar, not "Study | Lessons | Study" (4.44.0; ${bar.slice(0, 60)})`);
   check(/to learn/.test(await p.locator('#mstats').textContent()), 'the stats line counts the Learn cards still to read');
 
   // the settings strip (4.29): bury siblings, on by default, saved on the server

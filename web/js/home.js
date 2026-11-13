@@ -4,7 +4,7 @@
 //   2. the rows that need you, the failed thing first, each with one verb-first button,
 //   3. "Open": the links to other pages on this machine (~/.config/argus-ui/links.json),
 //   4. one one-line card per section, from status v2 (api/<id>/status: line, needs, action). A new section (workouts,
-//      meals, music) only has to answer that to get its card.
+//      meals, music) only has to answer that to get its card. A section with a row above has no card; no cards, no heading.
 // A row whose need is met fades out (200 ms); a new row slides in. Under reduced motion they just go and come.
 const home = (() => {
   let had = null;                          // how many things needed you at the last draw (null: not drawn yet)
@@ -22,13 +22,16 @@ const home = (() => {
   }
   const placeName = (id, name) => { const w = WORDS[id]; return w ? `${w.word}${w.realm && w.realm !== w.word ? ` · ${w.realm}` : ''}` : name; };
   const row = (n, fresh) => `<li class="need ${n.level}${fresh ? ' fresh' : ''}" data-key="${esc(n.key)}"><span class="nmark">${n.mark}</span><div class="nb"><p><small>${esc(n.who)}${n.item?.when ? ` · ${esc(n.item.when)}` : ''}</small>${esc(n.text)}</p>${n.item ? troubleLines(n.item) : ''}</div><div class="nacts">${n.item ? fixButton(n.item) : ''}<a class="go" href="${esc(n.href)}">${esc(n.label)}</a></div></li>`;
-  // one card per section, in the bar's order: Watch, then each plugin with its status line (a static one with its version)
-  function cards() {
+  // one card per section, in the bar's order: Watch, then each plugin with its status line (a static one with its version).
+  // One place for each fact (4.44.0): a section with a row in the list above has no card until that row is gone.
+  function cards(list) {
     const st = s => s === undefined ? 'Checking…' : s === null ? 'No news' : s.line;
     const tr = trouble(), fails = tr.n, allFailed = !tr.alerts.length && !tr.checks.length && tr.tasks.every(j => j.state === 'failed');
-    return sections().filter(e => !e.kind && e.id !== 'home' && e.id !== 'olympus' && e.id !== 'phone' && visible([e]).length).map(e => {
+    const listed = new Set(list.map(n => n.of));
+    return sections().filter(e => !e.kind && e.id !== 'home' && e.id !== 'phone' && !listed.has(e.id) && visible([e]).length).map(e => {
       const p = PLUGINS.find(x => x.id === e.id);
       const line = e.id === 'argus' ? (!fails ? `All ${plural(S.jobs.length, 'task')} well` : allFailed ? `${plural(fails, 'task')} failed` : `${plural(fails, 'thing')} need${fails === 1 ? 's' : ''} a look`)
+        : e.id === 'olympus' ? 'Powers, weather, seasons'
         : !p ? '' : p.kind === 'server' ? st(STATUS[p.id]) : p.version ? `Version ${p.version}` : 'Open it';
       const mood = e.id === 'argus' ? (fails ? ' bad' : '') : STATUS[e.id]?.needs ? ' needs' : '';   // red: something failed; gold: waits for you
       return `<li><a class="place${mood}" href="${esc(e.href)}" data-id="${esc(e.id)}">${e.mark}<span class="pw">${words(e)}</span><span class="pl">${esc(line)}</span></a></li>`;
@@ -43,13 +46,13 @@ const home = (() => {
     const list = needs(), asking = PLUGINS.some(p => p.kind === 'server' && STATUS[p.id] === undefined);
     const total = list.reduce((t, n) => t + n.n, 0);              // every failed task and every alert counts, as on the bar
     const state = total ? `${plural(total, 'thing')} need${total === 1 ? 's' : ''} you` : asking ? 'Asking every section…' : 'Nothing needs you';
-    const keys = new Set(list.map(n => n.key)), links = role() === 'owner' ? opens() : '';
+    const keys = new Set(list.map(n => n.key)), links = role() === 'owner' ? opens() : '', places = cards(list);
     const html = `<section class="home" aria-label="Today">
       <section class="needs" aria-labelledby="needs-h"><h2 class="state${list.length ? ' bad' : ''}" id="needs-h">${state}</h2>
         ${list.length || asking ? '' : '<p class="quiet">The realm is quiet.</p>'}
         <ul class="needlist">${list.map(n => row(n, seen && !seen.has(n.key))).join('')}</ul></section>
       ${links ? `<section class="open" aria-labelledby="open-h"><h2 id="open-h">Open</h2><ul class="openlist">${links}</ul></section>` : ''}
-      <section class="places" aria-labelledby="places-h"><h2 id="places-h">Sections</h2><ul class="placelist">${cards()}</ul></section></section>`;
+      ${places ? `<section class="places" aria-labelledby="places-h"><h2 id="places-h">Sections</h2><ul class="placelist">${places}</ul></section>` : ''}</section>`;
     if (html.replace(/ fresh/g, '') === last) return;
     const focused = document.activeElement?.closest?.('#main a')?.getAttribute('href');   // a redraw must not drop keyboard focus
     const gone = seen && !RM.matches ? $$('#main .need[data-key]').filter(li => !keys.has(li.dataset.key)).map(li => [li, [...li.parentNode.children].indexOf(li)]) : [];
