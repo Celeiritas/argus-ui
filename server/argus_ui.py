@@ -189,7 +189,9 @@ def not_modified(headers, etag, mtime):
 # The sandbox gives a plugin an opaque origin: no cache it can keep, no storage, no nested frames, no downloads. A game
 # that needs those gets its own address instead: a second listener on this machine only, published on its own HTTPS port
 # by tailscale serve. A different port is a different origin, so the browser keeps it out of Argus's answers and its POSTs
-# fail do_POST's checks, without a sandbox. The host file (never in git) says which plugins and which ports:
+# fail do_POST's checks, without a sandbox. Cookies are the exception (per host name, not port): it can set some that the
+# browser sends here too, and Argus reads none and skips them whatever their size (NoCookies). The host file (never in git)
+# says which plugins and which ports:
 #   {"<id>": {"port": <local port>, "public": <https port>, "links": [{"name": "Frame data", "path": "frames/"}]}}
 # No file: nothing changes. It is read once, at startup (a change needs a restart).
 OWN_ORIGIN = os.path.expanduser(os.environ.get('ARGUS_OWN_ORIGIN') or '~/.config/argus-ui/own-origin.json')
@@ -540,8 +542,38 @@ PROTECT = {'X-Frame-Options': 'SAMEORIGIN', 'Content-Security-Policy': "frame-an
 SERVER_FILE_HEADERS = {k: v for k, v in PLUGIN_HEADERS.items() if k != 'Access-Control-Allow-Origin'}
 OPEN = {'api/health', 'api/whoami'}                       # anyone may ask these, also a person without a role
 
+class NoCookies:
+    """The request's reader while its header lines are read: every Cookie line is left out, whatever its length. Cookies
+    belong to a host name, not a port, so a page on another port of the same name (a game on its own address, or any other
+    service there) can set up to about a megabyte of them that the browser then sends here too. Argus reads no cookie, and
+    the standard library refuses a header line over 64 KB (431), so without this one page could shut Elaia for that browser.
+    Past CAP bytes of cookies the line comes back too long and the request is refused as before (431), so reading stays bounded."""
+    CAP = 4 << 20
+
+    def __init__(self, f): self.f, self.dropped, self.dropping = f, 0, False
+
+    def readline(self, limit=-1):
+        while True:
+            line = self.f.readline(limit)
+            # a Cookie line, or a folded continuation of one (a line that starts with a space or tab)
+            if not (line[:7].lower() == b'cookie:' or (self.dropping and line[:1] in (b' ', b'\t'))):
+                self.dropping = False
+                return line
+            self.dropping = True
+            self.dropped += len(line)
+            while line and not line.endswith(b'\n') and self.dropped <= self.CAP:     # the rest of a line longer than limit
+                line = self.f.readline(limit); self.dropped += len(line)
+            if self.dropped > self.CAP: return b'x' * (limit if limit and limit > 0 else 1 << 17)   # too long: 431
+            if not line: return line                                                  # the connection ended
+
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
+
+    def parse_request(self):
+        # the header lines are read without their Cookie lines (NoCookies); everything else as the standard library does it
+        real = self.rfile; self.rfile = NoCookies(real)
+        try: return super().parse_request()
+        finally: self.rfile = real
 
     def path_parts(self):
         p = self.path.split('?', 1)[0]

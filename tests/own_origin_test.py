@@ -7,7 +7,7 @@ caching, no sandbox) and the walls that keep a game on its own origin away from 
 Elaia and the plugin's own listener run in this process on free ports, with a temporary HOME, fake units, fixture plugins
 and an own-origin.json written here; no port number or host name is fixed in this file. Who is asking comes from the real
 check, as in tests/gate_test.py: on Linux the real /proc lookup runs, elsewhere the test stands in for it ("simulated")."""
-import http.client, importlib.util, json, os, re, shutil, socket, sys, tempfile, threading, time, unittest
+import http.client, importlib.util, io, json, os, re, shutil, socket, sys, tempfile, threading, time, types, unittest
 
 R = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HAS_PROC = os.path.isfile('/proc/net/tcp')
@@ -181,6 +181,45 @@ class Config(unittest.TestCase):
         try: self.assertEqual(a.start_own_origins(self.conf({'busy-game': {'port': busy, 'public': q}})), {})
         finally: s.close()
         self.assertEqual(a.OWN, before, 'Elaia keeps the sandboxed frame for it')
+
+class Cookies(unittest.TestCase):
+    """Cookies belong to a host name, not a port: the game on its own address can set up to about a megabyte of them, and
+    the browser then sends them to Elaia too. Argus reads none, so a Cookie header of any size a browser sends changes
+    nothing on either listener (the standard library alone answers 431 past 64 KB)."""
+    BIG = 'a=' + 'x' * 900_000                           # 900 KB in one Cookie line, as Serve passes the browser's on
+    def setUp(self): no_people()
+    def tearDown(self): no_people()
+
+    def test_a_huge_cookie_changes_nothing(self):
+        for what, (code, h, b) in (('the own address', own('/', Cookie=self.BIG)), ('a file there', own('/app.js', Cookie=self.BIG)),
+                                   ('Elaia api/state', main('api/state', host=TS, Cookie=self.BIG)),
+                                   ('Elaia page', main('spartamelee', host=TS, Cookie=self.BIG)),
+                                   ("Elaia's framed copy", main('plugins/spartamelee/', Cookie=self.BIG))):
+            self.assertEqual(code, 200, what)
+        code, h, b = main('api/thaw', 'POST', body=json.dumps({'job': 'hermes-sort'}).encode(), Content_Type='application/json',
+                          host=TS, Origin=f'https://{TS}', Sec_Fetch_Site='same-origin', Cookie=self.BIG, login=OWNER)
+        self.assertEqual(code, 200, 'a POST from Elaia itself'); self.assertTrue(json.loads(b)['ok'])
+        # the lines after the cookie still count: the login (sent after it) names the owner, a cross-site POST is still refused
+        write_people(GOOD)
+        who = json.loads(main('api/whoami', host=TS, Cookie=self.BIG, login=OWNER)[2])
+        self.assertEqual((who['role'], who['login']), ('owner', OWNER))
+        self.assertEqual(own('/', Cookie=self.BIG, login=LEARNER)[0], 403, 'and on the own address the role check still runs')
+        code, h, b = main('api/freeze', 'POST', body=b'{"job": "hermes-sort"}', Content_Type='application/json', host=TS,
+                          Origin=GAME_ORIGIN, Sec_Fetch_Site='same-site', Cookie=self.BIG, login=OWNER)
+        self.assertEqual(code, 403); self.assertNotIn('hermes-sort', a.frozen())
+
+    def test_the_reader(self):
+        # NoCookies alone: Cookie lines in any case and of any length (and a folded line of one) are left out, the rest
+        # comes through unchanged; past CAP bytes of cookies the line comes back too long, so the request still ends in 431
+        raw = (b'Host: x\r\nCookie: a=1\r\ncOOKIE: ' + b'y' * 200_000 + b'\r\n\tfolded\r\nX-Other: 2\r\nCookie2: kept\r\n'
+               b'Cookie:\r\n\r\nbody')
+        r, lines = a.NoCookies(io.BytesIO(raw)), []
+        while not lines or lines[-1] not in (b'\r\n', b''): lines.append(r.readline(65537))
+        self.assertEqual(lines, [b'Host: x\r\n', b'X-Other: 2\r\n', b'Cookie2: kept\r\n', b'\r\n'])
+        self.assertEqual(r.f.read(), b'body', 'the body is untouched')
+        over = a.NoCookies(io.BytesIO(b'Cookie: ' + b'z' * (a.NoCookies.CAP + 10) + b'\r\n\r\n'))
+        self.assertGreater(len(over.readline(65537)), 65536, 'more than CAP: a line too long, 431 as before')
+        self.assertEqual(a.NoCookies(io.BytesIO(b'Cookie: a=1')).readline(65537), b'', 'the connection ended inside a cookie')
 
 class Listener(unittest.TestCase):
     """The game's files at the root of its own address, with Elaia's caching and its own origin's headers."""
