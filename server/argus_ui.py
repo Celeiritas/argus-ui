@@ -461,15 +461,18 @@ def own_link_ok(d, rel):
     f = plugin_target(d, rel)[1]
     return bool(f) and os.path.basename(f) != 'plugin.json'
 
+def inside(root, f):
+    # f is root or a path under it (both already resolved); another drive (Windows) is outside, never an error
+    try: return os.path.commonpath([root, f]) == root
+    except ValueError: return False
+
 def plugin_target(d, rel):
     """(root, file) for a path inside plugin folder d: the file it serves, with every link resolved, or None when that is
     not a file inside the folder. A folder serves its index.html, and that name is resolved again after it is added, so an
     index.html that is a link to somewhere else leads nowhere."""
     root = os.path.realpath(d); f = os.path.realpath(os.path.join(root, rel))
     if os.path.isdir(f): f = os.path.realpath(os.path.join(f, 'index.html'))
-    try: inside = os.path.commonpath([root, f]) == root
-    except ValueError: inside = False                  # another drive (Windows)
-    return root, (f if inside and os.path.isfile(f) else None)
+    return root, (f if inside(root, f) and os.path.isfile(f) else None)
 
 def log(u):
     return run(JOURNALCTL, '--user', '-u', u, '-n', '40', '--no-pager', '-o', 'short-iso')
@@ -779,7 +782,7 @@ class H(BaseHTTPRequestHandler):
         if p.startswith('api/') and pid in SERVER_PLUGINS: return self.plugin_call(pid, 'get', rest, parse_qs(urlsplit(self.path).query))
         if p.startswith('static/'):
             root = os.path.realpath(STATIC); f = os.path.realpath(os.path.join(root, p[7:]))
-            if os.path.commonpath([root, f]) != root or not os.path.isfile(f): return self.out('not found', 'text/plain', 404)
+            if not inside(root, f) or not os.path.isfile(f): return self.out('not found', 'text/plain', 404)
             ct = mimetypes.guess_type(f)[0] or 'application/octet-stream'
             if f.endswith('.webmanifest'): ct = 'application/manifest+json'
             with open(f, 'rb') as fh: return self.out(fh.read(), ct, cache='max-age=300')
@@ -916,7 +919,7 @@ class OwnH(H):
             plug = next((x for x in plugins() if x['id'] == self.pid and x['kind'] == 'static'), None)
             if not plug: return self.out('not found', 'text/plain', 404)
             root = os.path.realpath(plug['dir']); f = os.path.realpath(os.path.join(root, sub))
-            if sub and not sub.endswith('/') and os.path.isdir(f) and os.path.commonpath([root, f]) == root:
+            if sub and not sub.endswith('/') and os.path.isdir(f) and inside(root, f):
                 self.send_response(301); self.send_header('Location', '/' + quote(sub) + '/')   # frames -> frames/ so relative URLs resolve
                 self.send_header('Content-Length', '0'); self.end_headers(); return
             return self.send_plugin_file(plug, sub, OWN_HEADERS)

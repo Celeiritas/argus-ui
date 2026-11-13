@@ -8,6 +8,7 @@ Elaia and the plugin's own listener run in this process on free ports, with a te
 and an own-origin.json written here; no port number or host name is fixed in this file. Who is asking comes from the real
 check, as in tests/gate_test.py: on Linux the real /proc lookup runs, elsewhere the test stands in for it ("simulated")."""
 import http.client, importlib.util, io, json, os, re, shutil, socket, sys, tempfile, threading, time, types, unittest
+from unittest import mock
 
 R = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HAS_PROC = os.path.isfile('/proc/net/tcp')
@@ -370,6 +371,17 @@ class Paths(unittest.TestCase):
         for path in ('/escape/secret.txt', '/escape', '/escape/', '/escape/other/index.html', '/leak.txt', '/far/secret.txt', '/far/'):
             with self.subTest(path=path): self.refused(path)
         self.assertNotEqual(own('/escape')[1].get('location'), '/escape/', 'a link to a folder outside is no folder of the game')
+
+    def test_another_drive_is_outside(self):
+        # os.path.commonpath raises ValueError for paths it cannot compare (another drive on Windows): outside, never a 500
+        root = os.path.realpath(GAME)
+        self.assertTrue(a.inside(root, os.path.join(root, 'frames'))); self.assertTrue(a.inside(root, root))
+        self.assertFalse(a.inside(root, os.path.dirname(root))); self.assertFalse(a.inside(root, 'not-absolute'))
+        with mock.patch.object(a.os.path, 'commonpath', side_effect=ValueError('paths on different drives')):
+            for path in ('/frames', '/frames/', '/'):
+                code, h, b = own(path, login=OWNER)
+                self.assertEqual(code, 404, f'{path}: the folder check, as for any path outside')
+        self.assertEqual(own('/frames')[0], 301, 'the control')
 
     def test_an_index_that_is_a_link(self):
         # a real folder of the game whose index.html links out of it, or to the plugin's own manifest: the folder's address
