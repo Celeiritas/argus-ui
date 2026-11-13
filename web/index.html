@@ -43,7 +43,9 @@
  <canvas id="wx"></canvas>
  <div class="fog"></div>
 </div>
-<div class="realms" role="navigation" aria-label="Sections"><span id="realms" style="display:contents"></span><span class="wx" id="wxText"></span><button class="mute" id="mute" type="button">Mute sounds</button></div>
+<!-- The strip on wider screens: the places that fit, then More (the places that did not fit, Phone alerts and the links to
+     other pages: the same sheet as the phone's More), the weather and Mute sounds. core.js fitRealms() / drawMore(). -->
+<div class="realms" role="navigation" aria-label="Sections"><span id="realms" style="display:contents"></span><button class="realm more" id="realmMore" type="button" data-more aria-haspopup="dialog" aria-controls="moreSheet" aria-expanded="false" hidden></button><span class="wx" id="wxText"></span><button class="mute" id="mute" type="button">Mute sounds</button></div>
 <header>
  <img class="hero" id="hero" alt="">
  <div class="title"><h1>Elaia</h1><div class="sub" id="sub"></div></div>
@@ -81,7 +83,8 @@
 <p class="phone-hint" id="phoneHint" hidden></p>
 <main id="main"></main>
 <!-- On a phone (under 600 px) the sections sit in a bar at the bottom, in thumb reach: Today, Watch, Study, Approvals, More.
-     More opens a sheet with the other places. core.js drawNav() fills both from one list (docs/home.md "Finding your way"). -->
+     More opens a sheet with the other places; on a wider screen the strip's More opens the same sheet. core.js drawNav() and
+     drawMore() fill them from one list (docs/home.md "Finding your way"). -->
 <nav class="tabbar" id="tabbar" aria-label="Sections"><span class="tabmark" aria-hidden="true" hidden></span><span id="tabs" style="display:contents"></span></nav>
 <dialog id="moreSheet" class="sheet" aria-labelledby="moreH"><div class="sheet-in">
  <div class="sheet-head"><h2 id="moreH">More</h2><button type="button" id="moreClose">Close</button></div>

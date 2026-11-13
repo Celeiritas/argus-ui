@@ -38,37 +38,59 @@ run(async b => {
   check((await box(d, '.argus')).w <= 1080 * 0.22 + 1, '16:9: Argus is at most about a fifth of the height');
   await shot(d, 'layout-1920-home');
 
-  // laptops: the bar wrapped Mute sounds with 8 sections at 1280; the fixtures have fewer, so 1024 is where it must squeeze
-  for (const w of [1280, 1024]) {
-    const lp = await page(b, w, 720); await lp.goto(BASE + 'home'); await lp.locator('.home .places').waitFor(); await lp.waitForTimeout(500);
-    const bar = await lp.locator('.realms').evaluate(bar => { const f = bar.querySelector('.realm').getBoundingClientRect();
-      return {row: [...bar.querySelectorAll('.realm,.mute')].every(e => e.getBoundingClientRect().top < f.bottom), compact: bar.classList.contains('compact'), bare: bar.classList.contains('bare'), tight: bar.classList.contains('tight'), scroll: bar.classList.contains('scroll')}; });
-    check(bar.row, `${w}: the sections bar stays one row, Mute sounds included (${await lp.locator('#realms .realm').count()} sections${bar.compact ? ', second lines hidden' : ''}${bar.bare ? ', weather hidden' : ''}${bar.tight ? ', smaller marks' : ''}${bar.scroll ? ', scrolling' : ''})`);
-    if (w === 1024) {
-      check(bar.compact, '1024: the pills dropped their second line to fit');
-      const mute = await lp.locator('#mute').boundingBox();
-      check(mute.x >= 0 && mute.x + mute.width <= 1024, '1024: Mute sounds stays on screen (held at the right end when the bar scrolls)');
-      const sc = await lp.locator('.realms').evaluate(bar => ({on: bar.classList.contains('scroll'), over: bar.scrollWidth > bar.clientWidth}));
-      check(sc.on && sc.over, '1024: with every section (fixtures: 8 and more), the bar is one row that scrolls sideways instead of wrapping');
-      check(await noOverflow(lp), '1024: the page itself does not scroll sideways');
-      // the section you are on is scrolled into view: open the last pill's section (past the right edge otherwise)
-      const lastHref = await lp.locator('#realms a.realm').last().getAttribute('href');
-      await lp.goto(new URL(lastHref, BASE).href); await lp.waitForTimeout(800);
-      const vis = await lp.locator('.realms').evaluate(bar => { const on = bar.querySelector('.realm.on'), m = document.getElementById('mute');
-        if (!on) return null; const r = on.getBoundingClientRect(), b = bar.getBoundingClientRect(), mr = m.getBoundingClientRect();
-        return r.left >= b.left - 1 && r.right <= Math.min(b.right, mr.left) + 1; });
-      check(vis === true, `1024: the section you are on is scrolled into view, not under Mute sounds (${lastHref})`);
-      await lp.goto(BASE + 'home'); await lp.locator('.home .places').waitFor(); await lp.waitForTimeout(500);
-      if (await lp.locator('.realms.scroll').count()) {
-        const moved = await lp.locator('.realms').evaluate(async bar => { const x = bar.scrollLeft; bar.dispatchEvent(new WheelEvent('wheel', {deltaY: 120, bubbles: true, cancelable: true})); return bar.scrollLeft !== x || bar.scrollWidth <= bar.clientWidth; });
-        check(moved, '1024: a scrolling bar moves sideways with the mouse wheel');
-      }
-      check(await lp.locator('#realms').getByRole('link', {name: /Watch\s*Argus/}).count() === 1, '1024: a pill whose second line is hidden still reads it out');
-      await lp.setViewportSize({width: 1920, height: 1080}); await lp.waitForTimeout(300);
-      check(!(await lp.locator('.realms').evaluate(e => e.classList.contains('compact') || e.classList.contains('scroll'))), 'widening the window brings the second lines back and ends the sideways scrolling');
+  // the strip on laptops, 16:9 and a phone on its side (4.44.0): one row inside the screen. Second lines go first, then the
+  // weather, then the last pills fold into More (never Today or the place you are on); Mute sounds covers no pill and nothing
+  // scrolls sideways. Before 4.44.0 the strip scrolled under Mute sounds at 1024 and on a phone on its side (915 x 412, 800 x 360).
+  const strip = p => p.evaluate(() => { const r = e => e.getBoundingClientRect(), bar = document.querySelector('.realms'), more = document.getElementById('realmMore');
+    const shown = [...bar.querySelectorAll('.realm,.mute')].filter(e => e.offsetWidth), m = r(document.getElementById('mute'));
+    const hit = (a, c) => a.left < c.right - 1 && c.left < a.right - 1 && a.top < c.bottom - 1 && c.top < a.bottom - 1;
+    return {n: shown.length - 1, row: shown.every(e => r(e).top < r(shown[0]).bottom), inside: shown.every(e => r(e).left >= 0 && r(e).right <= innerWidth),
+      clear: shown.every(e => e.id === 'mute' || !hit(r(e), m)), scrolls: bar.scrollWidth > bar.clientWidth + 1,
+      over: [...bar.querySelectorAll('#realms .realm.over')].map(e => e.dataset.id), more: !!more && !more.hidden && more.offsetWidth > 0,
+      compact: bar.classList.contains('compact'), bare: bar.classList.contains('bare')}; });
+  const folded = {};
+  for (const [w, h] of [[1920, 1080], [1440, 900], [1280, 720], [1024, 720], [915, 412], [800, 360]]) {
+    const lp = await page(b, w, h); await lp.goto(BASE + 'home'); await settled(lp);
+    const s = await strip(lp); folded[w] = s.over;
+    check(s.row && s.inside && s.clear && !s.scrolls, `${w} x ${h}: the sections strip is one row inside the screen and Mute sounds covers no pill (${s.n} shown${s.compact ? ', second lines hidden' : ''}${s.bare ? ', weather hidden' : ''}${s.over.length ? ', in More: ' + s.over.join(' ') : ''})`);
+    check(s.more, `${w} x ${h}: More is on the strip`);
+    check(await noOverflow(lp), `${w} x ${h}: the page does not scroll sideways`);
+    if (s.over.length) {
+      await lp.locator('#realmMore').click(); await lp.locator('#moreSheet[open]').waitFor();
+      const rows = await lp.locator('#moreList .srow').evaluateAll(es => es.map(e => e.dataset.id));
+      check(s.over.every(id => rows.includes(id)), `${w} x ${h}: every folded place has a row in More (${rows.join(' ')})`);
+      await lp.keyboard.press('Escape');
+      // the place you are on never folds: open the last folded one and it is on the strip, marked current
+      const last = s.over[0], href = await lp.locator(`#realms a.realm[data-id="${last}"]`).getAttribute('href');
+      await lp.goto(new URL(href, BASE).href); await lp.waitForTimeout(800);
+      const t = await strip(lp);
+      check(!t.over.includes(last) && await lp.locator(`#realms a.realm.on[data-id="${last}"]`).isVisible() && t.row && t.inside && t.clear, `${w} x ${h}: on a place that folds elsewhere (${last}), its pill stays on the strip, marked current`);
     }
+    if (w === 1024) check(await lp.locator('#realms').getByRole('link', {name: /Watch\s*Argus/}).count() === 1, '1024: a pill whose second line is hidden still reads it out');
     await shot(lp, `layout-${w}-home`);
-    check(lp.errors.length === 0, `${w}: no page errors ` + lp.errors.join(' | '));
+    check(lp.errors.length === 0, `${w} x ${h}: no page errors ` + lp.errors.join(' | '));
+    await lp.close();
+  }
+  check(folded[1920].length <= folded[1024].length && folded[1024].length <= folded[800].length, `the wider the window, the fewer pills fold (in More at 1920: ${folded[1920].length}, 1024: ${folded[1024].length}, 800: ${folded[800].length})`);
+
+  // a way to Phone alerts at every width that cannot be dismissed (4.44.0): the More that is showing (the phone's bar under
+  // 600 px, the strip or the ultrawide rail above) has it, also after "Not now" on Today's line; Esc gives the focus back
+  for (const [w, h] of [[375, 812], [412, 915], [800, 360], [915, 412], [1024, 720], [1440, 900], [1920, 1080], [2560, 1080]]) {
+    const q = await page(b, w, h); await q.goto(BASE + 'home'); await settled(q);
+    const off = q.locator('#phoneHint [data-hint-off]'); if (await off.isVisible()) { await off.click(); await q.reload(); await settled(q); }
+    const opener = q.locator('[data-more]:visible').first();
+    check(await opener.count() === 1, `${w} x ${h}: a More button is showing`);
+    await opener.click(); await q.locator('#moreSheet[open]').waitFor();
+    const row = q.locator('#moreList .srow', {hasText: 'Phone alerts'});
+    check(await row.isVisible(), `${w} x ${h}: More has Phone alerts`);
+    await q.keyboard.press('Escape');   // the dialog's close event comes a moment after the key: wait for it, not for a fixed time
+    check(await q.waitForFunction(() => !document.getElementById('moreSheet').open && document.activeElement?.matches('[data-more]') && document.activeElement.getAttribute('aria-expanded') === 'false', null, {timeout: 3000}).then(() => true, () => false),
+      `${w} x ${h}: Esc closes More and the focus goes back to it`);
+    if (w === 1440) {
+      await opener.click(); await row.click(); await q.waitForURL(/\/phone$/); await q.waitForTimeout(500);
+      check(await q.locator('#realmMore.on').isVisible() && /Phone alerts/.test(await q.locator('#realmMore').textContent()), '1440: on Phone alerts, the strip\'s More is the current one and names it');
+    }
+    await q.close();
   }
 
   const ph = await page(b, 375, 760); await ph.goto(BASE + 'olympus'); await ph.waitForTimeout(800);
@@ -87,4 +109,17 @@ run(async b => {
   const lead = await ls.evaluate(() => (document.querySelector('#main .tblock') ? '.tblock' : '.card'));   // trouble first (4.40.0): the first broken block, else a card
   check((await box(ls, '.argus')).w <= 96 && (await box(ls, lead)).y < 390, `phone on its side: Argus shrinks and the first ${lead === '.tblock' ? 'trouble block' : 'task card'} shows on the first screen`);
   check(await noOverflow(ls), 'phone on its side: no sideways scrolling');
+
+  // the weather in the line under the name stays inside the screen on a narrow phone, even one long word (4.44.0)
+  for (const w of [412, 360]) {
+    const wp = await page(b, w, 800);
+    await wp.route('**/api/sky', r => r.fulfill({json: {sky: 'snow', desc: 'Thundersnow-with-freezing-drizzle-and-hail', is_day: true, temp: -12, unit: 'F',
+      precip: 1, clouds: 90, wind: 10, south: false, at: Math.floor(Date.now() / 1000), source: 'Open-Meteo'}}));
+    await wp.goto(BASE); await wp.locator('#sub', {hasText: 'hail'}).waitFor({timeout: 5000}).catch(() => {});
+    const r = await wp.evaluate(() => { const s = document.getElementById('sub'), g = document.createRange(); g.selectNodeContents(s);
+      return {text: s.textContent, right: Math.max(...[...g.getClientRects()].map(x => x.right)), w: innerWidth}; });
+    check(/hail · -12°F$/.test(r.text) && r.right <= r.w, `${w}: the weather under the name stays inside the screen, a long word wraps (text ends at ${Math.round(r.right)} of ${r.w} px)`);
+    check(await noOverflow(wp), `${w}: no sideways scrolling with it`);
+    await wp.close();
+  }
 });
