@@ -1,7 +1,7 @@
 # LeafyPlugins
 
 A LeafyPlugin adds a section to Argus without changing Argus's code: drop a folder in, and it gets a pill in the section bar and its own page at `<base>/<id>`. There are two kinds:
-- **`static`**: plain files in a sandboxed frame. Spartamelee (a browser game) is the first.
+- **`static`**: plain files in a sandboxed frame, or in a tab of their own at their own address (*Its own address*, 4.42.0). Spartamelee (a browser game) is the first.
 - **`server`**: trusted code with a Python side and a page script that runs inside Elaia's page. The agents' pages use it (Hermes · Delivery, Janus · Map, Zeus · Throne), and Mentor will move to it.
 
 ## The folder
@@ -34,7 +34,7 @@ Plugins live outside the install, so upgrading Argus keeps them (like the sounds
 | `kind` | no | `static` (the default) or `server` (see *Server plugins* below). A folder with any other kind is skipped. |
 | `entry` | no | The page to show, relative to the folder. Default `index.html`. |
 | `icon` | no | A square PNG in the folder for the pill and the page header. Without one, the pill shows a plain laurel-and-blades mark. Icons follow the theme's art rules: drawn to match, approved by the owner. |
-| `version` | no | Shown under the frame. |
+| `version` | no | Shown under the frame (or next to the Open button). |
 | `order` | no | Pills sort by `order` (default 100), then name. |
 | `agent` | no | `true`: this server plugin takes over the section of the theme's agent with the same id (see *Taking over an agent's section*). |
 | `roles` | no | Server plugins only: which of its `api/<id>/<path>` a learner may call (see *Roles and who*). Everything else is the owner's. |
@@ -55,7 +55,44 @@ A plugin's frame and files run in a **sandbox with an opaque origin**. The ifram
   - **Use Argus's powers.** POSTs from it send `Origin: null` and are refused, so a plugin can't freeze, thaw or run your tasks.
   - **Read `api/state` or task logs.** Those send no CORS header.
   - **Touch Argus's cookies or storage, or navigate the Argus page.**
-- **Storage:** a plugin's `localStorage` is not durable inside the sandbox. Treat it as per-visit, or keep state in the URL.
+- **Storage:** the sandbox has none: `localStorage` throws on its opaque origin. Keep state in the URL, or give the plugin its own address (below), where storage works and lasts.
+
+## Its own address (4.42.0)
+A static plugin can run in a tab of its own instead, at **its own address**: the host name Elaia is opened at, on another HTTPS port. A different port is a different origin, the same wall the sandbox gives, but now the plugin has a real origin of its own: storage that lasts, normal downloads, its own frames, and a cache that a long-running game can rely on. Its section in Elaia becomes a large **Open <name>** button (a new tab) and up to four links to its other pages; there is no frame.
+
+**The host file**, `~/.config/argus-ui/own-origin.json` (or `$ARGUS_OWN_ORIGIN`). It lives on the host only and never goes in git; without it nothing changes and every static plugin keeps the sandboxed frame.
+```
+{
+  "spartamelee": {
+    "port":   <local port>,
+    "public": <HTTPS port that tailscale serve publishes>,
+    "links":  [{"name": "Frame data", "path": "frames/"}]
+  }
+}
+```
+- `port`: the plugin's own listener, on `127.0.0.1` only, inside Elaia's process. 1024 to 65535, not Elaia's own port and not another plugin's.
+- `public`: the HTTPS port `tailscale serve` publishes it on. Never 443 (Elaia's address) or 80, never another plugin's.
+- `links` (optional, up to 4): a `name` (1 to 40 characters) and a `path` inside the plugin's folder, like `frames/` (no `..`, no leading `/`, no scheme). A link whose page is not there is not shown.
+- An entry with anything wrong is skipped with a line in the log (`own-origin.json: skipped …`); a file that is not a JSON object is ignored. A port that is taken at start is logged and that plugin keeps its frame.
+- Elaia reads the file at start: a change needs a restart (a deploy restarts it). Only static plugins are served there; a server plugin's id gets nothing.
+- The browser keeps a site's storage per origin, so changing `public` starts the plugin with empty storage.
+
+**Publishing it** (once, on the host; Serve keeps it across restarts): `sudo tailscale serve --bg --https=<public> http://127.0.0.1:<port>`. Serve passes on the Tailscale login the same way it does for Elaia, so people and roles work unchanged.
+
+**What the page shows.** The Open button and the links point at `https://<the host name this page was opened at>:<public>/`. When Elaia itself is opened over plain http (on the host), they point at `http://<host>:<port>/` instead. Both open a new tab with `rel="noopener"`.
+
+**The plugin's listener:**
+- Answers **GET and HEAD only**. Any other method is `405` with `Allow: GET, HEAD`, before anything else is looked at.
+- Serves **only that plugin's files, at the root** of its address: `/` is its `entry` page, `/frames/` its `frames/index.html`, a folder without its slash is redirected to it. No API, no `static/`, no other plugin, no `plugin.json`. `..` (plain or percent-encoded), backslashes, `NUL`, a drive name and symbolic links that point out of the folder are all `404`.
+- Applies **the same host check** (`421` for an unknown host) and **the same people and roles** as opening `plugins/<id>/` inside Elaia: the Tailscale login counts only when the connection comes from Serve and not from the server itself (docs/people.md); a learner gets `403`; someone not on the list, or no login, gets the private page; a broken people file closes it like Elaia.
+- Sends **the same caching headers**: `ETag`, `Last-Modified`, `304`, a year for content-hashed names, `no-cache` for pages and scripts (see *Caching* above).
+- Sends **no sandbox**, and a policy for a game on its own origin: `Content-Security-Policy: default-src 'self'` with inline scripts and styles (import maps), `wasm-unsafe-eval`, `data:`/`blob:` for images, media, workers and downloads, `connect-src 'self'` and `frame-ancestors 'self'`; plus `X-Frame-Options: SAMEORIGIN`, `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Resource-Policy: same-origin`. No `Access-Control-Allow-Origin` and no cookies.
+
+**Why Elaia stays shut.** The plugin's origin is the same *site* as Elaia (same host name) but not the same *origin* (another port), and Elaia's walls are written for origins:
+- **Its POSTs are refused.** A JSON POST from another origin makes the browser ask first (`OPTIONS`), and Elaia answers no such question. A form or text POST, which goes out without asking, is refused as not JSON (`415`). And every POST must carry `Sec-Fetch-Site: same-origin` (the plugin's say `same-site`) and an `Origin` equal to Elaia's host (`403`).
+- **It cannot read Elaia.** No API answer of Elaia carries `Access-Control-Allow-Origin`, so the browser hands the plugin nothing; its own `connect-src 'self'` stops it asking in the first place.
+- **No cookies, no frames, no opener.** Elaia sets no cookies; neither page can frame the other (`frame-ancestors 'self'` both ways); the new tab has no handle on Elaia's.
+- The sandboxed copy at `plugins/<id>/` stays as it was, and plugin frames still never get `allow-same-origin`.
 
 ## Server plugins
 A server plugin is **trusted code**: only the owner installs plugins, so its page runs inside Elaia's page (no frame, no sandbox) and its Python side runs inside Elaia's server. Install only code you would put in Elaia itself.
@@ -154,3 +191,4 @@ Leaving a section loads a new page, so a plugin's timers and listeners end with 
 - `..` and `plugin.json` aren't served
 - no sideways scrolling at 375 px
 - server plugins: the pill and section, the page script inside the page, its style sheet, `GET api/demo-server/ping` with `ctx.headers` and the data folder, a POST from the page, refused POSTs (cross-site, not JSON, over 4 KB), the `status` line, an exception as a 500, `plugin.py` never served, `refresh()` on the 15-second refresh, and `demo-broken` skipped while Elaia keeps answering
+- its own address (4.42.0; also `bash tests/run.sh own-origin`): `tests/own_origin_test.py` runs without a browser and checks the host file (bad entries and links left out, a busy port skipped), the listener (root serving, caching, `HEAD`, the host check, every method but GET and HEAD refused, no API), paths that try to leave the folder (dots plain and encoded, backslashes, `NUL`, symbolic links), each role answering as it does inside Elaia, and Elaia refusing every POST from the plugin's origin with no API answer it could read. `tests/own-origin.test.js` starts a second Elaia with a host file on free ports and checks the Open button (new tab, 44 px, reached with <kbd>Tab</kbd>), the links, no frame, the game's storage, its tries at Elaia from its own tab, and 375 px
