@@ -7,7 +7,7 @@ O=$R/dist/argus-ui-$V-$THEME; rm -rf $O; mkdir -p $O/static/icons $O/static/sfx
 cp $R/server/argus_ui.py $R/server/sky.py $R/server/watch.py $R/server/notify.py $R/server/identity.py $R/server/push.py $R/server/summary.py $O/; cp $R/scripts/install.sh $O/; chmod +x $O/install.sh
 cp $R/web/manifest.webmanifest $R/web/sw.js $O/static/
 mkdir -p $O/bundled; [ -d $R/plugins ] && cp -r $R/plugins/. $O/bundled/   # bundled LeafyPlugins (docs/leafy-plugin.md)
-cp -r $R/web/css $R/web/js $O/static/
+cp -r $R/web/css $R/web/js $R/web/fonts $O/static/   # fonts: the page's own Nunito and its licence (OFL.txt), nothing fetched elsewhere
 cp $T/theme.json $O/static/; mkdir -p $O/static/decks; cp $T/decks/*.json $O/static/decks/ 2>/dev/null || true; cp $T/icons/*.png $O/static/icons/; cp $T/sfx/*.mp3 $O/static/sfx/ 2>/dev/null || true
 cp $T/argus-192.png $T/argus-512.png $O/static/ 2>/dev/null || true
 # Medusa's SVG is inlined into the page so her snakes and effects can animate; script/style URLs get the version.

@@ -56,7 +56,7 @@ RESERVED = {'api', 'static', 'plugins', 'play', 'all', 'argus', 'sw.js', 'manife
             'state', 'sky', 'health', 'log', 'freeze', 'thaw', 'bolt', 'run', 'whoami', 'push', 'events', 'watch'}   # built-in api/<name> routes
 mimetypes.add_type('text/javascript', '.js'); mimetypes.add_type('text/javascript', '.mjs')
 mimetypes.add_type('model/gltf-binary', '.glb'); mimetypes.add_type('application/json', '.json')
-mimetypes.add_type('application/wasm', '.wasm')
+mimetypes.add_type('application/wasm', '.wasm'); mimetypes.add_type('font/woff2', '.woff2')
 SERVER_PLUGINS = {}      # id -> the loaded plugin.py module (load_server_plugins, at startup)
 PLUGIN_LOCKS = {}        # id -> lock: one POST at a time per plugin, like the powers' LOCK
 PLUGIN_DIR = {}          # id -> the folder its plugin.py was loaded from (bundled or yours)
@@ -796,7 +796,8 @@ class H(BaseHTTPRequestHandler):
             if not inside(root, f) or not os.path.isfile(f): return self.out('not found', 'text/plain', 404)
             ct = mimetypes.guess_type(f)[0] or 'application/octet-stream'
             if f.endswith('.webmanifest'): ct = 'application/manifest+json'
-            with open(f, 'rb') as fh: return self.out(fh.read(), ct, cache='max-age=300')
+            # a content-hashed name (static/fonts/nunito.79fbd6fa.woff2) never changes, so it is kept a year; the rest five minutes
+            with open(f, 'rb') as fh: return self.out(fh.read(), ct, cache='public, max-age=31536000, immutable' if HASHED.search(f) else 'max-age=300')
         if p in ('manifest.webmanifest', 'sw.js'):
             f = os.path.join(STATIC, p)
             if not os.path.isfile(f): return self.out('not found', 'text/plain', 404)

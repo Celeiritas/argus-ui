@@ -2,6 +2,10 @@
 /* Design tokens. Spacing: 4pt micro / 8pt major grid. Type: 16 body, 14 secondary, 12 meta; weights 400/600 only.
    Motion: 100/150/200/300ms for UI chrome. The god "powers" (petrify, crumble, lightning) are a documented exception:
    they are one-shot feedback moments that last as long as the action, and are skipped under reduced motion. */
+/* Nunito comes from the page itself (4.44.0), never from a third party: one variable file, weights 400 to 600, Latin and
+   Latin Extended; licence (SIL OFL 1.1) next to it in static/fonts/OFL.txt; made by scripts/make-font.py. The hashed name
+   lets the server keep it a year; a new file gets a new name here and in index.html's preload. */
+@font-face{font-family:Nunito;src:url(../fonts/nunito.79fbd6fa.woff2) format("woff2");font-weight:400 600;font-style:normal;font-display:swap}
 :root{--night:#1C2127;--slate:#3A434C;--card:#232A31;--line:#36404A;--snow:#E6ECF1;--powder:#A7B6C4;--frost:#8C99A6;
  --teal:#2A9D8F;--ok:#7BD88F;--bad:#F0859A;--run:#F1CD7D;--stone:#8FC4A4;--bolt:#FFE27A;--danger:#F87171;
  --s1:4px;--s2:8px;--s3:12px;--s4:16px;--s6:24px;--s8:32px;
