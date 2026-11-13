@@ -62,6 +62,27 @@ run(async b => {
   fs.unlinkSync(LK); await p.evaluate(() => refresh()); await p.locator('.home .open').waitFor({state: 'detached', timeout: 3000}).catch(() => {});
   check(await p.locator('#moreAway .srow').count() === 0 && await p.locator('.home .open').count() === 0, 'no links file, no links and no Open row');
 
+  // the media players (4.44.0): their addresses come from ~/.config/argus-ui/media.json on the host, never from the repository
+  const MD = path.join(path.dirname(process.env.FIXTURES), 'home/.config/argus-ui/media.json');
+  fs.writeFileSync(MD, JSON.stringify({audiobookshelf: 'http://books.example:13378/', jellyfin: 'https://films.example/web/', qbittorrent: 'https://x.example/', Bad: 'javascript:alert(1)'}));
+  await p.evaluate(() => refresh()); await p.locator('.home .open .openlink').first().waitFor({timeout: 3000}).catch(() => {});
+  const md = await p.locator('.home .open .openlink').evaluateAll(as => as.map(a => [a.textContent.replace(/\s+/g, ' ').trim(), a.getAttribute('href'), a.getAttribute('rel'), a.getAttribute('target')]));
+  check(JSON.stringify(md) === JSON.stringify([['JellyfinFilms and shows', 'https://films.example/web/', 'noopener noreferrer', null], ['AudiobookshelfAudiobooks and podcasts', 'http://books.example:13378/', 'noopener noreferrer', null]]),
+    'Open: a row for Jellyfin and one for Audiobookshelf from media.json, plain links with rel="noopener noreferrer"; other keys and unsafe addresses dropped ' + JSON.stringify(md));
+  fs.unlinkSync(MD); await p.evaluate(() => refresh()); await p.locator('.home .open').waitFor({state: 'detached', timeout: 3000}).catch(() => {});
+  check(await p.locator('.home .open').count() === 0, 'no media.json, no rows for the players');
+
+  // one line on what the server is doing now (4.44.0), only from what it knows: a timer's run in progress, the game guard's record
+  const now = () => p.locator('.home .needs p.now').textContent().then(t => t.trim(), () => '');
+  check(await now() === 'The server: busy: Hermes media' && await p.locator('.home .quiet').count() === 0, `under the state, the server's line says what runs now ("${await now()}")`);
+  const RM_ = path.join(path.dirname(process.env.FIXTURES), 'home/.config/leafy/realm.json'), GG = path.join(path.dirname(process.env.FIXTURES), 'home/.local/state/medusa-gameguard/frozen-by-me.json');
+  fs.mkdirSync(path.dirname(RM_), {recursive: true}); fs.mkdirSync(path.dirname(GG), {recursive: true});
+  fs.writeFileSync(RM_, JSON.stringify({SERVER: 'Shelf'})); fs.writeFileSync(GG, JSON.stringify(['mnemosyne-ollama']));
+  await p.evaluate(() => refresh()); await p.locator('.home p.now', {hasText: 'game'}).waitFor({timeout: 3000}).catch(() => {});
+  check(await now() === 'Shelf: a game is running, the local AI is paused; busy: Hermes media', `with a game on, it says so, by the name in realm.json ("${await now()}")`);
+  fs.unlinkSync(RM_); fs.unlinkSync(GG); await p.evaluate(() => refresh()); await p.locator('.home p.now', {hasText: 'The server'}).waitFor({timeout: 3000}).catch(() => {});
+  check(await now() === 'The server: busy: Hermes media', 'the game over, the line is back');
+
   fs.mkdirSync(AL, {recursive: true});
   fs.writeFileSync(path.join(AL, 'zeus.json'), JSON.stringify({job: 'zeus-approve', level: 'alert', message: 'Janus could not verify the approval; the request is held', link: 'demo-server'}));
   await p.evaluate(() => refresh()); await p.waitForTimeout(700);
@@ -106,6 +127,7 @@ run(async b => {
   await p.evaluate(() => { S.role = 'learner'; render(); }); await p.locator('.need', {hasText: '3 due'}).waitFor({timeout: 3000}).catch(() => {});
   check(await need('3 due').count() === 1 && await p.locator('#places-h').count() === 0 && await p.locator('.home .places').count() === 0,
     'a learner with Study in the list: no empty Sections heading');
+  check(await p.locator('.home p.now').count() === 0 && await p.locator('.home .open').count() === 0, "and no server line and no Open row: those are the owner's");
   await p.unroute('**/api/mentor/status'); await p.route('**/api/mentor/status', r => r.fulfill({json: {line: 'Nothing due', needs: false, action: ''}}));
   await p.evaluate(() => home.show()); await p.locator('#places-h').waitFor({timeout: 3000}).catch(() => {});
   check(await p.locator('#places-h').count() === 1 && await place('Study').count() === 1 && await p.locator('.placelist .place').count() === 1, 'and with nothing due, Study is her one card under Sections');

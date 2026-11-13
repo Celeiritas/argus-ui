@@ -6,10 +6,12 @@ opens on: the bare address `<base>/`, and `<base>/home`, its old address, which 
 
 ## What it shows, top to bottom
 1. **The header**: the page's name, Elaia, and under it a greeting by the viewer's clock, the date and the weather
-   ("Good evening · Friday, October 23 · Light rain · 48°F").
-2. **One line that says the state in words**: *Nothing needs you* (with "The realm is quiet." under it), *1 thing needs you*,
-   *3 things need you*, or *Asking every section…* while the sections are still answering. It counts what the bar counts:
-   every task in trouble, every alert, and each section that needs you (its `count`, else one). It is the heading of the list:
+   ("Good evening · Friday, October 23 · Light rain · 48°F"). On a narrow phone it wraps onto a second line rather than being
+   cut off (4.44.0).
+2. **One line that says the state in words**: *Nothing needs you*, *1 thing needs you*, *3 things need you*, or *Asking every
+   section…* while the sections are still answering. It counts what the bar counts: every task in trouble, every alert, and
+   each section that needs you (its `count`, else one). Under it, for the owner, **the server's own line on what it is doing
+   now** (4.44.0, below); a learner sees "The realm is quiet." there when nothing needs her. It is the heading of the list:
 3. **The rows that need you**, the failed thing first. Each row has the place's mark, who it is from (the plain word and the
    realm's name, e.g. *Approvals · Zeus*), one sentence, and one verb-first button that goes there:
    - **one row per broken thing on Watch** (4.40.0, see "Trouble first" below): a program that runs but cannot do its job,
@@ -22,11 +24,41 @@ opens on: the bare address `<base>/`, and `<base>/home`, its old address, which 
 
    A row whose need is met **fades out** where it stood (200 ms, hidden from screen readers while it goes); a row that is new
    since the last draw slides in. Under reduced motion both just happen. Warnings stay on their cards on the Watch page.
-4. **Open**: the links to other pages on this machine (below), each a 44 px chip with its name and what it is. No links file,
-   no row.
+4. **Open** (the owner's): the media players (Jellyfin, Audiobookshelf; below), then the links to other pages on this machine
+   (below), each a 44 px chip with its name and what it is. Neither file, no row.
 5. **Sections**: one one-line card per section, in the bar's order: its mark, plain word, realm name and status line. Watch
    says "All 6 tasks well" or "1 task failed" (red edge); a server plugin shows its status line (gold edge while it needs
-   you); a static plugin shows its version. The playground has no news and no card. The whole card is the link.
+   you); a static plugin shows its version; the Playground says "Powers, weather, seasons". The whole card is the link.
+   **One place for each fact** (4.44.0): a section with a row above has no card until that row is gone (Watch with a failed
+   task, Approvals with a deploy waiting), so the same news is never said twice on one screen. No card left, no heading.
+
+## What the server is doing now (4.44.0)
+One line under the state, for the owner only, written by the server (`now_line()` in `server/argus_ui.py`) from what it already
+knows, never a guess:
+- **`<name>: calm`**: nothing below is true.
+- **`<name>: busy: Hermes media, Zeus deploy`**: a task's run is in progress, a timer's run or one run of a transient job (a
+  deploy). A service that is always on is not "busy". With the watch restarting a program: *restarting Jellyfin*. More than
+  three: the first three *and 2 more*.
+- **`<name>: a game is running, the local AI is paused`**: Medusa's game guard says a game runs (its record
+  `~/.local/state/medusa-gameguard/frozen-by-me.json` lists what it paused, or its alert file is there; docs/memory.md). The
+  tasks it paused are named in plain words: a task ending in `ollama` is *the local AI*, any other its agent and name.
+- Both together: *a game is running, the local AI is paused; busy: Hermes media*.
+
+`<name>` is the server's own name, `SERVER` in `~/.config/leafy/realm.json` (`LEAFY_REALM`; the same file Mentor fills
+`{{SERVER}}` from, docs/mentor.md), at most 40 characters; without the file or the key it says *The server*. The repository never
+holds the name. The game guard's record path can be moved with `ARGUS_GAMEGUARD`.
+
+## Films, shows and audiobooks (4.44.0)
+The media players' own pages (they are other sites, not Elaia sections) are the first chips in Today's Open row when the host
+says where they are, in `~/.config/argus-ui/media.json` (or `ARGUS_MEDIA`), read on every refresh:
+```json
+{"jellyfin": "http://<host>:<port>/", "audiobookshelf": "http://<host>:<port>/"}
+```
+Only these two keys count (any case); each must be an `http://` or `https://` address, at most 300 characters, with no
+spaces or quotes (a player on the tailnet or the home network is often plain http). Anything else, a broken file or no file:
+no chip. They show as **Jellyfin · Films and shows** and **Audiobookshelf · Audiobooks and podcasts**, plain links with
+`rel="noopener noreferrer"` (no referrer, no hold on Elaia's window), for the owner only. Keep the file on the host; never
+commit it. They are on Today only, not in the strip or More.
 
 ## A section's card: status v2
 `GET api/<id>/status` → `{"line": "…", "needs": true, "action": "Study 5 due cards"}`. `line` is required for anything to show;
@@ -45,7 +77,12 @@ Controllers, Spartamelee, Ariad-Node**, any other plugin, then the links to othe
   Escape, Close or a tap outside shuts it and gives focus back to More. While you are on a place inside More, the More slot
   is the current one and names it. The bar keeps clear of the phone's own gesture bar (`env(safe-area-inset-bottom)`), and
   the page and the scene end above it, so nothing hides behind it.
-- **Wider screens**: the same places as a strip across the top (a rail down the left on an ultrawide, docs/ui-plan.md §14).
+- **Wider screens**: the same places as a strip across the top (a rail down the left on an ultrawide, docs/ui-plan.md §14),
+  ending in **More** and Mute sounds. The strip is always one row inside the screen (4.44.0): when the places do not fit (a
+  laptop, a phone on its side), the pills first drop their second line (still read out), then the weather goes, then the last
+  pills fold into More, never Today or the place you are on; widen the window and they come back. Nothing scrolls sideways and
+  nothing passes under Mute. More here holds the folded places, **Phone alerts** and the links to other pages, so Phone
+  alerts has a way in at every width; on a place inside it, More is the current one and names it.
 - **Each place**: the plain word large, the realm's name small under it where it differs, its medallion, and a count only
   when something needs you: a red number on Watch (failed tasks and alerts), a gold mark on a section whose status says it
   needs you (a number once the server passes a `count`), summed on More. A screen reader hears "Watch, Argus, 1 needs you".
@@ -64,14 +101,14 @@ on Today, and the page shows her no Argus: no alarm badge, no words about the ow
 reach the server. The server's own check comes with sign-in.
 
 ## Links to other pages (4.25.0)
-Pages on the same machine that aren't Elaia sections (a studio, a media server) can sit in the bar and on Today. List them in
+Pages on the same machine that aren't Elaia sections (a studio, a dashboard) can sit in More and on Today. List them in
 `~/.config/argus-ui/links.json` (or `ARGUS_LINKS`), read on every refresh:
 ```json
 [{"name": "Sound Lab", "what": "Studio", "href": "/studio/"}]
 ```
 `href` must be a path on this host (`/…`) or an `https://` address; anything else (`javascript:`, `//other-host`) is dropped,
-as is a broken file. At most 8. In the strip and the More sheet a link has an "opens another page" mark; on Today it is a chip
-in the Open row.
+as is a broken file. At most 8. In the More sheet (under "Other pages", at every width since 4.44.0; no longer a pill of its
+own in the strip) a link has an "opens another page" mark; on Today it is a chip in the Open row.
 
 ## Behaviour
 - The page refreshes every 15 seconds like the others: it draws at once from what it knows, then asks the server plugins

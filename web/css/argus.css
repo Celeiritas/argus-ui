@@ -192,7 +192,7 @@ dialog .confirm{border-color:var(--danger);color:var(--danger)}
 .need .go{display:inline-flex;align-items:center;min-height:var(--hit);padding:0 var(--s3);border-radius:8px;background:var(--bolt);color:#1C2127;font-weight:600;font-size:var(--fs-sec);text-decoration:none;white-space:nowrap}
 .need .go:focus-visible,.place:focus-visible{outline:2px solid var(--powder);outline-offset:3px}
 @keyframes needin{from{opacity:0;translate:-12px 0}to{opacity:1;translate:0 0}}
-.quiet{margin:0;padding:0 0 var(--s2);color:var(--powder)}
+.quiet,.home .now{margin:0;padding:0 0 var(--s2);color:var(--powder)}.home .now{overflow-wrap:anywhere}   /* the server's line on what it does now */
 .home h2.state{font-size:var(--fs-h2);text-transform:none;letter-spacing:0;color:var(--snow);margin:var(--s2) 0}.home h2.state.bad{color:var(--snow)}
 .openlist{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:var(--s2)}
 .openlink{display:inline-flex;align-items:center;gap:var(--s2);min-height:var(--hit);padding:var(--s1) var(--s3) var(--s1) var(--s1);border:1px solid var(--line);border-radius:99px;text-decoration:none;color:var(--powder)}

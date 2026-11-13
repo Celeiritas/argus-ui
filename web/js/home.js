@@ -1,8 +1,9 @@
 // Today (docs/home.md): what needs *you* across the realm, and where to go. It is what Elaia opens on (the bare address,
 // and <base>/home, its old name). Watch is about the machines; Today is about you. In this order:
 //   1. one line that says the state in words ("Nothing needs you", "2 things need you"), heading the list of
-//   2. the rows that need you, the failed thing first, each with one verb-first button,
-//   3. "Open": the links to other pages on this machine (~/.config/argus-ui/links.json),
+//   2. the rows that need you, the failed thing first, each with one verb-first button; between them, for the owner, the server's
+//      own line on what it is doing now ("<name>: calm", "busy: …", "a game is running, …": now_line() in the server),
+//   3. "Open": the media players (~/.config/argus-ui/media.json), then the links to other pages (~/.config/argus-ui/links.json),
 //   4. one one-line card per section, from status v2 (api/<id>/status: line, needs, action). A new section (workouts,
 //      meals, music) only has to answer that to get its card. A section with a row above has no card; no cards, no heading.
 // A row whose need is met fades out (200 ms); a new row slides in. Under reduced motion they just go and come.
@@ -37,8 +38,11 @@ const home = (() => {
       return `<li><a class="place${mood}" href="${esc(e.href)}" data-id="${esc(e.id)}">${e.mark}<span class="pw">${words(e)}</span><span class="pl">${esc(line)}</span></a></li>`;
     }).join('');
   }
+  // Open: the media players first (~/.config/argus-ui/media.json; another site, so a plain link that sends no referrer),
+  // then the links to other pages on this machine (~/.config/argus-ui/links.json)
   function opens() {
-    return (S.links || []).map(x => `<li><a class="openlink" href="${esc(x.href)}">${LINK_MARK}<span><b>${esc(x.name)}</b>${x.what ? `<small>${esc(x.what)}</small>` : ''}</span></a></li>`).join('');
+    const li = (x, rel) => `<li><a class="openlink" href="${esc(x.href)}"${rel ? ' rel="noopener noreferrer"' : ''}>${LINK_MARK}<span><b>${esc(x.name)}</b>${x.what ? `<small>${esc(x.what)}</small>` : ''}</span></a></li>`;
+    return (S.media || []).map(x => li(x, true)).join('') + (S.links || []).map(x => li(x, false)).join('');
   }
   let last = '';                           // the last page drawn: an unchanged page is not redrawn (focus and running fades stay)
   function draw() {
@@ -47,9 +51,10 @@ const home = (() => {
     const total = list.reduce((t, n) => t + n.n, 0);              // every failed task and every alert counts, as on the bar
     const state = total ? `${plural(total, 'thing')} need${total === 1 ? 's' : ''} you` : asking ? 'Asking every section…' : 'Nothing needs you';
     const keys = new Set(list.map(n => n.key)), links = role() === 'owner' ? opens() : '', places = cards(list);
+    const now = role() === 'owner' && typeof S.now === 'string' ? S.now : '';   // what the server is doing (the server's own words)
     const html = `<section class="home" aria-label="Today">
       <section class="needs" aria-labelledby="needs-h"><h2 class="state${list.length ? ' bad' : ''}" id="needs-h">${state}</h2>
-        ${list.length || asking ? '' : '<p class="quiet">The realm is quiet.</p>'}
+        ${now ? `<p class="now">${esc(now)}</p>` : list.length || asking ? '' : '<p class="quiet">The realm is quiet.</p>'}
         <ul class="needlist">${list.map(n => row(n, seen && !seen.has(n.key))).join('')}</ul></section>
       ${links ? `<section class="open" aria-labelledby="open-h"><h2 id="open-h">Open</h2><ul class="openlist">${links}</ul></section>` : ''}
       ${places ? `<section class="places" aria-labelledby="places-h"><h2 id="places-h">Sections</h2><ul class="placelist">${places}</ul></section>` : ''}</section>`;
