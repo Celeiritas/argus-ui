@@ -542,6 +542,9 @@ def _clean_kinds(v):
     return [k for k in KINDS if isinstance(v, list) and k in v]
 
 
+NOT_LISTED = 'That device is not on your list any more. Reload this page.'   # the one answer for an id that is not his
+
+
 def route(name, body, who, trusted):
     """POST api/push/<name> -> (status, answer). Never answers an endpoint or a key."""
     if name not in ('subscribe', 'kinds', 'forget', 'test'): return 404, {'ok': False, 'msg': 'not found'}
@@ -555,7 +558,7 @@ def route(name, body, who, trusted):
         try: devs = load_devices()
         except (OSError, ValueError): return 503, {'ok': False, 'msg': 'The server\'s list of devices cannot be read.'}
         dev = next((d for d in devs if d['id'] == did and owns(d, who)), None)
-        if not dev: return 404, {'ok': False, 'msg': 'That device is not on your list any more. Reload this page.'}
+        if not dev: return 404, {'ok': False, 'msg': NOT_LISTED}
         if name == 'kinds':
             if not isinstance(body.get('kinds'), list): return 400, {'ok': False, 'msg': 'Say which alerts this device should get.'}
             dev['kinds'] = _clean_kinds(body.get('kinds')); save_devices(devs)
@@ -578,7 +581,10 @@ def subscribe(person, body, trusted, who=None):
     """Add or update this browser's device. `replaces` (optional) is the id this browser had before its address changed
     (the page and sw.js keep it): that record is retired only when it is this person's own (owns()); an unknown or foreign
     id is ignored, and the answer is the same either way, so it never tells whether an id exists. Without `label` or
-    `kinds` (sw.js sends neither) the record keeps the ones it had."""
+    `kinds` (sw.js sends neither) the record keeps the ones it had. `only_if_known: true` (sw.js sends it) changes a
+    record only when this address or `replaces` is already this person's; otherwise nothing is added or removed and the
+    answer is the 404 an unknown id gets everywhere, the same for an unknown and a foreign id. So a device removed on
+    another device, or by the sender after its message service said the address is gone, never signs itself back up."""
     sub = body.get('subscription')
     if not isinstance(sub, dict): return 400, {'ok': False, 'msg': 'This browser did not say where to send alerts. Try again.'}
     endpoint, keys = sub.get('endpoint'), sub.get('keys') if isinstance(sub.get('keys'), dict) else {}
@@ -603,6 +609,8 @@ def subscribe(person, body, trusted, who=None):
         old = next((d for d in devs if d['id'] == did), None)
         if old and old.get('person') != person: devs.remove(old); old = None     # the same browser, now someone else's
         gone = next((d for d in devs if rep and d['id'] == rep and mine(d)), None)
+        if body.get('only_if_known') is True and not old and not gone:   # nothing saved: the list stays as it was
+            return 404, {'ok': False, 'msg': NOT_LISTED}
         if gone: devs.remove(gone)                       # this browser's record from before its address changed
         was = old or gone or {}
         label = label or str(was.get('label') or '') or 'This device'

@@ -75,7 +75,9 @@ async function resubscribe(old, fresh) {
     sub = await pm.subscribe({userVisibleOnly: true, applicationServerKey: k});
   }
   const id = await idOf(sub.endpoint), before = old && old.endpoint ? await idOf(old.endpoint) : String(was.id || '');
-  const body = {subscription: sub.toJSON()};          // no label or kinds: the record keeps the ones it had
+  // no label or kinds: the record keeps the ones it had. only_if_known: if that record is gone (Remove on another device,
+  // or the server dropped a dead address), nothing is added back; Turn on on this device does that, when he wants it.
+  const body = {subscription: sub.toJSON(), only_if_known: true};
   if (before && before !== id) body.replaces = before;
   const r = await fetch(new URL('api/push/subscribe', scope), {method: 'POST', credentials: 'same-origin',
     headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});

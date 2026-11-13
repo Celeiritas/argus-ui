@@ -925,6 +925,41 @@ class Replaces(RouteBase):
         self.assertEqual(self.on('new-address', replaces=same)[0], 200)
         self.assertEqual(len(devices()), 2, 'its own id as replaces: nothing is removed')
 
+    # review F3 (fix round 1): on 0b294e4 the worker's sign-up (no label, no kinds) re-created a removed device as
+    # 'This device' with every kind on. sw.js now sends only_if_known: nothing is added when the record is gone.
+    def worker(self, tail, replaces):
+        return self.on(tail, drop=('label', 'kinds'), replaces=replaces, only_if_known=True)
+
+    def test_the_worker_keeps_the_name_and_switches_when_the_record_is_there(self):
+        first = self.on('old-address')[2]['id']
+        self.req('POST', 'api/push/kinds', {'id': first, 'kinds': ['broke']})
+        code, raw, d = self.worker('new-address', first)
+        self.assertEqual(code, 200, d); self.assertNoSecret(raw)
+        self.assertEqual([(x['id'], x['label'], x['kinds']) for x in devices()], [(d['id'], 'Android phone, Chrome', ['broke'])])
+
+    def test_a_device_removed_on_another_device_is_not_signed_back_up_by_its_worker(self):
+        first = self.on('old-address')[2]['id']
+        self.assertEqual(self.req('POST', 'api/push/forget', {'id': first})[0], 200)
+        code, raw, d = self.worker('new-address', first)
+        self.assertEqual((code, d['ok']), (404, False), d); self.assertNoSecret(raw)
+        self.assertEqual(devices(), [], 'Remove means no more alerts, also after the browser gets a new address')
+
+    def test_a_device_the_sender_dropped_is_not_signed_back_up_by_its_worker(self):
+        first = self.on('old-address')[2]['id']
+        push.remove_device(first)                                            # what the sender does on a 404 or 410
+        self.assertEqual(self.worker('new-address', first)[0], 404)
+        self.assertEqual(devices(), [])
+
+    def test_the_worker_gets_one_answer_for_an_unknown_or_foreign_id(self):
+        self.people()
+        learner = add_device('learner-two', tail='learner')[0]
+        other = add_device('owner-two', tail='owner-two')[0]
+        before = devices()
+        answers = [self.worker(f'w-{i}', rep)[::2] for i, rep in enumerate((learner, other, '0123456789abcdef', 'NOT-AN-ID'))]
+        self.assertEqual(len(set(map(str, answers))), 1, answers)
+        self.assertEqual(answers[0][0], 404)
+        self.assertEqual(devices(), before, 'nothing added, nothing removed')
+
     def test_a_replace_works_when_the_list_is_full(self):
         ids = [self.on(f'p{i}')[2]['id'] for i in range(push.MAX_DEVICES)]
         self.assertEqual(self.on('one-too-many')[0], 409)
