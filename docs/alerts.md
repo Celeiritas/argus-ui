@@ -31,4 +31,4 @@ A file that isn't a JSON object, or has no message, an unknown `level` or a `job
 | Hermes | `hermes.json` (`hermes-door`) | a delivery is quarantined; Seen on the Delivery page clears it |
 | Janus | `janus.json` (`janus-map`) | a door that should be open closed unexpectedly |
 | Zeus | `zeus.json` (`zeus-approve`, `zeus-deploy`) | Janus couldn't verify an approval, or a deploy failed or couldn't start; `zeus seen` or the next good deploy clears it |
-| Argus | `argus-own-origin.json` (`argus-own-origin`) | Argus itself, at start: a plugin's own address could not take its local port (docs/leafy-plugin.md, *Its own address*); the next start where every own listener starts clears it |
+| Argus | `argus-own-origin.json` (`argus-own-origin`) | Argus itself, at start: a plugin's own address could not take its local port (docs/leafy-plugin.md, *Its own address*); only a start with no `own-origin.json`, or one that reads it cleanly with no plugin left out and starts every own listener, clears it (an unreadable file or a skipped entry keeps it) |
