@@ -415,7 +415,7 @@ def watch_env():
     # the task cards keep their own idea of running
     return watch.Env(lambda u: watch.unit_state(sc('is-active', u + '.service')), lambda u: u in frozen(), watch_restart)
 
-def state():
+def state(reach=None):
     fz = frozen()
     ws = watch.snapshot(WATCH_INTERVAL or 60)
     jobs = watch.attach(collapse([info(u, fz) for u in units()]), ws)
@@ -424,16 +424,16 @@ def state():
                 title=THEME.get('title', 'Argus'), subtitle=THEME.get('subtitle', 'tasks'),
                 personas=[dict(key=k, name=n, domain=d) for k, n, d in PERSONAS],
                 soon=THEME.get('coming_soon', []), links=links(),
-                plugins=[plugin_view(p) for p in ps], watch=ws, watch_ready=not WATCH_ON or watch.ready(),   # until its first round: the saved rows
+                plugins=[plugin_view(p, reach) for p in ps], watch=ws, watch_ready=not WATCH_ON or watch.ready(),   # until its first round: the saved rows
                 alerts=sorted(alerts(set(PKEYS) | set(PAGES) | {p['id'] for p in ps}) + watch.alert_list(ws, lambda j: bool(GODS.match(j) and ALERT_JOB.match(j))), key=lambda a: (a['since'], a['file'])))
 
-def state_for(who, people_problem=None):
+def state_for(who, people_problem=None, reach=None):
     """api/state (and the state inside the page) for this person. The owner gets everything, as before. A learner gets a
     list built from nothing (so a key added to state() later never leaks to her): her role and name, the plugins that open
     at least one path to learners and the agents they take over, the title, and empty lists for everything else (no tasks,
     alerts, links, watch rows or coming-later pills: nothing that names the owner's programs)."""
     me = {'role': who['role'], 'person': who['person'], 'name': who['name']}
-    if who['role'] == 'owner': return dict(state(), **me, people_problem=people_problem)
+    if who['role'] == 'owner': return dict(state(reach), **me, people_problem=people_problem)
     ps = [p for p in plugins() if p['kind'] == 'server' and p['learner']]
     ids = {p['id'] for p in ps}
     return dict(updated=datetime.now().strftime('%I:%M %p').lstrip('0'), jobs=[], watch=[], alerts=[], links=[], soon=[],
@@ -441,17 +441,19 @@ def state_for(who, people_problem=None):
                 personas=[dict(key=k, name=n, domain=d) for k, n, d in PERSONAS if k in ids],
                 plugins=[plugin_view(p) for p in ps], **me)
 
-def plugin_view(p):
+def plugin_view(p, reach=None):
     # what the page needs about a plugin; a server plugin's script and style URLs carry their file times, so a redeploy is fetched fresh
     v = {k: p[k] for k in ('id', 'kind', 'name', 'subtitle', 'icon', 'version', 'agent')}
     if p['kind'] == 'server':
         for k in ('page', 'style'):
             try: v[k] = f"plugins/{p['id']}/{p[k]}?v={int(os.path.getmtime(os.path.join(p['dir'], p[k])))}" if p[k] else ''
             except OSError: v[k] = ''
-    if p['kind'] == 'static' and p['id'] in OWN:
-        # its own address: the page builds it from the host name it was opened at and these ports (https: public, http: local)
+    if p['kind'] == 'static' and p['id'] in OWN and reach in ('serve', 'here'):
+        # its own address, only where this browser can reach it (H.own_reach): through Serve, https at the host name the
+        # page was opened at with the public port; on this machine, http://127.0.0.1 with the local port. Elsewhere: the frame.
         c = OWN[p['id']]
-        v['own'] = {'public': c['public'], 'local': c['port'], 'links': [x for x in c['links'] if own_link_ok(p['dir'], x['path'])]}
+        v['own'] = {'secure': reach == 'serve', 'port': c['public'] if reach == 'serve' else c['port'],
+                    'links': [x for x in c['links'] if own_link_ok(p['dir'], x['path'])]}
     return v
 
 def own_link_ok(d, rel):
@@ -526,13 +528,24 @@ def page(st):
 # plus anything listed in ARGUS_ALLOWED_HOSTS (comma separated).
 _hn = socket.gethostname().lower()
 ALLOWED = {'localhost', _hn, _hn.split('.')[0]} | {h.strip().lower() for h in os.environ.get('ARGUS_ALLOWED_HOSTS', '').split(',') if h.strip()}
-def host_ok(host):
+def host_name(host):
+    # a Host header without its port, lower case ('[::1]:8080' -> '::1')
     h = (host or '').strip().lower()
-    if h.startswith('['): h = h[1:h.find(']')]
-    elif h.count(':') == 1: h = h.rsplit(':', 1)[0]
+    if h.startswith('['): return h[1:h.find(']')]
+    return h.rsplit(':', 1)[0] if h.count(':') == 1 else h
+
+def host_ok(host):
+    h = host_name(host)
     if h in ALLOWED or h.endswith('.ts.net') or h.endswith('.local'): return True
     try: ipaddress.ip_address(h); return True
     except ValueError: return False
+
+def loopback(h):
+    # the name localhost or a loopback address (an IPv4 one written as IPv6 too)
+    if h.lower() == 'localhost': return True
+    try: ip = ipaddress.ip_address(h)
+    except ValueError: return False
+    return ip.is_loopback or bool(getattr(ip, 'ipv4_mapped', None) and ip.ipv4_mapped.is_loopback)
 
 PROTECT = {'X-Frame-Options': 'SAMEORIGIN', 'Content-Security-Policy': "frame-ancestors 'self'",   # on every answer that is
            'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'same-origin'}                # not a plugin file (those carry their own)
@@ -615,6 +628,14 @@ class H(BaseHTTPRequestHandler):
         self.login, self.trusted = login, bool(self.via_serve and login and not self.from_self)
         self.people = PEOPLE.current()
         self.who = identity.resolve(self.people, login, self.trusted)
+
+    def own_reach(self):
+        """Where this browser can reach a plugin's own address (own-origin.json): 'serve' when the request came through
+        tailscale serve (its HTTPS port at the same host name), 'here' when it came from this machine to a loopback name
+        (the local port, which listens on 127.0.0.1 only), else None: from another device over plain http
+        (ARGUS_BIND=0.0.0.0) the local port cannot be reached and the public one may not exist, so the frame stays."""
+        if self.via_serve: return 'serve'
+        return 'here' if loopback(str(self.client_address[0])) and loopback(host_name(self.headers.get('Host'))) else None
 
     def need(self, verb, p):
         """The role a route needs: 'none' (anyone), 'learner' or 'owner'. Everything is the owner's unless listed here or
@@ -766,7 +787,7 @@ class H(BaseHTTPRequestHandler):
             f = os.path.join(STATIC, p)
             if not os.path.isfile(f): return self.out('not found', 'text/plain', 404)
             with open(f, 'rb') as fh: return self.out(fh.read(), 'application/manifest+json' if p.endswith('manifest') else 'text/javascript')
-        if p == 'api/state': return self.out(json.dumps(state_for(self.who, self.people[2])), 'application/json')
+        if p == 'api/state': return self.out(json.dumps(state_for(self.who, self.people[2], self.own_reach())), 'application/json')
         if p == 'api/sky': return self.out(json.dumps(sky.current()), 'application/json')
         if p == 'api/push/status':                          # the owner's (need()); never an endpoint or a key of a device
             return self.out(json.dumps(push.status(self.who, self.trusted, parse_qs(urlsplit(self.path).query).get('device', [''])[0])), 'application/json')
@@ -786,7 +807,7 @@ class H(BaseHTTPRequestHandler):
             name = next(x['name'] for x in live if x['id'] == MOVED[pid])   # it shows "problem" in place of its list and "line" on Home, both true
             return self.out(json.dumps({'ok': False, 'moved': MOVED[pid], 'line': f'Now called {name}: reload this page',
                                         'problem': f'This section is now called {name}. Reload this page to open it.'}), 'application/json')
-        if p == '' or first in PKEYS or first in PAGES or first in ids: return self.out(page(state_for(self.who, self.people[2])))
+        if p == '' or first in PKEYS or first in PAGES or first in ids: return self.out(page(state_for(self.who, self.people[2], self.own_reach())))
         return self.out('not found', 'text/plain', 404)
 
     EVENT_KEYS = ('id', 'at', 'kind', 'subject', 'title', 'body', 'url', 'level')

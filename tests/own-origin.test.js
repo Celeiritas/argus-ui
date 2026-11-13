@@ -42,8 +42,8 @@ run(async b => {
     ARGUS_STATIC: path.join(T, 'pkg', 'static'), ARGUS_BUNDLED: path.join(T, 'pkg', 'bundled'),
     ARGUS_SYSTEMCTL: SYSTEMCTL, ARGUS_JOURNALCTL: path.join(FX, 'fake_journal.sh'),
     ARGUS_DEV: '1', ARGUS_WATCH: '0', ARGUS_SUMMARY: '0', ARGUS_EVENTS: path.join(ST, 'events.jsonl'), ARGUS_WATCH_STATE: path.join(ST, 'watch.json')};
-  for (const k of ['ARGUS_WEATHER', 'ARGUS_PEOPLE', 'ARGUS_BIND', 'ARGUS_ALLOWED_HOSTS']) delete env[k];
-  if (process.getuid) env.ARGUS_SERVE_UID = String(process.getuid());   // as tests/run.sh: this runner counts as Serve
+  // not through Serve (no ARGUS_SERVE_UID: Serve is root's), so the page opened at 127.0.0.1 gets the local port
+  for (const k of ['ARGUS_WEATHER', 'ARGUS_PEOPLE', 'ARGUS_BIND', 'ARGUS_ALLOWED_HOSTS', 'ARGUS_SERVE_UID']) delete env[k];
   const log = fs.openSync(path.join(D, 'server.log'), 'w');
   const srv = spawn(PY, [path.join(T, 'pkg', 'argus_ui.py')], {env, stdio: ['ignore', log, log]});
   try {
@@ -54,7 +54,7 @@ run(async b => {
     const open = p.locator('.plugin-own a.plugin-open');
     check(await open.count() === 1 && /^Open Spartamelee/.test(await open.textContent()), 'the section shows an "Open Spartamelee" button');
     check(await p.locator('#main iframe').count() === 0, 'and no frame');
-    check(await open.getAttribute('href') === OWN, 'it points at the own address: this page\'s host name with the plugin\'s port (plain http: the local one)');
+    check(await open.getAttribute('href') === OWN, 'it points at the own address: on this machine over plain http, 127.0.0.1 with the local port');
     check(await open.getAttribute('target') === '_blank' && /\bnoopener\b/.test(await open.getAttribute('rel') || ''), 'it opens a new tab, with no way back to this one');
     const bb = await open.boundingBox();
     check(bb.height >= 44 && bb.width >= 44, `a large target (${Math.round(bb.width)} x ${Math.round(bb.height)} px)`);

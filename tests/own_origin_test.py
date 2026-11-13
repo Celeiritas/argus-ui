@@ -162,17 +162,43 @@ class Config(unittest.TestCase):
         self.assertEqual(got['game']['links'], [{'name': f'Page {i}', 'path': f'page{i}/'} for i in range(4)], 'the valid ones, at most 4')
 
     def test_what_the_page_gets(self):
-        # api/state: the game has "own" with both ports and only the links that point at a page inside it
+        # api/state and the page: the game has "own" only where this browser can reach it, with only the links that point
+        # at a page inside it. Through Serve: the public port (https); on this machine at a loopback name: the local port.
         no_people()
-        d = json.loads(main('api/state')[2]); ps = {p['id']: p for p in d['plugins']}
-        self.assertEqual(ps['spartamelee']['own'], {'public': PUBLIC, 'local': LOCAL, 'links': [FRAMES]})
-        self.assertNotIn('own', ps['other'], 'a static plugin without an entry keeps the sandboxed frame')
-        self.assertNotIn('own', ps['srv'], 'a server plugin never gets an own address')
+        def got(**k):
+            d = json.loads(main('api/state', **k)[2]); ps = {p['id']: p for p in d['plugins']}
+            self.assertNotIn('own', ps['other'], 'a static plugin without an entry keeps the sandboxed frame')
+            self.assertNotIn('own', ps['srv'], 'a server plugin never gets an own address')
+            return ps['spartamelee'].get('own')
+        serve, here = {'secure': True, 'port': PUBLIC, 'links': [FRAMES]}, {'secure': False, 'port': LOCAL, 'links': [FRAMES]}
+        self.assertEqual(got(host=TS), serve, 'through Serve')
+        self.assertIn(b'"port": %d' % PUBLIC, main('spartamelee', host=TS)[2], 'the page carries the same')
+        try:
+            a.SERVE_UID = ME + 1                             # not through Serve
+            self.assertEqual(got(), here, 'plain http on this machine at 127.0.0.1')
+            self.assertEqual(got(host=f'localhost:{MAIN.server_address[1]}'), here)
+            self.assertIsNone(got(host=TS), 'not through Serve at a name that is not this machine: the frame stays')
+            self.assertNotIn(b'"own"', main('spartamelee', host=TS)[2])
+        finally: a.SERVE_UID = ME
         self.assertEqual(sorted(OWNS), ['spartamelee', 'srv'])
         self.assertEqual(OWNS['spartamelee'].server_address[0], '127.0.0.1', 'this machine only; tailscale serve publishes it')
         write_people(GOOD)
         self.assertNotIn(b'"own"', main('api/state', login=LEARNER)[2], "a learner's cut-down state names no own address")
         no_people()
+
+    def test_only_where_it_can_be_reached(self):
+        # the rule itself, for peers the test cannot be: another device over plain http (ARGUS_BIND=0.0.0.0) gets no own
+        # address, whatever Host it sends, because the local port listens on 127.0.0.1 only
+        ask = lambda peer, host, serve=False: a.H.own_reach(types.SimpleNamespace(via_serve=serve, client_address=(peer, 50000), headers={'Host': host}))
+        for peer, host in (('192.0.2.30', f'192.0.2.1:{MAIN_PORT}'), ('192.0.2.30', f'127.0.0.1:{MAIN_PORT}'), ('192.0.2.30', 'localhost'),
+                           ('192.0.2.30', 'host.local'), ('192.0.2.30', TS), ('127.0.0.1', TS), ('127.0.0.1', f'192.0.2.1:{MAIN_PORT}'), ('127.0.0.1', '')):
+            self.assertIsNone(ask(peer, host), f'{peer} asking for {host}')
+        for peer, host in (('127.0.0.1', f'127.0.0.1:{MAIN_PORT}'), ('127.0.0.1', 'localhost'), ('::1', f'[::1]:{MAIN_PORT}'),
+                           ('::ffff:127.0.0.1', '127.0.0.1'), ('127.0.0.1', 'LOCALHOST:1')):
+            self.assertEqual(ask(peer, host), 'here', f'{peer} asking for {host}')
+        self.assertEqual(ask('127.0.0.1', TS, serve=True), 'serve')
+        p = next(x for x in a.plugins() if x['id'] == 'spartamelee')
+        self.assertNotIn('own', a.plugin_view(p)); self.assertNotIn('own', a.plugin_view(p, None))
 
     def test_a_busy_port_is_skipped(self):
         # the port is taken: Elaia keeps the frame and says so loudly, with an alert file Watch shows (docs/alerts.md), until
