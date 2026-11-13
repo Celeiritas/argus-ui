@@ -10,13 +10,18 @@ mkdir -p $O/bundled; [ -d $R/plugins ] && cp -r $R/plugins/. $O/bundled/   # bun
 cp -r $R/web/css $R/web/js $O/static/
 cp $T/theme.json $O/static/; mkdir -p $O/static/decks; cp $T/decks/*.json $O/static/decks/ 2>/dev/null || true; cp $T/icons/*.png $O/static/icons/; cp $T/sfx/*.mp3 $O/static/sfx/ 2>/dev/null || true
 cp $T/argus-192.png $T/argus-512.png $O/static/ 2>/dev/null || true
-# Medusa's SVG is inlined into the page so her snakes and effects can animate; script/style URLs get the version
-${PYTHON:-python3} - "$R/web/index.html" "$T/gods/medusa.svg" "$O/static/index.html" "$V" <<'PY'
-import sys
-page, med, out, ver = sys.argv[1:]
+# Medusa's SVG is inlined into the page so her snakes and effects can animate; script/style URLs get the version.
+# The Run tool shows the theme's own Zeus (icons/zeus.png) when it has one, so Zeus is drawn once; a theme without it keeps the plain bolt.
+${PYTHON:-python3} - "$R/web/index.html" "$T/gods/medusa.svg" "$O/static/index.html" "$V" "$T/icons/zeus.png" <<'PY'
+import os, re, sys
+page, med, out, ver, zeus = sys.argv[1:]
 m = open(med).read().replace('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 234 234" class="medusa"',
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 234 234" class="medusa" id="medusa" role="img" aria-label="Medusa"', 1)
-open(out, 'w').write(open(page).read().replace('<!--MEDUSA-->', m).replace('__V__', ver))   # ?v=<version> so browsers never mix old and new files
+html = open(page).read().replace('<!--MEDUSA-->', m).replace('__V__', ver)   # ?v=<version> so browsers never mix old and new files
+if os.path.exists(zeus):
+    html, n = re.subn(r'<!--BOLT-->.*?<!--/BOLT-->', '<img id="bolt" src="static/icons/zeus.png" alt="" draggable="false">', html, count=1, flags=re.S)
+    assert n == 1, 'index.html lost its <!--BOLT--> markers'
+open(out, 'w').write(html)
 PY
 echo $V > $O/static/VERSION
 tar -czf $O.tar.gz -C $O . && echo "built $O.tar.gz ($(du -h $O.tar.gz | cut -f1))"
