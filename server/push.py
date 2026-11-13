@@ -549,7 +549,7 @@ def route(name, body, who, trusted):
     if not ok: return 503, {'ok': False, 'msg': why}
     person = who.get('person')
     # the body is checked first (that tells nothing), then whether the request is trusted: subscribe and test need it
-    if name == 'subscribe': return subscribe(person, body, trusted)
+    if name == 'subscribe': return subscribe(person, body, trusted, who)
     did = str(body.get('id') or '')
     with _dev_lock:
         try: devs = load_devices()
@@ -574,7 +574,11 @@ def route(name, body, who, trusted):
     return 200, {'ok': True, 'msg': 'Sent. It should arrive within a few seconds, also when Elaia is closed.'}
 
 
-def subscribe(person, body, trusted):
+def subscribe(person, body, trusted, who=None):
+    """Add or update this browser's device. `replaces` (optional) is the id this browser had before its address changed
+    (the page and sw.js keep it): that record is retired only when it is this person's own (owns()); an unknown or foreign
+    id is ignored, and the answer is the same either way, so it never tells whether an id exists. Without `label` or
+    `kinds` (sw.js sends neither) the record keeps the ones it had."""
     sub = body.get('subscription')
     if not isinstance(sub, dict): return 400, {'ok': False, 'msg': 'This browser did not say where to send alerts. Try again.'}
     endpoint, keys = sub.get('endpoint'), sub.get('keys') if isinstance(sub.get('keys'), dict) else {}
@@ -588,14 +592,21 @@ def subscribe(person, body, trusted):
     except Exception:
         return 400, {'ok': False, 'msg': 'This browser sent a lock Elaia cannot use, so alerts stay off here. Try again.'}
     if not trusted: return 403, {'ok': False, 'msg': UNTRUSTED, 'error': UNTRUSTED}
-    label = re.sub(r'[\x00-\x1f\x7f<>]', '', str(body.get('label') or '')).strip()[:40] or 'This device'
-    kinds = _clean_kinds(body.get('kinds')) if 'kinds' in body else list(KINDS)
+    label = re.sub(r'[\x00-\x1f\x7f<>]', '', str(body.get('label') or '')).strip()[:40]
     did = device_id(endpoint)
+    rep = body.get('replaces')
+    rep = rep if isinstance(rep, str) and re.fullmatch(r'[0-9a-f]{16}', rep) and rep != did else ''
+    mine = (lambda d: owns(d, who)) if who is not None else (lambda d: d.get('person') == person)
     with _dev_lock:
         try: devs = load_devices()
         except (OSError, ValueError): return 503, {'ok': False, 'msg': 'The server\'s list of devices cannot be read.'}
         old = next((d for d in devs if d['id'] == did), None)
         if old and old.get('person') != person: devs.remove(old); old = None     # the same browser, now someone else's
+        gone = next((d for d in devs if rep and d['id'] == rep and mine(d)), None)
+        if gone: devs.remove(gone)                       # this browser's record from before its address changed
+        was = old or gone or {}
+        label = label or str(was.get('label') or '') or 'This device'
+        kinds = _clean_kinds(body.get('kinds')) if 'kinds' in body else _clean_kinds(was['kinds']) if 'kinds' in was else list(KINDS)
         if not old and sum(1 for d in devs if d.get('person') == person) >= MAX_DEVICES:
             return 409, {'ok': False, 'msg': f'Elaia already sends alerts to {MAX_DEVICES} of your devices. Remove one below, then try again.'}
         dev = old or {'id': did, 'person': person, 'made': now_iso(), 'last_ok': '', 'last_error': ''}

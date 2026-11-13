@@ -14,7 +14,7 @@
     endpoint or a key, the files are mode 600 (Linux).
 Nothing leaves this machine: every message goes to the fake service. The `cryptography` package is needed; without it the
 tests are skipped, except in CI (CI=true), where that is a failure."""
-import base64, http.client, http.server, importlib.util, json, os, shutil, stat, sys, tempfile, threading, time, unittest
+import base64, http.client, http.server, importlib.util, json, os, shutil, stat, sys, tempfile, threading, time, types, unittest
 from datetime import datetime, timedelta, timezone
 
 R = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -478,6 +478,76 @@ class Summary(unittest.TestCase):
         finally: os.environ.pop('ARGUS_SUMMARY')
 
 
+class SummaryBackups(unittest.TestCase):
+    """4.43: ONE backups line at the end of the daily summary when backups need a look (the Memory plugin's summary_line),
+    no extra buzz and no new kind of alert; without the plugin the summary goes out without it, logged once.
+    Each test failed on ea1170a (compose/tick took no backups, argus_ui had no backups_line)."""
+    NOW = Summary.NOW; ROWS = Summary.ROWS
+    LINE = 'Backups: the server has no snapshot yet.'
+
+    def setUp(self):
+        clean(); os.environ.pop('ARGUS_SUMMARY', None); os.environ.pop('ARGUS_SUMMARY_AT', None)
+        self.sent, self.logged = [], []
+        notify.register(self.sent.append)
+        self.log, summary.log = summary.log, self.logged.append
+        summary._backups_told = False
+    def tearDown(self):
+        notify.SINKS.remove(self.sent.append); summary.log = self.log; summary._backups_told = False
+
+    def tick(self, backups, days=0): return summary.tick(lambda: self.ROWS, now=self.NOW + timedelta(days=days), backups=backups)
+
+    def test_the_line_is_the_bodys_last_line(self):
+        calm = 'Argus checked 3 things all day, and nothing stopped working. Nothing waits for you.'
+        self.assertEqual(summary.compose([], self.ROWS, self.NOW, self.LINE)['body'], calm + '\n' + self.LINE)
+        self.assertEqual(summary.compose([], self.ROWS, self.NOW, '')['body'], calm, 'fine: no line')
+        self.assertEqual(summary.compose([], self.ROWS, self.NOW)['title'], 'Yesterday: everything worked', 'the title never changes')
+
+    def test_sent_once_with_the_line_and_no_extra_buzz(self):
+        e = self.tick(lambda: self.LINE)
+        self.assertEqual(e['body'].split('\n')[-1], self.LINE)
+        self.assertEqual([(x['kind'], x['subject'], x['level']) for x in self.sent], [('summary', 'daily-summary', 'info')], 'one event, the same kind')
+        self.assertEqual(self.logged, [])
+
+    def test_fine_or_no_reader_no_line(self):
+        self.assertNotIn('\n', self.tick(lambda: '')['body'])
+        self.assertNotIn('\n', self.tick(None, days=1)['body'])
+        self.assertEqual((len(self.sent), self.logged), (2, []))
+
+    def test_a_reader_that_fails_is_logged_once_and_the_summary_still_goes(self):
+        def broken(): raise OSError('disk')
+        for day in range(3): self.assertNotIn('\n', self.tick(broken, days=day)['body'])
+        self.assertEqual(len(self.sent), 3, 'every day the summary goes out')
+        self.assertEqual(self.logged, ['sent without the backups line: OSError'], 'said once, not every day')
+
+    def test_plugin_missing(self):
+        saved = dict(a.SERVER_PLUGINS); a.SERVER_PLUGINS.pop('memory', None)
+        try:
+            with self.assertRaises(LookupError): a.backups_line()
+            self.assertNotIn('\n', self.tick(a.backups_line)['body'])
+            self.assertEqual(self.logged, ['sent without the backups line: the Memory plugin is not loaded'])
+            a.SERVER_PLUGINS['memory'] = types.SimpleNamespace(view=lambda ctx: {})          # an older Memory without the line
+            with self.assertRaises(LookupError): a.backups_line()
+        finally: a.SERVER_PLUGINS.clear(); a.SERVER_PLUGINS.update(saved)
+
+    def test_the_real_memory_plugin_through_the_server(self):
+        spec = importlib.util.spec_from_file_location('leafy_memory_summary', os.path.join(R, 'plugins', 'memory', 'plugin.py'))
+        mem = importlib.util.module_from_spec(spec); spec.loader.exec_module(mem)
+        home = tempfile.mkdtemp(prefix='summary-memory-'); os.makedirs(os.path.join(home, 'Server-brain'))   # a brain folder, no snapshot
+        mem.MNEMOSYNE, mem.CONFIG = home, os.path.join(home, 'none.json')
+        jobs = [dict(job='mnemosyne-server-brain', state='ok', next='Sun 4:00 AM', last='')]
+        saved = (dict(a.SERVER_PLUGINS), dict(a.PLUGIN_DIR), a.plugin_jobs)
+        a.SERVER_PLUGINS['memory'], a.PLUGIN_DIR['memory'] = mem, os.path.join(R, 'plugins', 'memory')
+        a.plugin_jobs = lambda prefix='': [j for j in jobs if j['job'].startswith(prefix)]
+        try:
+            self.assertEqual(a.backups_line(), self.LINE)
+            self.assertEqual(self.tick(a.backups_line)['body'].split('\n')[-1], self.LINE)
+            jobs.clear()                                                   # no brain job: nothing to say (R14)
+            self.assertEqual(a.backups_line(), '')
+        finally:
+            a.SERVER_PLUGINS.clear(); a.SERVER_PLUGINS.update(saved[0]); a.PLUGIN_DIR.clear(); a.PLUGIN_DIR.update(saved[1])
+            a.plugin_jobs = saved[2]; shutil.rmtree(home, ignore_errors=True)
+
+
 # ---------- the routes on a real server ----------
 STATIC = os.path.join(TMP, 'static'); os.makedirs(STATIC, exist_ok=True)
 with open(os.path.join(STATIC, 'theme.json'), 'w') as f: json.dump({'title': 'Elaia', 'agents': [{'key': 'argus', 'name': 'Argus', 'domain': 'Watchman'}]}, f)
@@ -795,6 +865,72 @@ class RecheckFixes(unittest.TestCase):
         self.assertFalse(push.owns(row, {'person': 'learner-two', 'name': 'Learner Two', 'role': 'learner'}))
         self.assertFalse(push.owns({'person': 'owner'}, {'person': 'owner', 'name': 'L', 'role': 'learner'}))
         self.assertTrue(push.owns({'person': 'owner-one'}, {'person': 'owner-one', 'name': 'Owner One', 'role': 'owner'}))
+
+
+# ---------- 4.43: a new address replaces the old record (the dead twin of 2026-11-12) ----------
+@need
+class Replaces(RouteBase):
+    """The page and sw.js send the id this browser had before its address changed as `replaces`. The server retires that
+    record only when it is the same person's; a foreign or unknown id is ignored with the same answer. The first three
+    failed on ea1170a (two records were left)."""
+    def on(self, tail, login=OWNER, drop=(), **extra):
+        b = self.sub_body(tail); b.update(extra)
+        for k in drop: b.pop(k)
+        return self.req('POST', 'api/push/subscribe', b, login=login)
+
+    def test_the_same_person_with_a_new_address_keeps_one_record(self):
+        first = self.on('old-address')[2]['id']
+        code, raw, d = self.on('new-address', replaces=first)
+        self.assertEqual(code, 200, d); self.assertNoSecret(raw)
+        self.assertEqual([x['id'] for x in devices()], [d['id']], 'one record left, the new address')
+        self.assertEqual(devices()[0]['endpoint'], self.secrets[0])
+
+    def test_without_label_or_kinds_the_record_keeps_its_own(self):          # what sw.js sends
+        first = self.on('old-address')[2]['id']
+        self.req('POST', 'api/push/kinds', {'id': first, 'kinds': ['summary']})
+        code, raw, d = self.on('new-address', drop=('label', 'kinds'), replaces=first)
+        self.assertEqual(code, 200, d)
+        self.assertEqual([(x['id'], x['label'], x['kinds']) for x in devices()], [(d['id'], 'Android phone, Chrome', ['summary'])])
+
+    def test_a_record_from_before_the_people_file_counts_as_his(self):
+        first = self.on('before')[2]['id']                                       # no people file: the person "owner"
+        self.people()
+        code, raw, d = self.on('after', replaces=first)
+        self.assertEqual(code, 200, d)
+        self.assertEqual([(x['id'], x['person']) for x in devices()], [(d['id'], 'owner-one')])
+
+    def test_someone_elses_record_or_an_unknown_id_is_kept_and_the_answer_is_the_same(self):
+        self.people()
+        learner = add_device('learner-two', tail='learner')[0]               # written directly: a learner cannot turn alerts on
+        other = add_device('owner-two', tail='owner-two')[0]                 # another owner's phone
+        answers = []
+        for i, rep in enumerate((learner, other, '0123456789abcdef', 'NOT-AN-ID', ['x'], 'a' * 64)):
+            code, raw, d = self.on(f'mine-{i}', replaces=rep)
+            self.assertEqual(code, 200, (rep, d)); answers.append((sorted(d), d['msg']))
+        self.assertEqual(len(set(map(str, answers))), 1, 'the same answer whatever the id: it tells nothing about other records')
+        ids = [x['id'] for x in devices()]
+        self.assertIn(learner, ids, "an owner never retires a learner's record"); self.assertIn(other, ids, "or another owner's")
+        self.assertEqual(sum(1 for x in devices() if x['person'] == 'owner-one'), 6)
+
+    def test_a_learner_cannot_retire_the_owners_record(self):
+        self.people()
+        mine = self.on('owner-phone')[2]['id']
+        self.assertEqual(self.on('learner-phone', login=LEARNER, replaces=mine)[0], 403)
+        self.assertEqual([x['id'] for x in devices()], [mine])
+
+    def test_without_replaces_as_before(self):
+        self.on('old-address'); self.on('new-address')
+        self.assertEqual(len(devices()), 2, 'no replaces: the old record stays (as before 4.43)')
+        same = self.on('new-address')[2]['id']
+        self.assertEqual(self.on('new-address', replaces=same)[0], 200)
+        self.assertEqual(len(devices()), 2, 'its own id as replaces: nothing is removed')
+
+    def test_a_replace_works_when_the_list_is_full(self):
+        ids = [self.on(f'p{i}')[2]['id'] for i in range(push.MAX_DEVICES)]
+        self.assertEqual(self.on('one-too-many')[0], 409)
+        code, raw, d = self.on('p0-new-address', replaces=ids[0])
+        self.assertEqual(code, 200, d)
+        self.assertEqual(len(devices()), push.MAX_DEVICES); self.assertNotIn(ids[0], [x['id'] for x in devices()])
 
 if __name__ == '__main__':
     try: unittest.main(verbosity=1)
