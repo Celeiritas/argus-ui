@@ -381,6 +381,24 @@ class Status(Base):
         self.marker({'at': '2026-11-09T03:00:00'})                                 # PC fresh, server still none: still asks
         self.assertEqual(m.status(self.view())['action'], 'Check backups')
 
+    # 4.43 (R14 sev 1): an install without a brain job is never stuck on Check backups; the first failed on ea1170a
+    def test_no_snapshot_and_no_brain_job_is_not_needs_you(self):
+        self.write(m.CONFIG, {'folder': os.path.join(self.tmp, 'empty')}); self.jobs[1:] = []
+        st = m.status(self.view())
+        self.assertEqual((st['needs'], st['action']), (False, ''), 'nothing to press: Home stays calm')
+        self.assertTrue(st['line'].startswith('The server has no backup yet'), 'and its line still says it plainly')
+        self.marker({'at': '2026-10-01T03:00:00'})
+        st = m.status(self.view())
+        self.assertEqual((st['needs'], st['action']), (True, "Check the PC's backup"), 'an old PC backup still reaches Needs you')
+
+    def test_no_snapshot_and_a_paused_brain_job_still_needs_you(self):
+        # the job exists but is paused (frozen): it will not take the first snapshot by itself, and the card says to press
+        # Resume first, so Needs you is right here (R14: "For this owner (job exists, first snapshot missing) it is right")
+        self.write(m.CONFIG, {'folder': os.path.join(self.tmp, 'empty')}); self.jobs[1]['state'] = 'frozen'
+        st = m.status(self.view())
+        self.assertEqual((st['needs'], st['action']), (True, 'Check backups'))
+        self.assertIn('press Resume', next(x for x in self.view()['copies'] if x['key'] == 'server')['say'])
+
     def test_today_says_word_came_when_it_came(self):
         for text, want in (('not json {', "your PC's backup sent word this page cannot read"), ('{"at": "2026-11-20T03:00:00"}', "your PC's clock looks wrong")):
             with open(os.path.join(self.mn, 'last-backup.json'), 'w', encoding='utf-8') as f: f.write(text)
@@ -394,6 +412,52 @@ class Status(Base):
         self.assertEqual(m.status(self.view(datetime(2026, 11, 20)))['line'],
                          "Backing up the server now (last one: 12 days ago); your PC backed up 21 hours ago. The server has no copy outside your home yet.")
         self.assertTrue(m.status(self.view(datetime(2026, 11, 20)))['needs'])
+
+class SummaryLine(Base):
+    """4.43: the ONE line the 08:00 summary adds (server/summary.py), from worries(), the two rules it shares with Needs
+    you. Each case with a line failed on ea1170a (there was no summary_line)."""
+    def marker(self, obj): self.write(os.path.join(self.mn, 'last-backup.json'), obj)
+    def line(self, now=NOW): return m.summary_line(self.view(now))
+    def empty(self): self.write(m.CONFIG, {'folder': os.path.join(self.tmp, 'empty')})
+
+    def test_fine_says_nothing(self):
+        self.marker({'at': '2026-11-09T03:00:00'})
+        self.assertEqual(self.line(), '')
+        os.remove(os.path.join(self.mn, 'last-backup.json'))
+        self.assertEqual(self.line(), '', "no word from the PC yet is not a PC that is late")
+
+    def test_no_snapshot(self):
+        self.empty(); self.marker({'at': '2026-11-09T03:00:00'})
+        self.assertEqual(self.line(), 'Backups: the server has no snapshot yet.')
+        self.jobs[1]['state'] = 'frozen'
+        self.assertEqual(self.line(), 'Backups: the server has no snapshot yet.', 'a paused job: still said')
+        self.jobs[1:] = []
+        self.assertEqual(self.line(), '', 'no brain job: nothing to say (the same rule as Needs you)')
+
+    def test_a_failed_first_try_is_no_snapshot_a_running_one_is_not(self):
+        # review F2 (fix round 1): a brain job that fails every night with nothing on the shelf got NO line on 0b294e4,
+        # while a healthy job that had not run yet did. A running first snapshot stays quiet: it fixes itself.
+        self.empty(); self.marker({'at': '2026-11-09T03:00:00'})
+        self.jobs[1]['state'] = 'failed'
+        self.assertEqual(self.line(), 'Backups: the server has no snapshot yet.')
+        self.assertEqual(m.status(self.view())['action'], 'Look at the failed backup', 'Home keeps its own label')
+        self.jobs[1]['state'] = 'running'
+        self.assertEqual(self.line(), '')
+        os.remove(m.CONFIG); self.jobs[1]['state'] = 'failed'           # back to the fixture's three snapshots
+        self.assertEqual(self.line(), '', 'a failed run that left older snapshots: Needs you, but no summary line')
+        self.assertTrue(m.status(self.view())['needs'])
+
+    def test_pc_eight_days_is_fine_nine_is_not(self):
+        self.marker({'at': '2026-11-02T03:00:00'})                    # 8 days: the card and Home still call it fresh
+        self.assertEqual(self.line(), '')
+        self.assertFalse(m.status(self.view())['needs'])
+        self.marker({'at': '2026-11-01T03:00:00'})                    # 9 days: older than STALE_DAYS
+        self.assertEqual(self.line(), "Backups: your PC's last backup was 9 days ago.")
+        self.assertEqual(m.status(self.view())['action'], "Check the PC's backup", 'the same moment Home says it')
+
+    def test_both_in_one_line(self):
+        self.empty(); self.marker({'at': '2026-11-01T03:00:00'})
+        self.assertEqual(self.line(), "Backups: the server has no snapshot yet, and your PC's last backup was 9 days ago.")
 
 class Words(Base):
     """1.1.0: what the owner reads has no status words and never the word 'secrets', in every state the tests can make."""

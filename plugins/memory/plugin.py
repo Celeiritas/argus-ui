@@ -290,14 +290,35 @@ def today(v):
               }.get(off['kind'], "The server has no copy outside your home yet.")
     return f'{first} {second}'
 
+def worries(v):
+    """(no_snap, pc_old), the two rules status() and summary_line() share. no_snap: the server has no snapshot AND its
+    mnemosyne-*-brain job exists (a paused one too: that will not fix itself; a failed first try too: it failed, so
+    there is still nothing on the shelf). A running first snapshot is not counted: it fixes itself. Without a brain
+    job there is nothing for the owner to press, so an install without one is never stuck on Check backups (R14).
+    pc_old: the PC's backup is older than STALE_DAYS."""
+    no_snap = bool(v['job']) and any(x['key'] == 'server' and (x['kind'] == 'none' or x['kind'] == 'failed' and v['last'] is None)
+                                     for x in v['copies'])
+    pc_old = any(x['key'] == 'pc' and x['kind'] == 'stale' for x in v['copies'])
+    return no_snap, pc_old
+
 def status(v):
     """Home's line (today()), and Needs you when the newest snapshot is older than STALE_DAYS or the last run failed."""
     j = v['job']
     failed = bool(j and j['state'] == 'failed')
-    pc_old = any(x['key'] == 'pc' and x['kind'] == 'stale' for x in v['copies'])      # the PC's backup is older than a week
-    no_snap = any(x['key'] == 'server' and x['kind'] == 'none' for x in v['copies'])  # nothing on the shelf: bigger than an old PC backup
+    no_snap, pc_old = worries(v)                      # nothing on the shelf is bigger than an old PC backup
     return {'line': today(v), 'needs': failed or v['stale'] or no_snap or pc_old,
             'action': 'Look at the failed backup' if failed else 'Check backups' if v['stale'] or no_snap else "Check the PC's backup" if pc_old else ''}
+
+def summary_line(v):
+    """The ONE line the daily summary (server/summary.py) adds when backups need a look: worries(), the two rules it
+    shares with status(); '' otherwise. Not every Needs you gets a line: a stale snapshot, or a failed run that still
+    left older snapshots, sends Home to Needs you but adds nothing here. Elaia calls it with view() once a day."""
+    no_snap, pc_old = worries(v)
+    pc = next((x for x in v['copies'] if x['key'] == 'pc'), {})
+    if no_snap and pc_old: return f"Backups: the server has no snapshot yet, and your PC's last backup was {pc['age']}."
+    if no_snap: return 'Backups: the server has no snapshot yet.'
+    if pc_old: return f"Backups: your PC's last backup was {pc['age']}."
+    return ''
 
 def get(path, query, ctx):
     if path == 'state': return 200, view(ctx)

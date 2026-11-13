@@ -69,8 +69,9 @@ def names(subjects, title):
     return f'{n[0]}, {n[1]} and {len(n) - 2} more'
 
 
-def compose(events, rows, now):
-    """The summary event's {title, body, url} for the last 24 hours (events newest first, as read_events gives them)."""
+def compose(events, rows, now, backups=''):
+    """The summary event's {title, body, url} for the last 24 hours (events newest first, as read_events gives them).
+    `backups`: the Memory plugin's one line when backups need a look (summary_line there), added as the body's last line."""
     since = now - timedelta(hours=24)
     rows = [r for r in rows or [] if isinstance(r, dict) and r.get('id')]
     title_of = {r['id']: str(r.get('title') or r['id']) for r in rows}
@@ -110,11 +111,28 @@ def compose(events, rows, now):
         said.append(f'Argus checked {len(rows)} {plural(len(rows), "thing", "things")} all day, and nothing stopped working.' if rows
                     else 'Nothing stopped working in the last 24 hours.')
     if not waiting: said.append('Nothing waits for you.')
-    return {'title': head, 'body': ' '.join(said[:3]), 'url': 'argus' if waiting or broken or stopped else ''}
+    body = ' '.join(said[:3])
+    if backups: body += '\n' + backups
+    return {'title': head, 'body': body, 'url': 'argus' if waiting or broken or stopped else ''}
 
 
-def tick(rows=lambda: [], now=None):
-    """Send today's summary if it is due. -> the event sent, or None."""
+_backups_told = False                                  # a backups line that could not be made is logged once, not every day
+
+
+def backups_line(backups):
+    """The one backups line, or '' when backups are fine, there is no reader, or the reader failed (logged once)."""
+    global _backups_told
+    if backups is None: return ''
+    try: return str(backups() or '').strip()[:200]
+    except Exception as e:
+        if not _backups_told:
+            _backups_told = True; log(f'sent without the backups line: {e if isinstance(e, LookupError) else type(e).__name__}')
+        return ''
+
+
+def tick(rows=lambda: [], now=None, backups=None):
+    """Send today's summary if it is due. -> the event sent, or None. `backups`: a callable that answers the Memory
+    plugin's one line (argus_ui.backups_line); it is asked once, only when the summary goes out."""
     if os.environ.get('ARGUS_SUMMARY') == '0': return None
     now = now or datetime.now().astimezone()
     day = due(now, last_date(), at())
@@ -123,17 +141,17 @@ def tick(rows=lambda: [], now=None):
     try: rs = rows()
     except Exception as e:
         log(f'the watch rows could not be read ({type(e).__name__})'); rs = []
-    s = compose(notify.read_events(500), rs, now)
+    s = compose(notify.read_events(500), rs, now, backups_line(backups))
     return notify.notify(notify.make('summary', 'daily-summary', s['title'], s['body'], s['url'], 'info'))
 
 
-def start(rows):
+def start(rows, backups=None):
     """Its own small thread (one line in the server's start). ARGUS_SUMMARY=0: nothing starts."""
     if os.environ.get('ARGUS_SUMMARY') == '0': return None
     at()                                               # a bad setting is logged once, at start
     def loop():
         while not STOP.is_set():
-            try: tick(rows)
+            try: tick(rows, backups=backups)
             except Exception as e: log(f'failed ({type(e).__name__}: {e})')
             STOP.wait(EVERY)
     t = threading.Thread(target=loop, name='argus-summary', daemon=True); t.start()

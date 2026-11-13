@@ -339,11 +339,13 @@ def post(endpoint, body, headers):
 
 
 def say_failure(why):
-    return {'timeout': 'The phone maker\'s message service did not answer in time. Elaia tried twice.',
-            'busy': 'The phone maker\'s message service asked Elaia to wait. Elaia tried twice.',
-            'down': 'The phone maker\'s message service had a problem. Elaia tried twice.',
-            'moved': 'The phone maker\'s message service answered with a different address, which Elaia never follows.',
-            'refused': 'The phone maker\'s message service refused the message. Turning alerts off and on again on that device usually helps.',
+    # The message service belongs to the device's browser (Google's for Chrome, Mozilla's for Firefox, ...), never to the
+    # maker of the phone, and the same words show on a computer's row. Records keep the words they were saved with.
+    return {'timeout': 'The browser\'s message service did not answer in time. Elaia tried twice.',
+            'busy': 'The browser\'s message service asked Elaia to wait. Elaia tried twice.',
+            'down': 'The browser\'s message service had a problem. Elaia tried twice.',
+            'moved': 'The browser\'s message service answered with a different address, which Elaia never follows.',
+            'refused': 'The browser\'s message service refused the message. Turning alerts off and on again on that device usually helps.',
             'unknown': 'This device asked for a message service Elaia does not know, so nothing was sent.',
             'nokey': 'The message could not be locked for this device. Turning alerts off and on again on it usually helps.',
             'sign': 'Elaia could not sign the message. Check the alert settings on the server (docs/phone-alerts.md, "Files and settings").'}[why]
@@ -542,6 +544,9 @@ def _clean_kinds(v):
     return [k for k in KINDS if isinstance(v, list) and k in v]
 
 
+NOT_LISTED = 'That device is not on your list any more. Reload this page.'   # the one answer for an id that is not his
+
+
 def route(name, body, who, trusted):
     """POST api/push/<name> -> (status, answer). Never answers an endpoint or a key."""
     if name not in ('subscribe', 'kinds', 'forget', 'test'): return 404, {'ok': False, 'msg': 'not found'}
@@ -549,13 +554,13 @@ def route(name, body, who, trusted):
     if not ok: return 503, {'ok': False, 'msg': why}
     person = who.get('person')
     # the body is checked first (that tells nothing), then whether the request is trusted: subscribe and test need it
-    if name == 'subscribe': return subscribe(person, body, trusted)
+    if name == 'subscribe': return subscribe(person, body, trusted, who)
     did = str(body.get('id') or '')
     with _dev_lock:
         try: devs = load_devices()
         except (OSError, ValueError): return 503, {'ok': False, 'msg': 'The server\'s list of devices cannot be read.'}
         dev = next((d for d in devs if d['id'] == did and owns(d, who)), None)
-        if not dev: return 404, {'ok': False, 'msg': 'That device is not on your list any more. Reload this page.'}
+        if not dev: return 404, {'ok': False, 'msg': NOT_LISTED}
         if name == 'kinds':
             if not isinstance(body.get('kinds'), list): return 400, {'ok': False, 'msg': 'Say which alerts this device should get.'}
             dev['kinds'] = _clean_kinds(body.get('kinds')); save_devices(devs)
@@ -574,7 +579,14 @@ def route(name, body, who, trusted):
     return 200, {'ok': True, 'msg': 'Sent. It should arrive within a few seconds, also when Elaia is closed.'}
 
 
-def subscribe(person, body, trusted):
+def subscribe(person, body, trusted, who=None):
+    """Add or update this browser's device. `replaces` (optional) is the id this browser had before its address changed
+    (the page and sw.js keep it): that record is retired only when it is this person's own (owns()); an unknown or foreign
+    id is ignored, and the answer is the same either way, so it never tells whether an id exists. Without `label` or
+    `kinds` (sw.js sends neither) the record keeps the ones it had. `only_if_known: true` (sw.js sends it) changes a
+    record only when this address or `replaces` is already this person's; otherwise nothing is added or removed and the
+    answer is the 404 an unknown id gets everywhere, the same for an unknown and a foreign id. So a device removed on
+    another device, or by the sender after its message service said the address is gone, never signs itself back up."""
     sub = body.get('subscription')
     if not isinstance(sub, dict): return 400, {'ok': False, 'msg': 'This browser did not say where to send alerts. Try again.'}
     endpoint, keys = sub.get('endpoint'), sub.get('keys') if isinstance(sub.get('keys'), dict) else {}
@@ -588,14 +600,23 @@ def subscribe(person, body, trusted):
     except Exception:
         return 400, {'ok': False, 'msg': 'This browser sent a lock Elaia cannot use, so alerts stay off here. Try again.'}
     if not trusted: return 403, {'ok': False, 'msg': UNTRUSTED, 'error': UNTRUSTED}
-    label = re.sub(r'[\x00-\x1f\x7f<>]', '', str(body.get('label') or '')).strip()[:40] or 'This device'
-    kinds = _clean_kinds(body.get('kinds')) if 'kinds' in body else list(KINDS)
+    label = re.sub(r'[\x00-\x1f\x7f<>]', '', str(body.get('label') or '')).strip()[:40]
     did = device_id(endpoint)
+    rep = body.get('replaces')
+    rep = rep if isinstance(rep, str) and re.fullmatch(r'[0-9a-f]{16}', rep) and rep != did else ''
+    mine = (lambda d: owns(d, who)) if who is not None else (lambda d: d.get('person') == person)
     with _dev_lock:
         try: devs = load_devices()
         except (OSError, ValueError): return 503, {'ok': False, 'msg': 'The server\'s list of devices cannot be read.'}
         old = next((d for d in devs if d['id'] == did), None)
         if old and old.get('person') != person: devs.remove(old); old = None     # the same browser, now someone else's
+        gone = next((d for d in devs if rep and d['id'] == rep and mine(d)), None)
+        if body.get('only_if_known') is True and not old and not gone:   # nothing saved: the list stays as it was
+            return 404, {'ok': False, 'msg': NOT_LISTED}
+        if gone: devs.remove(gone)                       # this browser's record from before its address changed
+        was = old or gone or {}
+        label = label or str(was.get('label') or '') or 'This device'
+        kinds = _clean_kinds(body.get('kinds')) if 'kinds' in body else _clean_kinds(was['kinds']) if 'kinds' in was else list(KINDS)
         if not old and sum(1 for d in devs if d.get('person') == person) >= MAX_DEVICES:
             return 409, {'ok': False, 'msg': f'Elaia already sends alerts to {MAX_DEVICES} of your devices. Remove one below, then try again.'}
         dev = old or {'id': did, 'person': person, 'made': now_iso(), 'last_ok': '', 'last_error': ''}

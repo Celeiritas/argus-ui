@@ -50,7 +50,29 @@ These are the steps as you will read them; nothing here needs a terminal.
 5. Choose with the three switches what this phone gets. Each switch changes at once.
 
 On the same page: **Turn off on this phone**, and **Your other devices** with **Remove** for each. At most 8 devices per
-person. On a computer the page is not in the strip of sections at the top (it would crowd it); open Elaia's address with
+person. Each device in the list says when it was set up and when Elaia last handed it a message, in words that claim no
+more than the server knows: *Set up November 11. Last message delivered to its message service: yesterday, 8:00 AM.*, or
+*… No message delivered to its message service yet.* When the last try failed, the row has one more line right under
+the name, in the warning colour: *Last try failed:* and what went wrong (*The browser's message service did not answer
+in time. Elaia tried twice.*); the line below it still gives the last success. It never says a message reached the
+phone: the message service (the browser's: Google's for Chrome, Mozilla's for Firefox) can keep accepting messages for
+an address no phone listens to any more. A reason saved before 4.43.0 keeps its old words (*The phone maker's …*) until
+that device's next failed try.
+
+Dates read one way on the whole page, this device's card included: *today*, *yesterday* or the date, with the time where
+one is shown (*On since today, 9:00 AM.*). Two devices with one name set up on the same day (this device counts) would
+read the same, so their rows give the set-up time too (*Set up November 11, 8:00 AM.*); every other row gives the date
+alone. The newest set-up comes first, so the order is the same on every device.
+
+A device with **this** device's name whose last delivery is more than a minute older than this device's gets one more
+line next to its **Remove**: *If this is an old copy of this phone, Remove it.* (*computer* on a computer). It is only a
+hint, and the page words it as one: the name is only the kind of device and the browser (*Android phone, Chrome*,
+*Windows computer, Chrome*), so two real devices of the same kind share it. Both need a delivery: a device that has taken
+no message yet is never called a copy, and two live devices that took the same message are seconds apart. A test buzz
+goes to one device only, so right after one, a same-named device whose last message was the morning summary can get the
+hint until the next summary; its set-up date helps tell which is which.
+
+On a computer the page is not in the strip of sections at the top (it would crowd it); open Elaia's address with
 `phone` at the end (`<base>/phone`).
 
 If the page says *Notifications are blocked for this page*, the phone said no earlier; the page lists the three taps that
@@ -58,10 +80,44 @@ allow them again. If it says *This browser cannot do it yet*, add Elaia to the h
 If it says *Alerts can be turned on and tested only when Elaia is opened through its secure address*, the page was
 opened another way (for example by the server's plain address): open it through the secure one.
 
+## When the phone gets a new address
+
+The phone's browser can give Elaia a new address for its messages: after notifications were switched off and on, site data
+was cleared, or the browser decided so itself. Before 4.43 the server then kept the old record, which went on taking
+messages for an address that leads nowhere, and Turn on made a second one. Since 4.43.0:
+
+- **The page keeps this browser's id.** The id is the same checksum of the address the server uses. The page keeps it,
+  together with the server's public key, in the browser's own storage: IndexedDB database `elaia`, store `push`, key
+  `device`, the one place both the page and the service worker can reach. Turn on writes it, opening the page while
+  alerts are on refreshes it, Turn off clears it. The address itself is not kept there.
+- **Turn on names the record it replaces.** When the kept id is not the current address's, the page sends it as
+  `replaces`. The server retires that record only when it is the same person's (or from before the people file, as
+  above). An unknown id or another person's is ignored, and the answer is the same either way, so it tells nobody whether
+  such an id exists. The new record keeps the old one's switches (what it buzzes for).
+- **The service worker does the same while Elaia is closed.** It listens for `pushsubscriptionchange`. It signs up again
+  with the same server key (the one it kept, or the server's) and tells the server, naming the old record. That name
+  comes from the event's old address, or from the kept id when the event brings none. The record keeps its name and
+  switches. If the server cannot be reached, the kept id stays, so the next Turn on still names it.
+- **A removed device stays removed.** The worker asks with `only_if_known`: the server takes the new address only when
+  it finds the record it replaces (or the same address) for the same person. If that record is gone (**Remove** was
+  tapped on another device, or the server dropped an address its message service called dead), nothing is added and the
+  kept id stays as it was. **Turn on** on that device signs it up again, when you want it. The answer for an id that
+  is unknown and for another person's is the same.
+- **Without storage** (a private window, storage blocked) everything works as before 4.43, only nothing is replaced. An
+  old record then shows under **Your other devices** with the hint above.
+
+If a phone stops getting alerts: open **Phone alerts** on it. If it says alerts are off, tap **Turn on alerts on this
+phone**: the new record replaces the old one. If an old copy is still listed, **Remove** it.
+
+Not every browser fires `pushsubscriptionchange`; Chrome on Android may never fire it. On such a phone the page's next
+Turn on does the work. The tests prove the worker's code in Chromium and in a stand-in; only a real phone can show whether
+the event comes, that the message service delivers to the new address, and that the installed app and its worker share the
+kept id.
+
 ## What leaves the server, and to whom
 
-Only one thing, and only when something buzzes: **an encrypted message to the phone maker's push service** (for Chrome on
-Android, Google's; the address is the one the phone's browser gave when you tapped Allow). The message is locked for that
+Only one thing, and only when something buzzes: **an encrypted message to the browser's push service** (for Chrome,
+Google's; for Firefox, Mozilla's; the address is the one the phone's browser gave when you tapped Allow). The message is locked for that
 one phone (RFC 8291): the push service carries it but **cannot read it**. It holds the event's title, a short body (at most
 2,000 bytes in all), the place on the page it opens, its time and kind. The request is signed with the server's own key
 (RFC 8292), so the push service knows it comes from the same server each time; the signature carries a contact address,
@@ -94,6 +150,14 @@ now:
 | a restart you did from the page | Yesterday: 1 thing stopped working, you fixed it | You restarted Media player from the page, and it works now. Nothing waits for you. |
 | something waits | 1 thing is waiting for your yes | Media player needs a restart, and Argus waits for your yes. |
 
+**One backups line, only when backups need a look** (4.43.0). The body then ends with one more line from the Memory page
+(plugin 1.2.0, `docs/memory.md`), by two of the rules behind its **Needs you**: *Backups: the server has no snapshot
+yet.* (only when its weekly brain job exists; also when that job's first try failed), *Backups: your PC's last backup
+was 9 days ago.* (more than 8 days), or both in one sentence. Other reasons for Needs you (an old snapshot, a failed
+run that left older ones) add no line. It is the same summary message: no extra buzz and no new kind. When backups are fine there is no line. Without
+the Memory plugin, or when it fails, the summary goes out without the line and the server's log says so once (until
+Elaia restarts).
+
 The date of the last summary is saved before the message is made, so a restart never sends a second one. If the server
 was off at the set time, the summary goes out when it is back only within 4 hours after that time; later, that day has
 none. `ARGUS_SUMMARY=0` turns it off.
@@ -105,6 +169,7 @@ none. `ARGUS_SUMMARY=0` turns it off.
 | The server's key pair | `~/.config/argus-ui/push-key.pem` (`ARGUS_PUSH_KEY`) | made on first need; mode 600; never logged, never in an answer |
 | The devices | `~/.local/state/argus-ui/push-devices.json` (`ARGUS_PUSH_DEVICES`) | mode 600; `{id, person, label, endpoint, keys, kinds, made, last_ok, last_error}` |
 | The last summary's date | `~/.local/state/argus-ui/summary.json` (`ARGUS_SUMMARY_STATE`) | |
+| This browser's id and the server's public key | on the phone: IndexedDB `elaia`, store `push`, key `device` | `{id, key}`; never the address |
 | The contact in the signature | `ARGUS_PUSH_CONTACT` | `mailto:` or `https:`; default `mailto:elaia@example.invalid` <!-- private-ok --> |
 | Summary time / off | `ARGUS_SUMMARY_AT` (`08:00`), `ARGUS_SUMMARY=0` | |
 
@@ -117,7 +182,9 @@ the system's `python3-cryptography` package). Check with `python3 -c "import cry
 with the reason, and everything else works as before.
 
 Routes (all the owner's, `docs/people.md`): `GET api/push/status` (available or why not; your devices without their
-addresses; the public key the browser needs), `POST api/push/subscribe`, `api/push/kinds`, `api/push/forget`,
+addresses; the public key the browser needs), `POST api/push/subscribe` (optional `replaces`: the id of the same person's
+record this address takes over; optional `only_if_known: true`, sent by the service worker: add nothing unless that record
+or this address is already the person's, answer 404 otherwise), `api/push/kinds`, `api/push/forget`,
 `api/push/test` (one test message to one device, at most one per 10 seconds). Turning on and testing also need a trusted
 request: one that came through the secure front door with a sign-in, and not from the server itself.
 
@@ -144,14 +211,25 @@ help:
 `server/push.py` (encryption RFC 8291 `aes128gcm`, VAPID RFC 8292 ES256, the host rule, the devices file, the sender
 thread, the sink registered with `notify.register()`, the routes' logic), `server/summary.py`, `web/sw.js` (`push`: always
 shows a notification, `tag` = what it is about, the existing `static/argus-192.png` as its icon, no badge;
-`notificationclick`: focuses an open Elaia window and sends it to the place, or opens one), `web/js/alerts.js` and
+`notificationclick`: focuses an open Elaia window and sends it to the place, or opens one; `pushsubscriptionchange`: signs
+up again and names the record it replaces; `activate`: keeps the current id when none is kept), `web/js/alerts.js` and
 `web/css/alerts.css` (the page and Today's line).
 
 Tests: `tests/push_test.py` (RFC 8291 Appendix A to the byte, a round trip decrypted as a browser does, the VAPID token
 verified, the host rule, a fake push service on `127.0.0.1`: 201, 410, 500 then 201, 429 twice, a timeout, a redirect not
 followed; the sink's rules; the summary's words, once a day across a restart, the 4-hour rule; the routes for owner,
-learner and untrusted requests, no address or key in any answer, mode 600 on Linux). `tests/phone-alerts.test.js` (the
+learner and untrusted requests, no address or key in any answer, mode 600 on Linux; `replaces`: the same person's new
+address keeps one record, another person's or an unknown id keeps both with the same answer, a learner cannot retire the
+owner's, no `replaces` works as before; `only_if_known`: the worker keeps the name and switches, and adds nothing after
+Remove, after the server dropped a dead address, or for an unknown or another person's id (one answer for all three);
+the summary's backups line: fine, no snapshot, the PC 8 and 9 days old, the
+plugin missing or failing, logged once, no extra buzz). `tests/phone-alerts.test.js` (the
 page's states, one call per switch, 44 px, 360 px, computed contrast, a learner has no way in, the test buzz decrypted as
 a phone would; the service worker in Chromium: a push message delivered with Chromium's own hook shows a notification and
-a tap opens the right place). `ARGUS_PUSH_TEST_ORIGIN` lets the tests use their fake push service; it is honoured only
+a tap opens the right place; a new address: Turn on sends `replaces` and leaves one record, Turn off clears the kept id,
+IndexedDB blocked or never answering changes nothing; `pushsubscriptionchange` dispatched in the real worker replaces the
+record and does not sign a removed device back up, and every case of it in a stand-in browser; **Your other devices** at
+412 x 915, 360 x 800 and 1920 x 1080, with the names the page really makes: the set-up date and the last success, an
+error row with both, the hedged old-copy hint, no hint right after Turn on or for two live devices with one name (seen
+from both), each Remove's word inside its button, Remove next to the hint). `ARGUS_PUSH_TEST_ORIGIN` lets the tests use their fake push service; it is honoured only
 together with `ARGUS_DEV=1` and only for an `http` address on the same machine. `bash tests/run.sh phone-alerts`.

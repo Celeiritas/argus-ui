@@ -32,9 +32,13 @@ function decrypt(body, k) {
   return JSON.parse(pt.subarray(0, pt.lastIndexOf(2)).toString());
 }
 // ---- the browser's side, made in each page before Elaia's scripts run ----
-function standIn({mode, sub, noStorage}) {
+// noIdb: 'throw' = IndexedDB blocked, 'hang' = it never answers. sessionStorage "t-next" = the address the next subscribe() gives
+// (a browser that dropped its address and makes a new one).
+function standIn({mode, sub, noStorage, noIdb}) {
   window.__t = {asked: 0, subscribed: 0, unsub: 0};
   if (noStorage) for (const k of ['localStorage', 'sessionStorage']) Object.defineProperty(window, k, {configurable: true, get() { throw new DOMException('blocked', 'SecurityError'); }});
+  if (noIdb === 'throw') Object.defineProperty(window, 'indexedDB', {configurable: true, get() { throw new DOMException('blocked', 'SecurityError'); }});
+  if (noIdb === 'hang') Object.defineProperty(window, 'indexedDB', {configurable: true, value: {open: () => ({})}});
   if (mode === 'cannot') { delete window.PushManager; return; }
   const mem = {};
   const ss = {get: k => { try { return sessionStorage.getItem(k); } catch (e) { return mem[k] ?? null; } }, set: (k, v) => { try { sessionStorage.setItem(k, v); } catch (e) { mem[k] = v; } },
@@ -45,20 +49,26 @@ function standIn({mode, sub, noStorage}) {
   const made = () => { const s = JSON.parse(ss.get('t-sub') || 'null');
     return s && {endpoint: s.endpoint, toJSON: () => s, unsubscribe: async () => { __t.unsub++; ss.del('t-sub'); return true; }}; };
   PushManager.prototype.getSubscription = async function () { return made(); };
-  PushManager.prototype.subscribe = async function (o) { __t.subscribed++; __t.keyLength = new Uint8Array(o.applicationServerKey).length; ss.set('t-sub', JSON.stringify(sub)); return made(); };
+  PushManager.prototype.subscribe = async function (o) { __t.subscribed++; __t.keyLength = new Uint8Array(o.applicationServerKey).length; ss.set('t-sub', ss.get('t-next') || JSON.stringify(sub)); return made(); };
 }
-async function phone(b, {mode = 'ok', width = 412, height = 900, login = OWNER, ua = PHONE_UA, noStorage = false, sub} = {}) {
+async function phone(b, {mode = 'ok', width = 412, height = 900, login = OWNER, ua = PHONE_UA, noStorage = false, noIdb = '', sub} = {}) {
   const ctx = await b.newContext({viewport: {width, height}, userAgent: ua, extraHTTPHeaders: {'Tailscale-User-Login': login, 'X-Forwarded-For': '192.0.2.20'}});
-  await ctx.addInitScript(standIn, {mode, sub: sub || phoneKeys('phone-1').sub, noStorage});
+  await ctx.addInitScript(standIn, {mode, sub: sub || phoneKeys('phone-1').sub, noStorage, noIdb});
   return ctx;
 }
 async function open(ctx, where = 'phone', wait = 1500) {
   const p = await ctx.newPage(); p.errors = []; p.on('pageerror', e => p.errors.push(String(e)));
-  p.posts = []; p.on('request', r => { if (r.method() === 'POST') p.posts.push(new URL(r.url()).pathname.replace(/.*\/api\//, 'api/')); });
+  p.posts = []; p.sent = [];
+  p.on('request', r => { if (r.method() !== 'POST') return; const at = new URL(r.url()).pathname.replace(/.*\/api\//, 'api/'); p.posts.push(at);
+    let body = null; try { body = JSON.parse(r.postData() || 'null'); } catch (e) {} p.sent.push({path: at, body}); });
   await p.goto(BASE + where); await p.waitForTimeout(wait); return p;
 }
 const heading = p => p.locator('#main .pstate').textContent();
 const status = async p => (await p.request.get(BASE + 'api/push/status')).json();
+const idOf = e => crypto.createHash('sha256').update('argus-push:' + e).digest('hex').slice(0, 16);   // the server's device id
+// what this browser keeps for a new address (IndexedDB "elaia", store "push", key "device"; alerts.js and sw.js deviceStore)
+const kept = q => q.evaluate(() => new Promise(z => { const o = indexedDB.open('elaia', 1); o.onupgradeneeded = () => o.result.createObjectStore('push');
+  o.onerror = () => z({error: String(o.error)}); o.onsuccess = () => { const g = o.result.transaction('push').objectStore('push').get('device'); g.onsuccess = () => { o.result.close(); z(g.result || {}); }; }; }));
 async function targets(p) {        // every control on the page at least 44 x 44 px
   return p.locator('#main .phone button, #main .phone a, #phoneHint a, #phoneHint button').evaluateAll(es => es.filter(e => e.offsetParent)
     .map(e => [e.textContent.trim().slice(0, 30), e.getBoundingClientRect()]).filter(([, r]) => r.width < 44 || r.height < 44).map(([t, r]) => `${t} ${r.width | 0}x${r.height | 0}`));
@@ -118,6 +128,39 @@ async function serviceWorker() {
       await p.waitForURL(u => new URL(u).pathname === new URL(BASE + 'argus').pathname, {timeout: 5000}).catch(() => {});
       check(new URL(p.url()).pathname === new URL(BASE + 'argus').pathname, `a tap: the open Elaia window goes to the alert's place (${new URL(p.url()).pathname})`);
       check((await worker.evaluate(async () => (await self.registration.getNotifications()).length)) === 0, 'a tap: the notification closes');
+
+      // A new address while Elaia is closed: the real worker's own listener, the real IndexedDB it shares with the page, the
+      // real server. The event is dispatched by hand (Chromium has no way to make the browser fire it), and it brings the new
+      // address itself, because a real subscribe() would contact the browser maker's push service.
+      const kOld = phoneKeys('sw-old'), kNew = phoneKeys('sw-new');
+      const r0 = await ctx.request.post(BASE + 'api/push/subscribe', {data: {subscription: kOld.sub, label: 'Android phone, Chrome', kinds: ['broke']}});
+      const key = (await (await ctx.request.get(BASE + 'api/push/status')).json()).key;
+      check(await worker.evaluate(() => typeof deviceStore === 'function' && typeof resubscribe === 'function'), 'the worker has its new-address handler');
+      await worker.evaluate(r => deviceStore('put', r), {id: idOf(kOld.sub.endpoint), key});
+      check((await kept(p)).id === idOf(kOld.sub.endpoint), 'what the worker keeps, the page reads (one store for both)');
+      const after = await worker.evaluate(async ([s, login]) => {
+        // Tailscale Serve adds the login to every request on the phone; here the worker's own fetch adds it, as the test page's do
+        const f = self.fetch.bind(self); self.fetch = (u, o = {}) => f(u, {...o, headers: {...(o.headers || {}), 'Tailscale-User-Login': login, 'X-Forwarded-For': '192.0.2.20'}});
+        let w; const e = new Event('pushsubscriptionchange'); e.waitUntil = x => { w = x; }; e.newSubscription = {endpoint: s.endpoint, toJSON: () => s};
+        self.dispatchEvent(e); await w; self.fetch = f; return deviceStore('get');
+      }, [kNew.sub, OWNER]);
+      const s = await (await ctx.request.get(BASE + 'api/push/status')).json(), nd = s.devices.find(d => d.id === idOf(kNew.sub.endpoint));
+      check(r0.status() === 200 && !s.devices.some(d => d.id === idOf(kOld.sub.endpoint)) && !!nd && nd.label === 'Android phone, Chrome' && JSON.stringify(nd.kinds) === '["broke"]',
+        `pushsubscriptionchange in the real worker: the old record is replaced by the new address, keeping its name and switches (${JSON.stringify(s.devices.map(d => [d.id, d.label, d.kinds]))})`);
+      check(after.id === idOf(kNew.sub.endpoint) && after.key === key, `and the worker keeps the new id with the same server key (${JSON.stringify(after)})`);
+      // Removed (on another device, or by the sender after a dead address): the next new address must not sign it back up
+      // (review F3, fix round 1; on 0b294e4 it came back as "This device" with every kind on)
+      await ctx.request.post(BASE + 'api/push/forget', {data: {id: idOf(kNew.sub.endpoint)}});
+      const kThird = phoneKeys('sw-third');
+      const after2 = await worker.evaluate(async ([s, login]) => {
+        const f = self.fetch.bind(self); self.fetch = (u, o = {}) => f(u, {...o, headers: {...(o.headers || {}), 'Tailscale-User-Login': login, 'X-Forwarded-For': '192.0.2.20'}});
+        let w; const e = new Event('pushsubscriptionchange'); e.waitUntil = x => { w = x; }; e.newSubscription = {endpoint: s.endpoint, toJSON: () => s};
+        self.dispatchEvent(e); await w; self.fetch = f; return deviceStore('get');
+      }, [kThird.sub, OWNER]);
+      const s2 = await (await ctx.request.get(BASE + 'api/push/status')).json();
+      check(!s2.devices.some(d => d.id === idOf(kThird.sub.endpoint) || d.id === idOf(kNew.sub.endpoint)),
+        `a removed device: its worker does not sign it back up at a new address (${JSON.stringify(s2.devices.map(d => [d.id, d.label]))})`);
+      check(after2.id === idOf(kNew.sub.endpoint), `and the kept id stays as it was (${JSON.stringify(after2)})`);
     }
     check(p.errors.length === 0, 'service worker: no page errors ' + p.errors.join(' | '));
   } finally { await b2.close(); }
@@ -323,6 +366,158 @@ run(async b => {
       await shot(q, 'p2-1440-computer');
       await dc.close();
     }
+
+    // ---- a new address retires its own old record (2026-11-12: one phone had two records, the old one receiving nothing) ----
+    const forgetAll = async q => { for (const d of (await status(q)).devices) await q.request.post(BASE + 'api/push/forget', {data: {id: d.id}}); };
+    {
+      const ka = phoneKeys('same-phone-old'), kb = phoneKeys('same-phone-new'), rc = await phone(b, {sub: ka.sub}), q = await open(rc);
+      await forgetAll(q); await q.reload(); await q.waitForTimeout(1200);
+      await q.locator('[data-do=on]').click(); await q.locator('#main .pstate.on').waitFor({timeout: 8000});
+      const key = (await status(q)).key;
+      check(JSON.stringify(await kept(q)) === JSON.stringify({id: idOf(ka.sub.endpoint), key}), `Turn on: this browser keeps its id and the server's key where the service worker can read them too (${JSON.stringify(await kept(q))})`);
+      await q.locator('.pswitch', {hasText: 'Daily summary'}).click(); await q.waitForTimeout(800);
+      // the browser drops the address (as when notifications are switched off and on): the page has none, the server still has the old record
+      await q.evaluate(s => { sessionStorage.removeItem('t-sub'); sessionStorage.setItem('t-next', JSON.stringify(s)); }, kb.sub);
+      await q.reload(); await q.waitForTimeout(1500);
+      check(await heading(q) === 'Alerts are off on this phone' && (await status(q)).devices.length === 1, `the address is gone: the page says off, the server still has the old record (${await heading(q)})`);
+      const n0 = q.sent.length;
+      await q.locator('[data-do=on]').click(); await q.locator('#main .pstate.on').waitFor({timeout: 8000});
+      const sent = q.sent.slice(n0).find(x => x.path === 'api/push/subscribe');
+      check(!!sent && sent.body.replaces === idOf(ka.sub.endpoint) && !('kinds' in sent.body), `Turn on again: the page names the record it replaces (${sent && JSON.stringify({replaces: sent.body.replaces, kinds: sent.body.kinds})})`);
+      const s2 = await status(q);
+      check(s2.devices.length === 1 && s2.devices[0].id === idOf(kb.sub.endpoint), `one record for this phone, at its new address (${s2.devices.map(d => d.id).join()})`);
+      check(JSON.stringify((s2.devices[0] || {}).kinds) === '["broke","needs-yes"]', `and it keeps what he chose to buzz (${JSON.stringify((s2.devices[0] || {}).kinds)})`);
+      check((await kept(q)).id === idOf(kb.sub.endpoint), 'the kept id is now the new one');
+      check(await q.locator('.pdevices li').count() === 0 && /No other device/.test(await q.locator('#main').textContent()), 'no old copy left under "Your other devices"');
+      await q.locator('[data-do=off]').click(); await q.locator('#main .pstate.off').waitFor({timeout: 5000});
+      check(JSON.stringify(await kept(q)) === '{}', `Turn off: the kept id is cleared, so a later Turn on replaces nothing (${JSON.stringify(await kept(q))})`);
+      check(q.errors.length === 0, 'a new address: no page errors ' + q.errors.join(' | '));
+      await rc.close();
+    }
+    // the page works when IndexedDB is blocked or never answers (the kept id is a help, never a condition)
+    for (const how of ['throw', 'hang']) {
+      const kn = phoneKeys('no-idb-' + how), nc = await phone(b, {sub: kn.sub, noStorage: true, noIdb: how}), q = await open(nc);
+      await q.locator('[data-do=on]').click(); await q.locator('#main .pstate.on').waitFor({timeout: 12000}).catch(() => {});
+      check(await heading(q) === 'Alerts are on for this phone' && (await status(q)).devices.some(d => d.id === idOf(kn.sub.endpoint)), `no storage (IndexedDB ${how === 'throw' ? 'blocked' : 'never answers'}): Turn on still works (${await heading(q)})`);
+      await q.locator('[data-do=off]').click(); await q.locator('#main .pstate.off').waitFor({timeout: 12000}).catch(() => {});
+      check(await heading(q) === 'Alerts are off on this phone' && !(await status(q)).devices.some(d => d.id === idOf(kn.sub.endpoint)), `no storage (IndexedDB ${how}): Turn off still works`);
+      check(q.errors.length === 0, `no storage (IndexedDB ${how}): no page errors ` + q.errors.join(' | '));
+      await nc.close();
+    }
+    // "Your other devices": when each last took a message, and an old copy of this device pointed out next to its Remove.
+    // The dates are set in the server's devices file (it is read on every request), as the 2026-11-12 one was. Each device's
+    // set-up comes before its last delivery, as on a real server (made is written once at sign-up, last_ok only after a send).
+    const DEVICES = path.join(HOME, '.local', 'state', 'argus-ui', 'push-devices.json');
+    const backdate = (id, fields) => { const ds = JSON.parse(fs.readFileSync(DEVICES, 'utf8')); for (const d of ds) if (d.id === id) Object.assign(d, fields); fs.writeFileSync(DEVICES, JSON.stringify(ds, null, 1)); };
+    // each row: its name, its set-up and delivery line, the old-copy hint, and a failed try (errLine: on a line of its own
+    // between the name and the rest, in the page's warning colour --bad)
+    const rowsOf = q => q.locator('.pdevices li').evaluateAll(es => {
+      const probe = document.createElement('span'); probe.style.color = 'var(--bad)'; document.body.appendChild(probe);
+      const bad = getComputedStyle(probe).color, box = el => el.getBoundingClientRect(); probe.remove();
+      return es.map(e => { const b = e.querySelector('b'), s = e.querySelector('small:not(.perr):not(.pold)'), x = e.querySelector('.perr');
+        return {id: e.querySelector('[data-do=forget]')?.dataset.id, name: b.textContent, said: s?.textContent || '', old: e.querySelector('.pold')?.textContent || '',
+          err: x?.textContent || '', errLine: !!x && !!s && box(x).top >= box(b).bottom - 1 && box(s).top >= box(x).bottom - 1 && getComputedStyle(x).color === bad}; });
+    });
+    // Names are what label() makes: platform and browser only, so two live devices of the same kind share one (review F1).
+    // A moment in the page's one date style, "today", "yesterday" or "November 11", with ", 8:00 AM" when the time shows
+    const rel = (q, iso, time) => q.evaluate(([iso, time]) => { const d = new Date(iso), y = new Date(); y.setDate(y.getDate() - 1);
+      const on = d.toDateString() === new Date().toDateString() ? 'today' : d.toDateString() === y.toDateString() ? 'yesterday' : d.toLocaleDateString([], {month: 'long', day: 'numeric'});
+      return time ? on + ', ' + d.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'}) : on; }, [iso, time]);
+    const sameDay = (q, a, z) => q.evaluate(([a, z]) => new Date(a).toDateString() === new Date(z).toDateString(), [a, z]);
+    const SLOW = "The browser's message service did not answer in time. Elaia tried twice.";   // say_failure('timeout') in server/push.py
+    // every Remove keeps its word inside its own border, and all of them are one width (review F4)
+    const removeFits = q => q.locator('.pdevices [data-do=forget]').evaluateAll(es => es.map(e => { const r = document.createRange(); r.selectNodeContents(e);
+      const t = r.getBoundingClientRect(), o = e.getBoundingClientRect(); return {fits: t.left >= o.left && t.right <= o.right, w: Math.round(o.width)}; }));
+    for (const [w, h, ua, name] of [[412, 915, PHONE_UA, 'phone'], [360, 800, PHONE_UA, 'phone'], [1920, 1080, DESK_UA, 'computer']]) {
+      const kn = phoneKeys(`list-${w}-this`), ko = phoneKeys(`list-${w}-old`), kt = phoneKeys(`list-${w}-other`), kf = phoneKeys(`list-${w}-newer`), kl = phoneKeys(`list-${w}-live`);
+      const lc = await phone(b, {width: w, height: h, ua, sub: kn.sub}), q = await open(lc);
+      await forgetAll(q);
+      await q.locator('[data-do=on]').click(); await q.locator('#main .pstate.on').waitFor({timeout: 8000});
+      const mine = (await status(q)).devices.find(d => d.id === idOf(kn.sub.endpoint)), L = mine.label, OTHER = name === 'phone' ? 'Windows computer, Chrome' : 'Android phone, Chrome';
+      check(L === (name === 'phone' ? 'Android phone, Chrome' : 'Windows computer, Chrome'), `${w}x${h}: this device's name is the one label() makes (${L})`);
+      for (const [k, label] of [[ko, L], [kt, OTHER], [kf, L], [kl, L]]) await q.request.post(BASE + 'api/push/subscribe', {data: {subscription: k.sub, label, kinds: ['summary']}});
+      const y = new Date(); y.setDate(y.getDate() - 1); y.setHours(8, 0, 8, 0);
+      const made2 = new Date(+y - 864e5).toISOString(), later = mins => new Date(Date.parse(made2) + mins * 6e4).toISOString();
+      backdate(idOf(ko.sub.endpoint), {made: made2, last_ok: y.toISOString()});                    // the same name, yesterday 08:00 was its last
+      // 1) Right after Turn on this device has taken nothing yet: a same-named device that took yesterday's summary is not
+      //    called a copy of it (on 0b294e4 the set-up time stood in for a delivery, and it was)
+      await q.reload(); await q.waitForTimeout(1500);
+      let rows = await rowsOf(q);
+      check(rows.length === 4 && !rows.some(r => r.old), `${w}x${h}: just turned on, nothing taken yet: no row is called an old copy (${rows.map(r => r.name + ': ' + r.old).join(' | ')})`);
+      // 2) This device was set up 11 minutes ago and took a message 5 minutes ago; kl, live with the same name and set up on
+      //    ko's day an hour after it, took the same message 2 s earlier; kt's last try failed after it took yesterday's; kf
+      //    has the same name, was set up after this device and has taken nothing yet. No two set-up times are equal.
+      const t0 = new Date(Date.now() - 5 * 6e4), iso = x => x.toISOString(), tl = iso(new Date(+t0 - 2000));
+      const knMade = iso(new Date(+t0 - 6 * 6e4)), kfMade = iso(new Date(+t0 - 6e4)), klMade = later(60), ktMade = later(30);
+      backdate(idOf(kn.sub.endpoint), {made: knMade, last_ok: iso(t0)});
+      backdate(idOf(kf.sub.endpoint), {made: kfMade});
+      backdate(idOf(kl.sub.endpoint), {made: klMade, last_ok: tl});
+      backdate(idOf(kt.sub.endpoint), {made: ktMade, last_ok: y.toISOString(), last_error: SLOW});
+      const ds = (await status(q)).devices;
+      check(ds.length === 5 && ds.every(d => !d.last_ok || Date.parse(d.made) <= Date.parse(d.last_ok)),
+        `${w}x${h}: the test data could happen: every device was set up before its last delivery (visual review finding 4)`);
+      await q.reload(); await q.waitForTimeout(1500);
+      rows = await rowsOf(q); const row = k => rows.find(r => r.id === idOf(k.sub.endpoint)) || {};
+      const yday = await rel(q, y.toISOString(), true);                     // "yesterday, 8:00 AM" in the browser's own words
+      const kfTwin = await sameDay(q, kfMade, knMade);                       // false only in the first minutes after midnight
+      check(rows.length === 4 && rows.filter(r => r.name === L).length === 3, `${w}x${h}: four other devices listed, three with this device's name (${rows.map(r => r.name).join(' | ')})`);
+      check(rows.map(r => r.id).join() === [kf, kl, kt, ko].map(k => idOf(k.sub.endpoint)).join(),
+        `${w}x${h}: the newest set-up first (${rows.map(r => r.name + ', ' + r.said.split('.')[0]).join(' | ')})`);
+      check(row(ko).said === `Set up ${await rel(q, made2, true)}. Last message delivered to its message service: ${yday}.` && row(ko).old === `If this is an old copy of this ${name}, Remove it.`,
+        `${w}x${h}: the older same-named one: set up the same day as another one of that name, so with its time; the hint is an "if" (${row(ko).said} / ${row(ko).old})`);
+      check(row(kl).said === `Set up ${await rel(q, klMade, true)}. Last message delivered to its message service: ${await rel(q, tl, true)}.` && !row(kl).old,
+        `${w}x${h}: two live devices with one name, the same broadcast seconds apart: not called a copy, and its set-up time tells it from the old one (${row(kl).said})`);
+      check(row(kf).said === `Set up ${await rel(q, kfMade, kfTwin)}. No message delivered to its message service yet.` && !row(kf).old,
+        `${w}x${h}: the same name and day as this device: its set-up time shows; nothing taken yet: not called a copy (${row(kf).said})`);
+      check(row(kt).said === `Set up ${await rel(q, ktMade, false)}. Last message delivered to its message service: ${yday}.` && !row(kt).old,
+        `${w}x${h}: a name no other device has: the set-up date alone, and the last success (${row(kt).said})`);
+      check(row(kt).err === `Last try failed: ${SLOW}` && row(kt).errLine && rows.filter(r => r.err).length === 1,
+        `${w}x${h}: the failed try on its own line under the name, in the warning colour, "Last try failed:" first (${row(kt).err}, own line and colour: ${row(kt).errLine})`);
+      check(!/phone maker/i.test(await q.locator('#main').innerText()), `${w}x${h}: the message service is the browser's, never the phone maker's`);
+      const card = await q.locator('#main .ppanel').first().innerText(), tried = await q.locator('#main .pres').textContent();
+      check(card.includes(`On since ${await rel(q, knMade, true)}.`) && tried === `Last message delivered to your ${name}'s message service: ${await rel(q, iso(t0), true)}.`,
+        `${w}x${h}: this device's card says its moments the way the rows do (${card.split('\n').find(x => /On since/.test(x))} / ${tried})`);
+      const sub = await q.locator('#sub').textContent();
+      check(sub === `Argus · what makes your ${name} ${name === 'phone' ? 'buzz' : 'show an alert'}`, `${w}x${h}: the line under the title says ${name} (${sub})`);
+      check(!/reached|arrived|showed|on the phone|on your phone/i.test(await q.locator('.pdevices').innerText()), `${w}x${h}: no row claims a message reached the device itself`);
+      check(!/push|subscription|endpoint|vapid|service worker/i.test(await q.locator('#main').innerText()), `${w}x${h}: no technical word anywhere a person reads`);
+      check(await q.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${w}x${h}: no sideways scroll`);
+      check((await targets(q)).length === 0, `${w}x${h}: every control at least 44 px ` + (await targets(q)).join(', '));
+      const fit = await removeFits(q);
+      check(fit.length === 4 && fit.every(f => f.fits) && Math.max(...fit.map(f => f.w)) - Math.min(...fit.map(f => f.w)) <= 1,
+        `${w}x${h}: every Remove keeps its word inside its button, all one width (${JSON.stringify(fit)})`);
+      const c = await contrast(q, '.pdevices');
+      check(c.bad.length === 0 && c.n >= 8, `${w}x${h}: the device list's text at least 4.5 to 1 (computed, ${c.n} texts, lowest ${c.min}) ${c.bad.join(', ')}`);
+      const listEnd = x => x.evaluate(() => document.querySelector('.pdevices').scrollIntoView({block: 'end'}));   // every row in the picture, above the bottom bar
+      await listEnd(q); await q.waitForTimeout(200);
+      if (w === 1920) { if (process.env.SHOTS) await q.screenshot({path: path.join(process.env.SHOTS, '1920-devices-fix2-full.png'), fullPage: true}); }   // the whole list
+      else await shot(q, `${w}x${h}-devices-fix2`);
+      if (w === 412) {
+        // the same two live devices seen from the other one: this device is not called a copy there either
+        const oc = await phone(b, {mode: 'subscribed', width: w, height: h, ua, sub: kl.sub}), o = await open(oc);
+        await o.evaluate(async () => { await navigator.serviceWorker.register('sw.js'); await navigator.serviceWorker.ready; });
+        await o.reload(); await o.waitForTimeout(1500);
+        const there = await rowsOf(o), back = there.find(r => r.id === idOf(kn.sub.endpoint)) || {};
+        check(await heading(o) === 'Alerts are on for this phone' && there.length === 4 && back.name === L && !back.old && there.filter(r => r.old).map(r => r.id).join() === idOf(ko.sub.endpoint),
+          `two live devices with one name, seen from the other: neither is called a copy, only the older one is (${there.map(r => r.name + ': ' + (r.old || '-')).join(' | ')})`);
+        check(there.map(r => r.id).join() === [kf, kn, kt, ko].map(k => idOf(k.sub.endpoint)).join(),
+          `seen from the other live device: the newest set-up first there too (${there.map(r => r.name + ', ' + r.said.split('.')[0]).join(' | ')})`);
+        const thr = k => there.find(r => r.id === idOf(k.sub.endpoint)) || {};
+        check(thr(ko).said.startsWith(`Set up ${await rel(o, made2, true)}.`) && thr(kn).said.startsWith(`Set up ${await rel(o, knMade, kfTwin)}.`) && thr(kt).said.startsWith(`Set up ${await rel(o, ktMade, false)}.`),
+          `seen from there: the old one shares that device's name and day, so it shows its time; so do the two set up today (${there.map(r => r.said.split('.')[0]).join(' | ')})`);
+        check((await o.locator('#main .ppanel').first().innerText()).includes(`On since ${await rel(o, klMade, true)}.`), 'seen from there: its card in the same date style');
+        await listEnd(o); await o.waitForTimeout(200);
+        await shot(o, `${w}x${h}-devices-fix2-other-live`);
+        check(o.errors.length === 0, 'the other live device: no page errors ' + o.errors.join(' | '));
+        await oc.close();
+        await q.locator(`.pdevices [data-do=forget][data-id="${idOf(ko.sub.endpoint)}"]`).click(); await q.waitForTimeout(1200);
+        const left = await rowsOf(q);
+        check(left.length === 3 && !left.some(r => r.old) && !(await status(q)).devices.some(d => d.id === idOf(ko.sub.endpoint)), `Remove next to the hint: the old copy is gone (${left.map(r => r.name).join(' | ')})`);
+      }
+      check(q.errors.length === 0, `${w}x${h}: no page errors ` + q.errors.join(' | '));
+      await q.locator('[data-do=off]').click(); await q.waitForTimeout(1200);
+      await forgetAll(q); await lc.close();
+    }
     // 1: a phone turned on before there was a people file still counts afterwards (picture; the server side is in push_test.py)
     {
       const kp = phoneKeys('before-people'), pc = await phone(b, {sub: kp.sub}), q = await open(pc);
@@ -377,5 +572,52 @@ run(async b => {
     check(calls[2][2].data.url === 'https://home.example/argus/', 'a place outside Elaia opens Today instead');
     box.onTap({notification: {close() {}, data: {url: 'https://home.example/argus/argus'}}, waitUntil: x => { pending = x; }}); await pending;
     check(JSON.stringify(calls[3]) === '["open","https://home.example/argus/argus"]', 'a tap with no Elaia window open opens one at the place');
+
+    // ---- a new address while Elaia is closed (sw.js pushsubscriptionchange), every case, with a stand-in browser ----
+    {
+      const KEY = Buffer.concat([Buffer.from([4]), crypto.randomBytes(64)]).toString('base64url'), OLD = 'f1d8771f00000000';
+      const mk = e => ({endpoint: e, toJSON: () => ({endpoint: e, keys: {p256dh: 'p', auth: 'a'}})});
+      const world = ({store = {}, current = null, made = mk('https://push.example/new'), ok = true, statusKey = KEY} = {}) => {
+        const w = {store: {...store}, puts: [], subscribed: [], fetched: [], listeners: {}};
+        const self = {addEventListener: (t, f) => { (w.listeners[t] = w.listeners[t] || []).push(f); }, clients: {claim() {}}, skipWaiting() {},
+          registration: {scope: 'https://home.example/argus/', pushManager: {getSubscription: async () => current,
+            subscribe: async o => { w.subscribed.push(Buffer.from(Array.from(o.applicationServerKey)).toString('base64url') + (o.userVisibleOnly ? '' : ' (not user-visible)')); return made; }}}};
+        const box = {self, URL, Promise, String, JSON, crypto: crypto.webcrypto, TextEncoder, atob, setTimeout, clearTimeout,
+          fetch: async (u, o = {}) => { w.fetched.push({url: String(u), method: o.method || 'GET', body: o.body ? JSON.parse(o.body) : null, credentials: o.credentials, type: (o.headers || {})['Content-Type']});
+            return String(u).endsWith('api/push/status') ? {ok: true, json: async () => ({key: statusKey})} : {ok, json: async () => ({})}; }};
+        vm.createContext(box); vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'web', 'sw.js'), 'utf8'), box);
+        box.deviceStore = async (op, rec) => { if (op === 'put') { w.puts.push(rec); w.store = rec; } if (op === 'clear') w.store = {}; return op === 'get' ? w.store : {}; };
+        w.box = box; w.change = async ev => { let p; for (const f of w.listeners.pushsubscriptionchange || []) f({...ev, waitUntil: x => { p = x; }}); return p; };
+        return w;
+      };
+      const posts = w => w.fetched.filter(f => f.method === 'POST');
+      let w = world({store: {id: OLD, key: KEY}}); await w.change({}); let pp = posts(w);
+      check(w.subscribed.join() === KEY && pp.length === 1 && pp[0].url === 'https://home.example/argus/api/push/subscribe' && pp[0].credentials === 'same-origin' && pp[0].type === 'application/json'
+        && pp[0].body.replaces === OLD && pp[0].body.subscription.endpoint === 'https://push.example/new' && !('label' in pp[0].body) && !('kinds' in pp[0].body)
+        && pp[0].body.only_if_known === true,
+        `new address, the event names no old one: it signs up again with the kept key and replaces the kept id, only if that record is still there (${JSON.stringify(pp.map(x => x.body))})`);
+      check(w.store.id === idOf('https://push.example/new') && w.store.key === KEY, 'and it keeps the new id, with the same key, for the next change');
+      w = world({store: {id: '0123456789abcdef', key: KEY}});
+      await w.change({oldSubscription: {endpoint: 'https://push.example/old', options: {}}, newSubscription: mk('https://push.example/given')}); pp = posts(w);
+      check(w.subscribed.length === 0 && pp.length === 1 && pp[0].body.replaces === idOf('https://push.example/old') && pp[0].body.subscription.endpoint === 'https://push.example/given',
+        `the event brings both addresses: no new sign-up, the old address's record is the one replaced (${JSON.stringify(pp.map(x => x.body.replaces))})`);
+      w = world({}); await w.change({}); pp = posts(w);
+      check(w.fetched[0].url === 'https://home.example/argus/api/push/status' && w.subscribed.join() === KEY && pp.length === 1 && !('replaces' in pp[0].body),
+        `nothing kept (Elaia before 4.43): it asks the server for its key, signs up and names no record (${w.fetched.map(x => x.method + ' ' + x.url).join(', ')})`);
+      w = world({store: {id: idOf('https://push.example/same'), key: KEY}, current: mk('https://push.example/same')}); await w.change({}); pp = posts(w);
+      check(w.subscribed.length === 0 && pp.length === 1 && !('replaces' in pp[0].body), 'the same address as before: the server is told, nothing is replaced');
+      w = world({store: {id: OLD, key: KEY}, ok: false}); await w.change({});
+      check(w.puts.length === 0 && w.store.id === OLD, 'the server says no: the old id stays kept, so the page\'s next Turn on still names it');
+      w = world({statusKey: ''}); await w.change({});
+      check(w.subscribed.length === 0 && posts(w).length === 0, 'no key anywhere: nothing signed up, nothing sent');
+      w = world({store: {id: OLD, key: KEY}}); w.box.fetch = async () => { throw new TypeError('offline'); };
+      let settled = false; await w.change({}).then(() => { settled = true; });
+      check(settled && w.puts.length === 0, 'offline: the event still finishes, and the old id stays kept');
+      check((w.listeners.pushsubscriptionchange || []).length === 1 && (w.listeners.activate || []).length === 2, 'sw.js listens for a new address, and keeps the current id when a new version takes over');
+      w = world({current: mk('https://push.example/current')}); await w.box.keepCurrent();
+      check(w.store.id === idOf('https://push.example/current') && w.store.key === '', 'a new version of the worker keeps the current id when none is kept (an install from before 4.43)');
+      w = world({store: {id: OLD, key: KEY}, current: mk('https://push.example/current')}); await w.box.keepCurrent();
+      check(w.puts.length === 0, 'and leaves a kept id alone');
+    }
   } finally { await new Promise(z => fake.close(z)); }
 });

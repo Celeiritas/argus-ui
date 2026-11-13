@@ -136,6 +136,14 @@ def plugin_jobs(prefix=''):
     fz = frozen()
     return collapse([info(u, fz) for u in units() if u.startswith(str(prefix))])
 
+def backups_line():
+    """The daily summary's one backups line (server/summary.py), straight from the Memory plugin's own view and rules
+    (summary_line there), so the backup folders are read once, by the plugin. '' when backups are fine. LookupError when
+    Memory is not loaded (or is too old to have the line): the summary then goes out without it and says so once."""
+    p = SERVER_PLUGINS.get('memory')
+    if p is None or not callable(getattr(p, 'summary_line', None)): raise LookupError('the Memory plugin is not loaded')
+    return p.summary_line(p.view(plugin_ctx('memory', PLUGIN_DIR['memory'])))
+
 def load_server_plugins():
     """Import each server plugin's plugin.py by path and call its init(ctx) once. One that fails is logged and
     skipped; the rest of Elaia starts. A newly installed server plugin needs a restart (static ones don't)."""
@@ -989,5 +997,5 @@ if __name__ == '__main__':
     if WATCH_ON: watch.start(watch_env(), WATCH_INTERVAL)
     push.start(lambda person: push.role_in(PEOPLE.current(), person),      # phone alerts: owners' devices only (docs/phone-alerts.md)
                lambda s: next((w.get('title', '') for w in watch.snapshot(WATCH_INTERVAL or 60) if w.get('id') == s), ''))
-    summary.start(lambda: watch.snapshot(WATCH_INTERVAL or 60))            # the daily summary, its own small thread
+    summary.start(lambda: watch.snapshot(WATCH_INTERVAL or 60), backups=backups_line)   # the daily summary, its own small thread
     ThreadingHTTPServer((BIND, PORT), H).serve_forever()
