@@ -967,6 +967,17 @@ class Replaces(RouteBase):
         self.assertEqual(code, 200, d)
         self.assertEqual(len(devices()), push.MAX_DEVICES); self.assertNotIn(ids[0], [x['id'] for x in devices()])
 
+
+class FailureWords(unittest.TestCase):
+    """4.43 visual review, finding 1: the reason shows on computer rows too, and the message service is the browser's
+    (Google's for Chrome on Android), never the phone maker's. Failed on 0955ccc."""
+    def test_the_service_is_the_browsers(self):
+        for why in ('timeout', 'busy', 'down', 'moved', 'refused'):
+            said = push.say_failure(why)
+            self.assertTrue(said.startswith("The browser's message service "), (why, said))
+        for why in ('timeout', 'busy', 'down', 'moved', 'refused', 'unknown', 'nokey', 'sign'):
+            self.assertNotIn('phone maker', push.say_failure(why), why)
+
 if __name__ == '__main__':
     try: unittest.main(verbosity=1)
     finally: shutil.rmtree(TMP, ignore_errors=True)

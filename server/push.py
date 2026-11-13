@@ -339,11 +339,13 @@ def post(endpoint, body, headers):
 
 
 def say_failure(why):
-    return {'timeout': 'The phone maker\'s message service did not answer in time. Elaia tried twice.',
-            'busy': 'The phone maker\'s message service asked Elaia to wait. Elaia tried twice.',
-            'down': 'The phone maker\'s message service had a problem. Elaia tried twice.',
-            'moved': 'The phone maker\'s message service answered with a different address, which Elaia never follows.',
-            'refused': 'The phone maker\'s message service refused the message. Turning alerts off and on again on that device usually helps.',
+    # The message service belongs to the device's browser (Google's for Chrome, Mozilla's for Firefox, ...), never to the
+    # maker of the phone, and the same words show on a computer's row. Records keep the words they were saved with.
+    return {'timeout': 'The browser\'s message service did not answer in time. Elaia tried twice.',
+            'busy': 'The browser\'s message service asked Elaia to wait. Elaia tried twice.',
+            'down': 'The browser\'s message service had a problem. Elaia tried twice.',
+            'moved': 'The browser\'s message service answered with a different address, which Elaia never follows.',
+            'refused': 'The browser\'s message service refused the message. Turning alerts off and on again on that device usually helps.',
             'unknown': 'This device asked for a message service Elaia does not know, so nothing was sent.',
             'nokey': 'The message could not be locked for this device. Turning alerts off and on again on it usually helps.',
             'sign': 'Elaia could not sign the message. Check the alert settings on the server (docs/phone-alerts.md, "Files and settings").'}[why]

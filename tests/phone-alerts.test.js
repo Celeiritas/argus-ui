@@ -405,14 +405,26 @@ run(async b => {
       await nc.close();
     }
     // "Your other devices": when each last took a message, and an old copy of this device pointed out next to its Remove.
-    // The old copy's dates are set in the server's devices file (it is read on every request), as the 2026-11-12 one was.
+    // The dates are set in the server's devices file (it is read on every request), as the 2026-11-12 one was. Each device's
+    // set-up comes before its last delivery, as on a real server (made is written once at sign-up, last_ok only after a send).
     const DEVICES = path.join(HOME, '.local', 'state', 'argus-ui', 'push-devices.json');
     const backdate = (id, fields) => { const ds = JSON.parse(fs.readFileSync(DEVICES, 'utf8')); for (const d of ds) if (d.id === id) Object.assign(d, fields); fs.writeFileSync(DEVICES, JSON.stringify(ds, null, 1)); };
-    const rowsOf = q => q.locator('.pdevices li').evaluateAll(es => es.map(e => ({id: e.querySelector('[data-do=forget]')?.dataset.id, name: e.querySelector('b').textContent,
-      said: e.querySelector('small').textContent, old: e.querySelector('.pold')?.textContent || ''})));
+    // each row: its name, its set-up and delivery line, the old-copy hint, and a failed try (errLine: on a line of its own
+    // between the name and the rest, in the page's warning colour --bad)
+    const rowsOf = q => q.locator('.pdevices li').evaluateAll(es => {
+      const probe = document.createElement('span'); probe.style.color = 'var(--bad)'; document.body.appendChild(probe);
+      const bad = getComputedStyle(probe).color, box = el => el.getBoundingClientRect(); probe.remove();
+      return es.map(e => { const b = e.querySelector('b'), s = e.querySelector('small:not(.perr):not(.pold)'), x = e.querySelector('.perr');
+        return {id: e.querySelector('[data-do=forget]')?.dataset.id, name: b.textContent, said: s?.textContent || '', old: e.querySelector('.pold')?.textContent || '',
+          err: x?.textContent || '', errLine: !!x && !!s && box(x).top >= box(b).bottom - 1 && box(s).top >= box(x).bottom - 1 && getComputedStyle(x).color === bad}; });
+    });
     // Names are what label() makes: platform and browser only, so two live devices of the same kind share one (review F1).
-    const dayOf = (q, iso) => q.evaluate(iso => new Date(iso).toLocaleDateString([], {month: 'long', day: 'numeric'}), iso);
-    const SLOW = "The phone maker's message service did not answer in time. Elaia tried twice.";   // say_failure('timeout') in server/push.py
+    // A moment in the page's one date style, "today", "yesterday" or "November 11", with ", 8:00 AM" when the time shows
+    const rel = (q, iso, time) => q.evaluate(([iso, time]) => { const d = new Date(iso), y = new Date(); y.setDate(y.getDate() - 1);
+      const on = d.toDateString() === new Date().toDateString() ? 'today' : d.toDateString() === y.toDateString() ? 'yesterday' : d.toLocaleDateString([], {month: 'long', day: 'numeric'});
+      return time ? on + ', ' + d.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'}) : on; }, [iso, time]);
+    const sameDay = (q, a, z) => q.evaluate(([a, z]) => new Date(a).toDateString() === new Date(z).toDateString(), [a, z]);
+    const SLOW = "The browser's message service did not answer in time. Elaia tried twice.";   // say_failure('timeout') in server/push.py
     // every Remove keeps its word inside its own border, and all of them are one width (review F4)
     const removeFits = q => q.locator('.pdevices [data-do=forget]').evaluateAll(es => es.map(e => { const r = document.createRange(); r.selectNodeContents(e);
       const t = r.getBoundingClientRect(), o = e.getBoundingClientRect(); return {fits: t.left >= o.left && t.right <= o.right, w: Math.round(o.width)}; }));
@@ -425,31 +437,48 @@ run(async b => {
       check(L === (name === 'phone' ? 'Android phone, Chrome' : 'Windows computer, Chrome'), `${w}x${h}: this device's name is the one label() makes (${L})`);
       for (const [k, label] of [[ko, L], [kt, OTHER], [kf, L], [kl, L]]) await q.request.post(BASE + 'api/push/subscribe', {data: {subscription: k.sub, label, kinds: ['summary']}});
       const y = new Date(); y.setDate(y.getDate() - 1); y.setHours(8, 0, 8, 0);
-      const made2 = new Date(+y - 864e5).toISOString();
+      const made2 = new Date(+y - 864e5).toISOString(), later = mins => new Date(Date.parse(made2) + mins * 6e4).toISOString();
       backdate(idOf(ko.sub.endpoint), {made: made2, last_ok: y.toISOString()});                    // the same name, yesterday 08:00 was its last
       // 1) Right after Turn on this device has taken nothing yet: a same-named device that took yesterday's summary is not
       //    called a copy of it (on 0b294e4 the set-up time stood in for a delivery, and it was)
       await q.reload(); await q.waitForTimeout(1500);
       let rows = await rowsOf(q);
       check(rows.length === 4 && !rows.some(r => r.old), `${w}x${h}: just turned on, nothing taken yet: no row is called an old copy (${rows.map(r => r.name + ': ' + r.old).join(' | ')})`);
-      // 2) This device took a message 5 minutes ago; kl, live with the same name, took the same one 2 s earlier; kt's last
-      //    try failed after it took yesterday's; kf has the same name and has taken nothing yet
-      const t0 = new Date(Date.now() - 5 * 6e4);
-      backdate(idOf(kn.sub.endpoint), {last_ok: t0.toISOString()});
-      backdate(idOf(kl.sub.endpoint), {made: made2, last_ok: new Date(+t0 - 2000).toISOString()});
-      backdate(idOf(kt.sub.endpoint), {made: made2, last_ok: y.toISOString(), last_error: SLOW});
+      // 2) This device was set up 11 minutes ago and took a message 5 minutes ago; kl, live with the same name and set up on
+      //    ko's day an hour after it, took the same message 2 s earlier; kt's last try failed after it took yesterday's; kf
+      //    has the same name, was set up after this device and has taken nothing yet. No two set-up times are equal.
+      const t0 = new Date(Date.now() - 5 * 6e4), iso = x => x.toISOString(), tl = iso(new Date(+t0 - 2000));
+      const knMade = iso(new Date(+t0 - 6 * 6e4)), kfMade = iso(new Date(+t0 - 6e4)), klMade = later(60), ktMade = later(30);
+      backdate(idOf(kn.sub.endpoint), {made: knMade, last_ok: iso(t0)});
+      backdate(idOf(kf.sub.endpoint), {made: kfMade});
+      backdate(idOf(kl.sub.endpoint), {made: klMade, last_ok: tl});
+      backdate(idOf(kt.sub.endpoint), {made: ktMade, last_ok: y.toISOString(), last_error: SLOW});
+      const ds = (await status(q)).devices;
+      check(ds.length === 5 && ds.every(d => !d.last_ok || Date.parse(d.made) <= Date.parse(d.last_ok)),
+        `${w}x${h}: the test data could happen: every device was set up before its last delivery (visual review finding 4)`);
       await q.reload(); await q.waitForTimeout(1500);
       rows = await rowsOf(q); const row = k => rows.find(r => r.id === idOf(k.sub.endpoint)) || {};
-      const eight = await q.evaluate(iso => new Date(iso).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'}), y.toISOString());   // 8:00 AM in the browser's own words
-      const set2 = `Set up ${await dayOf(q, made2)}.`, setNow = `Set up ${await dayOf(q, new Date().toISOString())}.`;
+      const yday = await rel(q, y.toISOString(), true);                     // "yesterday, 8:00 AM" in the browser's own words
+      const kfTwin = await sameDay(q, kfMade, knMade);                       // false only in the first minutes after midnight
       check(rows.length === 4 && rows.filter(r => r.name === L).length === 3, `${w}x${h}: four other devices listed, three with this device's name (${rows.map(r => r.name).join(' | ')})`);
-      check(row(ko).said === `${set2} Last message delivered to its message service: yesterday, ${eight}.` && row(ko).old === `If this is an old copy of this ${name}, Remove it.`,
-        `${w}x${h}: the older same-named one says when it was set up and last took a message, and the hint is an "if" (${row(ko).said} / ${row(ko).old})`);
-      check(row(kl).said.startsWith(`${set2} Last message delivered to its message service: `) && !row(kl).old,
-        `${w}x${h}: two live devices with one name, the same broadcast seconds apart: not called a copy (${row(kl).said})`);
-      check(row(kf).said === `${setNow} No message delivered to its message service yet.` && !row(kf).old, `${w}x${h}: the same name, nothing taken yet: not called a copy (${row(kf).said})`);
-      check(row(kt).said === `${set2} Last try: ${SLOW} Last message delivered to its message service: yesterday, ${eight}.` && !row(kt).old,
-        `${w}x${h}: an error row shows the failed try and the last success together (${row(kt).said})`);
+      check(rows.map(r => r.id).join() === [kf, kl, kt, ko].map(k => idOf(k.sub.endpoint)).join(),
+        `${w}x${h}: the newest set-up first (${rows.map(r => r.name + ', ' + r.said.split('.')[0]).join(' | ')})`);
+      check(row(ko).said === `Set up ${await rel(q, made2, true)}. Last message delivered to its message service: ${yday}.` && row(ko).old === `If this is an old copy of this ${name}, Remove it.`,
+        `${w}x${h}: the older same-named one: set up the same day as another one of that name, so with its time; the hint is an "if" (${row(ko).said} / ${row(ko).old})`);
+      check(row(kl).said === `Set up ${await rel(q, klMade, true)}. Last message delivered to its message service: ${await rel(q, tl, true)}.` && !row(kl).old,
+        `${w}x${h}: two live devices with one name, the same broadcast seconds apart: not called a copy, and its set-up time tells it from the old one (${row(kl).said})`);
+      check(row(kf).said === `Set up ${await rel(q, kfMade, kfTwin)}. No message delivered to its message service yet.` && !row(kf).old,
+        `${w}x${h}: the same name and day as this device: its set-up time shows; nothing taken yet: not called a copy (${row(kf).said})`);
+      check(row(kt).said === `Set up ${await rel(q, ktMade, false)}. Last message delivered to its message service: ${yday}.` && !row(kt).old,
+        `${w}x${h}: a name no other device has: the set-up date alone, and the last success (${row(kt).said})`);
+      check(row(kt).err === `Last try failed: ${SLOW}` && row(kt).errLine && rows.filter(r => r.err).length === 1,
+        `${w}x${h}: the failed try on its own line under the name, in the warning colour, "Last try failed:" first (${row(kt).err}, own line and colour: ${row(kt).errLine})`);
+      check(!/phone maker/i.test(await q.locator('#main').innerText()), `${w}x${h}: the message service is the browser's, never the phone maker's`);
+      const card = await q.locator('#main .ppanel').first().innerText(), tried = await q.locator('#main .pres').textContent();
+      check(card.includes(`On since ${await rel(q, knMade, true)}.`) && tried === `Last message delivered to your ${name}'s message service: ${await rel(q, iso(t0), true)}.`,
+        `${w}x${h}: this device's card says its moments the way the rows do (${card.split('\n').find(x => /On since/.test(x))} / ${tried})`);
+      const sub = await q.locator('#sub').textContent();
+      check(sub === `Argus · what makes your ${name} ${name === 'phone' ? 'buzz' : 'show an alert'}`, `${w}x${h}: the line under the title says ${name} (${sub})`);
       check(!/reached|arrived|showed|on the phone|on your phone/i.test(await q.locator('.pdevices').innerText()), `${w}x${h}: no row claims a message reached the device itself`);
       check(!/push|subscription|endpoint|vapid|service worker/i.test(await q.locator('#main').innerText()), `${w}x${h}: no technical word anywhere a person reads`);
       check(await q.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${w}x${h}: no sideways scroll`);
@@ -461,7 +490,8 @@ run(async b => {
       check(c.bad.length === 0 && c.n >= 8, `${w}x${h}: the device list's text at least 4.5 to 1 (computed, ${c.n} texts, lowest ${c.min}) ${c.bad.join(', ')}`);
       const listEnd = x => x.evaluate(() => document.querySelector('.pdevices').scrollIntoView({block: 'end'}));   // every row in the picture, above the bottom bar
       await listEnd(q); await q.waitForTimeout(200);
-      await shot(q, `${w}x${h}-devices-fix1`);
+      if (w === 1920) { if (process.env.SHOTS) await q.screenshot({path: path.join(process.env.SHOTS, '1920-devices-fix2-full.png'), fullPage: true}); }   // the whole list
+      else await shot(q, `${w}x${h}-devices-fix2`);
       if (w === 412) {
         // the same two live devices seen from the other one: this device is not called a copy there either
         const oc = await phone(b, {mode: 'subscribed', width: w, height: h, ua, sub: kl.sub}), o = await open(oc);
@@ -470,8 +500,14 @@ run(async b => {
         const there = await rowsOf(o), back = there.find(r => r.id === idOf(kn.sub.endpoint)) || {};
         check(await heading(o) === 'Alerts are on for this phone' && there.length === 4 && back.name === L && !back.old && there.filter(r => r.old).map(r => r.id).join() === idOf(ko.sub.endpoint),
           `two live devices with one name, seen from the other: neither is called a copy, only the older one is (${there.map(r => r.name + ': ' + (r.old || '-')).join(' | ')})`);
+        check(there.map(r => r.id).join() === [kf, kn, kt, ko].map(k => idOf(k.sub.endpoint)).join(),
+          `seen from the other live device: the newest set-up first there too (${there.map(r => r.name + ', ' + r.said.split('.')[0]).join(' | ')})`);
+        const thr = k => there.find(r => r.id === idOf(k.sub.endpoint)) || {};
+        check(thr(ko).said.startsWith(`Set up ${await rel(o, made2, true)}.`) && thr(kn).said.startsWith(`Set up ${await rel(o, knMade, kfTwin)}.`) && thr(kt).said.startsWith(`Set up ${await rel(o, ktMade, false)}.`),
+          `seen from there: the old one shares that device's name and day, so it shows its time; so do the two set up today (${there.map(r => r.said.split('.')[0]).join(' | ')})`);
+        check((await o.locator('#main .ppanel').first().innerText()).includes(`On since ${await rel(o, klMade, true)}.`), 'seen from there: its card in the same date style');
         await listEnd(o); await o.waitForTimeout(200);
-        await shot(o, `${w}x${h}-devices-fix1-other-live`);
+        await shot(o, `${w}x${h}-devices-fix2-other-live`);
         check(o.errors.length === 0, 'the other live device: no page errors ' + o.errors.join(' | '));
         await oc.close();
         await q.locator(`.pdevices [data-do=forget][data-id="${idOf(ko.sub.endpoint)}"]`).click(); await q.waitForTimeout(1200);

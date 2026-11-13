@@ -64,7 +64,12 @@ const phoneAlerts = (() => {
     if (me.dev && st.key) keep(id, st.key);           // the server knows this address: remember it as this browser's
     return st;
   }
-  const when = iso => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString([], {month: 'long', day: 'numeric'}) + ', ' + d.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'}); };
+  // One date style on the whole page, so one moment always reads the same: "today", "yesterday" or "November 11", with the
+  // time after it where a time is shown ("today, 8:00 AM"). Calendar days, so a clock change never shifts them.
+  const relDay = d => { const y = new Date(); y.setDate(y.getDate() - 1);
+    return d.toDateString() === new Date().toDateString() ? 'today' : d.toDateString() === y.toDateString() ? 'yesterday' : d.toLocaleDateString([], {month: 'long', day: 'numeric'}); };
+  const ago = iso => { const d = new Date(iso); return isNaN(d) ? '' : relDay(d) + ', ' + d.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'}); };
+  const day = iso => { const d = new Date(iso); return isNaN(d) ? '' : relDay(d); };
   // where this device stands, in one of: unavailable, untrusted, cannot, blocked, on, off
   function state() {
     if (!st) return 'asking';
@@ -91,7 +96,7 @@ const phoneAlerts = (() => {
       blocked: ['Notifications are blocked for this page', `<p>This ${THING} said no to notifications for Elaia earlier. To allow them again, in Chrome on Android:</p>${ALLOW_STEPS}`],
       untrusted: [`Alerts are off on this ${THING}`, `<p>${esc(st?.untrusted_why)}</p>${install}`],
       off: [`Alerts are off on this ${THING}`, `<p>One tap, then your ${THING} asks whether Elaia may send notifications: say <b>Allow</b>.</p><div class="prow">${on}${install}</div>`],
-      on: [`Alerts are on for this ${THING}`, `<p>On since ${esc(when(me?.dev?.made))}.</p>${install}`],
+      on: [`Alerts are on for this ${THING}`, `<p>On since ${esc(ago(me?.dev?.made))}.</p>${install}`],
     }[s];
     return `<section class="ppanel" aria-labelledby="pstate-h"><h2 class="pstate ${s}" id="pstate-h" tabindex="-1">${say[0]}</h2>${n}${say[1]}</section>`;
   }
@@ -101,34 +106,31 @@ const phoneAlerts = (() => {
       `<li><button type="button" class="pswitch" role="switch" aria-checked="${mine.has(k)}" data-kind="${k}"><span class="pk"><b>${label}</b><small>${what}</small></span><span class="ptrack" aria-hidden="true"><span class="pknob"></span></span></button></li>`).join('')}</ul>${n}</section>`;
   }
   function test(n) {
-    const d = me.dev, res = d.last_error ? `<p class="pres bad">Last try: ${esc(d.last_error)}</p>` : d.last_ok ? `<p class="pres">Last message delivered to your ${THING}'s message service: ${esc(when(d.last_ok))}.</p>` : '';
+    const d = me.dev, res = d.last_error ? `<p class="pres bad">Last try failed: ${esc(d.last_error)}</p>` : d.last_ok ? `<p class="pres">Last message delivered to your ${THING}'s message service: ${esc(ago(d.last_ok))}.</p>` : '';
     return `<section class="ppanel" aria-labelledby="ptest-h"><h2 id="ptest-h">Try it</h2><p>It should arrive within a few seconds, also when Elaia is closed.</p>
       <div class="prow"><button type="button" class="pbtn" data-do="test"${dis()}>${PHONE ? 'Send a test buzz' : 'Send a test alert'}</button><button type="button" class="pbtn" data-do="off"${dis()}>Turn off on this ${THING}</button></div>${n}${res}</section>`;
   }
-  // "today, 8:00 AM", "yesterday, 8:00 AM" or "November 11, 8:00 AM" (calendar days, so a clock change never shifts them)
-  const ago = iso => {
-    const d = new Date(iso); if (isNaN(d)) return '';
-    const y = new Date(); y.setDate(y.getDate() - 1);
-    const t = d.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
-    return d.toDateString() === new Date().toDateString() ? 'today, ' + t : d.toDateString() === y.toDateString() ? 'yesterday, ' + t : when(iso);
-  };
-  const day = iso => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString([], {month: 'long', day: 'numeric'}); };
-  // One device row: when it was set up, its last failed try (if the last try failed), and when its message service last
-  // took a message. The server only knows the service took it, never that the device showed it.
-  const lastSeen = d => [day(d.made) ? `Set up ${esc(day(d.made))}.` : '', d.last_error ? 'Last try: ' + esc(d.last_error) : '',
+  // One device row: when it was set up and when its message service last took a message (a failed last try has its own
+  // line above, in the warning colour). The server only knows the service took it, never that the device showed it.
+  // Devices with one name set up on one day (this device counts) would read the same, so those rows give the time too.
+  const lastSeen = (d, time) => [day(d.made) ? `Set up ${esc(time ? ago(d.made) : day(d.made))}.` : '',
     d.last_ok ? `Last message delivered to its message service: ${esc(ago(d.last_ok))}.` : 'No message delivered to its message service yet.'].filter(Boolean).join(' ');
+  const nameOf = d => (d.label || '').trim().toLowerCase(), madeOn = d => { const t = new Date(d.made); return isNaN(t) ? '' : t.toDateString(); };
+  const twin = (d, all) => !!madeOn(d) && all.some(x => x !== d && nameOf(x) === nameOf(d) && madeOn(x) === madeOn(d));
+  const made = d => Date.parse(d.made) || 0;
   // A record with this device's name whose message service last took a message clearly before this device's did: perhaps
   // this device from before its address changed (its message service may still take messages for a while, so the server
   // cannot tell). Only a hint, worded as an "if": names are not unique (every Windows PC on Chrome has the same one), so
   // it needs a delivery on both sides. A device with no delivery yet is never flagged, and two devices that took the same
   // broadcast are seconds apart.
   const fresh = d => Date.parse(d.last_ok) || 0;
-  const oldCopy = d => !!me?.dev && (d.label || '').trim().toLowerCase() === (me.dev.label || '').trim().toLowerCase()
-    && fresh(d) > 0 && fresh(d) < fresh(me.dev) - 60000;
+  const oldCopy = d => !!me?.dev && nameOf(d) === nameOf(me.dev) && fresh(d) > 0 && fresh(d) < fresh(me.dev) - 60000;
   function othersPanel(n) {
-    const list = (st?.devices || []).filter(d => !d.this);
+    // newest set-up first, in every view (the server's own order is the order of sign-up, which differs per device)
+    const all = st?.devices || [], list = all.filter(d => !d.this).sort((a, b) => made(b) - made(a) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
     return `<section class="ppanel" aria-labelledby="pothers-h"><h2 id="pothers-h" tabindex="-1">Your other devices</h2>${n}${list.length
-      ? `<ul class="pdevices">${list.map(d => `<li><span><b>${esc(d.label || 'A device')}</b><small>${lastSeen(d)}</small>${oldCopy(d)
+      ? `<ul class="pdevices">${list.map(d => `<li><span><b>${esc(d.label || 'A device')}</b>${d.last_error
+        ? `<small class="perr"><strong>Last try failed:</strong> ${esc(d.last_error)}</small>` : ''}<small>${lastSeen(d, twin(d, all))}</small>${oldCopy(d)
         ? `<small class="pold">If this is an old copy of this ${THING}, Remove it.</small>` : ''}</span><button type="button" class="pbtn" data-do="forget" data-id="${esc(d.id)}"${dis()} aria-label="Remove ${esc(d.label || 'this device')}">Remove</button></li>`).join('')}</ul>`
       : '<p>No other device gets alerts.</p>'}</section>`;
   }
@@ -144,6 +146,8 @@ const phoneAlerts = (() => {
   const FALLBACK = {on: '[data-do="test"]', off: '[data-do="on"], #pstate-h', forget: '[data-do="forget"], #pothers-h', test: '[data-do="on"], #pstate-h', install: '#pstate-h'};
   function draw() {
     if (here !== 'phone') return;
+    // the line under the title follows the device too (render() writes the phone's words just before it calls show())
+    const sub = $('#sub'); if (sub) sub.textContent = `Argus · what makes your ${THING} ${BUZZ}`;
     const s = state(), others = st && st.available;
     // where the sentence shows: its own panel, or the state panel when that panel is gone (turned off)
     const at = (msg.at === 'kinds' || msg.at === 'test') && s !== 'on' ? 'state' : msg.at === 'others' && !others ? 'state' : msg.at;

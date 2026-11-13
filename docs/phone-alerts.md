@@ -52,9 +52,17 @@ These are the steps as you will read them; nothing here needs a terminal.
 On the same page: **Turn off on this phone**, and **Your other devices** with **Remove** for each. At most 8 devices per
 person. Each device in the list says when it was set up and when Elaia last handed it a message, in words that claim no
 more than the server knows: *Set up November 11. Last message delivered to its message service: yesterday, 8:00 AM.*, or
-*… No message delivered to its message service yet.* When the last try failed, the row shows *Last try:* and what went
-wrong, and still the last success. It never says a message reached the phone: the message service (Google's, for Chrome
-on Android) can keep accepting messages for an address no phone listens to any more.
+*… No message delivered to its message service yet.* When the last try failed, the row has one more line right under
+the name, in the warning colour: *Last try failed:* and what went wrong (*The browser's message service did not answer
+in time. Elaia tried twice.*); the line below it still gives the last success. It never says a message reached the
+phone: the message service (the browser's: Google's for Chrome, Mozilla's for Firefox) can keep accepting messages for
+an address no phone listens to any more. A reason saved before 4.43.0 keeps its old words (*The phone maker's …*) until
+that device's next failed try.
+
+Dates read one way on the whole page, this device's card included: *today*, *yesterday* or the date, with the time where
+one is shown (*On since today, 9:00 AM.*). Two devices with one name set up on the same day (this device counts) would
+read the same, so their rows give the set-up time too (*Set up November 11, 8:00 AM.*); every other row gives the date
+alone. The newest set-up comes first, so the order is the same on every device.
 
 A device with **this** device's name whose last delivery is more than a minute older than this device's gets one more
 line next to its **Remove**: *If this is an old copy of this phone, Remove it.* (*computer* on a computer). It is only a
@@ -108,8 +116,8 @@ kept id.
 
 ## What leaves the server, and to whom
 
-Only one thing, and only when something buzzes: **an encrypted message to the phone maker's push service** (for Chrome on
-Android, Google's; the address is the one the phone's browser gave when you tapped Allow). The message is locked for that
+Only one thing, and only when something buzzes: **an encrypted message to the browser's push service** (for Chrome,
+Google's; for Firefox, Mozilla's; the address is the one the phone's browser gave when you tapped Allow). The message is locked for that
 one phone (RFC 8291): the push service carries it but **cannot read it**. It holds the event's title, a short body (at most
 2,000 bytes in all), the place on the page it opens, its time and kind. The request is signed with the server's own key
 (RFC 8292), so the push service knows it comes from the same server each time; the signature carries a contact address,
