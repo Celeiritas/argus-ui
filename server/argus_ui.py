@@ -56,7 +56,7 @@ RESERVED = {'api', 'static', 'plugins', 'play', 'all', 'argus', 'sw.js', 'manife
             'state', 'sky', 'health', 'log', 'freeze', 'thaw', 'bolt', 'run', 'whoami', 'push', 'events', 'watch'}   # built-in api/<name> routes
 mimetypes.add_type('text/javascript', '.js'); mimetypes.add_type('text/javascript', '.mjs')
 mimetypes.add_type('model/gltf-binary', '.glb'); mimetypes.add_type('application/json', '.json')
-mimetypes.add_type('application/wasm', '.wasm')
+mimetypes.add_type('application/wasm', '.wasm'); mimetypes.add_type('font/woff2', '.woff2')
 SERVER_PLUGINS = {}      # id -> the loaded plugin.py module (load_server_plugins, at startup)
 PLUGIN_LOCKS = {}        # id -> lock: one POST at a time per plugin, like the powers' LOCK
 PLUGIN_DIR = {}          # id -> the folder its plugin.py was loaded from (bundled or yours)
@@ -412,6 +412,69 @@ def links():
             out.append(dict(name=name, what=what, href=href))
     return out[:8]
 
+# ---------- Today's line on what the server is doing, and its Open rows for the media players (docs/home.md, 4.44.0) ----------
+# Both read the host's own files on every state(); the repository holds no name and no address.
+MEDIA = os.path.expanduser(os.environ.get('ARGUS_MEDIA') or '~/.config/argus-ui/media.json')
+MEDIA_APPS = (('jellyfin', 'Jellyfin', 'Films and shows'), ('audiobookshelf', 'Audiobookshelf', 'Audiobooks and podcasts'))
+REALM = os.path.expanduser(os.environ.get('LEAFY_REALM') or '~/.config/leafy/realm.json')     # the file Mentor fills {{SERVER}} from
+GAMEGUARD = os.path.expanduser(os.environ.get('ARGUS_GAMEGUARD') or '~/.local/state/medusa-gameguard/frozen-by-me.json')
+
+def read_json(path):
+    try:
+        with open(path, encoding='utf-8') as f: return json.load(f)
+    except (OSError, ValueError): return None
+
+def media():
+    """Today's Open rows for the players: media.json is {"jellyfin": "<address>", "audiobookshelf": "<address>"}, each an
+    http:// or https:// address (a player on the tailnet or the LAN is often plain http). Other keys, other kinds of address
+    and a broken file are ignored; no file, no rows."""
+    raw = read_json(MEDIA)
+    raw = {str(k).lower(): v for k, v in raw.items()} if isinstance(raw, dict) else {}
+    out = []
+    for key, name, what in MEDIA_APPS:
+        href = raw.get(key).strip() if isinstance(raw.get(key), str) else ''
+        if len(href) <= 300 and re.fullmatch(r'https?://[^\s"\'<>\\`]+', href): out.append(dict(id=key, name=name, what=what, href=href))
+    return out
+
+def server_name():
+    """The server's own name for Today's line: SERVER in ~/.config/leafy/realm.json (any case); 'The server' without one."""
+    doc = read_json(REALM)
+    v = next((v for k, v in doc.items() if str(k).upper() == 'SERVER'), '') if isinstance(doc, dict) else ''
+    v = str(v).strip() if isinstance(v, (str, int, float)) and not isinstance(v, bool) else ''
+    return v[:40] or 'The server'
+
+def game_guard():
+    """(a game runs, the tasks the guard paused). Medusa's game guard writes frozen-by-me.json (what it paused) and its alert
+    file while a game runs and clears both after (docs/memory.md); either one counts. Nothing else is taken as a game."""
+    mine = read_json(GAMEGUARD)
+    mine = [u for u in mine if isinstance(u, str) and u] if isinstance(mine, list) else []
+    return bool(mine) or os.path.isfile(os.path.join(ALERTS, 'medusa-gameguard.json')), mine
+
+def plain_task(persona, name):
+    # a task in the line's words: Ollama is the local AI; any other by its agent and its name as Watch shows it ("Hermes media")
+    if name.split('-')[-1] == 'ollama': return 'the local AI'
+    who = next((n for k, n, _ in PERSONAS if k == persona), persona.capitalize())
+    return f'{who} {name}'.strip()
+
+def and_list(xs): return xs[0] if len(xs) == 1 else ', '.join(xs[:-1]) + ' and ' + xs[-1]
+def few(xs): return and_list(xs) if len(xs) <= 3 else ', '.join(xs[:3]) + f' and {len(xs) - 3} more'
+
+def now_line(jobs, ws):
+    """One line on what the server is doing now, only from what it already knows: the game guard's record, the runs in
+    progress (a timer's run or a transient job's; an always-on service is not "busy") and the watch's restarts.
+    "<name>: calm" / "<name>: busy with Hermes media" / "<name>: a game is running, the local AI is paused". One colon, after
+    the name: the parts are joined with "; "."""
+    game, paused = game_guard()
+    parts = []
+    if game:
+        ps = list(dict.fromkeys(plain_task(*u.partition('-')[::2]) for u in paused))
+        parts.append('a game is running' + (f', {and_list(ps)} {"is" if len(ps) == 1 else "are"} paused' if ps else ''))
+    busy = [plain_task(j['persona'], j['name']) for j in jobs if j['state'] == 'running' and (j.get('base') or j['next'] != 'always on')]
+    fixing = [str(r.get('title') or r.get('id')) for r in ws if r.get('fixing') or r.get('queued')]
+    if busy: parts.append('busy with ' + few(busy))
+    if fixing: parts.append('restarting ' + few(fixing))
+    return f'{server_name()}: {"; ".join(parts) or "calm"}'
+
 WATCH_INTERVAL = int(os.environ.get('ARGUS_WATCH_INTERVAL', 60))   # seconds between rounds; 0 turns the loop off (the tests do, unless they ask)
 WATCH_ON = os.environ.get('ARGUS_WATCH') != '0' and WATCH_INTERVAL > 0
 
@@ -434,7 +497,7 @@ def state(reach=None):
     return dict(updated=datetime.now().strftime('%I:%M %p').lstrip('0'), jobs=jobs,
                 title=THEME.get('title', 'Argus'), subtitle=THEME.get('subtitle', 'tasks'),
                 personas=[dict(key=k, name=n, domain=d) for k, n, d in PERSONAS],
-                soon=THEME.get('coming_soon', []), links=links(),
+                soon=THEME.get('coming_soon', []), links=links(), media=media(), now=now_line(jobs, ws),
                 plugins=[plugin_view(p, reach) for p in ps], watch=ws, watch_ready=not WATCH_ON or watch.ready(),   # until its first round: the saved rows
                 alerts=sorted(alerts(set(PKEYS) | set(PAGES) | {p['id'] for p in ps}) + watch.alert_list(ws, lambda j: bool(GODS.match(j) and ALERT_JOB.match(j))), key=lambda a: (a['since'], a['file'])))
 
@@ -796,7 +859,8 @@ class H(BaseHTTPRequestHandler):
             if not inside(root, f) or not os.path.isfile(f): return self.out('not found', 'text/plain', 404)
             ct = mimetypes.guess_type(f)[0] or 'application/octet-stream'
             if f.endswith('.webmanifest'): ct = 'application/manifest+json'
-            with open(f, 'rb') as fh: return self.out(fh.read(), ct, cache='max-age=300')
+            # a content-hashed name (static/fonts/nunito.79fbd6fa.woff2) never changes, so it is kept a year; the rest five minutes
+            with open(f, 'rb') as fh: return self.out(fh.read(), ct, cache='public, max-age=31536000, immutable' if HASHED.search(f) else 'max-age=300')
         if p in ('manifest.webmanifest', 'sw.js'):
             f = os.path.join(STATIC, p)
             if not os.path.isfile(f): return self.out('not found', 'text/plain', 404)

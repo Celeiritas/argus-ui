@@ -263,7 +263,8 @@ run(async b => {
     await wide.goto(BASE + 'phone'); await wide.evaluate(async () => { await navigator.serviceWorker.register('sw.js'); await navigator.serviceWorker.ready; });
     await wide.reload(); await wide.waitForTimeout(1500); await shot(wide, 'phone-1440');
     check(await wide.locator('#main .pstate').textContent() === 'Alerts are on for this computer', 'on a computer it says computer, not phone');
-    check(!/Phone alerts/.test(await wide.locator('#realms').textContent()), '1440: the wide strip stays as it was (Phone alerts lives in the phone\'s More sheet)');
+    check(!/Phone alerts/.test(await wide.locator('#realms').textContent()) && await wide.locator('#realmMore.on').isVisible() && /Phone alerts/.test(await wide.locator('#realmMore').textContent()),
+      '1440: Phone alerts has no pill of its own; the strip\'s More holds it and, on this page, is the current one and names it (4.44.0)');
     await wide.context().close();
 
 

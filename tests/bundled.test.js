@@ -12,7 +12,8 @@ run(async b => {
   const log = fs.readFileSync(path.join(path.dirname(process.env.FIXTURES), 'server.log'), 'utf8');
   check(/loaded server plugin heracles 0\.0\.1-bundled \(bundled\)/.test(log) && !/must not load/.test(log), 'bundled: the log marks it bundled, and the replaced copy never ran');
 
-  await p.goto(BASE); await p.waitForTimeout(600);
+  // 1920: every fixture pill is on the strip (narrower, the last ones fold into More since 4.44.0; tests/layout.test.js)
+  await p.setViewportSize({width: 1920, height: 1080}); await p.goto(BASE); await p.waitForTimeout(600);
   const pill = p.locator('#realms a.realm', {hasText: 'Heracles'});
   check(await pill.count() === 1 && /static\/icons\/heracles\.png$/.test(await pill.locator('img').getAttribute('src')), 'agent plugin: one pill, with the agent\'s icon');
   await pill.click(); await p.waitForURL(/\/heracles$/);
@@ -41,7 +42,7 @@ run(async b => {
   const need = p.locator('.need', {hasText: 'Heracles'});
   check(await need.count() === 1 && /2 workouts this week/.test(await need.textContent()) && (await need.locator('a.go').textContent()) === 'Log a workout and more words than'.slice(0, 32),
     'Home: a plugin that needs you gets a row in "Needs you" with its action as the button');
-  check(await p.locator('.place', {hasText: 'Heracles'}).count() === 1, 'Home: and a place with its line');
+  check(await p.locator('.place', {hasText: 'Heracles'}).count() === 0, 'Home: and no card under Sections while it has that row (one place for each fact)');
   check(p.errors.length === 0, 'no page errors ' + p.errors.join(' | '));
 
   const ph = await page(b, 375, 760); await ph.goto(BASE + 'heracles'); await ph.locator('#her-where').waitFor({timeout: 5000});

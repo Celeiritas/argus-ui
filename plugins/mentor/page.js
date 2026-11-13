@@ -111,7 +111,7 @@
           <button type="button" data-view="today" aria-pressed="${M.view === 'today'}">Today</button>
           <button type="button" data-view="practice" aria-pressed="${M.view === 'practice'}">Study</button>
           <button type="button" data-view="modules" aria-pressed="${M.view === 'modules'}">Lessons</button></div>
-        <div class="pick"><label for="mdeck">Study</label><select id="mdeck"></select></div></div>
+        <div class="pick"><label for="mdeck">Topic</label><select id="mdeck"></select></div></div>
       <p class="mstats" id="mstats" aria-live="polite"></p>
       <details class="msettings"><summary>Study settings</summary>
         <label class="check"><input type="checkbox" id="mbury" ${(s.settings || {}).bury !== false ? 'checked' : ''}> Hide a card's siblings until tomorrow</label>

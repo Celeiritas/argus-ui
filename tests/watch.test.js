@@ -29,12 +29,15 @@ run(async b => {
   check(gap >= 24, `Pause and Run stand 24 px apart (${Math.round(gap)} px)`);
   check(await p.locator('#medusaHome .hint').evaluate(e => { const c = getComputedStyle(e).backgroundColor.match(/[\d.]+/g).map(Number); return c.length === 4 && c[3] >= .85; }), 'the tools\' words sit on a dark backing (readable over the trees)');
   check(/Pause \/ resume/.test(await p.locator('#medusaHome .hint').textContent()) && /Medusa/.test(await p.locator('#medusaHome .hint small').textContent()), "Medusa's tool says Pause / resume, her name small");
+  // one drawing of Zeus (4.44.0, field audit 4.36): the Run tool shows the theme's Zeus, the same picture as his pill, not a second plain bolt
+  const zt = await p.locator('#boltHome').evaluate(t => { const i = t.querySelector('img#bolt'); return {svg: t.querySelectorAll('svg').length, src: i?.getAttribute('src'), ok: !!i && i.complete && i.naturalWidth > 0, alt: i?.getAttribute('alt'), drag: i?.draggable}; });
+  check(zt.svg === 0 && zt.src === 'static/icons/zeus.png' && zt.ok && zt.alt === '' && zt.drag === false, "the Run tool shows the theme's Zeus picture, loaded, and no second drawing " + JSON.stringify(zt));
   const sm = await small(p);
   check(sm.length === 0, 'every control is at least 44 by 44 px ' + JSON.stringify(sm));
   // bolt: drag a bolt from the medallion onto a task that is not running
   let [x, y] = await center(p.locator('.card[data-state="ok"]')); await drag(p, '#boltHome', x, y); await p.waitForTimeout(1800);
   check(/running now|restarted/.test(await p.locator('#toastText').textContent()), "Zeus's bolt runs the task");
-  check(!(await p.locator('#bolt').evaluate(e => e.classList.contains('floating'))), 'the bolt medallion stays home');
+  check(!(await p.locator('#bolt').evaluate(e => e.classList.contains('floating'))), 'the Run medallion stays home');
   // Medusa: pause a task that can be paused and is not running
   [x, y] = await center(p.locator('.card[data-canfreeze="true"]:not([data-state="running"])')); await drag(p, '#medusaHome', x, y); await p.waitForTimeout(3000);
   check(/is paused \(frozen\)/.test(await p.locator('#toastText').textContent()), 'Medusa pauses (freezes) the task');

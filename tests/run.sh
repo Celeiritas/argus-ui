@@ -71,6 +71,12 @@ if [ -z "$1" ] || [ "$1" = mentor ] || [ "$1" = items ]; then
   echo "== mentor items"   # exam-style items: scoring, ratings, rules N1-N8, no browser (tests/items_test.py)
   $PYTHON "$R/tests/items_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1
 fi
+# Today's line on what the server is doing and its Open rows for the media players (4.44.0): no browser (tests/today_test.py);
+# the page side is in tests/home.test.js
+if [ -z "$1" ] || [ "$1" = today ] || [ "$1" = home ]; then
+  echo "== today model"
+  $PYTHON "$R/tests/today_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1
+fi
 if [ -z "$1" ] || [ "$1" = memory ]; then
   echo "== memory model"   # the Memory page's server side, no browser (tests/memory_test.py)
   $PYTHON "$R/tests/memory_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1

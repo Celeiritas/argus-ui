@@ -75,7 +75,7 @@ A **LeafyPlugin** adds a section without touching Argus's code. Put a folder wit
 ```
 server/                 argus_ui.py (HTTP server), sky.py (weather); standard library only
 plugins/mentor/         Mentor, a bundled server plugin: mentor.py (lessons, grading, scheduling), plugin.py, page.js, page.css
-web/                    index.html, css/, js/ (core, scene, powers, olympus, plugins, home, main), manifest, service worker
+web/                    index.html, css/, js/ (core, scene, powers, olympus, plugins, home, main), fonts/ (Nunito, OFL), manifest, service worker
 themes/leafy-realm/     the author's theme (art all rights reserved)
 themes/starter/         a free placeholder theme made by scripts/new-theme.py
 scripts/build.sh        builds an installable package for a theme
@@ -100,3 +100,4 @@ There is no login, so the server protects itself in other ways:
 
 ## License
 Code: MIT (see LICENSE). The Leafy Realm theme's artwork is **not** covered by the MIT license. See `themes/leafy-realm/ASSETS.md`.
+The font in `web/fonts/` is Nunito (The Nunito Project Authors), a subset made by `scripts/make-font.py`, under the SIL Open Font License 1.1 (`web/fonts/OFL.txt`); the page serves it itself and loads nothing from a third party.

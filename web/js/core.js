@@ -1,6 +1,6 @@
 // Argus UI - core: helpers, routing, sound, toasts, confirm dialog, rendering the task cards, Argus's eyes.
 // Load order matters (classic scripts share one global scope): core, scene, powers, olympus, plugins, home, main.
-let S = INIT, busy = false, realmsAt = null;   // realmsAt: the section the bar was last scrolled to
+let S = INIT, busy = false;
 const $ = (s, e = document) => e.querySelector(s), $$ = (s, e = document) => [...e.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const wait = ms => new Promise(z => setTimeout(z, ms));
@@ -39,21 +39,25 @@ function play(k) { if (!soundOn) return; try { const a = audio[k]; a.currentTime
 function playOr(k, fallback) { if (!soundOn) return; const a = audio[k]; if (!a || a.error || a.networkState === 3) return fallback && fallback();
   try { const n = a.cloneNode(); n.volume = a.volume; n.play().catch(() => fallback && fallback()); } catch (e) {} }
 function muteLabel() { $$('#mute,#muteMore').forEach(b => b.textContent = soundOn ? 'Mute sounds' : 'Unmute sounds'); fitRealms(); }   // the strip's, and the More sheet's on a phone
-// many sections on a laptop: before the bar wraps, the pills drop their second line (still read out), then the weather goes,
-// then (4.28.0) the bar becomes one row that scrolls sideways like a phone's, with Mute sounds held at its right end
+// many sections on a laptop or a phone on its side: before the strip wraps, the pills drop their second line (still read
+// out), then the weather goes, then (4.44.0) the last pills fold into More, never Today or the place you are on. The strip
+// is always one row inside the screen: nothing scrolls sideways and nothing passes under Mute sounds (it replaced the
+// sideways-scrolling strip of 4.28.0). More always holds Phone alerts and the links to other pages, so they have a way in
+// at every width.
 function fitRealms() {
-  const bar = $('.realms'), first = bar.querySelector('.realm'), last = $('#mute');
-  const wraps = () => last.getBoundingClientRect().top >= first.getBoundingClientRect().bottom;
-  bar.classList.remove('compact', 'bare', 'scroll');
-  if (getComputedStyle(bar).display === 'none') return;                                 // a phone: the bottom bar has the sections
-  if (!first || getComputedStyle(bar).flexDirection === 'column' || !wraps()) return;   // the ultrawide rail is a column
-  bar.classList.add('compact'); if (wraps()) bar.classList.add('bare'); if (wraps()) bar.classList.add('scroll');
+  const bar = $('.realms'), pills = $$('#realms .realm'), mute = $('#mute');
+  if (!pills.length) return;                                                  // drawNav() has not run yet
+  bar.classList.remove('compact', 'bare'); pills.forEach(p => p.classList.remove('over'));
+  const strip = getComputedStyle(bar).display !== 'none'; drawMore(strip);   // a phone: the bottom bar and its More
+  if (!strip || getComputedStyle(bar).flexDirection === 'column') return;    // the ultrawide rail is a column: room for all
+  const first = pills[0], over = () => bar.scrollWidth > bar.clientWidth + 1 || mute.getBoundingClientRect().top >= first.getBoundingClientRect().bottom;
+  if (over()) bar.classList.add('compact'); if (over()) bar.classList.add('bare');
+  for (let i = pills.length - 1; i > 0 && over(); i--) if (!pills[i].classList.contains('on')) { pills[i].classList.add('over'); drawMore(true); }
 }
 let fitAt; addEventListener('resize', () => { cancelAnimationFrame(fitAt); fitAt = requestAnimationFrame(fitRealms); });
-// a scrolling bar on a laptop: the mouse wheel moves it sideways (a phone swipes)
-$('.realms').addEventListener('wheel', e => { const bar = e.currentTarget;
-  if (bar.classList.contains('scroll') && Math.abs(e.deltaY) > Math.abs(e.deltaX)) { bar.scrollLeft += e.deltaY; e.preventDefault(); } }, {passive: false});
+document.fonts?.ready.then(() => fitRealms());   // the words are measured again once the font has arrived
 $('#mute').onclick = $('#muteMore').onclick = () => { soundOn = !soundOn; try { localStorage.setItem('argus-sound', soundOn ? 'on' : 'off'); } catch (e) {} muteLabel(); };
+$('#wxText').hidden = here === 'home';   // on Today the greeting under the name says the weather: one place for each fact (4.44.0)
 muteLabel();
 let actx = null;
 function alarmChime() {        // two soft beeps, made in the browser (no sound file needed)
@@ -267,18 +271,25 @@ function put(el, html) { if (!el || drawn[el.id] === html) return false; drawn[e
 function drawNav() {
   if (!S) return;
   const all = visible(sections()), prim = all.filter(e => PRIMARY.includes(e.id)), more = all.filter(e => !PRIMARY.includes(e.id));
-  put($('#realms'), all.filter(e => e.id !== 'phone').map(pill).join(''));   // Phone alerts: in the phone's More sheet, not the wide strip (alerts.js)
+  put($('#realms'), all.filter(e => !e.kind && e.id !== 'phone').map(pill).join(''));   // Phone alerts and the links: in More
   const open = more.find(e => e.on);   // you are on a place inside More: the More slot is the current one and names it
   put($('#tabs'), prim.map(tab).join('') + (more.length ? `<button class="tab more${open ? ' on' : ''}" type="button" data-more aria-haspopup="dialog" aria-controls="moreSheet" aria-expanded="false"><span class="tabicon">${MORE_MARK}${badge(sumNeeds(more), 'tabcount')}</span><b>More</b>${open ? `<small>${esc(open.word)}</small><span class="sr">, ${esc(open.word)} is open</span>` : ''}${needSay(sumNeeds(more))}</button>` : ''));
   $('#tabbar').style.setProperty('--slots', prim.length + (more.length ? 1 : 0));
+  fitRealms(); placeMarker();   // fitRealms fills the More sheet for whichever bar is showing
+}
+// The More sheet holds what the bar that is showing leaves out. A phone: every place after Today, Watch, Study and
+// Approvals. A wider screen: the pills folded off the strip, Phone alerts, and the links to other pages; the strip's More pill
+// carries their count and, on a place inside it, is the current one and names it (like the phone's).
+function drawMore(strip) {
+  const all = visible(sections()), folded = new Set($$('#realms .realm.over').map(a => a.dataset.id));
+  const more = all.filter(e => strip ? e.kind || e.id === 'phone' || folded.has(e.id) : !PRIMARY.includes(e.id));
   put($('#moreList'), more.filter(e => !e.kind).map(row).join(''));
   const away = more.filter(e => e.kind);
   put($('#moreAway'), away.map(row).join('')); $('#moreAwayH').hidden = !away.length;
-  fitRealms(); placeMarker();
-  if (realmsAt !== here) {   // a scrolling strip: bring the section you are on into view, once per section
-    const bar = $('.realms'), on = bar.querySelector('.realm.on'); if (on) realmsAt = here;   // a plugin's pill may arrive a moment later
-    if (on && bar.scrollWidth > bar.clientWidth) bar.scrollLeft += on.getBoundingClientRect().left - bar.getBoundingClientRect().left - (bar.clientWidth - on.offsetWidth) / 2;
-  }
+  const b = $('#realmMore'), open = more.find(e => e.on), n = sumNeeds(more);
+  b.hidden = !more.length; b.classList.toggle('on', !!open);
+  // no second line naming the open page (only read out): it made More wider on that page alone, and the strip changed shape
+  put(b, `${MORE_MARK}${badge(n, 'dot')}<span><b>More</b>${open ? `<span class="sr">, ${esc(open.word)} is open</span>` : ''}${needSay(n)}</span>`);
 }
 // the bar's marker sits over the current slot; arriving from another section it slides over from the slot you left (200 ms)
 function placeMarker() {
@@ -290,10 +301,12 @@ function placeMarker() {
   if (from >= 0 && Math.abs(from * bar.offsetWidth - x) > 2 && !RM.matches) { placeMarker.slid = true; m.animate([{transform: `translateX(${from * bar.offsetWidth - x}px)`}, {transform: 'none'}], {duration: 200, easing: 'ease-out'}); }
 }
 addEventListener('resize', () => requestAnimationFrame(placeMarker));
-// More: a sheet with the other places, the links to other pages and the sound switch. Esc, Close or a tap outside closes it.
-$('#tabbar').addEventListener('click', e => { const b = e.target.closest('[data-more]'); if (!b) return;
-  const d = $('#moreSheet'); b.setAttribute('aria-expanded', 'true'); d.showModal(); ($('.srow.on', d) || $('#moreClose')).focus(); });
-$('#moreSheet').addEventListener('close', () => { const b = $('#tabbar [data-more]'); b?.setAttribute('aria-expanded', 'false'); b?.focus(); });
+// More: a sheet with the other places, the links to other pages and (on a phone) the sound switch. Esc, Close or a tap
+// outside closes it, and the keyboard goes back to the More that opened it (the phone's bar or the strip).
+let moreFrom = null;
+document.addEventListener('click', e => { const b = e.target.closest('[data-more]'); if (!b) return;
+  const d = $('#moreSheet'); moreFrom = b; b.setAttribute('aria-expanded', 'true'); d.showModal(); ($('.srow.on', d) || $('#moreClose')).focus(); });
+$('#moreSheet').addEventListener('close', () => { moreFrom?.setAttribute('aria-expanded', 'false'); moreFrom?.focus(); });
 $('#moreSheet').addEventListener('click', e => { if (e.target === e.currentTarget) e.currentTarget.close(); });   // the dimmed area around it
 $('#moreClose').onclick = () => $('#moreSheet').close();
 

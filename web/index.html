@@ -10,7 +10,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="static/argus-192.png">
 <link rel="apple-touch-icon" href="static/argus-192.png">
-<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600&display=swap" rel="stylesheet">
+<link rel="preload" href="static/fonts/nunito.79fbd6fa.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="static/css/argus.css?v=__V__">
 <link rel="stylesheet" href="static/css/scene.css?v=__V__">
 <link rel="stylesheet" href="static/css/olympus.css?v=__V__">
@@ -43,7 +43,9 @@
  <canvas id="wx"></canvas>
  <div class="fog"></div>
 </div>
-<div class="realms" role="navigation" aria-label="Sections"><span id="realms" style="display:contents"></span><span class="wx" id="wxText"></span><button class="mute" id="mute" type="button">Mute sounds</button></div>
+<!-- The strip on wider screens: the places that fit, then More (the places that did not fit, Phone alerts and the links to
+     other pages: the same sheet as the phone's More), the weather and Mute sounds. core.js fitRealms() / drawMore(). -->
+<div class="realms" role="navigation" aria-label="Sections"><span id="realms" style="display:contents"></span><button class="realm more" id="realmMore" type="button" data-more aria-haspopup="dialog" aria-controls="moreSheet" aria-expanded="false" hidden></button><span class="wx" id="wxText"></span><button class="mute" id="mute" type="button">Mute sounds</button></div>
 <header>
  <img class="hero" id="hero" alt="">
  <div class="title"><h1>Elaia</h1><div class="sub" id="sub"></div></div>
@@ -59,11 +61,11 @@
  </div>
  <div class="tools">
   <button class="tool" id="boltHome" data-tool="bolt" type="button" aria-pressed="false" aria-describedby="tip-bolt" aria-label="Run a task with Zeus's bolt">
-   <svg id="bolt" viewBox="0 0 100 100" aria-hidden="true">
+   <!--BOLT--><svg id="bolt" viewBox="0 0 100 100" aria-hidden="true">
     <defs><radialGradient id="bg-bolt" cx="50%" cy="45%" r="60%"><stop offset="0" stop-color="#3a3a1c"/><stop offset="1" stop-color="#1C2127"/></radialGradient></defs>
     <circle cx="50" cy="50" r="46" fill="url(#bg-bolt)" stroke="#A7B6C4" stroke-width="3.5"/><circle cx="50" cy="50" r="42" fill="none" stroke="#E7C35A" stroke-width="1.2"/>
     <path d="M56 12 L30 54 L47 54 L38 88 L70 42 L52 42 L62 12 Z" fill="#FFE27A" stroke="#fff" stroke-width="2" stroke-linejoin="round"/>
-   </svg>
+   </svg><!--/BOLT-->
    <span class="hint" aria-hidden="true">Run<small>Zeus</small></span>
    <span class="tip" id="tip-bolt" role="tooltip"><b>Run or restart a task</b> – drag a bolt from here onto a task (on Olympus, drop or fling it at a tree), or press <kbd>Enter</kbd> here and then <kbd>Enter</kbd> on a task. A task that runs and ends starts; an always-on one restarts. <kbd>Esc</kbd> cancels.</span>
   </button>
@@ -81,7 +83,8 @@
 <p class="phone-hint" id="phoneHint" hidden></p>
 <main id="main"></main>
 <!-- On a phone (under 600 px) the sections sit in a bar at the bottom, in thumb reach: Today, Watch, Study, Approvals, More.
-     More opens a sheet with the other places. core.js drawNav() fills both from one list (docs/home.md "Finding your way"). -->
+     More opens a sheet with the other places; on a wider screen the strip's More opens the same sheet. core.js drawNav() and
+     drawMore() fill them from one list (docs/home.md "Finding your way"). -->
 <nav class="tabbar" id="tabbar" aria-label="Sections"><span class="tabmark" aria-hidden="true" hidden></span><span id="tabs" style="display:contents"></span></nav>
 <dialog id="moreSheet" class="sheet" aria-labelledby="moreH"><div class="sheet-in">
  <div class="sheet-head"><h2 id="moreH">More</h2><button type="button" id="moreClose">Close</button></div>
