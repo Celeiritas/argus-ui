@@ -453,9 +453,18 @@ def plugin_view(p):
 
 def own_link_ok(d, rel):
     # a link of an own address is shown only while it points at a page inside the plugin (a file, or a folder with index.html)
+    f = plugin_target(d, rel)[1]
+    return bool(f) and os.path.basename(f) != 'plugin.json'
+
+def plugin_target(d, rel):
+    """(root, file) for a path inside plugin folder d: the file it serves, with every link resolved, or None when that is
+    not a file inside the folder. A folder serves its index.html, and that name is resolved again after it is added, so an
+    index.html that is a link to somewhere else leads nowhere."""
     root = os.path.realpath(d); f = os.path.realpath(os.path.join(root, rel))
-    if os.path.commonpath([root, f]) != root: return False
-    return os.path.isfile(os.path.join(f, 'index.html') if os.path.isdir(f) else f)
+    if os.path.isdir(f): f = os.path.realpath(os.path.join(f, 'index.html'))
+    try: inside = os.path.commonpath([root, f]) == root
+    except ValueError: inside = False                  # another drive (Windows)
+    return root, (f if inside and os.path.isfile(f) else None)
 
 def log(u):
     return run(JOURNALCTL, '--user', '-u', u, '-n', '40', '--no-pager', '-o', 'short-iso')
@@ -634,11 +643,9 @@ class H(BaseHTTPRequestHandler):
     def send_plugin_file(self, p, sub, own):
         # one file of plugin p by its path inside the folder (sub; '' is the entry page), with the headers own: the
         # sandbox in Elaia (plugin_file), the plugin's own origin on its own address (OwnH). Nothing outside the folder.
-        root = os.path.realpath(p['dir']); f = os.path.realpath(os.path.join(root, sub or p.get('entry', '')))
-        if os.path.isdir(f): f = os.path.join(f, 'index.html')
-        hidden = os.path.basename(f) == 'plugin.json' or (p['kind'] == 'server' and (f.endswith(('.py', '.pyc')) or '__pycache__' in f))
-        if os.path.commonpath([root, f]) != root or not os.path.isfile(f) or hidden:
-            return self.out('not found', 'text/plain', 404, headers=own)
+        root, f = plugin_target(p['dir'], sub or p.get('entry', ''))     # resolved after index.html is added (a link there leads out)
+        hidden = not f or os.path.basename(f) == 'plugin.json' or (p['kind'] == 'server' and (f.endswith(('.py', '.pyc')) or '__pycache__' in f))
+        if hidden: return self.out('not found', 'text/plain', 404, headers=own)
         ct = mimetypes.guess_type(f)[0] or 'application/octet-stream'
         if ct.startswith('text/') or ct in ('application/json',): ct += '; charset=utf-8'
         with open(f, 'rb') as fh:

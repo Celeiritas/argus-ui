@@ -59,6 +59,11 @@ LINKS = {}                                           # symlinks out of the game'
 for name, target in (('escape', PLUG), ('leak.txt', os.path.join(PLUG, 'secret.txt')), ('far', TMP)):
     try: os.symlink(target, os.path.join(GAME, name), target_is_directory=os.path.isdir(target)); LINKS[name] = target
     except (OSError, NotImplementedError): pass
+INDEX_LINKS = {}                                     # real folders of the game whose index.html is a link: out, or to its manifest
+for name, target in (('inner', os.path.join(TMP, 'secret.txt')), ('inner-manifest', os.path.join(GAME, 'plugin.json'))):
+    os.makedirs(os.path.join(GAME, name), exist_ok=True)
+    try: os.symlink(target, os.path.join(GAME, name, 'index.html')); INDEX_LINKS[name] = target
+    except (OSError, NotImplementedError): pass
 
 MAIN_PORT, LOCAL, PUBLIC, SRV_LOCAL, SRV_PUBLIC = ports(5)
 FRAMES = {'name': 'Frame data', 'path': 'frames/'}
@@ -275,6 +280,20 @@ class Paths(unittest.TestCase):
         for path in ('/escape/secret.txt', '/escape', '/escape/', '/escape/other/index.html', '/leak.txt', '/far/secret.txt', '/far/'):
             with self.subTest(path=path): self.refused(path)
         self.assertNotEqual(own('/escape')[1].get('location'), '/escape/', 'a link to a folder outside is no folder of the game')
+
+    def test_an_index_that_is_a_link(self):
+        # a real folder of the game whose index.html links out of it, or to the plugin's own manifest: the folder's address
+        # serves nothing, on the own address and inside Elaia, and no link of the page points there
+        if not INDEX_LINKS: self.skipTest('symbolic links cannot be made here')
+        for path in ('/inner/', '/inner/index.html', '/inner-manifest/', '/inner-manifest/index.html', '/inner/?v=1'):
+            with self.subTest(path=path):
+                self.refused(path); self.assertNotIn(b'"id"', own(path, login=OWNER)[2], path)
+        for path in ('plugins/spartamelee/inner/', 'plugins/spartamelee/inner/index.html', 'plugins/spartamelee/inner-manifest/'):
+            with self.subTest(path=path):
+                code, h, b = main(path, login=OWNER)
+                self.assertEqual(code, 404, path); self.assertNotIn(b'TOP-SECRET', b, path); self.assertNotIn(b'"id"', b, path)
+        for rel in ('inner/', 'inner', 'inner-manifest/', 'inner/index.html'): self.assertFalse(a.own_link_ok(GAME, rel), rel)
+        self.assertTrue(a.own_link_ok(GAME, 'frames/'), 'the control: a real page')
 
 class Methods(unittest.TestCase):
     """GET and HEAD only: every other method is 405 before any route, also with a body or on a path that exists."""
