@@ -206,10 +206,13 @@ OWN_HEADERS = {'Content-Security-Policy': "default-src 'self'; script-src 'self'
                'X-Frame-Options': 'SAMEORIGIN', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'same-origin',
                'Cross-Origin-Resource-Policy': 'same-origin', 'Cross-Origin-Opener-Policy': 'same-origin'}
 
-def load_own_origin(path=None):
+def load_own_origin(path=None, left_out=None):
     """The checked own-origin.json: {id: {port, public, links}}. A missing file is {}; a broken file or entry is logged
-    and left out, so a mistake there never stops Elaia."""
-    say = lambda m: print(f'argus-ui: own-origin.json: {m}', file=sys.stderr, flush=True)
+    and left out, so a mistake there never stops Elaia. left_out, a list, gets one line for the whole file or for each
+    plugin that was left out (not for a skipped link), so start_own_origins knows whether this start proves anything."""
+    def say(m, lost=True):
+        print(f'argus-ui: own-origin.json: {m}', file=sys.stderr, flush=True)
+        if lost and left_out is not None: left_out.append(m)
     try:
         with open(path or OWN_ORIGIN, encoding='utf-8') as f: raw = json.load(f)
     except FileNotFoundError: return {}
@@ -231,7 +234,7 @@ def load_own_origin(path=None):
             name, rel = (ln.get('name'), ln.get('path')) if isinstance(ln, dict) else (None, None)
             if isinstance(name, str) and 0 < len(name.strip()) <= 40 and isinstance(rel, str) and OWN_LINK.fullmatch(rel) and '..' not in rel.split('/'):
                 links.append({'name': name.strip(), 'path': rel})
-            else: say(f'{pid}: skipped a link (it needs a "name" and a "path" inside the plugin, like "frames/")')
+            else: say(f'{pid}: skipped a link (it needs a "name" and a "path" inside the plugin, like "frames/")', lost=False)
         found[pid] = {'port': port, 'public': public, 'links': links[:4]}; used.add(port); published.add(public)
     return found
 
@@ -930,8 +933,8 @@ class OwnH(H):
 def start_own_origins(path=None):
     """One listener on 127.0.0.1 for each plugin in own-origin.json. One that cannot start is logged and skipped, and Elaia
     keeps the sandboxed frame for it. Returns {id: server} (the tests stop them)."""
-    started, busy = {}, []
-    for pid, c in load_own_origin(path).items():
+    started, busy, left = {}, [], []
+    for pid, c in load_own_origin(path, left).items():
         try: srv = ThreadingHTTPServer(('127.0.0.1', c['port']), type('OwnH_' + pid.replace('-', '_'), (OwnH,), {'pid': pid}))
         except OSError as e:
             print(f'argus-ui: {pid} gets no own address: its port cannot be used ({e.strerror or e})', file=sys.stderr, flush=True)
@@ -939,19 +942,21 @@ def start_own_origins(path=None):
         threading.Thread(target=srv.serve_forever, name='own-' + pid, daemon=True).start()
         OWN[pid] = c; started[pid] = srv
         print(f'argus-ui: {pid} has its own address (127.0.0.1:{c["port"]}, HTTPS port {c["public"]})', file=sys.stderr, flush=True)
-    own_alert(busy)
+    own_alert(busy, keep=bool(left))
     return started
 
 OWN_ALERT = 'argus-own-origin.json'
 
-def own_alert(busy):
+def own_alert(busy, keep=False):
     """A taken own port is loud: an alert file in ALERTS (docs/alerts.md), so Watch glares, because tailscale serve still
-    forwards that plugin's HTTPS port to whatever holds the local one. A start where every own listener started (or there
-    is no own-origin.json) takes this file away again. busy: [(id, entry)] whose port could not be used."""
+    forwards that plugin's HTTPS port to whatever holds the local one. busy: [(id, entry)] whose port could not be used.
+    Only a start that read own-origin.json cleanly (or found none), left no plugin out and started every own listener
+    takes the file away again; keep (the file could not be read, or a plugin was left out) proves nothing about those
+    ports, so an alert already up stays."""
     f = os.path.join(ALERTS, OWN_ALERT)
     try:
         if not busy:
-            if os.path.exists(f): os.remove(f)
+            if not keep and os.path.exists(f): os.remove(f)
             return
         if len(busy) == 1:
             pid, c = busy[0]

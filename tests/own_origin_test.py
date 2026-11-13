@@ -148,9 +148,11 @@ class Config(unittest.TestCase):
                'dup-port': ok(p1, q2), 'pub-443': ok(p3, 443), 'pub-80': ok(p3, 80), 'pub-dup': ok(p3, q1), 'pub-zero': ok(p3, 0),
                'pub-str': ok(p3, str(q2)), 'pub-none': {'port': p3},
                'second': ok(p4, q2), 'third': dict(ok(p5, q3), links='frames/'), 'nl\n': ok(p2, q2), 'nl-two\n': ok(p2, q2)}
-        got = a.load_own_origin(self.conf(doc))
+        left = []
+        got = a.load_own_origin(self.conf(doc), left)
         self.assertEqual(got, {'good': {'port': p1, 'public': q1, 'links': []}, 'second': {'port': p4, 'public': q2, 'links': []},
                                'third': {'port': p5, 'public': q3, 'links': []}}, 'an id ending in a newline is no plugin id')
+        self.assertEqual(len(left), len(doc) - 3, 'one line for each plugin left out')
 
     def test_an_id_ends_where_it_ends(self):
         # "$" alone matches before a final newline: a plugin folder whose manifest says "nl-game\n" is no plugin
@@ -168,8 +170,10 @@ class Config(unittest.TestCase):
                {'name': '', 'path': 'a/'}, {'name': '   ', 'path': 'a/'}, {'name': 'x' * 41, 'path': 'a/'}, {'name': 'Q', 'path': 'a/?x=<b>'},
                {'name': 'Js', 'path': 'javascript:alert(1)'}, {'name': 'Empty', 'path': ''}, {'name': 7, 'path': 'a/'}, 'frames/', None,
                {'name': 'Newline', 'path': 'frames/\n'}]
-        got = a.load_own_origin(self.conf({'game': {'port': p1, 'public': q1, 'links': bad + good}}))
+        left = []
+        got = a.load_own_origin(self.conf({'game': {'port': p1, 'public': q1, 'links': bad + good}}), left)
         self.assertEqual(got['game']['links'], [{'name': f'Page {i}', 'path': f'page{i}/'} for i in range(4)], 'the valid ones, at most 4')
+        self.assertEqual(left, [], 'a skipped link leaves no plugin out')
 
     def test_what_the_page_gets(self):
         # api/state and the page: the game has "own" only where this browser can reach it, with only the links that point
@@ -212,7 +216,7 @@ class Config(unittest.TestCase):
 
     def test_a_busy_port_is_skipped(self):
         # the port is taken: Elaia keeps the frame and says so loudly, with an alert file Watch shows (docs/alerts.md), until
-        # a start where every own listener starts
+        # a start that reads own-origin.json cleanly (or finds none) and starts every own listener
         f = os.path.join(a.ALERTS, a.OWN_ALERT)
         def message():
             with open(f, encoding='utf-8') as fh: return json.load(fh)['message']
@@ -240,10 +244,19 @@ class Config(unittest.TestCase):
             two = message()
             self.assertTrue(two.startswith(f'Turn off HTTPS ports {q}, {q2} on tailscale serve (sudo tailscale serve --https={q} off'), two)
             self.assertIn(f'free local ports {busy}, {busy2}', two); self.assertLessEqual(len(two), 300)
+            # a start that proves nothing about those ports keeps the alert: the file unreadable or not an object, a plugin left out
+            for doc in ('{"busy-game": ', '[]', {'Bad_ID': {'port': busy, 'public': q}}, {'busy-game\n': {'port': busy, 'public': q}},
+                        {'busy-game': {'port': busy, 'public': 443}}):
+                self.assertEqual(a.start_own_origins(self.conf(doc)), {}, doc)
+                self.assertEqual(message(), two, f'{doc}: the alert stays as it was')
+            a.start_own_origins(os.path.join(TMP, 'no-such-file.json'))
+            self.assertFalse(os.path.exists(f), 'no own-origin.json: nothing is set up, so nothing is forwarded')
+            a.start_own_origins(self.conf({'busy-game': {'port': busy, 'public': q}}))
+            self.assertTrue(os.path.exists(f), 'loud again')
         finally:
             for s in socks: s.close()
         self.assertEqual(a.start_own_origins(self.conf({})), {})
-        self.assertFalse(os.path.exists(f), 'the next start where every own listener starts takes it away')
+        self.assertFalse(os.path.exists(f), 'a clean start where every own listener starts takes it away')
 
     def test_many_busy_ports_fit_in_watch(self):
         # Watch shows 300 characters: every public port while they fit, else the count and the first one's command
