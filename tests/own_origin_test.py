@@ -147,10 +147,18 @@ class Config(unittest.TestCase):
                'good': ok(p1, q1),
                'dup-port': ok(p1, q2), 'pub-443': ok(p3, 443), 'pub-80': ok(p3, 80), 'pub-dup': ok(p3, q1), 'pub-zero': ok(p3, 0),
                'pub-str': ok(p3, str(q2)), 'pub-none': {'port': p3},
-               'second': ok(p4, q2), 'third': dict(ok(p5, q3), links='frames/')}
+               'second': ok(p4, q2), 'third': dict(ok(p5, q3), links='frames/'), 'nl\n': ok(p2, q2), 'nl-two\n': ok(p2, q2)}
         got = a.load_own_origin(self.conf(doc))
         self.assertEqual(got, {'good': {'port': p1, 'public': q1, 'links': []}, 'second': {'port': p4, 'public': q2, 'links': []},
-                               'third': {'port': p5, 'public': q3, 'links': []}})
+                               'third': {'port': p5, 'public': q3, 'links': []}}, 'an id ending in a newline is no plugin id')
+
+    def test_an_id_ends_where_it_ends(self):
+        # "$" alone matches before a final newline: a plugin folder whose manifest says "nl-game\n" is no plugin
+        d = os.path.join(TMP, 'nl-game')
+        put(os.path.join(d, 'index.html'), 'NL'); put(os.path.join(d, 'plugin.json'), {'id': 'nl-game\n', 'name': 'NL'})
+        self.assertIsNone(a.manifest('nl-game\n', d))
+        put(os.path.join(d, 'plugin.json'), {'id': 'nl-game', 'name': 'NL'})
+        self.assertEqual(a.manifest('nl-game', d)['id'], 'nl-game', 'the control: the same folder with a plain id')
 
     def test_only_links_inside_the_plugin(self):
         p1, q1 = ports(2)
@@ -158,7 +166,8 @@ class Config(unittest.TestCase):
         bad = [{'name': 'Up', 'path': '../x'}, {'name': 'Abs', 'path': '/etc/x'}, {'name': 'Web', 'path': 'https://evil.example/'},
                {'name': 'Proto', 'path': '//evil.example/'}, {'name': 'Deep', 'path': 'a/../../b'}, {'name': 'Back', 'path': 'a\\b'},
                {'name': '', 'path': 'a/'}, {'name': '   ', 'path': 'a/'}, {'name': 'x' * 41, 'path': 'a/'}, {'name': 'Q', 'path': 'a/?x=<b>'},
-               {'name': 'Js', 'path': 'javascript:alert(1)'}, {'name': 'Empty', 'path': ''}, {'name': 7, 'path': 'a/'}, 'frames/', None]
+               {'name': 'Js', 'path': 'javascript:alert(1)'}, {'name': 'Empty', 'path': ''}, {'name': 7, 'path': 'a/'}, 'frames/', None,
+               {'name': 'Newline', 'path': 'frames/\n'}]
         got = a.load_own_origin(self.conf({'game': {'port': p1, 'public': q1, 'links': bad + good}}))
         self.assertEqual(got['game']['links'], [{'name': f'Page {i}', 'path': f'page{i}/'} for i in range(4)], 'the valid ones, at most 4')
 

@@ -88,7 +88,7 @@ def plugin_dirs():
 def manifest(pid, d):
     """The checked manifest of one plugin folder, or None when it isn't a valid plugin.
     A server plugin with "agent": true takes over the section of the theme's agent with the same id (Mentor)."""
-    if not PLUGIN_ID.match(pid) or pid in RESERVED or pid in PAGES: return None
+    if not PLUGIN_ID.fullmatch(pid) or pid in RESERVED or pid in PAGES: return None    # fullmatch: "$" alone lets a final newline through
     try: m = json.load(open(os.path.join(d, 'plugin.json'), encoding='utf-8'))
     except Exception: return None
     if not isinstance(m, dict) or m.get('id') != pid: return None
@@ -219,7 +219,7 @@ def load_own_origin(path=None):
     num = lambda v, lo: isinstance(v, int) and not isinstance(v, bool) and lo <= v <= 65535
     found, used, published = {}, {PORT}, {80, 443}
     for pid, c in raw.items():
-        if not (isinstance(pid, str) and PLUGIN_ID.match(pid) and pid not in RESERVED and pid not in PAGES and isinstance(c, dict)):
+        if not (isinstance(pid, str) and PLUGIN_ID.fullmatch(pid) and pid not in RESERVED and pid not in PAGES and isinstance(c, dict)):
             say(f'skipped {str(pid)[:40]!r}: not a plugin id with settings'); continue
         port, public = c.get('port'), c.get('public')
         if not num(port, 1024) or port in used:
@@ -229,7 +229,7 @@ def load_own_origin(path=None):
         links = []
         for ln in (c.get('links') if isinstance(c.get('links'), list) else []):
             name, rel = (ln.get('name'), ln.get('path')) if isinstance(ln, dict) else (None, None)
-            if isinstance(name, str) and 0 < len(name.strip()) <= 40 and isinstance(rel, str) and OWN_LINK.match(rel) and '..' not in rel.split('/'):
+            if isinstance(name, str) and 0 < len(name.strip()) <= 40 and isinstance(rel, str) and OWN_LINK.fullmatch(rel) and '..' not in rel.split('/'):
                 links.append({'name': name.strip(), 'path': rel})
             else: say(f'{pid}: skipped a link (it needs a "name" and a "path" inside the plugin, like "frames/")')
         found[pid] = {'port': port, 'public': public, 'links': links[:4]}; used.add(port); published.add(public)
