@@ -457,19 +457,22 @@ def plain_task(persona, name):
     return f'{who} {name}'.strip()
 
 def and_list(xs): return xs[0] if len(xs) == 1 else ', '.join(xs[:-1]) + ' and ' + xs[-1]
+def few(xs): return and_list(xs) if len(xs) <= 3 else ', '.join(xs[:3]) + f' and {len(xs) - 3} more'
 
 def now_line(jobs, ws):
     """One line on what the server is doing now, only from what it already knows: the game guard's record, the runs in
     progress (a timer's run or a transient job's; an always-on service is not "busy") and the watch's restarts.
-    "<name>: calm" / "<name>: busy: Hermes media" / "<name>: a game is running, the local AI is paused"."""
+    "<name>: calm" / "<name>: busy with Hermes media" / "<name>: a game is running, the local AI is paused". One colon, after
+    the name: the parts are joined with "; "."""
     game, paused = game_guard()
     parts = []
     if game:
         ps = list(dict.fromkeys(plain_task(*u.partition('-')[::2]) for u in paused))
         parts.append('a game is running' + (f', {and_list(ps)} {"is" if len(ps) == 1 else "are"} paused' if ps else ''))
     busy = [plain_task(j['persona'], j['name']) for j in jobs if j['state'] == 'running' and (j.get('base') or j['next'] != 'always on')]
-    busy += [f'restarting {r.get("title") or r.get("id")}' for r in ws if r.get('fixing') or r.get('queued')]
-    if busy: parts.append('busy: ' + (', '.join(busy) if len(busy) <= 3 else ', '.join(busy[:3]) + f' and {len(busy) - 3} more'))
+    fixing = [str(r.get('title') or r.get('id')) for r in ws if r.get('fixing') or r.get('queued')]
+    if busy: parts.append('busy with ' + few(busy))
+    if fixing: parts.append('restarting ' + few(fixing))
     return f'{server_name()}: {"; ".join(parts) or "calm"}'
 
 WATCH_INTERVAL = int(os.environ.get('ARGUS_WATCH_INTERVAL', 60))   # seconds between rounds; 0 turns the loop off (the tests do, unless they ask)

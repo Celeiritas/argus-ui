@@ -1,8 +1,9 @@
 // Today (docs/home.md): what needs *you* across the realm, and where to go. It is what Elaia opens on (the bare address,
 // and <base>/home, its old name). Watch is about the machines; Today is about you. In this order:
+//   0. for the owner, the server's own line on what it is doing now, on its own above the list ("<name>: calm",
+//      "<name>: busy with …", "<name>: a game is running, …": now_line() in the server),
 //   1. one line that says the state in words ("Nothing needs you", "2 things need you"), heading the list of
-//   2. the rows that need you, the failed thing first, each with one verb-first button; between them, for the owner, the server's
-//      own line on what it is doing now ("<name>: calm", "busy: …", "a game is running, …": now_line() in the server),
+//   2. the rows that need you, the failed thing first, each with one verb-first button,
 //   3. "Open": the media players (~/.config/argus-ui/media.json), then the links to other pages (~/.config/argus-ui/links.json),
 //   4. one one-line card per section, from status v2 (api/<id>/status: line, needs, action). A new section (workouts,
 //      meals, music) only has to answer that to get its card. A section with a row above has no card; no cards, no heading.
@@ -52,9 +53,10 @@ const home = (() => {
     const state = total ? `${plural(total, 'thing')} need${total === 1 ? 's' : ''} you` : asking ? 'Asking every section…' : 'Nothing needs you';
     const keys = new Set(list.map(n => n.key)), links = role() === 'owner' ? opens() : '', places = cards(list);
     const now = role() === 'owner' && typeof S.now === 'string' ? S.now : '';   // what the server is doing (the server's own words)
-    const html = `<section class="home" aria-label="Today">
+    // the server's line stands above the list, on its own: inside the list's panel it read as one more thing to do
+    const html = `<section class="home" aria-label="Today">${now ? `<p class="now">${esc(now)}</p>` : ''}
       <section class="needs" aria-labelledby="needs-h"><h2 class="state${list.length ? ' bad' : ''}" id="needs-h">${state}</h2>
-        ${now ? `<p class="now">${esc(now)}</p>` : list.length || asking ? '' : '<p class="quiet">The realm is quiet.</p>'}
+        ${now || list.length || asking ? '' : '<p class="quiet">The realm is quiet.</p>'}
         <ul class="needlist">${list.map(n => row(n, seen && !seen.has(n.key))).join('')}</ul></section>
       ${links ? `<section class="open" aria-labelledby="open-h"><h2 id="open-h">Open</h2><ul class="openlist">${links}</ul></section>` : ''}
       ${places ? `<section class="places" aria-labelledby="places-h"><h2 id="places-h">Sections</h2><ul class="placelist">${places}</ul></section>` : ''}</section>`;

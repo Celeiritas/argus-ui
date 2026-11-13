@@ -2,7 +2,7 @@
 
     python3 tests/today_test.py -v        (tests/run.sh runs it under "== today model"; tests/home.test.js is the page side)
 
-  * now_line(): "calm"; "busy:" for a timer's run or a transient job's run, never for an always-on service; the watch's restarts;
+  * now_line(): "calm"; "busy with" for a timer's run or a transient job's run, never for an always-on service; the watch's restarts;
     "a game is running" from the game guard's record (and what it paused, the local AI by name) or its alert file alone
   * the server's name from ~/.config/leafy/realm.json (SERVER, any case), "The server" without a usable one
   * media(): media.json's jellyfin and audiobookshelf, http(s) addresses only; no file or a broken one, no rows
@@ -66,16 +66,26 @@ class NowLine(Base):
 
     def test_busy_names_a_timer_run_and_a_transient_run_but_never_an_always_on_service(self):
         put(UNITS, BUSY)
-        self.assertEqual(self.now(), 'The server: busy: Hermes media, Zeus deploy')
+        self.assertEqual(self.now(), 'The server: busy with Hermes media and Zeus deploy')
 
     def test_the_watch_restarting_a_program_is_busy(self):
         self.assertEqual(a.now_line([], [{'id': 'jellyfin', 'title': 'Jellyfin', 'fixing': True}, {'id': 'abs', 'title': 'Audiobookshelf', 'queued': True},
                                          {'id': 'qbt', 'title': 'qBittorrent', 'works': False}]),
-                         'The server: busy: restarting Jellyfin, restarting Audiobookshelf')
+                         'The server: restarting Jellyfin and Audiobookshelf')
 
     def test_more_than_three_runs_are_counted_not_listed(self):
         jobs = [dict(persona='hermes', name=f'job{i}', state='running', next='Sun 4:00 AM', base='') for i in range(5)]
-        self.assertEqual(a.now_line(jobs, []), 'The server: busy: Hermes job0, Hermes job1, Hermes job2 and 2 more')
+        self.assertEqual(a.now_line(jobs, []), 'The server: busy with Hermes job0, Hermes job1, Hermes job2 and 2 more')
+
+    def test_one_colon_only_after_the_name(self):
+        # the review of 4.44.0's first draft read "The server: busy: Hermes media": two colons
+        put(GUARD, ['mnemosyne-ollama']); put(UNITS, BUSY)
+        ws = [{'id': 'jellyfin', 'title': 'Jellyfin', 'fixing': True}]
+        for line in (self.now(), a.now_line([dict(persona='hermes', name='media', state='running', next='Sun 4:00 AM', base='')], ws)):
+            with self.subTest(line=line):
+                self.assertEqual(line.count(':'), 1, line)
+        self.assertEqual(a.now_line([dict(persona='hermes', name='media', state='running', next='Sun 4:00 AM', base='')], ws),
+                         'The server: a game is running, the local AI is paused; busy with Hermes media; restarting Jellyfin')
 
     def test_a_game_with_the_local_ai_paused(self):
         put(GUARD, ['mnemosyne-ollama'])
@@ -83,7 +93,7 @@ class NowLine(Base):
 
     def test_a_game_that_paused_two_tasks_while_a_run_goes_on(self):
         put(GUARD, ['mnemosyne-ollama', 'mnemosyne-library']); put(UNITS, BUSY)
-        self.assertEqual(self.now(), 'The server: a game is running, the local AI and Mnemosyne library are paused; busy: Hermes media, Zeus deploy')
+        self.assertEqual(self.now(), 'The server: a game is running, the local AI and Mnemosyne library are paused; busy with Hermes media and Zeus deploy')
 
     def test_the_guards_alert_file_alone_says_a_game_runs(self):
         put(GUARD, []); put(os.path.join(ALERTS, 'medusa-gameguard.json'), {'job': 'medusa-gameguard', 'level': 'warn', 'message': 'A game is running'})
@@ -138,7 +148,7 @@ class OwnerOnly(Base):
     def test_the_owner_gets_both_and_a_learner_neither(self):
         put(MEDIA, {'jellyfin': 'https://films.example/'}); put(UNITS, BUSY)
         mine = a.state_for(OWNER)
-        self.assertEqual(mine['now'], 'The server: busy: Hermes media, Zeus deploy')
+        self.assertEqual(mine['now'], 'The server: busy with Hermes media and Zeus deploy')
         self.assertEqual([m['id'] for m in mine['media']], ['jellyfin'])
         hers = a.state_for(LEARNER)
         self.assertNotIn('now', hers); self.assertNotIn('media', hers)

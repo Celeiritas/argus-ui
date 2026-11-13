@@ -57,6 +57,7 @@ function fitRealms() {
 let fitAt; addEventListener('resize', () => { cancelAnimationFrame(fitAt); fitAt = requestAnimationFrame(fitRealms); });
 document.fonts?.ready.then(() => fitRealms());   // the words are measured again once the font has arrived
 $('#mute').onclick = $('#muteMore').onclick = () => { soundOn = !soundOn; try { localStorage.setItem('argus-sound', soundOn ? 'on' : 'off'); } catch (e) {} muteLabel(); };
+$('#wxText').hidden = here === 'home';   // on Today the greeting under the name says the weather: one place for each fact (4.44.0)
 muteLabel();
 let actx = null;
 function alarmChime() {        // two soft beeps, made in the browser (no sound file needed)
@@ -287,7 +288,8 @@ function drawMore(strip) {
   put($('#moreAway'), away.map(row).join('')); $('#moreAwayH').hidden = !away.length;
   const b = $('#realmMore'), open = more.find(e => e.on), n = sumNeeds(more);
   b.hidden = !more.length; b.classList.toggle('on', !!open);
-  put(b, `${MORE_MARK}${badge(n, 'dot')}<span><b>More</b>${open ? `<small>${esc(open.word)}</small><span class="sr">, ${esc(open.word)} is open</span>` : ''}${needSay(n)}</span>`);
+  // no second line naming the open page (only read out): it made More wider on that page alone, and the strip changed shape
+  put(b, `${MORE_MARK}${badge(n, 'dot')}<span><b>More</b>${open ? `<span class="sr">, ${esc(open.word)} is open</span>` : ''}${needSay(n)}</span>`);
 }
 // the bar's marker sits over the current slot; arriving from another section it slides over from the slot you left (200 ms)
 function placeMarker() {

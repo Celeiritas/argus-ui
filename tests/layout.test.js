@@ -74,6 +74,30 @@ run(async b => {
   }
   check(folded[1920].length <= folded[1024].length && folded[1024].length <= folded[800].length, `the wider the window, the fewer pills fold (in More at 1920: ${folded[1920].length}, 1024: ${folded[1024].length}, 800: ${folded[800].length})`);
 
+  // 1920 x 1080, after the review of the first draft of 4.44.0: Today says the weather once (under the name; the strip's goes
+  // there), and the strip keeps one shape from page to page (More naming the open page made it wider on Phone alerts alone,
+  // and every second line went)
+  {
+    const wp = await page(b, 1920, 1080), shape = {};
+    await wp.route('**/api/sky', r => r.fulfill({json: {sky: 'rain', desc: 'Light rain', is_day: true, temp: 48, unit: 'F', precip: 1, clouds: 90, wind: 10,
+      south: false, at: Math.floor(Date.now() / 1000), source: 'Open-Meteo'}}));
+    for (const where of ['home', 'argus', 'phone']) {
+      await wp.goto(BASE + where); if (where === 'home') await settled(wp);
+      await wp.waitForFunction(() => document.getElementById('wxText').textContent.trim(), null, {timeout: 5000}).catch(() => {});
+      if (where === 'home') await wp.locator('#sub', {hasText: 'Light rain'}).waitFor({timeout: 3000}).catch(() => {});
+      await wp.waitForTimeout(300);
+      const s = await strip(wp);
+      const wx = await wp.evaluate(() => [document.getElementById('wxText').offsetWidth > 0, /Light rain/.test(document.getElementById('sub').textContent)]);
+      const xs = await wp.evaluate(() => [...document.querySelectorAll('#realms .realm')].filter(e => e.offsetWidth).map(e => Math.round(e.getBoundingClientRect().left)));
+      shape[where] = {compact: s.compact, over: s.over.join(' '), xs: xs.join(' ')};
+      if (where === 'home') check(!wx[0] && wx[1], `1920 x 1080: Today says the weather once, under the name (on the strip: ${wx[0]}, under the name: ${wx[1]})`);
+      else check(wx[0], `1920 x 1080: on ${where} the weather is on the strip (${wx[0]})`);
+    }
+    const same = ['argus', 'phone'].every(k => JSON.stringify(shape[k]) === JSON.stringify(shape.home));
+    check(same && !shape.home.compact, `1920 x 1080: the strip has one shape on Today, Watch and Phone alerts, second lines shown (${JSON.stringify(shape)})`);
+    await wp.close();
+  }
+
   // a way to Phone alerts at every width that cannot be dismissed (4.44.0): the More that is showing (the phone's bar under
   // 600 px, the strip or the ultrawide rail above) has it, also after "Not now" on Today's line; Esc gives the focus back
   for (const [w, h] of [[375, 812], [412, 915], [800, 360], [915, 412], [1024, 720], [1440, 900], [1920, 1080], [2560, 1080]]) {

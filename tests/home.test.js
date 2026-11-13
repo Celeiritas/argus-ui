@@ -73,15 +73,19 @@ run(async b => {
   check(await p.locator('.home .open').count() === 0, 'no media.json, no rows for the players');
 
   // one line on what the server is doing now (4.44.0), only from what it knows: a timer's run in progress, the game guard's record
-  const now = () => p.locator('.home .needs p.now').textContent().then(t => t.trim(), () => '');
-  check(await now() === 'The server: busy: Hermes media' && await p.locator('.home .quiet').count() === 0, `under the state, the server's line says what runs now ("${await now()}")`);
+  const now = () => p.locator('.home > p.now').textContent().then(t => t.trim(), () => '');
+  check(await now() === 'The server: busy with Hermes media' && await p.locator('.home .quiet').count() === 0, `the server's line says what runs now ("${await now()}")`);
+  // on its own above the list, not inside the list's panel, where it read as one more thing to do (the review of the first draft)
+  const at = await p.evaluate(() => { const n = document.querySelector('.home p.now'), s = document.querySelector('.home .needs');
+    return n && s ? [!!n.closest('.needs'), n.getBoundingClientRect().bottom <= s.getBoundingClientRect().top + 1] : null; });
+  check(JSON.stringify(at) === '[false,true]', `the server's line stands above the list's panel, not in it (${JSON.stringify(at)})`);
   const RM_ = path.join(path.dirname(process.env.FIXTURES), 'home/.config/leafy/realm.json'), GG = path.join(path.dirname(process.env.FIXTURES), 'home/.local/state/medusa-gameguard/frozen-by-me.json');
   fs.mkdirSync(path.dirname(RM_), {recursive: true}); fs.mkdirSync(path.dirname(GG), {recursive: true});
   fs.writeFileSync(RM_, JSON.stringify({SERVER: 'Shelf'})); fs.writeFileSync(GG, JSON.stringify(['mnemosyne-ollama']));
   await p.evaluate(() => refresh()); await p.locator('.home p.now', {hasText: 'game'}).waitFor({timeout: 3000}).catch(() => {});
-  check(await now() === 'Shelf: a game is running, the local AI is paused; busy: Hermes media', `with a game on, it says so, by the name in realm.json ("${await now()}")`);
+  check(await now() === 'Shelf: a game is running, the local AI is paused; busy with Hermes media', `with a game on, it says so, by the name in realm.json ("${await now()}")`);
   fs.unlinkSync(RM_); fs.unlinkSync(GG); await p.evaluate(() => refresh()); await p.locator('.home p.now', {hasText: 'The server'}).waitFor({timeout: 3000}).catch(() => {});
-  check(await now() === 'The server: busy: Hermes media', 'the game over, the line is back');
+  check(await now() === 'The server: busy with Hermes media', 'the game over, the line is back');
 
   fs.mkdirSync(AL, {recursive: true});
   fs.writeFileSync(path.join(AL, 'zeus.json'), JSON.stringify({job: 'zeus-approve', level: 'alert', message: 'Janus could not verify the approval; the request is held', link: 'demo-server'}));

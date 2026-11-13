@@ -7,11 +7,12 @@ opens on: the bare address `<base>/`, and `<base>/home`, its old address, which 
 ## What it shows, top to bottom
 1. **The header**: the page's name, Elaia, and under it a greeting by the viewer's clock, the date and the weather
    ("Good evening · Friday, October 23 · Light rain · 48°F"). On a narrow phone it wraps onto a second line rather than being
-   cut off (4.44.0).
+   cut off (4.44.0). This is Today's only weather: the strip's weather (on every other page) is hidden here (4.44.0).
+   Above the list, for the owner, **the server's own line on what it is doing now** (4.44.0, below), a small panel of its own.
 2. **One line that says the state in words**: *Nothing needs you*, *1 thing needs you*, *3 things need you*, or *Asking every
    section…* while the sections are still answering. It counts what the bar counts: every task in trouble, every alert, and
-   each section that needs you (its `count`, else one). Under it, for the owner, **the server's own line on what it is doing
-   now** (4.44.0, below); a learner sees "The realm is quiet." there when nothing needs her. It is the heading of the list:
+   each section that needs you (its `count`, else one). A learner sees "The realm is quiet." under it when nothing needs her.
+   It is the heading of the list:
 3. **The rows that need you**, the failed thing first. Each row has the place's mark, who it is from (the plain word and the
    realm's name, e.g. *Approvals · Zeus*), one sentence, and one verb-first button that goes there:
    - **one row per broken thing on Watch** (4.40.0, see "Trouble first" below): a program that runs but cannot do its job,
@@ -33,16 +34,17 @@ opens on: the bare address `<base>/`, and `<base>/home`, its old address, which 
    task, Approvals with a deploy waiting), so the same news is never said twice on one screen. No card left, no heading.
 
 ## What the server is doing now (4.44.0)
-One line under the state, for the owner only, written by the server (`now_line()` in `server/argus_ui.py`) from what it already
-knows, never a guess:
+One line above the list, in its own small panel (not a row of the list), for the owner only, written by the server
+(`now_line()` in `server/argus_ui.py`) from what it already knows, never a guess. One colon, after the name:
 - **`<name>: calm`**: nothing below is true.
-- **`<name>: busy: Hermes media, Zeus deploy`**: a task's run is in progress, a timer's run or one run of a transient job (a
-  deploy). A service that is always on is not "busy". With the watch restarting a program: *restarting Jellyfin*. More than
-  three: the first three *and 2 more*.
+- **`<name>: busy with Hermes media and Zeus deploy`**: a task's run is in progress, a timer's run or one run of a transient
+  job (a deploy). A service that is always on is not "busy". With the watch restarting a program: *restarting Jellyfin*. More
+  than three: the first three *and 2 more*. A run is named as Watch names its task (agent and task name).
 - **`<name>: a game is running, the local AI is paused`**: Medusa's game guard says a game runs (its record
   `~/.local/state/medusa-gameguard/frozen-by-me.json` lists what it paused, or its alert file is there; docs/memory.md). The
   tasks it paused are named in plain words: a task ending in `ollama` is *the local AI*, any other its agent and name.
-- Both together: *a game is running, the local AI is paused; busy: Hermes media*.
+- Together, in this order and parted by semicolons: *a game is running, the local AI is paused; busy with Hermes media;
+  restarting Jellyfin*.
 
 `<name>` is the server's own name, `SERVER` in `~/.config/leafy/realm.json` (`LEAFY_REALM`; the same file Mentor fills
 `{{SERVER}}` from, docs/mentor.md), at most 40 characters; without the file or the key it says *The server*. The repository never
@@ -82,7 +84,9 @@ Controllers, Spartamelee, Ariad-Node**, any other plugin, then the links to othe
   laptop, a phone on its side), the pills first drop their second line (still read out), then the weather goes, then the last
   pills fold into More, never Today or the place you are on; widen the window and they come back. Nothing scrolls sideways and
   nothing passes under Mute. More here holds the folded places, **Phone alerts** and the links to other pages, so Phone
-  alerts has a way in at every width; on a place inside it, More is the current one and names it.
+  alerts has a way in at every width; on a place inside it, More is the current one and a screen reader hears its name (no
+  second line on screen: it made More, and so the strip, change shape from page to page). The strip has one shape on every
+  page at a given width.
 - **Each place**: the plain word large, the realm's name small under it where it differs, its medallion, and a count only
   when something needs you: a red number on Watch (failed tasks and alerts), a gold mark on a section whose status says it
   needs you (a number once the server passes a `count`), summed on More. A screen reader hears "Watch, Argus, 1 needs you".

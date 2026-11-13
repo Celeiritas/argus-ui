@@ -192,7 +192,9 @@ dialog .confirm{border-color:var(--danger);color:var(--danger)}
 .need .go{display:inline-flex;align-items:center;min-height:var(--hit);padding:0 var(--s3);border-radius:8px;background:var(--bolt);color:#1C2127;font-weight:600;font-size:var(--fs-sec);text-decoration:none;white-space:nowrap}
 .need .go:focus-visible,.place:focus-visible{outline:2px solid var(--powder);outline-offset:3px}
 @keyframes needin{from{opacity:0;translate:-12px 0}to{opacity:1;translate:0 0}}
-.quiet,.home .now{margin:0;padding:0 0 var(--s2);color:var(--powder)}.home .now{overflow-wrap:anywhere}   /* the server's line on what it does now */
+.quiet{margin:0;padding:0 0 var(--s2);color:var(--powder)}
+/* the server's line on what it does now: its own small panel above the list (readable over any sky), not a row of it */
+.home>.now{grid-column:1 / -1;justify-self:start;width:fit-content;max-width:100%;box-sizing:border-box;margin:0 0 var(--s4);padding:var(--s2) var(--s4);border-radius:12px;background:rgb(28 33 39 / .86);color:var(--powder);overflow-wrap:anywhere}
 .home h2.state{font-size:var(--fs-h2);text-transform:none;letter-spacing:0;color:var(--snow);margin:var(--s2) 0}.home h2.state.bad{color:var(--snow)}
 .openlist{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:var(--s2)}
 .openlink{display:inline-flex;align-items:center;gap:var(--s2);min-height:var(--hit);padding:var(--s1) var(--s3) var(--s1) var(--s1);border:1px solid var(--line);border-radius:99px;text-decoration:none;color:var(--powder)}
@@ -205,7 +207,7 @@ dialog .confirm{border-color:var(--danger);color:var(--danger)}
 .place .pw{grid-area:w;display:flex;align-items:baseline;gap:var(--s2);min-width:0}.place .pw b{color:var(--snow);font-size:var(--fs-body);font-weight:600}.place .pw small{font-size:var(--fs-meta);color:var(--frost)}
 .place .pl{grid-area:l;font-size:var(--fs-sec);line-height:1.35;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .place.bad{box-shadow:inset 3px 0 0 var(--bad)}.place.bad .pl{color:var(--bad)}.place.needs{box-shadow:inset 3px 0 0 var(--bolt)}.place.needs .pl{color:var(--snow)}
-@media (max-width:600px){.need{grid-template-columns:44px 1fr}.need .go{grid-column:1 / -1;justify-content:center}.home>section{padding:var(--s2) var(--s3)}}
+@media (max-width:600px){.need{grid-template-columns:44px 1fr}.need .go{grid-column:1 / -1;justify-content:center}.home>section,.home>.now{padding:var(--s2) var(--s3)}}
 @media (prefers-reduced-motion:reduce){.need{animation:none}.place img,.place>svg{transition:none}}
 /* Screen sizes (docs/ui-plan.md §14). Wide: Home puts Needs you beside Places. Ultrawide (2:1 or wider, 1800px+): the sections
    bar becomes a rail down the left edge (scene.css, after the bar's own rules), and content may run wider. Short screens (a phone on its

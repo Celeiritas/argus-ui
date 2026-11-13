@@ -72,7 +72,7 @@ button.realm{font:inherit;font-weight:400;background:none;text-align:left}   /* 
 /* too many sections for one row (fitRealms in core.js): second lines hidden but still read out, then the weather, then
    the last pills fold into More (.over); the strip never scrolls sideways (4.44.0) */
 .realms.compact .realm small{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
-.realms.bare .wx{display:none}.realms.bare .wx + .mute{margin-left:auto}
+.realms.bare .wx{display:none}.realms.bare .wx + .mute,.realms .wx[hidden] + .mute{margin-left:auto}   /* [hidden]: on Today (core.js) */
 header{grid-template-areas:"title argus tools"}.title{grid-area:title}.argus{grid-area:argus}.tools{grid-area:tools}
 .hero{grid-area:hero;display:none;width:clamp(96px,min(10vw,20vh),240px);aspect-ratio:1;justify-self:center}
 .side header{grid-template-areas:"title hero argus"}.side .hero{display:block}.side .tools,.side nav.chips{display:none}
@@ -99,7 +99,7 @@ header{grid-template-areas:"title argus tools"}.title{grid-area:title}.argus{gri
  .realms{position:fixed;z-index:40;left:0;top:0;bottom:0;width:var(--rail);flex-direction:column;align-items:stretch;flex-wrap:nowrap;gap:var(--s1);padding:var(--s4) var(--s2);overflow-y:auto;border-bottom:0;border-right:1px solid var(--line);background:rgb(28 33 39 / .78)}
  .realm{border-radius:12px}
  .realms .wx{margin:auto 0 0;padding:0 var(--s2);white-space:normal}
- .realms .mute,.realms .wx + .mute{margin:var(--s2) 0 0}
+ .realms .mute,.realms .wx + .mute{margin:var(--s2) 0 0}.realms .wx[hidden] + .mute{margin:auto 0 0}
  .home{max-width:1600px}}
 /* short screens (a phone on its side): Argus shrinks so a task shows on the first screen */
 @media (max-height:500px) and (orientation:landscape){.argus{width:96px}.side .argus{width:56px}.hero{width:96px}}
