@@ -10,7 +10,8 @@
  --teal:#2A9D8F;--ok:#7BD88F;--bad:#F0859A;--run:#F1CD7D;--stone:#8FC4A4;--bolt:#FFE27A;--danger:#F87171;
  --s1:4px;--s2:8px;--s3:12px;--s4:16px;--s6:24px;--s8:32px;
  --fs-body:16px;--fs-sec:14px;--fs-meta:12px;--fs-h2:18px;--fs-h1:24px;
- --t1:100ms;--t2:150ms;--t3:200ms;--t4:300ms;--hit:44px;--wide:1600px;--gutter:max(var(--s4),calc((100vw - var(--wide)) / 2))}
+ --t1:100ms;--t2:150ms;--t3:200ms;--t4:300ms;--hit:44px;--wide:1600px;--gutter:max(var(--s4),calc((100vw - var(--wide)) / 2));
+ --server-bg:var(--card);--server-border:var(--line);--server-name:var(--snow);--server-words:var(--powder)}   /* Today's server band: neutral here; a theme's "colors" set its own (docs/themes.md, 4.45.0) */
 *{box-sizing:border-box}html,body{margin:0;background:var(--night);color:var(--snow);font:400 var(--fs-sec)/1.5 Nunito,system-ui,sans-serif;overflow-x:hidden}
 body{background:transparent}   /* the page background is the scene (sky, Olympus, grass); html keeps the night colour behind it */
 a{color:inherit}
@@ -193,21 +194,35 @@ dialog .confirm{border-color:var(--danger);color:var(--danger)}
 .need .go:focus-visible,.place:focus-visible{outline:2px solid var(--powder);outline-offset:3px}
 @keyframes needin{from{opacity:0;translate:-12px 0}to{opacity:1;translate:0 0}}
 .quiet{margin:0;padding:0 0 var(--s2);color:var(--powder)}
-/* the server's line on what it does now: its own small panel above the list (readable over any sky), not a row of it */
-.home>.now{grid-column:1 / -1;justify-self:start;width:fit-content;max-width:100%;box-sizing:border-box;margin:0 0 var(--s4);padding:var(--s2) var(--s4);border-radius:12px;background:rgb(28 33 39 / .86);color:var(--powder);overflow-wrap:anywhere}
+/* the server's line on what it does now: a band across Today in the server's own colours (the theme's, 4.45.0), lined up with
+   the panels below; its name in the name colour, the words in the words colour. Not a button: it does nothing when pressed. */
+.home>.now{grid-column:1 / -1;margin:0 0 var(--s4);padding:var(--s2) var(--s4);border:1px solid var(--server-border);border-radius:12px;background:var(--server-bg);color:var(--server-words);font-size:var(--fs-body);font-weight:400;line-height:1.4;overflow-wrap:anywhere}
+.home>.now .nowname{color:var(--server-name);font-weight:600}
 .home h2.state{font-size:var(--fs-h2);text-transform:none;letter-spacing:0;color:var(--snow);margin:var(--s2) 0}.home h2.state.bad{color:var(--snow)}
 .openlist{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:var(--s2)}
 .openlink{display:inline-flex;align-items:center;gap:var(--s2);min-height:var(--hit);padding:var(--s1) var(--s3) var(--s1) var(--s1);border:1px solid var(--line);border-radius:99px;text-decoration:none;color:var(--powder)}
 .openlink svg{width:32px;height:32px;flex:none}.openlink b{display:block;color:var(--snow);font-size:var(--fs-sec);font-weight:600;line-height:1.2}.openlink small{display:block;font-size:var(--fs-meta);line-height:1.2}
 .openlink:hover{border-color:var(--powder)}.openlink:focus-visible{outline:2px solid var(--powder);outline-offset:3px}
-/* a section's one-line card: its mark, its plain word and realm name, its status line; the whole card is the link */
-.placelist{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:var(--s2)}
-.place{display:grid;grid-template-columns:40px minmax(0,1fr);grid-template-areas:"m w" "m l";align-items:center;gap:0 var(--s3);min-height:56px;padding:var(--s2) var(--s3);border:1px solid var(--line);border-radius:12px;background:var(--card);text-decoration:none;color:var(--powder)}
-.place>img,.place>svg{grid-area:m;width:40px;height:40px;transition:transform var(--t2)}.place:hover>img,.place:hover>svg{transform:translateY(-2px)}
-.place .pw{grid-area:w;display:flex;align-items:baseline;gap:var(--s2);min-width:0}.place .pw b{color:var(--snow);font-size:var(--fs-body);font-weight:600}.place .pw small{font-size:var(--fs-meta);color:var(--frost)}
-.place .pl{grid-area:l;font-size:var(--fs-sec);line-height:1.35;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Open's groups (4.45.0): a small label over each kind of chip, only when there is more than one kind; the groups sit side by
+   side when they fit (a wide screen keeps Open as short as before), each on its own row on a phone. The label in the heading's
+   colour, so it stays below "Open" */
+.opengroups{display:flex;flex-wrap:wrap;gap:var(--s2) var(--s6)}.og{min-width:0;max-width:100%}
+.opengroup{margin:0 0 var(--s1);font-size:var(--fs-meta);font-weight:600;line-height:1.4;color:var(--frost)}
+/* a section's compact tile (4.45.0): its mark, its plain word and its status line under it (two lines at most, cut at a word by
+   home.js fitLines); the whole tile is the link. Two tiles a row on a phone, more on wider screens. The realm name stays in
+   the link's name for a screen reader. */
+.placelist{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(136px,1fr));gap:var(--s2)}
+@media (min-width:601px){.placelist{grid-template-columns:repeat(auto-fill,minmax(176px,1fr))}}
+@media (min-width:1200px){.placelist{grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}}   /* fewer lines wrap on a wide screen */
+.placelist>li{display:flex}   /* the tiles of a row share one height; their words line up at the top */
+.place{position:relative;flex:1 1 auto;min-width:0;box-sizing:border-box;display:grid;grid-template-columns:32px minmax(0,1fr);grid-template-areas:"m w" "m l";align-content:start;align-items:center;gap:0 var(--s2);min-height:var(--hit);padding:var(--s1) var(--s2);border:1px solid var(--line);border-radius:12px;background:var(--card);text-decoration:none;color:var(--powder)}
+.place>img,.place>svg{grid-area:m;width:32px;height:32px;transition:transform var(--t2)}.place:hover>img,.place:hover>svg{transform:translateY(-2px)}
+.place .pw{grid-area:w;min-width:0}.place .pw b{display:block;color:var(--snow);font-size:var(--fs-sec);font-weight:600;line-height:1.2;overflow-wrap:break-word}
+.place .pw small{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}   /* the realm name: heard, not shown on a tile */
+.place .pl{grid-area:l;font-size:var(--fs-meta);line-height:1.25;max-height:2.5em;overflow:hidden;overflow-wrap:normal;white-space:normal}.place .pl:empty{display:none}
+.place .pl.cut::after{content:"…" / ""}   /* fitLines cut it at a word; the rest is still in the link's name (a .sr span) */
 .place.bad{box-shadow:inset 3px 0 0 var(--bad)}.place.bad .pl{color:var(--bad)}.place.needs{box-shadow:inset 3px 0 0 var(--bolt)}.place.needs .pl{color:var(--snow)}
-@media (max-width:600px){.need{grid-template-columns:44px 1fr}.need .go{grid-column:1 / -1;justify-content:center}.home>section,.home>.now{padding:var(--s2) var(--s3)}}
+@media (max-width:600px){.need{grid-template-columns:44px 1fr}.need .go{grid-column:1 / -1;justify-content:center}.home>section,.home>.now{padding:var(--s2) var(--s3);margin-bottom:var(--s3)}}
 @media (prefers-reduced-motion:reduce){.need{animation:none}.place img,.place>svg{transition:none}}
 /* Screen sizes (docs/ui-plan.md §14). Wide: Home puts Needs you beside Places. Ultrawide (2:1 or wider, 1800px+): the sections
    bar becomes a rail down the left edge (scene.css, after the bar's own rules), and content may run wider. Short screens (a phone on its

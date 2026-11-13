@@ -408,9 +408,19 @@ def links():
     for x in raw if isinstance(raw, list) else []:
         if not isinstance(x, dict): continue
         name, what, href = str(x.get('name') or '').strip()[:40], str(x.get('what') or '').strip()[:40], str(x.get('href') or '').strip()
+        group = str(x.get('group') or '').strip()[:40]     # optional: Today's Open puts entries with the same group under one label (4.45.0)
         if name and (re.fullmatch(r'/[\w./~%+-]*', href) and not href.startswith('//') or re.fullmatch(r'https://[^\s"\'<>]+', href)):
-            out.append(dict(name=name, what=what, href=href))
+            out.append(dict(name=name, what=what, href=href, group=group))
     return out[:8]
+
+def clip(s, n):
+    """s cut to at most n characters at a word, ending with "…" when it was cut ("Log a workout and more words…"), never
+    in the middle of a word unless one word is longer than n."""
+    s = ' '.join(str(s).split())
+    if len(s) <= n: return s
+    cut = s[:n - 1]
+    if s[n - 1] != ' ' and ' ' in cut: cut = cut[:cut.rindex(' ')]
+    return cut.rstrip(' ,;:·-–—') + '…'
 
 # ---------- Today's line on what the server is doing, and its Open rows for the media players (docs/home.md, 4.44.0) ----------
 # Both read the host's own files on every state(); the repository holds no name and no address.
@@ -459,11 +469,12 @@ def plain_task(persona, name):
 def and_list(xs): return xs[0] if len(xs) == 1 else ', '.join(xs[:-1]) + ' and ' + xs[-1]
 def few(xs): return and_list(xs) if len(xs) <= 3 else ', '.join(xs[:3]) + f' and {len(xs) - 3} more'
 
-def now_line(jobs, ws):
+def now_line(jobs, ws, name=None):
     """One line on what the server is doing now, only from what it already knows: the game guard's record, the runs in
     progress (a timer's run or a transient job's; an always-on service is not "busy") and the watch's restarts.
     "<name>: calm" / "<name>: busy with Hermes media" / "<name>: a game is running, the local AI is paused". One colon, after
-    the name: the parts are joined with "; "."""
+    the name: the parts are joined with "; ". state() passes the name it also sends as now_name, so the page can colour the
+    name and the words apart (4.45.0) without splitting the line itself."""
     game, paused = game_guard()
     parts = []
     if game:
@@ -473,7 +484,7 @@ def now_line(jobs, ws):
     fixing = [str(r.get('title') or r.get('id')) for r in ws if r.get('fixing') or r.get('queued')]
     if busy: parts.append('busy with ' + few(busy))
     if fixing: parts.append('restarting ' + few(fixing))
-    return f'{server_name()}: {"; ".join(parts) or "calm"}'
+    return f'{name or server_name()}: {"; ".join(parts) or "calm"}'
 
 WATCH_INTERVAL = int(os.environ.get('ARGUS_WATCH_INTERVAL', 60))   # seconds between rounds; 0 turns the loop off (the tests do, unless they ask)
 WATCH_ON = os.environ.get('ARGUS_WATCH') != '0' and WATCH_INTERVAL > 0
@@ -494,10 +505,11 @@ def state(reach=None):
     ws = watch.snapshot(WATCH_INTERVAL or 60)
     jobs = watch.attach(collapse([info(u, fz) for u in units()]), ws)
     ps = plugins()
+    name = server_name()                  # once: now starts with exactly this, and now_name lets the page colour it (4.45.0)
     return dict(updated=datetime.now().strftime('%I:%M %p').lstrip('0'), jobs=jobs,
                 title=THEME.get('title', 'Argus'), subtitle=THEME.get('subtitle', 'tasks'),
                 personas=[dict(key=k, name=n, domain=d) for k, n, d in PERSONAS],
-                soon=THEME.get('coming_soon', []), links=links(), media=media(), now=now_line(jobs, ws),
+                soon=THEME.get('coming_soon', []), links=links(), media=media(), now=now_line(jobs, ws, name), now_name=name,
                 plugins=[plugin_view(p, reach) for p in ps], watch=ws, watch_ready=not WATCH_ON or watch.ready(),   # until its first round: the saved rows
                 alerts=sorted(alerts(set(PKEYS) | set(PAGES) | {p['id'] for p in ps}) + watch.alert_list(ws, lambda j: bool(GODS.match(j) and ALERT_JOB.match(j))), key=lambda a: (a['since'], a['file'])))
 
@@ -833,7 +845,7 @@ class H(BaseHTTPRequestHandler):
         if verb == 'get' and path == 'status':        # reserved: Home's line (+ needs, a verb-first action), or null; never an error
             d = r[1] if r and 200 <= r[0] < 300 and isinstance(r[1], dict) else {}
             line, act, n = d.get('line'), d.get('action'), d.get('count')
-            out = {'line': str(line)[:160] if line else None, 'needs': bool(line) and d.get('needs') is True, 'action': str(act)[:32] if line and act else ''}
+            out = {'line': clip(line, 160) if line else None, 'needs': bool(line) and d.get('needs') is True, 'action': clip(act, 32) if line and act else ''}   # cut at a word (4.45.0)
             if line and isinstance(n, int) and not isinstance(n, bool) and n >= 0: out['count'] = min(n, 9999)   # how many wait (the bar shows "2")
             return self.out(json.dumps(out), 'application/json')
         if not r: return self.deny(404, 'not found')

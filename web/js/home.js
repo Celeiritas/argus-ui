@@ -1,12 +1,14 @@
 // Today (docs/home.md): what needs *you* across the realm, and where to go. It is what Elaia opens on (the bare address,
 // and <base>/home, its old name). Watch is about the machines; Today is about you. In this order:
-//   0. for the owner, the server's own line on what it is doing now, on its own above the list ("<name>: calm",
-//      "<name>: busy with …", "<name>: a game is running, …": now_line() in the server),
+//   0. for the owner, the server's own line on what it is doing now, a band across the top in the server's colours ("<name>: calm",
+//      "<name>: busy with …", "<name>: a game is running, …": now_line() in the server; its name, now_name, drawn in the name colour),
 //   1. one line that says the state in words ("Nothing needs you", "2 things need you"), heading the list of
 //   2. the rows that need you, the failed thing first, each with one verb-first button,
-//   3. "Open": the media players (~/.config/argus-ui/media.json), then the links to other pages (~/.config/argus-ui/links.json),
-//   4. one one-line card per section, from status v2 (api/<id>/status: line, needs, action). A new section (workouts,
-//      meals, music) only has to answer that to get its card. A section with a row above has no card; no cards, no heading.
+//   3. "Open": jumps to another app or site. The media players (~/.config/argus-ui/media.json) under "Watch and listen", then the
+//      links to other pages (~/.config/argus-ui/links.json) under their "group" ("Other pages" without one); labels only with 2+ groups,
+//   4. "Sections": the parts of Elaia, one compact tile each with its live line from status v2 (api/<id>/status: line, needs,
+//      action), cut at a word to two lines (fitLines). A new section (workouts, meals, music) only has to answer that to get its
+//      tile. A section with a row above has no tile; no tiles, no heading.
 // A row whose need is met fades out (200 ms); a new row slides in. Under reduced motion they just go and come.
 const home = (() => {
   let had = null;                          // how many things needed you at the last draw (null: not drawn yet)
@@ -36,14 +38,49 @@ const home = (() => {
         : e.id === 'olympus' ? 'Powers, weather, seasons'
         : !p ? '' : p.kind === 'server' ? st(STATUS[p.id]) : p.version ? `Version ${p.version}` : 'Open it';
       const mood = e.id === 'argus' ? (fails ? ' bad' : '') : STATUS[e.id]?.needs ? ' needs' : '';   // red: something failed; gold: waits for you
-      return `<li><a class="place${mood}" href="${esc(e.href)}" data-id="${esc(e.id)}">${e.mark}<span class="pw">${words(e)}</span><span class="pl">${esc(line)}</span></a></li>`;
+      // a " · " keeps its dot on the line before (a no-break space), so a wrapped line never starts with "·"
+      return `<li><a class="place${mood}" href="${esc(e.href)}" data-id="${esc(e.id)}">${e.mark}<span class="pw">${words(e)}</span><span class="pl">${esc(line).replace(/ · /g, '\u00a0· ')}</span></a></li>`;
     }).join('');
   }
   // Open: the media players first (~/.config/argus-ui/media.json; another site, so a plain link that sends no referrer),
-  // then the links to other pages on this machine (~/.config/argus-ui/links.json)
+  // then the links to other pages on this machine (~/.config/argus-ui/links.json). Each kind under its own small label
+  // (4.45.0): the players are "Watch and listen", a link sits under its "group", one without under "Other pages". With
+  // only one kind there is nothing to tell apart, so no label.
+  const MEDIA_GROUP = 'Watch and listen', OTHER_GROUP = 'Other pages';
   function opens() {
     const li = (x, rel) => `<li><a class="openlink" href="${esc(x.href)}"${rel ? ' rel="noopener noreferrer"' : ''}>${LINK_MARK}<span><b>${esc(x.name)}</b>${x.what ? `<small>${esc(x.what)}</small>` : ''}</span></a></li>`;
-    return (S.media || []).map(x => li(x, true)).join('') + (S.links || []).map(x => li(x, false)).join('');
+    const groups = new Map();              // label -> chips, in the order they first come
+    const put = (g, html) => groups.set(g, (groups.get(g) || '') + html);
+    (S.media || []).forEach(x => put(MEDIA_GROUP, li(x, true)));
+    (S.links || []).forEach(x => put(typeof x.group === 'string' && x.group.trim() ? x.group.trim() : OTHER_GROUP, li(x, false)));
+    if (groups.size < 2) return groups.size ? `<ul class="openlist">${[...groups.values()][0]}</ul>` : '';
+    return `<div class="opengroups">${[...groups].map(([g, chips], i) => `<div class="og"><h3 class="opengroup" id="open-g${i}">${esc(g)}</h3><ul class="openlist" aria-labelledby="open-g${i}">${chips}</ul></div>`).join('')}</div>`;
+  }
+  // a tile's line in two lines at most, cut after the last word that fits, with "…" (never inside a word, unless one word is
+  // wider than the tile). The cut words stay in the link's name as a .sr span, so a screen reader hears the whole line.
+  const over = el => el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1;
+  function fitLines() {
+    $$('#main .place .pl').forEach(pl => {
+      const full = pl.textContent; pl.textContent = full; pl.classList.remove('cut');
+      if (!full || !over(pl)) return;
+      pl.classList.add('cut');
+      const fits = h => { pl.textContent = h; return !over(pl); };
+      const tok = full.split(/(\s+)/), headOf = k => tok.slice(0, 2 * k - 1).join('').replace(/[\s,;:·.\-–—]+$/, '');
+      let lo = 0, hi = Math.ceil(tok.length / 2) - 1;           // the most words that fit before "…"
+      while (lo < hi) { const m = (lo + hi + 1) >> 1; if (fits(headOf(m))) lo = m; else hi = m - 1; }
+      let head = lo ? headOf(lo) : '';
+      if (!head) { let a = 0, b = full.length - 1; while (a < b) { const m = (a + b + 1) >> 1; if (fits(full.slice(0, m))) a = m; else b = m - 1; } head = full.slice(0, a); }
+      pl.innerHTML = `${esc(head)}<span class="sr">${esc(full.slice(head.length))}</span>`;
+    });
+  }
+  let fitting = 0;
+  addEventListener('resize', () => { cancelAnimationFrame(fitting); fitting = requestAnimationFrame(() => here === 'home' && fitLines()); });
+  document.fonts?.ready.then(() => here === 'home' && fitLines());   // the first draw may measure before Nunito is in
+  // the server's band: its name (now_name, from the server) in the name colour, the rest in the words colour; the same text
+  // as before, so a line without that name (a learner, an older server) is drawn plain
+  function nowBand(now) {
+    const nm = typeof S.now_name === 'string' && S.now_name && now.startsWith(S.now_name + ': ') ? S.now_name : '';
+    return `<p class="now">${nm ? `<b class="nowname">${esc(nm)}</b>${esc(now.slice(nm.length))}` : esc(now)}</p>`;
   }
   let last = '';                           // the last page drawn: an unchanged page is not redrawn (focus and running fades stay)
   function draw() {
@@ -54,11 +91,11 @@ const home = (() => {
     const keys = new Set(list.map(n => n.key)), links = role() === 'owner' ? opens() : '', places = cards(list);
     const now = role() === 'owner' && typeof S.now === 'string' ? S.now : '';   // what the server is doing (the server's own words)
     // the server's line stands above the list, on its own: inside the list's panel it read as one more thing to do
-    const html = `<section class="home" aria-label="Today">${now ? `<p class="now">${esc(now)}</p>` : ''}
+    const html = `<section class="home" aria-label="Today">${now ? nowBand(now) : ''}
       <section class="needs" aria-labelledby="needs-h"><h2 class="state${list.length ? ' bad' : ''}" id="needs-h">${state}</h2>
         ${now || list.length || asking ? '' : '<p class="quiet">The realm is quiet.</p>'}
         <ul class="needlist">${list.map(n => row(n, seen && !seen.has(n.key))).join('')}</ul></section>
-      ${links ? `<section class="open" aria-labelledby="open-h"><h2 id="open-h">Open</h2><ul class="openlist">${links}</ul></section>` : ''}
+      ${links ? `<section class="open" aria-labelledby="open-h"><h2 id="open-h">Open</h2>${links}</section>` : ''}
       ${places ? `<section class="places" aria-labelledby="places-h"><h2 id="places-h">Sections</h2><ul class="placelist">${places}</ul></section>` : ''}</section>`;
     if (html.replace(/ fresh/g, '') === last) return;
     const focused = document.activeElement?.closest?.('#main a')?.getAttribute('href');   // a redraw must not drop keyboard focus
@@ -69,6 +106,7 @@ const home = (() => {
       ul.insertBefore(li, ul.children[i] || null);
       li.animate([{opacity: 1, transform: 'none'}, {opacity: 0, transform: 'translateX(12px)'}], {duration: 200, easing: 'ease-in', fill: 'forwards'}).finished.then(() => li.remove(), () => li.remove()); });
     wireFixes();                           // the fix buttons are press-and-hold (holdConfirm), as on Watch
+    fitLines();                            // the tiles' lines, cut at a word to their two lines
     if (focused) $$('#main a').find(a => a.getAttribute('href') === focused)?.focus();
     if (had > 0 && !list.length) look.react('content');       // Needs you just emptied: Argus gives a slow, contented blink
     had = list.length; seen = keys;

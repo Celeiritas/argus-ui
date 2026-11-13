@@ -107,7 +107,7 @@ run(async b => {
   await p.goto(BASE + 'home');
   const place = p.locator('.place', {hasText: 'Controllers'});
   await place.filter({hasText: 'connected'}).waitFor({timeout: 5000}).catch(() => {});       /* the line comes with a second request: wait for it, the check below says what is wrong */
-  check(await place.count() === 1 && /3 connected · 1 Steam virtual/.test(await place.textContent()), 'Home: a Controllers place with its line');
+  check(await place.count() === 1 && /3 connected\s· 1 Steam virtual/.test(await place.textContent()), 'Home: a Controllers place with its line');
   check(await place.getAttribute('href') === new URL(BASE).pathname + 'controllers' && await p.locator('.place', {hasText: /\bPads\b/}).count() === 0,
     'Home: the place opens <base>/controllers and none is called Pads');
   check(p.errors.length === 0, 'no page errors ' + p.errors.join(' | '));

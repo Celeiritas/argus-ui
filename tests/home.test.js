@@ -108,10 +108,12 @@ run(async b => {
   check(nf >= 3 && line === bar && await task.count() === nf, `with ${nf} failed tasks too, one row each, each counted (${line} = ${bar})`);
   fs.rmSync(path.join(AL, 'hermes.json'), {force: true}); await p.evaluate(() => refresh()); await p.waitForTimeout(700);
   await shot(p, 'home');
-  // a met need fades out where it stood, then is gone
+  // a met need fades out where it stood, then is gone. Watch before the file goes: any redraw (the timer, a section's answer)
+  // can start the 200 ms fade, and it can be over before this test's own refresh() returns
+  const goes = p.waitForFunction(() => { const li = document.querySelector('.need.leaving'); return li && /Janus/.test(li.textContent) && li.getAttribute('aria-hidden') === 'true'; }, null, {timeout: 5000}).then(() => true, () => false);
   fs.rmSync(path.join(AL, 'zeus.json'), {force: true});
   await p.evaluate(() => refresh());
-  const leaving = await p.waitForFunction(() => { const li = document.querySelector('.need.leaving'); return li && /Janus/.test(li.textContent) && li.getAttribute('aria-hidden') === 'true'; }, null, {timeout: 2000}).then(() => true, () => false);
+  const leaving = await goes;
   check(leaving, 'a met need leaves with a short fade (hidden from screen readers while it goes)');
   await p.waitForTimeout(400);
   check(await need('Janus could not verify').count() === 0, 'and is gone after it');

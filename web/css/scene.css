@@ -65,8 +65,12 @@ button.realm{font:inherit;font-weight:400;background:none;text-align:left}   /* 
 .realms .realm[hidden],.realm.over{display:none}   /* More with nothing in it; a pill folded into More (fitRealms) */
 .realm img,.realm>svg{transition:transform var(--t2)}a.realm:hover img,a.realm:hover>svg{transform:translateY(-2px)}
 .realm.soon{opacity:.6;cursor:default}
-.realm .dot{position:absolute;left:26px;top:0;min-width:20px;height:20px;padding:0 5px;border-radius:99px;background:var(--bolt);color:#1C2127;font-size:var(--fs-meta);font-weight:600;line-height:20px;text-align:center;box-shadow:0 0 0 2px var(--night)}
-.realm .dot:empty{min-width:12px;width:12px;height:12px;padding:0;left:30px;top:2px}
+/* the count on a pill (4.45.0: the "1" touched the A of Approvals): a "1" sits where it always did (26-46px, over the icon's
+   corner, no more of the face hidden), a wider count grows to the left, and the label steps 4px right only while a count shows,
+   so it starts 6px clear of the count */
+.realm .dot{position:absolute;left:46px;transform:translateX(-100%);top:0;min-width:20px;height:20px;padding:0 5px;border-radius:99px;background:var(--bolt);color:#1C2127;font-size:var(--fs-meta);font-weight:600;line-height:20px;text-align:center;box-shadow:0 0 0 2px var(--night)}
+.realm .dot:empty{min-width:12px;width:12px;height:12px;padding:0;left:30px;transform:none;top:2px}   /* the plain dot: 30-42px, where it always was */
+.realm:has(>.dot:not(:empty))>span:not(.dot){transform:translateX(var(--s1))}   /* room for a count: moved, not widened, so the strip keeps one shape whether a count shows or not (into the pill's 12 px right padding) */
 .realm[data-id=argus] .dot{background:#C93030;color:#fff}   /* red: something failed; gold: something waits for you */
 .realms .mute{margin-left:auto}
 /* too many sections for one row (fitRealms in core.js): second lines hidden but still read out, then the weather, then

@@ -8,7 +8,8 @@ opens on: the bare address `<base>/`, and `<base>/home`, its old address, which 
 1. **The header**: the page's name, Elaia, and under it a greeting by the viewer's clock, the date and the weather
    ("Good evening · Friday, October 23 · Light rain · 48°F"). On a narrow phone it wraps onto a second line rather than being
    cut off (4.44.0). This is Today's only weather: the strip's weather (on every other page) is hidden here (4.44.0).
-   Above the list, for the owner, **the server's own line on what it is doing now** (4.44.0, below), a small panel of its own.
+   Above the list, for the owner, **the server's own line on what it is doing now** (4.44.0, below), a band across Today in
+   the server's own colours (4.45.0).
 2. **One line that says the state in words**: *Nothing needs you*, *1 thing needs you*, *3 things need you*, or *Asking every
    section…* while the sections are still answering. It counts what the bar counts: every task in trouble, every alert, and
    each section that needs you (its `count`, else one). A learner sees "The realm is quiet." under it when nothing needs her.
@@ -26,15 +27,37 @@ opens on: the bare address `<base>/`, and `<base>/home`, its old address, which 
    A row whose need is met **fades out** where it stood (200 ms, hidden from screen readers while it goes); a row that is new
    since the last draw slides in. Under reduced motion both just happen. Warnings stay on their cards on the Watch page.
 4. **Open** (the owner's): the media players (Jellyfin, Audiobookshelf; below), then the links to other pages on this machine
-   (below), each a 44 px chip with its name and what it is. Neither file, no row.
-5. **Sections**: one one-line card per section, in the bar's order: its mark, plain word, realm name and status line. Watch
+   (below), each a 44 px chip with its name, what it is and the "opens elsewhere" mark. Neither file, no row. **Small labels**
+   (12 px, 600; 4.45.0) part them by kind: the players under *Watch and listen*, each link under its `"group"` (below), a
+   link without one under *Other pages*. A label shows only when there is more than one group; with one there is nothing to
+   tell apart. Each group is its own list, named by its label for a screen reader. The labels are in the quiet meta colour
+   (`--frost`), below the panel's "Open" heading, and the groups sit side by side where they fit (three groups in one row at
+   915 px).
+5. **Sections**: one compact tile per section, in the bar's order (4.45.0): its 32 px mark, its plain word (14 px, 600) and
+   its status line (12 px) under it. Two tiles a row on a phone (360 to about 470 px), four or more on wider screens (each at
+   least 220 px wide from 1200 px, so a line has room: six a row at 1920 px). The words in a row start at the same height. Watch
    says "All 6 tasks well" or "1 task failed" (red edge); a server plugin shows its status line (gold edge while it needs
-   you); a static plugin shows its version; the Playground says "Powers, weather, seasons". The whole card is the link.
-   **One place for each fact** (4.44.0): a section with a row above has no card until that row is gone (Watch with a failed
-   task, Approvals with a deploy waiting), so the same news is never said twice on one screen. No card left, no heading.
+   you); a static plugin shows its version; the Playground says "Powers, weather, seasons". The whole tile is one link, at
+   least 44 px. The realm's name (*Argus*, *Zeus*) is not drawn on the tile but stays in the link's name for a screen reader.
+   **A line takes two lines at most** and is cut after the last whole word that fits, with "…" (`fitLines()` in
+   `web/js/home.js`; never inside a word, unless one word alone is wider than the tile). A " · " keeps its dot on the line
+   before (a no-break space), so no line starts with "·". The words cut off stay in the link's name, so a screen reader hears
+   the whole line. With nothing needing you, all of Today fits above the phone's bottom bar
+   at 412 x 915 (measured with two players, links in two groups and nine tiles, the panels 12 px apart on a phone: the
+   Sections panel ends at 811 px with one-line statuses and at 837 px with six of nine on two lines; the bar starts
+   at 842 px). **One place for each fact** (4.44.0): a section with a row above has no tile until that row is gone (Watch with
+   a failed task, Approvals with a deploy waiting), so the same news is never said twice on one screen. No tile left, no
+   heading.
+
+## Sections or Open (4.45.0)
+The rule that keeps the two apart: **Sections are parts of Elaia, each with a live line; Open jumps to another app or
+site.** A Section is a tile with a word and a line that changes; an Open item is a small chip with the "opens elsewhere" mark
+(`LINK_MARK`). An **integration** (a recipe app, a music library, a workout log) becomes a Section tile when Elaia reads from
+it, through status v2 (below), like any other section; its own site may also have a chip in Open, under a group of its own,
+to jump there. It never becomes a Section by being a link.
 
 ## What the server is doing now (4.44.0)
-One line above the list, in its own small panel (not a row of the list), for the owner only, written by the server
+One line above the list, in a band of its own across Today (not a row of the list), for the owner only, written by the server
 (`now_line()` in `server/argus_ui.py`) from what it already knows, never a guess. One colon, after the name:
 - **`<name>: calm`**: nothing below is true.
 - **`<name>: busy with Hermes media and Zeus deploy`**: a task's run is in progress, a timer's run or one run of a transient
@@ -49,6 +72,15 @@ One line above the list, in its own small panel (not a row of the list), for the
 `<name>` is the server's own name, `SERVER` in `~/.config/leafy/realm.json` (`LEAFY_REALM`; the same file Mentor fills
 `{{SERVER}}` from, docs/mentor.md), at most 40 characters; without the file or the key it says *The server*. The repository never
 holds the name. The game guard's record path can be moved with `ARGUS_GAMEGUARD`.
+
+**The band (4.45.0)** spans Today's column, lined up with the panels under it, 16 px under it to the first. The name is
+drawn in the name colour at 600, the words after it in the words colour at 400, 16 px, on the band's background with a
+1 px border. It is not a button and does not move. The server sends the name it used as `now_name` beside `now`; the page
+colours the name only when `now` starts with exactly `<now_name>: `, otherwise (a learner, an older server) it draws the
+line plain in the words colour. The colours are the theme's (`"colors"` in `theme.json`, docs/themes.md): the Leafy Realm
+theme uses the server's own purple and green, background `#3a2a5e`, border `#5b4a85`, name `#7bd88f` (7.21:1 on the
+background), words `#cbb8ff` (7.08:1). A theme without colours gets the page's neutral panel colours (name 12.19:1, words
+7.00:1 on `--card`).
 
 ## Films, shows and audiobooks (4.44.0)
 The media players' own pages (they are other sites, not Elaia sections) are the first chips in Today's Open row when the host
@@ -65,9 +97,10 @@ commit it. They are on Today only, not in the strip or More.
 ## A section's card: status v2
 `GET api/<id>/status` → `{"line": "…", "needs": true, "action": "Study 5 due cards"}`. `line` is required for anything to show;
 `needs` (only `true` counts) puts the plugin in the rows and gives it a mark in the bar; `action` is the button's label,
-verb-first, cut to 32 characters, and defaults to "Open <name>". Elaia passes on only these three fields and never errors
+verb-first, at most 32 characters, and defaults to "Open <name>"; the server cuts a longer `action` (32) or `line` (160)
+after the last whole word, with "…" (`clip()`, 4.45.0; before, it cut inside a word). Elaia passes on only these three fields and never errors
 (`{"line": null}` when a plugin has nothing or fails). A plugin that answers only `{"line"}` keeps working and simply never
-needs you. **A new section (workouts, meals, music) gets its card on Today by answering this, nothing else.** Mentor answers
+needs you. **A new section (workouts, meals, music) gets its tile on Today by answering this, nothing else.** Mentor answers
 `needs` when cards are due; Memory (docs/memory.md) when the newest snapshot is older than 8 days or the job failed.
 
 ## Finding your way (4.36.0)
@@ -90,6 +123,9 @@ Controllers, Spartamelee, Ariad-Node**, any other plugin, then the links to othe
 - **Each place**: the plain word large, the realm's name small under it where it differs, its medallion, and a count only
   when something needs you: a red number on Watch (failed tasks and alerts), a gold mark on a section whose status says it
   needs you (a number once the server passes a `count`), summed on More. A screen reader hears "Watch, Argus, 1 needs you".
+  A number sits where it always did on the medallion; while one shows, the label is moved 4 px right so the number keeps 6 px
+  clear of it, two digits too (4.45.0). It is moved, not given a margin: the pill keeps its width, so a count that comes or
+  goes never reshapes the strip.
 - **Medallions**: Approvals uses Zeus's, Backups Mnemosyne's. Today (four squares), More (three dots), Controllers,
   Spartamelee, Ariad-Node and the links keep plain placeholder marks until the owner chooses.
 - **Keyboard**: every slot and row is a link or button, in reading order after the page; the current one has
@@ -108,18 +144,22 @@ reach the server. The server's own check comes with sign-in.
 Pages on the same machine that aren't Elaia sections (a studio, a dashboard) can sit in More and on Today. List them in
 `~/.config/argus-ui/links.json` (or `ARGUS_LINKS`), read on every refresh:
 ```json
-[{"name": "Sound Lab", "what": "Studio", "href": "/studio/"}]
+[{"name": "Sound Lab", "what": "Studio", "href": "/studio/", "group": "Studio"}]
 ```
 `href` must be a path on this host (`/…`) or an `https://` address; anything else (`javascript:`, `//other-host`) is dropped,
-as is a broken file. At most 8. In the More sheet (under "Other pages", at every width since 4.44.0; no longer a pill of its
+as is a broken file. At most 8. `group` is optional (4.45.0): links with the same group sit together on Today under that
+label, in the order they first come (at most 40 characters; none or empty: *Other pages*). Labels show only with more than
+one group (the players count as one, *Watch and listen*). In the More sheet (under "Other pages", at every width since 4.44.0; no longer a pill of its
 own in the strip) a link has an "opens another page" mark; on Today it is a chip in the Open row.
 
 ## Behaviour
 - The page refreshes every 15 seconds like the others: it draws at once from what it knows, then asks the server plugins
   again. A card still waiting for its answer says "Checking…". An unchanged page is not redrawn, so focus and a running
   fade stay put; when it is redrawn, keyboard focus stays on the link you were on.
-- Every row button, chip and card is a plain link at least 44 px tall. On a phone the buttons go full width under their
-  sentence and the cards make one column, with no sideways scrolling at 360 px.
+- Every row button, chip and tile is a plain link at least 44 px tall. On a phone the buttons go full width under their
+  sentence and the tiles make two columns, with no sideways scrolling at 360 px.
+- The last thing on every page scrolls clear of the phone's bottom bar (checked at 360 x 800 on every section and Phone
+  alerts, `tests/today-layout.test.js`).
 - Each part sits on one quiet panel so it reads over the scene.
 
 ## Trouble first (4.40.0)

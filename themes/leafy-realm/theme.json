@@ -2,6 +2,12 @@
   "name": "Leafy Realm",
   "title": "Elaia",
   "subtitle": "Leafy Realm agents",
+  "colors": {
+    "server-bg": "#3a2a5e",
+    "server-border": "#5b4a85",
+    "server-name": "#7bd88f",
+    "server-words": "#cbb8ff"
+  },
   "registry": "~/.config/leafy/agents",
   "never_freeze": [
     "argus-ui"
