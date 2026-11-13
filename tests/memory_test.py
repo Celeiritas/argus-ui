@@ -414,8 +414,8 @@ class Status(Base):
         self.assertTrue(m.status(self.view(datetime(2026, 11, 20)))['needs'])
 
 class SummaryLine(Base):
-    """4.43: the ONE line the 08:00 summary adds (server/summary.py), from the same view and the same rules as Needs you.
-    Each case with a line failed on ea1170a (there was no summary_line)."""
+    """4.43: the ONE line the 08:00 summary adds (server/summary.py), from worries(), the two rules it shares with Needs
+    you. Each case with a line failed on ea1170a (there was no summary_line)."""
     def marker(self, obj): self.write(os.path.join(self.mn, 'last-backup.json'), obj)
     def line(self, now=NOW): return m.summary_line(self.view(now))
     def empty(self): self.write(m.CONFIG, {'folder': os.path.join(self.tmp, 'empty')})
@@ -433,6 +433,19 @@ class SummaryLine(Base):
         self.assertEqual(self.line(), 'Backups: the server has no snapshot yet.', 'a paused job: still said')
         self.jobs[1:] = []
         self.assertEqual(self.line(), '', 'no brain job: nothing to say (the same rule as Needs you)')
+
+    def test_a_failed_first_try_is_no_snapshot_a_running_one_is_not(self):
+        # review F2 (fix round 1): a brain job that fails every night with nothing on the shelf got NO line on 0b294e4,
+        # while a healthy job that had not run yet did. A running first snapshot stays quiet: it fixes itself.
+        self.empty(); self.marker({'at': '2026-11-09T03:00:00'})
+        self.jobs[1]['state'] = 'failed'
+        self.assertEqual(self.line(), 'Backups: the server has no snapshot yet.')
+        self.assertEqual(m.status(self.view())['action'], 'Look at the failed backup', 'Home keeps its own label')
+        self.jobs[1]['state'] = 'running'
+        self.assertEqual(self.line(), '')
+        os.remove(m.CONFIG); self.jobs[1]['state'] = 'failed'           # back to the fixture's three snapshots
+        self.assertEqual(self.line(), '', 'a failed run that left older snapshots: Needs you, but no summary line')
+        self.assertTrue(m.status(self.view())['needs'])
 
     def test_pc_eight_days_is_fine_nine_is_not(self):
         self.marker({'at': '2026-11-02T03:00:00'})                    # 8 days: the card and Home still call it fresh
