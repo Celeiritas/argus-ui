@@ -906,16 +906,46 @@ class OwnH(H):
 def start_own_origins(path=None):
     """One listener on 127.0.0.1 for each plugin in own-origin.json. One that cannot start is logged and skipped, and Elaia
     keeps the sandboxed frame for it. Returns {id: server} (the tests stop them)."""
-    started = {}
+    started, busy = {}, []
     for pid, c in load_own_origin(path).items():
         try: srv = ThreadingHTTPServer(('127.0.0.1', c['port']), type('OwnH_' + pid.replace('-', '_'), (OwnH,), {'pid': pid}))
         except OSError as e:
             print(f'argus-ui: {pid} gets no own address: its port cannot be used ({e.strerror or e})', file=sys.stderr, flush=True)
-            continue
+            busy.append((pid, c)); continue
         threading.Thread(target=srv.serve_forever, name='own-' + pid, daemon=True).start()
         OWN[pid] = c; started[pid] = srv
         print(f'argus-ui: {pid} has its own address (127.0.0.1:{c["port"]}, HTTPS port {c["public"]})', file=sys.stderr, flush=True)
+    own_alert(busy)
     return started
+
+OWN_ALERT = 'argus-own-origin.json'
+
+def own_alert(busy):
+    """A taken own port is loud: an alert file in ALERTS (docs/alerts.md), so Watch glares, because tailscale serve still
+    forwards that plugin's HTTPS port to whatever holds the local one. A start where every own listener started (or there
+    is no own-origin.json) takes this file away again. busy: [(id, entry)] whose port could not be used."""
+    f = os.path.join(ALERTS, OWN_ALERT)
+    try:
+        if not busy:
+            if os.path.exists(f): os.remove(f)
+            return
+        if len(busy) == 1:
+            pid, c = busy[0]
+            msg = (f'{pid} has no own address: port {c["port"]} was taken at start, so it opens in its frame, and tailscale serve still '
+                   f'sends HTTPS port {c["public"]} to whatever holds it. Turn that off (sudo tailscale serve --https={c["public"]} off), '
+                   'free the port, restart Argus, then publish the port again.')
+        else:
+            which = ', '.join(f"{pid} {c['port']}" for pid, c in busy)
+            msg = (f'{len(busy)} plugins have no own address: their local ports were taken when Argus started ({which}), so they '
+                   'open in their frames. Turn off their HTTPS ports on tailscale serve, free the ports, then restart Argus.')
+        os.makedirs(ALERTS, exist_ok=True)
+        tmp = f + '.tmp'
+        with open(tmp, 'w', encoding='utf-8') as fh:
+            json.dump({'job': 'argus-own-origin', 'level': 'alert', 'since': datetime.now().astimezone().isoformat(timespec='seconds'),
+                       'message': msg, 'link': busy[0][0]}, fh)
+        os.replace(tmp, f)
+    except OSError as e:
+        print(f'argus-ui: could not {"write" if busy else "clear"} the alert file {f}: {e.strerror or e}', file=sys.stderr, flush=True)
 
 if __name__ == '__main__':
     load_server_plugins()

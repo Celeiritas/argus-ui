@@ -175,14 +175,37 @@ class Config(unittest.TestCase):
         no_people()
 
     def test_a_busy_port_is_skipped(self):
-        busy, q = ports(2)
-        s = socket.socket()
-        if hasattr(socket, 'SO_EXCLUSIVEADDRUSE'): s.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
-        s.bind(('127.0.0.1', busy)); s.listen(1)
+        # the port is taken: Elaia keeps the frame and says so loudly, with an alert file Watch shows (docs/alerts.md), until
+        # a start where every own listener starts
+        f = os.path.join(a.ALERTS, a.OWN_ALERT)
+        self.assertFalse(os.path.exists(f), 'no alert while every own listener started')
+        socks = []
+        def taken():
+            s = socket.socket()
+            if hasattr(socket, 'SO_EXCLUSIVEADDRUSE'): s.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+            s.bind(('127.0.0.1', 0)); s.listen(1); socks.append(s); return s.getsockname()[1]
+        busy, busy2 = taken(), taken()
+        q, q2 = ports(2)
         before = dict(a.OWN)
-        try: self.assertEqual(a.start_own_origins(self.conf({'busy-game': {'port': busy, 'public': q}})), {})
-        finally: s.close()
-        self.assertEqual(a.OWN, before, 'Elaia keeps the sandboxed frame for it')
+        try:
+            self.assertEqual(a.start_own_origins(self.conf({'busy-game': {'port': busy, 'public': q}})), {})
+            self.assertEqual(a.OWN, before, 'Elaia keeps the sandboxed frame for it')
+            with open(f, encoding='utf-8') as fh: doc = json.load(fh)
+            self.assertEqual((doc['job'], doc['level'], doc['link']), ('argus-own-origin', 'alert', 'busy-game'))
+            self.assertIn(f'port {busy} was taken', doc['message']); self.assertIn(f'sudo tailscale serve --https={q} off', doc['message'])
+            self.assertLessEqual(len(doc['message']), 300, 'shown whole')
+            self.assertEqual([x['link'] for x in a.alerts({'busy-game'}) if x['file'] == a.OWN_ALERT], ['busy-game'], 'a valid alert file')
+            no_people()
+            shown = [x for x in json.loads(main('api/state', host=TS)[2])['alerts'] if x['job'] == 'argus-own-origin']
+            self.assertEqual([x['level'] for x in shown], ['alert'], 'Watch shows it')
+            a.start_own_origins(self.conf({'busy-game': {'port': busy, 'public': q}, 'busy-two': {'port': busy2, 'public': q2}}))
+            with open(f, encoding='utf-8') as fh: doc = json.load(fh)
+            self.assertTrue(f'busy-game {busy}' in doc['message'] and f'busy-two {busy2}' in doc['message'], doc['message'])
+            self.assertLessEqual(len(doc['message']), 300)
+        finally:
+            for s in socks: s.close()
+        self.assertEqual(a.start_own_origins(self.conf({})), {})
+        self.assertFalse(os.path.exists(f), 'the next start where every own listener starts takes it away')
 
 class Cookies(unittest.TestCase):
     """Cookies belong to a host name, not a port: the game on its own address can set up to about a megabyte of them, and
