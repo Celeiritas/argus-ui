@@ -90,6 +90,7 @@ pre{white-space:pre-wrap;word-break:break-all;font-size:var(--fs-meta);line-heig
 .card.alerted{border-color:var(--bad)}.card.warned{border-color:var(--run)}
 /* a failure the owner marked "Known, low priority" (core.js card, server/quiet.py): grey, never red; the words stay readable */
 .card.known .why b{color:var(--powder)}
+.card.known .job,.card.known dd{color:var(--powder)}   /* known, low priority: the whole card quiet, never red (4.45.0) */
 .knownline{margin:var(--s2) 0 0;font-size:var(--fs-sec);line-height:1.4;color:var(--powder)}
 .alert-msg{margin:0 0 var(--s2);font-size:var(--fs-sec);line-height:1.4;color:var(--snow);max-width:70ch}
 .alert-msg b{font-weight:600}.alert-msg.alert b{color:var(--bad)}.alert-msg.warn b{color:var(--run)}

@@ -40,7 +40,7 @@ const home = (() => {
     return sections().filter(e => !e.kind && e.id !== 'home' && e.id !== 'phone' && !listed.has(e.id) && visible([e]).length).map(e => {
       const p = PLUGINS.find(x => x.id === e.id);
       // a task marked known is told apart, never in red: "All 12 tasks well · 1 known"
-      const line = e.id === 'argus' ? (!fails ? `All ${plural(S.jobs.length, 'task')} well${kn ? ` · ${kn} known` : ''}` : allFailed ? `${plural(fails, 'task')} failed` : `${plural(fails, 'thing')} need${fails === 1 ? 's' : ''} a look`)
+      const line = e.id === 'argus' ? (!fails ? `All ${plural(S.jobs.length, 'task')} well${kn ? ` · ${kn} known` : ''}` : allFailed ? `${plural(fails, 'task')} failed` : `${plural(fails, 'thing')} need${fails === 1 ? 's' : ''} a look`)
         : e.id === 'olympus' ? 'Powers, weather, seasons'
         : !p ? '' : p.kind === 'server' ? st(STATUS[p.id]) : p.version ? `Version ${p.version}` : 'Open it';
       const mood = e.id === 'argus' ? (fails ? ' bad' : '') : STATUS[e.id]?.needs && !isQuiet(e.id) ? ' needs' : '';   // red: something failed; gold: waits for you

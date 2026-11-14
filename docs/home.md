@@ -169,7 +169,7 @@ cognitive annoyance of the alert is taking up space, same with Mentor. I don't n
   him, not what runs), sends `POST api/known` `{"job": "<task>", "on": true}`; a toast says *<task> is marked as known, low
   priority. It comes back if it fails another way.* with **Undo** (focused). Marked, the task leaves "N things need you" and
   every count, never buzzes, is not a need in the summary, and Argus's tile says so quietly: *All 12 tasks well · 1 known*. On
-  Argus's page it stays, in grey (`.card.known`, its pill in `--frost`), with *Known, low priority · marked today, 5:40 PM*
+  Argus's page it stays, all in grey (`.card.known`: its pill in `--frost`, its name and values in `--powder`), with *Known, low priority · marked today, 5:40 PM*
   and **Unmark** (`"on": false`).
 - **It comes back by itself.** The mark keeps the failure's **fingerprint**: systemd's `Result` and `ExecMainStatus` and the
   codes of the task's failing checks (`exit-code/1/`, `fingerprint()`). The server checks every mark on each state and every

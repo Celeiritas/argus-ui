@@ -44,7 +44,7 @@ run(async b => {
   await mark.click();
   await p.waitForFunction(() => document.getElementById('needs-h')?.textContent === 'Nothing needs you' && /known/.test(document.querySelector('#main .place[data-id="argus"] .pl')?.textContent || ''), null, {timeout: 6000}).catch(() => {});
   check(await row().count() === 0 && await p.locator('#needs-h').textContent() === 'Nothing needs you', `marked known, it leaves Today: "${await p.locator('#needs-h').textContent()}"`);
-  check(/^All \d+ tasks well ·\s1 known$/.test(await tile('argus').locator('.pl').textContent()), `Argus's tile: "${await tile('argus').locator('.pl').textContent()}", "1 known" never cut in two, the dot kept with "well"`);
+  check(/^All \d+ tasks well ·\u00a01\u00a0known$/.test(await tile('argus').locator('.pl').textContent()), `Argus's tile: "${await tile('argus').locator('.pl').textContent()}", "· 1 known" wraps as one piece`);
   check(!!(await jobNow(p)).known, 'the server keeps the mark');
   check(await p.locator('#toastAct').isVisible() && await p.locator('#toastAct').textContent() === 'Undo' && await p.evaluate(() => document.activeElement?.id === 'toastAct'), 'a toast offers Undo, and focus is on it');
   await p.locator('#toastAct').click();
@@ -62,6 +62,9 @@ run(async b => {
   const pill = await card.locator('.pill').evaluate(e => { const c = v => { const s = document.createElement('span'); s.style.color = `var(${v})`; document.body.append(s); const x = getComputedStyle(s).color; s.remove(); return x; };
     return {cls: e.className, color: getComputedStyle(e).color, frost: c('--frost'), bad: c('--bad')}; });
   check(/known/.test(pill.cls) && pill.color === pill.frost && pill.color !== pill.bad, `its state pill is grey (frost), not red (${JSON.stringify(pill)})`);
+  const grey = await card.evaluate(e => { const c = v => { const s = document.createElement('span'); s.style.color = `var(${v})`; document.body.append(s); const x = getComputedStyle(s).color; s.remove(); return x; };
+    return {name: getComputedStyle(e.querySelector('.job')).color, value: getComputedStyle(e.querySelector('dd')).color, powder: c('--powder')}; });
+  check(grey.name === grey.powder && grey.value === grey.powder, `the whole card is quiet: its name and values in the grey too (${JSON.stringify(grey)})`);
   check(await card.locator('button.knownbtn').textContent() === 'Unmark', 'the card offers Unmark');
   await card.locator('button.knownbtn').click();
   await card.locator('.knownline').waitFor({state: 'detached', timeout: 6000}).catch(() => {});
