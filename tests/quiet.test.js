@@ -57,6 +57,11 @@ run(async b => {
   const card = w.locator(`.card[data-job="${JOB}"]`);
   await card.locator('button.knownbtn[data-on="1"]').click();
   await card.locator('.knownline').waitFor({timeout: 6000}).catch(() => {});
+  // marked, it sorts below the others: the view follows it, the reader keeps his place
+  await w.waitForFunction(() => { const y = scrollY, ok = window.__lastY === y; window.__lastY = y; return ok; }, null, {polling: 250, timeout: 4000}).catch(() => {});   // the scroll has settled
+  const seen = await card.evaluate(e => { const r = e.getBoundingClientRect(), bar = document.getElementById('tabbar'), b = bar && bar.getClientRects().length ? bar.getBoundingClientRect().top : innerHeight;   /* fixed: no offsetParent */
+    return {top: Math.round(r.top), bottom: Math.round(r.bottom), floor: Math.round(b)}; });
+  check(seen.top >= 0 && seen.bottom <= seen.floor, `the marked card is in view after it moves, clear of the bottom bar (${JSON.stringify(seen)})`);
   check(await card.evaluate(e => e.classList.contains('known')) && /^Known, low priority · marked today, /.test(await card.locator('.knownline').textContent()),
     `on Argus the card is marked: "${await card.locator('.knownline').textContent().catch(() => '')}"`);
   const pill = await card.locator('.pill').evaluate(e => { const c = v => { const s = document.createElement('span'); s.style.color = `var(${v})`; document.body.append(s); const x = getComputedStyle(s).color; s.remove(); return x; };

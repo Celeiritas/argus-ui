@@ -490,6 +490,8 @@ async function markKnown(job, on, name = job) {
   catch (e) { toast("Couldn't reach the server to change that. Check that it's on, then try again."); return false; }
   if (!j || !j.ok) { toast((j && j.msg) || "Couldn't change that. Try again in a moment."); await refresh(); return false; }
   await refresh();
+  // on Argus's page a known card sorts below the others (rank): the view follows it, so the reader sees it turn grey
+  if (on) $(`.card[data-job="${CSS.escape(job)}"]`)?.scrollIntoView({block: 'center', behavior: RM.matches ? 'auto' : 'smooth'});
   if (on) { toast(`${name} is marked as known, low priority. It comes back if it fails another way.`, {label: 'Undo', fn: () => markKnown(job, false, name)}); $('#toastAct')?.focus(); }
   else { toast(`${name} counts again.`); $(`button[data-known="${CSS.escape(job)}"]`)?.focus(); }
   return true;
