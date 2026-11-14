@@ -117,7 +117,7 @@ async function serviceWorker() {
     await p.waitForTimeout(1200);
     let ns = await notes();
     check(ns.length === 1 && ns[0].title === msg.title && ns[0].body === msg.body && ns[0].tag === 'media', `a delivered message is shown as a notification (${JSON.stringify(ns.map(n => n.title))})`);
-    check(ns.length === 1 && ns[0].url === BASE + 'argus' && /static\/argus-192\.png$/.test(ns[0].icon), `its place is Watch inside Elaia, with the existing icon (${ns[0] && ns[0].url})`);
+    check(ns.length === 1 && ns[0].url === BASE + 'argus' && /static\/argus-192\.png$/.test(ns[0].icon), `its place is Argus inside Elaia, with the existing icon (${ns[0] && ns[0].url})`);
     await cdp.send('ServiceWorker.deliverPushMessage', {origin, registrationId: reg.registrationId, data: JSON.stringify({...msg, title: 'Media player still cannot read its drive'})});
     await p.waitForTimeout(800); ns = await notes();
     check(ns.length === 1 && ns[0].title === 'Media player still cannot read its drive', 'a newer message about the same thing replaces the older one, it does not stack');

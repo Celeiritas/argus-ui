@@ -4,11 +4,13 @@
 //      "<name>: busy with …", "<name>: a game is running, …": now_line() in the server; its name, now_name, drawn in the name colour),
 //   1. one line that says the state in words ("Nothing needs you", "2 things need you"), heading the list of
 //   2. the rows that need you, the failed thing first, each with one verb-first button,
-//   3. "Open": jumps to another app or site. The media players (~/.config/argus-ui/media.json) under "Watch and listen", then the
-//      links to other pages (~/.config/argus-ui/links.json) under their "group" ("Other pages" without one); labels only with 2+ groups,
-//   4. "Sections": the parts of Elaia, one compact tile each with its live line from status v2 (api/<id>/status: line, needs,
-//      action), cut at a word to two lines (fitLines). A new section (workouts, meals, music) only has to answer that to get its
-//      tile. A section with a row above has no tile; no tiles, no heading.
+//   3. "Open": jumps to another app or site, as compact as 4.44.0: the media players (~/.config/argus-ui/media.json), then the
+//      links to other pages (~/.config/argus-ui/links.json), one row of chips that wraps, no labels. A link with a "group" gets
+//      that group's small label in front of its chips (opens()),
+//   4. "Sections": the parts of Elaia, one compact tile each, called by its god's name (wordOf in core.js), with its live line
+//      from status v2 (api/<id>/status: line, needs, action), cut at a word to two lines (fitLines). A new section (workouts,
+//      meals, music) only has to answer that to get its tile. A section with a row above has no tile; no tiles, no heading.
+//      A quiet section (server/quiet.py: Mentor) keeps its tile and its line, and never has a row.
 // A row whose need is met fades out (200 ms); a new row slides in. Under reduced motion they just go and come.
 const home = (() => {
   let had = null;                          // how many things needed you at the last draw (null: not drawn yet)
@@ -19,42 +21,46 @@ const home = (() => {
   // belongs to; `n`: how many things the row stands for, so the line above counts what the bar counts (trouble() in core.js).
   function needs() {
     const out = troubleItems().map(it => ({key: it.key, of: it.of || 'argus', n: weight(it), mark: icon(AGENT_KEYS.includes(it.agent) ? it.agent : 'argus'), level: 'alert',
-      who: it.who, text: it.what, item: it, label: it.label || 'Look at it on Watch', href: it.href}));
-    PLUGINS.forEach(p => { const s = STATUS[p.id], c = needCount(p.id); if (s && s.needs) out.push({key: `needs-${p.id}`, of: p.id, n: c === true ? 1 : c,
-      mark: pluginMark(p), who: placeName(p.id, p.name), level: 'needs', text: s.line, label: s.action || `Open ${p.name}`, href: url(p.id)}); });
+      who: it.who, text: it.what, item: it, label: it.label || `Open ${wordOf('argus')}`, href: it.href}));
+    PLUGINS.forEach(p => { const s = STATUS[p.id], c = needCount(p.id); if (s && s.needs && !isQuiet(p.id)) out.push({key: `needs-${p.id}`, of: p.id, n: c === true ? 1 : c,
+      mark: pluginMark(p), who: wordOf(p.id, p.name), level: 'needs', text: s.line, label: s.action || `Open ${wordOf(p.id, p.name)}`, href: url(p.id)}); });
     return visible(out.map(n => ({...n, id: n.of})));
   }
-  const placeName = (id, name) => { const w = WORDS[id]; return w ? `${w.word}${w.realm && w.realm !== w.word ? ` · ${w.realm}` : ''}` : name; };
-  const row = (n, fresh) => `<li class="need ${n.level}${fresh ? ' fresh' : ''}" data-key="${esc(n.key)}"><span class="nmark">${n.mark}</span><div class="nb"><p><small>${esc(n.who)}${n.item?.when ? ` · ${esc(n.item.when)}` : ''}</small>${esc(n.text)}</p>${n.item ? troubleLines(n.item) : ''}</div><div class="nacts">${n.item ? fixButton(n.item) : ''}<a class="go" href="${esc(n.href)}">${esc(n.label)}</a></div></li>`;
+  // a failed task's row: "Mark as known" (the owner's; core.js markKnown) beside the way to Argus, so a failure he already
+  // knows about leaves Today without opening Argus
+  const knownBtn = it => { const j = it?.known && (S.jobs || []).find(x => x.job === it.known);
+    return j && role() === 'owner' ? `<button type="button" class="knownbtn" data-known="${esc(j.job)}" data-on="1" aria-label="Mark ${esc(j.name)} as known, low priority">Mark as known</button>` : ''; };
+  const row = (n, fresh) => `<li class="need ${n.level}${fresh ? ' fresh' : ''}" data-key="${esc(n.key)}"><span class="nmark">${n.mark}</span><div class="nb"><p><small>${esc(n.who)}${n.item?.when ? ` · ${esc(n.item.when)}` : ''}</small>${esc(n.text)}</p>${n.item ? troubleLines(n.item) : ''}</div><div class="nacts">${n.item ? fixButton(n.item) : ''}<a class="go" href="${esc(n.href)}">${esc(n.label)}</a>${knownBtn(n.item)}</div></li>`;
   // one card per section, in the bar's order: Watch, then each plugin with its status line (a static one with its version).
   // One place for each fact (4.44.0): a section with a row in the list above has no card until that row is gone.
   function cards(list) {
     const st = s => s === undefined ? 'Checking…' : s === null ? 'No news' : s.line;
-    const tr = trouble(), fails = tr.n, allFailed = !tr.alerts.length && !tr.checks.length && tr.tasks.every(j => j.state === 'failed');
+    const tr = trouble(), fails = tr.n, allFailed = !tr.alerts.length && !tr.checks.length && tr.tasks.every(j => j.state === 'failed'), kn = tr.known.length;
     const listed = new Set(list.map(n => n.of));
     return sections().filter(e => !e.kind && e.id !== 'home' && e.id !== 'phone' && !listed.has(e.id) && visible([e]).length).map(e => {
       const p = PLUGINS.find(x => x.id === e.id);
-      const line = e.id === 'argus' ? (!fails ? `All ${plural(S.jobs.length, 'task')} well` : allFailed ? `${plural(fails, 'task')} failed` : `${plural(fails, 'thing')} need${fails === 1 ? 's' : ''} a look`)
+      // a task marked known is told apart, never in red: "All 12 tasks well · 1 known"
+      const line = e.id === 'argus' ? (!fails ? `All ${plural(S.jobs.length, 'task')} well${kn ? ` · ${kn} known` : ''}` : allFailed ? `${plural(fails, 'task')} failed` : `${plural(fails, 'thing')} need${fails === 1 ? 's' : ''} a look`)
         : e.id === 'olympus' ? 'Powers, weather, seasons'
         : !p ? '' : p.kind === 'server' ? st(STATUS[p.id]) : p.version ? `Version ${p.version}` : 'Open it';
-      const mood = e.id === 'argus' ? (fails ? ' bad' : '') : STATUS[e.id]?.needs ? ' needs' : '';   // red: something failed; gold: waits for you
+      const mood = e.id === 'argus' ? (fails ? ' bad' : '') : STATUS[e.id]?.needs && !isQuiet(e.id) ? ' needs' : '';   // red: something failed; gold: waits for you
       // a " · " keeps its dot on the line before (a no-break space), so a wrapped line never starts with "·"
       return `<li><a class="place${mood}" href="${esc(e.href)}" data-id="${esc(e.id)}">${e.mark}<span class="pw">${words(e)}</span><span class="pl">${esc(line).replace(/ · /g, '\u00a0· ')}</span></a></li>`;
     }).join('');
   }
   // Open: the media players first (~/.config/argus-ui/media.json; another site, so a plain link that sends no referrer),
-  // then the links to other pages on this machine (~/.config/argus-ui/links.json). Each kind under its own small label
-  // (4.45.0): the players are "Watch and listen", a link sits under its "group", one without under "Other pages". With
-  // only one kind there is nothing to tell apart, so no label.
-  const MEDIA_GROUP = 'Watch and listen', OTHER_GROUP = 'Other pages';
+  // then the links to other pages on this machine (~/.config/argus-ui/links.json). As compact as 4.44.0 (the owner,
+  // 2026-11-13): one list of chips that wraps, no labels. Only a link with a "group" gets a small label, in front of that
+  // group's chips: on a phone the label and its chips flow in the same wrap as the others (argus.css), on a wide screen the
+  // groups sit side by side. The chips without a group come first, unlabelled.
   function opens() {
     const li = (x, rel) => `<li><a class="openlink" href="${esc(x.href)}"${rel ? ' rel="noopener noreferrer"' : ''}>${LINK_MARK}<span><b>${esc(x.name)}</b>${x.what ? `<small>${esc(x.what)}</small>` : ''}</span></a></li>`;
     const groups = new Map();              // label -> chips, in the order they first come
-    const put = (g, html) => groups.set(g, (groups.get(g) || '') + html);
-    (S.media || []).forEach(x => put(MEDIA_GROUP, li(x, true)));
-    (S.links || []).forEach(x => put(typeof x.group === 'string' && x.group.trim() ? x.group.trim() : OTHER_GROUP, li(x, false)));
-    if (groups.size < 2) return groups.size ? `<ul class="openlist">${[...groups.values()][0]}</ul>` : '';
-    return `<div class="opengroups">${[...groups].map(([g, chips], i) => `<div class="og"><h3 class="opengroup" id="open-g${i}">${esc(g)}</h3><ul class="openlist" aria-labelledby="open-g${i}">${chips}</ul></div>`).join('')}</div>`;
+    let loose = (S.media || []).map(x => li(x, true)).join('');
+    (S.links || []).forEach(x => { const g = typeof x.group === 'string' ? x.group.trim() : '';
+      if (g) groups.set(g, (groups.get(g) || '') + li(x, false)); else loose += li(x, false); });
+    if (!groups.size) return loose ? `<ul class="openlist">${loose}</ul>` : '';
+    return `<div class="opengroups">${loose ? `<ul class="openlist">${loose}</ul>` : ''}${[...groups].map(([g, chips], i) => `<div class="og"><h3 class="opengroup" id="open-g${i}">${esc(g)}</h3><ul class="openlist" aria-labelledby="open-g${i}">${chips}</ul></div>`).join('')}</div>`;
   }
   // a tile's line in two lines at most, cut after the last word that fits, with "…" (never inside a word, unless one word is
   // wider than the tile). The cut words stay in the link's name as a .sr span, so a screen reader hears the whole line.

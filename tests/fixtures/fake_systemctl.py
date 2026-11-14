@@ -15,7 +15,7 @@ elif cmd=='show':
     if not u.get('timer'): print('LoadState=not-found'); sys.exit()
     print('LoadState=loaded'); print('NextElapseUSecRealtime=Sun 2026-10-25 04:00:00 MDT' if u.get('timer_on') else 'NextElapseUSecRealtime='); print('ActiveState='+('active' if u.get('timer_on') else 'inactive'))
   else:
-    for k in ['Result','ActiveState','ExecMainExitTimestamp','ExecMainStartTimestamp','MemoryPeak','IOWriteBytes','Description','Type']: print(f'{k}={u.get(k,"")}')
+    for k in ['Result','ActiveState','ExecMainExitTimestamp','ExecMainStartTimestamp','MemoryPeak','IOWriteBytes','Description','Type','ExecMainStatus']: print(f'{k}={u.get(k,"")}')
 elif cmd=='is-enabled':
   base,kind=a[1].rsplit('.',1); u=U[base]; print('enabled' if u.get(kind+'_en') else 'disabled')
 elif cmd=='is-active':

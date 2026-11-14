@@ -77,6 +77,12 @@ if [ -z "$1" ] || [ "$1" = today ] || [ "$1" = home ]; then
   echo "== today model"
   $PYTHON "$R/tests/today_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1
 fi
+# what keeps quiet (4.45.0, server/quiet.py): Mentor never needs him, and a failed task marked "Known, low priority" leaves
+# Today, the phone and the daily summary until it works again or fails another way; no browser (tests/quiet_test.py)
+if [ -z "$1" ] || [ "$1" = today ] || [ "$1" = home ] || [ "$1" = quiet ] || [ "$1" = push ]; then
+  echo "== quiet and known"
+  $PYTHON "$R/tests/quiet_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1
+fi
 if [ -z "$1" ] || [ "$1" = memory ]; then
   echo "== memory model"   # the Memory page's server side, no browser (tests/memory_test.py)
   $PYTHON "$R/tests/memory_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1

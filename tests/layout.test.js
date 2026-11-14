@@ -22,9 +22,9 @@ run(async b => {
     check(await noOverflow(p), `${tag}: no sideways scrolling`);
     await shot(p, 'layout-' + w + '-home');
     await p.goto(BASE + 'argus'); await p.locator('.card').first().waitFor(); await p.waitForTimeout(300);
-    check((await box(p, 'header')).h <= h * 0.25, `${tag}: Watch's header takes at most a quarter of the height (${Math.round((await box(p, 'header')).h)} px)`);
+    check((await box(p, 'header')).h <= h * 0.25, `${tag}: Argus's header takes at most a quarter of the height (${Math.round((await box(p, 'header')).h)} px)`);
     const cols = await p.locator('.grid').first().evaluate(g => getComputedStyle(g).gridTemplateColumns.split(' ').length);
-    check(cols >= 7, `${tag}: Watch fits ${cols} task cards in a row`);
+    check(cols >= 7, `${tag}: Argus fits ${cols} task cards in a row`);
     await shot(p, 'layout-' + w + '-watch');
     await p.goto(BASE + 'demo-server'); await p.locator('.plugin-server .plugin-body').waitFor(); await p.waitForTimeout(300);
     check((await box(p, '.plugin-body')).w >= 1000, `${tag}: a server plugin's page gets the full content width`);
@@ -67,7 +67,9 @@ run(async b => {
       const t = await strip(lp);
       check(!t.over.includes(last) && await lp.locator(`#realms a.realm.on[data-id="${last}"]`).isVisible() && t.row && t.inside && t.clear, `${w} x ${h}: on a place that folds elsewhere (${last}), its pill stays on the strip, marked current`);
     }
-    if (w === 1024) check(await lp.locator('#realms').getByRole('link', {name: /Watch\s*Argus/}).count() === 1, '1024: a pill whose second line is hidden still reads it out');
+    if (w === 1024) check(await lp.locator('#realms').getByRole('link', {name: /^Argus(?![a-z])/}).count() === 1
+      && (!s.compact || await lp.locator('#realms .realm small').evaluateAll(es => es.every(e => getComputedStyle(e).clipPath !== 'none'))),
+      `1024: the Argus pill is named by the god alone (4.45.0); a second line (a link's, a coming one's) hidden here is still read out (compact: ${s.compact})`);
     await shot(lp, `layout-${w}-home`);
     check(lp.errors.length === 0, `${w} x ${h}: no page errors ` + lp.errors.join(' | '));
     await lp.close();
@@ -94,7 +96,7 @@ run(async b => {
       else check(wx[0], `1920 x 1080: on ${where} the weather is on the strip (${wx[0]})`);
     }
     const same = ['argus', 'phone'].every(k => JSON.stringify(shape[k]) === JSON.stringify(shape.home));
-    check(same && !shape.home.compact, `1920 x 1080: the strip has one shape on Today, Watch and Phone alerts, second lines shown (${JSON.stringify(shape)})`);
+    check(same && !shape.home.compact, `1920 x 1080: the strip has one shape on Today, Argus and Phone alerts, second lines shown (${JSON.stringify(shape)})`);
     await wp.close();
   }
 
@@ -129,7 +131,7 @@ run(async b => {
   const ph = await page(b, 375, 760); await ph.goto(BASE + 'olympus'); await ph.waitForTimeout(800);
   const tb = await box(ph, '.tabbar'), more = ph.locator('.tabbar [data-more]');
   check(tb.y + tb.h >= 759 && tb.w >= 374 && await ph.locator('.realms').isHidden(), 'phone: the sections sit in a bar at the bottom instead of the strip');
-  check(await more.evaluate(e => e.classList.contains('on')) && /Playground/.test(await more.textContent()), 'phone: on a place inside More, the More slot is the current one and names it');
+  check(await more.evaluate(e => e.classList.contains('on')) && /Olympus/.test(await more.textContent()), 'phone: on a place inside More, the More slot is the current one and names it');
   await ph.goto(BASE + 'home'); await settled(ph);
   const [pn, pp] = await boxes(ph, '.home .needs', '.home .places');
   check(pn && pp && pp.y > pn.y && pn.w >= 340, `phone: Home is one column, full width (rows ${pn && pn.w} px wide)`);

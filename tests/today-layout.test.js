@@ -108,19 +108,31 @@ run(async b => {
     check(nb && nb.bg === 'rgb(35, 42, 49)' && nn >= 4.5 && nw >= 4.5, `without the theme's colours the band is neutral (${nb && nb.bg}; name ${nn.toFixed(2)}:1, words ${nw.toFixed(2)}:1)`);
     await t.reload(); await settled(t);
 
-    // 2. Open: one small label per kind, only when there is more than one kind; the chips as they were
+    // 2. Open stays compact (4.45.0 round 2): no automatic labels; a label only for a links.json "group", inline at the start of
+    // its chips on a phone (at most one more line than the same chips without labels), side by side on wide screens
     const groups = () => t.evaluate(() => ({labels: [...document.querySelectorAll('.home .open .opengroup')].map(h => [h.textContent, getComputedStyle(h).fontSize, getComputedStyle(h).fontWeight]),
       lists: [...document.querySelectorAll('.home .open ul.openlist')].map(u => [u.getAttribute('aria-labelledby') ? document.getElementById(u.getAttribute('aria-labelledby')).textContent : '', u.querySelectorAll('a.openlink').length]),
       marks: [...document.querySelectorAll('.home .open a.openlink')].every(a => a.querySelector('svg'))}));
+    const openH = () => t.evaluate(() => Math.round(document.querySelector('.home .open').getBoundingClientRect().height));
+    const chipRow = () => t.evaluate(() => { const a = document.querySelector('.home .open a.openlink'); return Math.round(a.getBoundingClientRect().height); });
     let g = await groups();
-    check(JSON.stringify(g.labels.map(x => x[0])) === '["Watch and listen","Tools","Studio"]' && g.labels.every(x => x[1] === '12px' && x[2] === '600'),
-      `Open: the players under "Watch and listen", the links under their groups, labels 12/600 (${JSON.stringify(g.labels)})`);
-    check(JSON.stringify(g.lists) === '[["Watch and listen",2],["Tools",2],["Studio",1]]' && g.marks, `each group is a list named by its label, every chip with its "opens elsewhere" mark (${JSON.stringify(g.lists)})`);
-    fs.writeFileSync(LK, JSON.stringify([...LINKS, {name: 'Garden', what: 'A page with no group', href: '/garden-test/'}]));
-    await t.evaluate(() => refresh()); await t.locator('.home .open .opengroup', {hasText: 'Other pages'}).waitFor({timeout: 3000}).catch(() => {});
-    g = await groups();
-    check(g.labels.map(x => x[0]).join() === 'Watch and listen,Tools,Studio,Other pages', `a link without a group goes under "Other pages" (${g.labels.map(x => x[0]).join(', ')})`);
+    check(JSON.stringify(g.labels.map(x => x[0])) === '["Tools","Studio"]' && g.labels.every(x => x[1] === '12px' && x[2] === '600'),
+      `Open: a label only for each links.json group, none made up ("Watch and listen", "Other pages" gone), labels 12/600 (${JSON.stringify(g.labels)})`);
+    check(JSON.stringify(g.lists) === '[["",2],["Tools",2],["Studio",1]]' && g.marks, `the players first with no label, then each group a list named by its label, every chip with its "opens elsewhere" mark (${JSON.stringify(g.lists)})`);
+    const labelled = await openH();
     await shot(t, 'today-412-groups');
+    // the same chips without their groups: the labels add at most one line on a 412 px phone
+    fs.writeFileSync(LK, JSON.stringify(LINKS.map(({group, ...x}) => x)));
+    await t.evaluate(() => refresh()); await t.waitForFunction(() => !document.querySelector('.home .open .opengroup'), null, {timeout: 3000}).catch(() => {});
+    g = await groups();
+    const bare = await openH(), row = await chipRow();
+    check(g.labels.length === 0 && JSON.stringify(g.lists) === '[["",5]]', `links with no group: one list, no label, the chips as in 4.44.0 (${JSON.stringify(g)})`);
+    check(labelled - bare <= row + 8, `412: the group labels add at most one line to Open (${bare} px without, ${labelled} px with; a line is ${row} px + gap)`);
+    fs.writeFileSync(LK, JSON.stringify([...LINKS, {name: 'Garden', what: 'A page with no group', href: '/garden-test/'}]));
+    await t.evaluate(() => refresh()); await t.locator('.home .open a.openlink', {hasText: 'Garden'}).waitFor({timeout: 3000}).catch(() => {});
+    g = await groups();
+    check(g.labels.map(x => x[0]).join() === 'Tools,Studio' && JSON.stringify(g.lists) === '[["",3],["Tools",2],["Studio",1]]',
+      `a link without a group sits with the players, unlabelled; no "Other pages" (${g.labels.map(x => x[0]).join(', ')}; ${JSON.stringify(g.lists)})`);
     fs.unlinkSync(LK); await t.evaluate(() => refresh()); await t.waitForFunction(() => !document.querySelector('.home .open .opengroup'), null, {timeout: 3000}).catch(() => {});
     g = await groups();
     check(g.labels.length === 0 && JSON.stringify(g.lists) === '[["",2]]', `with one kind (the players alone), no label (${JSON.stringify(g)})`);
@@ -134,8 +146,11 @@ run(async b => {
       const n = xs.filter(y => Math.abs(y - xs[0]) < 2).length;
       check(w === 360 ? n === 2 : n >= min, `${w} x ${h}: ${n} tiles a row`);
       // Open's groups sit side by side where they fit, so a wide screen keeps Open about as short as before
-      const tops = await q.locator('.home .open .opengroup').evaluateAll(hs => hs.map(h => Math.round(h.getBoundingClientRect().top)));
-      if (w >= 915) check(tops.length === 3 && new Set(tops).size < 3, `${w} x ${h}: Open's three groups take ${new Set(tops).size} rows`);
+      // (the players first, unlabelled, then the groups; flex-end lines them up by their bottoms)
+      const blocks = await q.evaluate(() => { const o = document.querySelector('.home .open'); return {w: Math.round(o.getBoundingClientRect().width),
+        b: [...o.querySelectorAll('.opengroups > *')].map(e => { const r = e.getBoundingClientRect(); return [r.left, r.bottom, r.width].map(Math.round); })}; });
+      const rows = new Set(blocks.b.map(x => x[1])).size;
+      if (w >= 915) check(blocks.b.length === 3 && rows < 3, `${w} x ${h}: Open's blocks sit side by side where they fit: ${rows} rows for 3 (Open ${blocks.w} px: ${blocks.b.map(x => x.join(',')).join(' | ')})`);
       check(await noOverflow(q), `${w} x ${h}: no sideways scrolling`);
       await q.close();
     }

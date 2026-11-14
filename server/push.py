@@ -285,6 +285,7 @@ def owns(d, who):
 
 
 name_of = lambda subject: ''   # the name of a thing as the page calls it (the check's title); the server sets it at start
+hushed = lambda event: False   # an event that keeps still: a quiet section or a task marked known (server/quiet.py); set at start
 
 
 # ---------- the message ----------
@@ -507,6 +508,10 @@ def sink(event):
     if kind == 'fixed': gate.forget(str(event.get('subject', '')))   # never buzzes, but resets that thing's quiet time
     if kind not in KINDS or not crypto(): return
     if own_press(event): return                                       # he is looking at the page that says how his press went
+    if kind != 'summary':                                             # a quiet section, or a task he marked known (server/quiet.py)
+        try:
+            if hushed(event): return
+        except Exception as e: log(f'what keeps quiet could not be read, so this alert goes out ({type(e).__name__})')
     try: devs = load_devices()
     except (OSError, ValueError): return
     people = sorted({d.get('person') for d in devs if kind in (d.get('kinds') or ())})
@@ -626,9 +631,11 @@ def subscribe(person, body, trusted, who=None):
     return 200, {'ok': True, 'id': did, 'msg': 'Alerts are on for this device.'}
 
 
-def start(role, names=None):
-    """Called once at server start: who counts as an owner, the name of a thing as the page calls it, and the sink."""
-    global role_of, name_of
+def start(role, names=None, quiet=None):
+    """Called once at server start: who counts as an owner, the name of a thing as the page calls it, what keeps still
+    (quiet(event) -> True: a quiet section or a task marked known, server/quiet.py) and the sink."""
+    global role_of, name_of, hushed
     role_of = role
     if names: name_of = names
+    if quiet: hushed = quiet
     notify.register(sink)

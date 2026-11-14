@@ -62,9 +62,16 @@ OLD_PLUGIN = textwrap.dedent('''
     def post(path, body, ctx):
         return 200, {'path': path, 'three': True}
 ''')
+# mentor: a quiet section (server/quiet.py) whose status says it needs him, opened to learners
+MENTOR_PLUGIN = textwrap.dedent('''
+    def get(path, query, ctx, who=None):
+        if path == 'status': return 200, {'line': '6 due', 'needs': True, 'action': 'Study 10 minutes', 'count': 6}
+        return 404, {'error': 'Not here.'}
+''')
 for pid, code, extra in (('heracles', WHO_PLUGIN, {'agent': True, 'roles': {'get': {'lessons': 'learner', 'status': 'learner'}, 'post': {'answer': 'learner'}}}),
                          ('quiet', OLD_PLUGIN, {'name': 'Quiet', 'roles': {'get': {'ping': 'learner'}, 'post': {'note': 'learner'}}}),
-                         ('closed', WHO_PLUGIN, {'name': 'Closed'})):
+                         ('closed', WHO_PLUGIN, {'name': 'Closed'}),
+                         ('mentor', MENTOR_PLUGIN, {'name': 'Mentor', 'roles': {'get': {'status': 'learner'}}})):
     put(os.path.join(PLUG, pid, 'plugin.json'), dict(id=pid, kind='server', page='page.js', **extra))
     put(os.path.join(PLUG, pid, 'plugin.py'), code); put(os.path.join(PLUG, pid, 'page.js'), f'// {pid}')
 put(os.path.join(PLUG, 'kwonly', 'plugin.json'), {'id': 'kwonly', 'kind': 'server', 'page': 'page.js'})
@@ -77,6 +84,7 @@ os.environ.update(HOME=HOME, USERPROFILE=HOME, ARGUS_STATIC=STATIC, ARGUS_PLUGIN
                   ARGUS_LINKS=os.path.join(CONF, 'links.json'), ARGUS_REGISTRY=os.path.join(TMP, 'agents'), ARGUS_ALERTS=os.path.join(TMP, 'alerts'),
                   ARGUS_PEOPLE_LAST_GOOD=os.path.join(TMP, 'state', 'people.last-good.json'),   # the people file: the default, in HOME
                   ARGUS_SERVE_UID=str(ME), ARGUS_DEV='1', ARGUS_WATCH='0',          # ARGUS_DEV: our own uid may stand in for Serve
+                  ARGUS_KNOWN=os.path.join(TMP, 'state', 'known.json'),            # the "Known, low priority" marks (server/quiet.py)
                   ARGUS_SYSTEMCTL=wrapper('systemctl', 'fake_systemctl.py'), ARGUS_JOURNALCTL=wrapper('journalctl', 'fake_journal.py'))
 for k in ('ARGUS_BIND', 'ARGUS_WEATHER', 'ARGUS_PEOPLE'): os.environ.pop(k, None)
 _spec = importlib.util.spec_from_file_location('argus_ui_gate_test', os.path.join(R, 'server', 'argus_ui.py'))
@@ -135,6 +143,7 @@ ROUTES = [  # (verb, path, what it is, owner, learner, none)
     (P, 'api/bolt', 'restart / run a task', 200, 403, 403),
     (P, 'api/run', 'run a task', 200, 403, 403),
     (P, 'api/watch/fix', "the owner's yes to a check's declared fix (4.40.0; no id here: 400)", 400, 403, 403),
+    (P, 'api/known', "mark a failed task known, low priority (4.45.0; no 'on' here: 400)", 400, 403, 403),
     (P, 'api/heracles/answer', 'a plugin POST opened to learners', 200, 200, 403),
     (P, 'api/heracles/wipe', 'a plugin POST not opened', 200, 403, 403),
     (P, 'api/quiet/note', 'a plugin POST opened to learners (no who)', 200, 200, 403),
@@ -222,7 +231,7 @@ class Roles(Base):
                        b'closed', b'spartamelee', b'controllers', b'people_problem', b'Owner One'):
             self.assertNotIn(secret, body, secret)
         self.assertEqual((d['jobs'], d['alerts'], d['links'], d['watch'], d['soon']), ([], [], [], [], []))
-        self.assertEqual(sorted(p['id'] for p in d['plugins']), ['heracles', 'quiet'])
+        self.assertEqual(sorted(p['id'] for p in d['plugins']), ['heracles', 'mentor', 'quiet'])
         self.assertEqual([p['key'] for p in d['personas']], ['heracles'], 'only the agents whose section she may open')
         code, h, page = self.req(G, '', LEARNER)
         self.assertIn(b'"role": "learner"', page); self.assertNotIn(b'secretsort', page, 'the state inside the page is cut too')
@@ -414,6 +423,51 @@ class ServeUidIsThePagesOwnUser(FakedHeaderOnADirectConnection):
         if not hasattr(os, 'getuid'): self.skipTest('no user ids here')
         self.log.flush()
         with open(self.log.name) as f: self.assertIn("is the page's own user", f.read())
+
+class QuietAndKnown(Base):
+    """4.45.0 (server/quiet.py): a quiet section's status never needs the owner, and POST api/known marks a failed task
+    "Known, low priority" (the owner only; Undo takes it off). The model side is tests/quiet_test.py."""
+    KNOWN = os.environ['ARGUS_KNOWN']
+    def setUp(self):
+        write_people(GOOD)
+        if os.path.exists(self.KNOWN): shutil.move(self.KNOWN, f'{self.KNOWN}.set-aside-{time.time_ns()}')
+    def marks(self):
+        try:
+            with open(self.KNOWN, encoding='utf-8') as f: return json.load(f)
+        except OSError: return None
+    def known_of(self, login=OWNER):
+        return {j['job']: j.get('known') for j in self.js(G, 'api/state', login)[1]['jobs']}
+
+    def test_a_quiet_sections_status_never_needs_the_owner(self):
+        self.assertEqual(self.js(G, 'api/mentor/status', OWNER), (200, {'line': '6 due', 'needs': False, 'action': ''}),
+                         'its line stays for the tile; no row, no button, no count')
+        self.assertEqual(self.js(G, 'api/mentor/status', LEARNER), (200, {'line': '6 due', 'needs': True, 'action': 'Study 10 minutes', 'count': 6}),
+                         "a learner's Mentor is what she studies: not quiet")
+        self.assertEqual(self.js(G, 'api/state', OWNER)[1]['quiet'], ['mentor'])
+        self.assertNotIn('quiet', self.js(G, 'api/state', LEARNER)[1])
+
+    def test_the_owner_marks_a_failed_task_and_undoes_it(self):
+        code, d = self.js(P, 'api/known', OWNER, {'job': 'mnemosyne-backup', 'on': True})
+        self.assertEqual((code, d['ok']), (200, True)); self.assertIn('known, low priority', d['msg'])
+        self.assertEqual(self.marks(), {'mnemosyne-backup': {'fp': 'failed//', 'at': d['at']}})
+        self.assertEqual(self.known_of()['mnemosyne-backup'], d['at'])
+        code, u = self.js(P, 'api/known', OWNER, {'job': 'mnemosyne-backup', 'on': False})     # Undo, Unmark
+        self.assertEqual((code, u['ok']), (200, True))
+        self.assertEqual(self.marks(), {}); self.assertIsNone(self.known_of()['mnemosyne-backup'])
+
+    def test_what_cannot_be_marked(self):
+        for body, want in (({'job': 'hermes-secretsort', 'on': True}, 409),     # it works: nothing to mark
+                           ({'job': 'nope', 'on': True}, 400), ({'job': 'mnemosyne-backup'}, 400), ({'job': 'mnemosyne-backup', 'on': 'yes'}, 400)):
+            code, d = self.js(P, 'api/known', OWNER, body)
+            self.assertEqual((code, d['ok']), (want, False), body); self.assertTrue(d['msg'], body)
+        self.assertIsNone(self.marks())
+
+    def test_a_learner_cannot_mark(self):
+        for login in (LEARNER, STRANGER):
+            self.assertEqual(self.req(P, 'api/known', login, {'job': 'mnemosyne-backup', 'on': True})[0], 403, login)
+        self.assertIsNone(self.marks(), 'nothing saved')
+        self.assertNotIn(b'known', self.req(G, 'api/state', LEARNER)[2])
+
 
 def tearDownModule():
     shutil.rmtree(TMP, ignore_errors=True)

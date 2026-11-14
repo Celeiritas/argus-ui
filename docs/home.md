@@ -12,41 +12,46 @@ opens on: the bare address `<base>/`, and `<base>/home`, its old address, which 
    the server's own colours (4.45.0).
 2. **One line that says the state in words**: *Nothing needs you*, *1 thing needs you*, *3 things need you*, or *Asking every
    section…* while the sections are still answering. It counts what the bar counts: every task in trouble, every alert, and
-   each section that needs you (its `count`, else one). A learner sees "The realm is quiet." under it when nothing needs her.
+   each section that needs you (its `count`, else one), never a quiet section or a task marked known ("Quiet", below). A
+   learner sees "The realm is quiet." under it when nothing needs her.
    It is the heading of the list:
-3. **The rows that need you**, the failed thing first. Each row has the place's mark, who it is from (the plain word and the
-   realm's name, e.g. *Approvals · Zeus*), one sentence, and one verb-first button that goes there:
-   - **one row per broken thing on Watch** (4.40.0, see "Trouble first" below): a program that runs but cannot do its job,
+3. **The rows that need you**, the failed thing first. Each row has the place's mark, who it is from (the god's name and only
+   that, e.g. *Zeus*; for a task or an alert, whose it is and where: *Hermes · Argus*, 4.45.0), one sentence, and one
+   verb-first button that goes there:
+   - **one row per broken thing on Argus** (4.40.0, see "Trouble first" below): a program that runs but cannot do its job,
      a check with no task card of its own (a media program, a drive), a failed task, each with the same three plain lines as on
-     Watch and, when checks.json declares a fix, the same press-and-hold button (**Restart Jellyfin**) beside **Look at it on
-     Watch**
-   - every `alert`-level alert (docs/alerts.md) that is not about one of those: its agent in plain words ("Hermes · Watch"),
-     its message, and "Open <section>" when it links to one, else "Look at Hermes on Watch" (Watch showing that agent's tasks)
-   - every server plugin whose status says it needs you: its line → its `action` ("Study 5 due cards", "Review argus-ui 4.15.0")
+     Argus's page and, when checks.json declares a fix, the same press-and-hold button (**Restart Jellyfin**) beside **Open
+     Argus**. A failed task's row also has **Mark as known** (the owner's; "Quiet", below)
+   - every `alert`-level alert (docs/alerts.md) that is not about one of those: whose it is ("Hermes · Argus"), its message,
+     and "Open <section>" when it links to one, else "Open Argus" (Argus's page showing that agent's tasks)
+   - every server plugin whose status says it needs you: its line → its `action` ("Review argus-ui 4.15.0"); never a quiet one
 
    A row whose need is met **fades out** where it stood (200 ms, hidden from screen readers while it goes); a row that is new
-   since the last draw slides in. Under reduced motion both just happen. Warnings stay on their cards on the Watch page.
+   since the last draw slides in. Under reduced motion both just happen. Warnings stay on their cards on Argus's page.
 4. **Open** (the owner's): the media players (Jellyfin, Audiobookshelf; below), then the links to other pages on this machine
-   (below), each a 44 px chip with its name, what it is and the "opens elsewhere" mark. Neither file, no row. **Small labels**
-   (12 px, 600; 4.45.0) part them by kind: the players under *Watch and listen*, each link under its `"group"` (below), a
-   link without one under *Other pages*. A label shows only when there is more than one group; with one there is nothing to
-   tell apart. Each group is its own list, named by its label for a screen reader. The labels are in the quiet meta colour
-   (`--frost`), below the panel's "Open" heading, and the groups sit side by side where they fit (three groups in one row at
-   915 px).
-5. **Sections**: one compact tile per section, in the bar's order (4.45.0): its 32 px mark, its plain word (14 px, 600) and
-   its status line (12 px) under it. Two tiles a row on a phone (360 to about 470 px), four or more on wider screens (each at
-   least 220 px wide from 1200 px, so a line has room: six a row at 1920 px). The words in a row start at the same height. Watch
-   says "All 6 tasks well" or "1 task failed" (red edge); a server plugin shows its status line (gold edge while it needs
-   you); a static plugin shows its version; the Playground says "Powers, weather, seasons". The whole tile is one link, at
-   least 44 px. The realm's name (*Argus*, *Zeus*) is not drawn on the tile but stays in the link's name for a screen reader.
+   (below), each a 44 px chip with its name, what it is and the "opens elsewhere" mark. Neither file, no row. **As compact as
+   4.44.0** (the owner, 4.45.0 round 2): the chips flow in one list with no label, the players first, then every link that has
+   no `"group"`. Elaia makes up no labels. A **label** (12 px, 600, the quiet meta colour `--frost`) shows only for a group
+   the links themselves name in links.json (below): its chips come after the unlabelled ones, as their own list named by
+   the label for a screen reader. On a phone (600 px and narrower) the label sits inline at the start of its chips, in the
+   same wrap, so grouped links add at most one line to Open (412 x 915: 146 px with no groups, 198 px with two). On wider
+   screens each group is a block and the blocks sit side by side where they fit (one row at 915 px; two in Open's 692 px
+   column at 1920 px). With no grouped links, Open is the one list of 4.44.0.
+5. **Sections**: one compact tile per section, in the bar's order (4.45.0): its 32 px mark, its name (14 px, 600; the god's,
+   "Finding your way" below) and its status line (12 px) under it. Two tiles a row on a phone (360 to about 470 px), four or more on wider screens (each at
+   least 220 px wide from 1200 px, so a line has room: six a row at 1920 px). The words in a row start at the same height. Argus
+   says "All 6 tasks well", "All 12 tasks well · 1 known" (a failure marked known, never red) or "1 task failed" (red edge); a
+   server plugin shows its status line (gold edge while it needs you; a quiet one never does, but keeps its line: "6 cards
+   due"); a static plugin shows its version; Olympus says "Powers, weather, seasons". The whole tile is one link, at least
+   44 px, and a screen reader hears its name and its whole line ("Mnemosyne, Backing up now").
    **A line takes two lines at most** and is cut after the last whole word that fits, with "…" (`fitLines()` in
    `web/js/home.js`; never inside a word, unless one word alone is wider than the tile). A " · " keeps its dot on the line
    before (a no-break space), so no line starts with "·". The words cut off stay in the link's name, so a screen reader hears
    the whole line. With nothing needing you, all of Today fits above the phone's bottom bar
    at 412 x 915 (measured with two players, links in two groups and nine tiles, the panels 12 px apart on a phone: the
-   Sections panel ends at 811 px with one-line statuses and at 837 px with six of nine on two lines; the bar starts
-   at 842 px). **One place for each fact** (4.44.0): a section with a row above has no tile until that row is gone (Watch with
-   a failed task, Approvals with a deploy waiting), so the same news is never said twice on one screen. No tile left, no
+   Sections panel ends at 749 px with one-line statuses and at 775 px with six of nine on two lines; the bar starts
+   at 842 px). **One place for each fact** (4.44.0): a section with a row above has no tile until that row is gone (Argus with
+   a failed task, Zeus with a deploy waiting), so the same news is never said twice on one screen. No tile left, no
    heading.
 
 ## Sections or Open (4.45.0)
@@ -101,32 +106,41 @@ verb-first, at most 32 characters, and defaults to "Open <name>"; the server cut
 after the last whole word, with "…" (`clip()`, 4.45.0; before, it cut inside a word). Elaia passes on only these three fields and never errors
 (`{"line": null}` when a plugin has nothing or fails). A plugin that answers only `{"line"}` keeps working and simply never
 needs you. **A new section (workouts, meals, music) gets its tile on Today by answering this, nothing else.** Mentor answers
-`needs` when cards are due; Memory (docs/memory.md) when the newest snapshot is older than 8 days or the job failed.
+`needs` when cards are due; Memory (docs/memory.md) when the newest snapshot is older than 8 days or the job failed. To the
+owner, the server answers for a quiet section (Mentor, "Quiet" below) with its line, `needs: false`, no `action` and no
+`count`, whatever the plugin said.
 
 ## Finding your way (4.36.0)
 One list of places, in this order, drawn three ways (`sections()` and `drawNav()` in `web/js/core.js`):
-**Today, Watch (Argus), Study (Mentor), Approvals (the Throne, Zeus), Backups (Memory, Mnemosyne), Playground (Olympus),
-Controllers, Spartamelee, Ariad-Node**, any other plugin, then the links to other pages and anything "coming later".
-- **On a phone (under 600 px)**: a bar at the bottom edge, in thumb reach, with five slots: Today, Watch, Study, Approvals and
+**Today, Argus, Mentor, Zeus (the Throne plugin), Mnemosyne (the Memory plugin), Olympus, Controllers, Spartamelee,
+Ariad-Node**, any other plugin, then the links to other pages and anything "coming later".
+**A section that belongs to a god is called by the god's name, and only that, everywhere** (4.45.0; the owner: "I need it as
+the ONLY title"): the bar, the strip, the More sheet, its tile on Today, its page heading and the "who" line of a row. The
+name comes from the theme's agent (`WORDS` and `wordOf()` in `core.js`), so another theme's god names it there. Sections with
+no god keep their own name (Controllers, Spartamelee, Heracles, Ariad-Node, the links). Buttons stay verb-first ("Open
+Argus"). Addresses and ids do not change (`/watch`, `throne`, `memory`); the plain words of before (Watch, Study, Approvals,
+Backups, Playground) are kept in `WORDS` as `was`, for the search the next build adds.
+- **On a phone (under 600 px)**: a bar at the bottom edge, in thumb reach, with five slots: Today, Argus, Mentor, Zeus and
   **More**. More opens a sheet from the bottom with every other place, the links ("Other pages") and the sound switch;
   Escape, Close or a tap outside shuts it and gives focus back to More. While you are on a place inside More, the More slot
   is the current one and names it. The bar keeps clear of the phone's own gesture bar (`env(safe-area-inset-bottom)`), and
   the page and the scene end above it, so nothing hides behind it.
 - **Wider screens**: the same places as a strip across the top (a rail down the left on an ultrawide, docs/ui-plan.md §14),
   ending in **More** and Mute sounds. The strip is always one row inside the screen (4.44.0): when the places do not fit (a
-  laptop, a phone on its side), the pills first drop their second line (still read out), then the weather goes, then the last
+  laptop, a phone on its side), the pills first drop their second line (a link's or a coming one's; still read out), then the weather goes, then the last
   pills fold into More, never Today or the place you are on; widen the window and they come back. Nothing scrolls sideways and
   nothing passes under Mute. More here holds the folded places, **Phone alerts** and the links to other pages, so Phone
   alerts has a way in at every width; on a place inside it, More is the current one and a screen reader hears its name (no
   second line on screen: it made More, and so the strip, change shape from page to page). The strip has one shape on every
   page at a given width.
-- **Each place**: the plain word large, the realm's name small under it where it differs, its medallion, and a count only
-  when something needs you: a red number on Watch (failed tasks and alerts), a gold mark on a section whose status says it
-  needs you (a number once the server passes a `count`), summed on More. A screen reader hears "Watch, Argus, 1 needs you".
+- **Each place**: its one name, its medallion, and a count only when something needs you: a red number on Argus (failed
+  tasks and alerts, not those marked known), a gold mark on a section whose status says it needs you (a number once the
+  server passes a `count`; never on a quiet section), summed on More. A screen reader hears "Argus, 1 needs you". Only a
+  link or a coming-later place has a second, smaller line (what it is).
   A number sits where it always did on the medallion; while one shows, the label is moved 4 px right so the number keeps 6 px
   clear of it, two digits too (4.45.0). It is moved, not given a margin: the pill keeps its width, so a count that comes or
   goes never reshapes the strip.
-- **Medallions**: Approvals uses Zeus's, Backups Mnemosyne's. Today (four squares), More (three dots), Controllers,
+- **Medallions**: Zeus and Mnemosyne wear their own (the Throne and Memory plugins have none of their own). Today (four squares), More (three dots), Controllers,
   Spartamelee, Ariad-Node and the links keep plain placeholder marks until the owner chooses.
 - **Keyboard**: every slot and row is a link or button, in reading order after the page; the current one has
   `aria-current="page"`; focus rings show.
@@ -134,11 +148,37 @@ Controllers, Spartamelee, Ariad-Node**, any other plugin, then the links to othe
   over from the slot you left (200 ms); the More sheet slides up (200 ms). Under reduced motion none of it moves.
 
 ## Who sees what
-`role()` in `core.js` reads `role` from the server's state: `owner` sees every place; `learner` sees Today and Study only
-(and on Today only Study's row and card). Until the server sends a role, everyone is the owner. A learner who opens any other place (an old link, a typed address) lands
-on Today, and the page shows her no Argus: no alarm badge, no words about the owner's tasks, no chime, no way into Watch.
+`role()` in `core.js` reads `role` from the server's state: `owner` sees every place; `learner` sees Today and Mentor only
+(and on Today only Mentor's row and card; Mentor is not quiet for her, it is what she studies). Until the server sends a role, everyone is the owner. A learner who opens any other place (an old link, a typed address) lands
+on Today, and the page shows her no Argus: no alarm badge, no words about the owner's tasks, no chime, no way into his page,
+no "Mark as known".
 **This only hides places in the page; it protects nothing.** Every address and every `api/...` still answers to anyone who can
 reach the server. The server's own check comes with sign-in.
+
+## Quiet (4.45.0)
+What Today, the phone and the 08:00 summary keep still about, in **one place**: `server/quiet.py` (the owner, 2026-11-13: "the
+cognitive annoyance of the alert is taking up space, same with Mentor. I don't need Mentor notifications like EVER").
+- **Quiet sections**: `quiet_sections()`, for now the default set `DEFAULT_QUIET = {'mentor'}`; the next build turns it into the
+  owner's own setting per section, read in that same function. For the owner a quiet section never needs him: its tile keeps
+  its line ("6 cards due"), but the server answers its status with `needs: false`, no `action` and no `count` (so no row, no
+  number under "N things need you", no "Study 10 minutes" button, no dot or count on the bar, the strip or More), an event about
+  it never buzzes the phone, and it is never in the daily summary. The page gets the set as `quiet` in the owner's state and
+  checks it again (`isQuiet()` in `core.js`). A learner's page has no quiet set.
+- **Known, low priority**: a failed task the owner already knows about (a login that ran out, to renew some day). **Mark as
+  known**, a plain button on its card on Argus's page and on its row on Today (the owner's; no hold: it changes what reminds
+  him, not what runs), sends `POST api/known` `{"job": "<task>", "on": true}`; a toast says *<task> is marked as known, low
+  priority. It comes back if it fails another way.* with **Undo** (focused). Marked, the task leaves "N things need you" and
+  every count, never buzzes, is not a need in the summary, and Argus's tile says so quietly: *All 12 tasks well · 1 known*. On
+  Argus's page it stays, in grey (`.card.known`, its pill in `--frost`), with *Known, low priority · marked today, 5:40 PM*
+  and **Unmark** (`"on": false`).
+- **It comes back by itself.** The mark keeps the failure's **fingerprint**: systemd's `Result` and `ExecMainStatus` and the
+  codes of the task's failing checks (`exit-code/1/`, `fingerprint()`). The server checks every mark on each state and every
+  `KNOWN_EVERY` seconds (`reconcile()`): the mark goes when the task works again (a run ended well, or an always-on task runs
+  with its checks passing) and when it fails another way (a new fingerprint, e.g. exit status 2 instead of 1). It stays while
+  the task is frozen, in the middle of a timer run, or missing from systemd's list for a moment.
+- **Stored server-side**, so it survives restarts and deploys: `~/.local/state/argus-ui/known.json` (or `ARGUS_KNOWN`),
+  `{"<task>": {"fp": "<fingerprint>", "at": "<ISO time>"}}`, written atomically. `api/known` answers 400 for a bad request or
+  an unknown task, 409 for a task that is not failing, 403 to a learner (the usual POST checks first).
 
 ## Links to other pages (4.25.0)
 Pages on the same machine that aren't Elaia sections (a studio, a dashboard) can sit in More and on Today. List them in
@@ -148,8 +188,8 @@ Pages on the same machine that aren't Elaia sections (a studio, a dashboard) can
 ```
 `href` must be a path on this host (`/…`) or an `https://` address; anything else (`javascript:`, `//other-host`) is dropped,
 as is a broken file. At most 8. `group` is optional (4.45.0): links with the same group sit together on Today under that
-label, in the order they first come (at most 40 characters; none or empty: *Other pages*). Labels show only with more than
-one group (the players count as one, *Watch and listen*). In the More sheet (under "Other pages", at every width since 4.44.0; no longer a pill of its
+label, in the order they first come (at most 40 characters). A link with no group sits with the players, unlabelled
+(4.45.0 round 2: no *Watch and listen*, no *Other pages*; "What it shows", item 4). In the More sheet (under "Other pages", at every width since 4.44.0; no longer a pill of its
 own in the strip) a link has an "opens another page" mark; on Today it is a chip in the Open row.
 
 ## Behaviour
@@ -169,7 +209,7 @@ per broken thing, in this order: programs that run but cannot do their job (they
 tasks, then agents' alerts. Each entry is drawn as a **block** on Watch (`troubleBlock()`, in a "2 things need a look" panel above
 the groups) and as a **row** on Today, with three plain lines:
 
-1. **What is wrong and since when**, with whose it is: *Jellyfin runs, but cannot read its drive* · *Mnemosyne · Watch · since 4:50 AM*
+1. **What is wrong and since when**, with whose it is: *Jellyfin runs, but cannot read its drive* · *Mnemosyne · Argus · since 4:50 AM*
 2. **Argus:** what he did, or would have done (the check's `note`, docs/checks.md), without repeating his name: *Did not restart it
    and waits for your yes.* A program whose drive is gone: *Waits for the drive: a restart would not help until it is back.* Queued:
    *Your restart is being sent.* (his own: *His restart is being sent, as you allowed.*); once it is really sent: *Restarting it now,

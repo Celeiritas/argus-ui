@@ -36,7 +36,7 @@ run(async b => {
   check(/due|to learn|waiting|Nothing due/.test((await (await p.request.get(BASE + 'api/mentor/status')).json()).line), 'Mentor: api/mentor/status gives Home its line');
   await p.goto(BASE); await p.waitForTimeout(500);
   const pills = await p.locator('#realms a.realm b').allTextContents();
-  check(pills.filter(t => t === 'Study').length === 1 && pills.indexOf('Study') === pills.indexOf('Watch') + 1, 'Mentor: one pill, called Study, right after Watch');
+  check(pills.filter(t => t === 'Mentor').length === 1 && pills.indexOf('Mentor') === pills.indexOf('Argus') + 1, 'Mentor: one pill, called Mentor (the god\'s name, 4.45.0), right after Argus');
 
   await p.goto(BASE + 'home'); await p.waitForTimeout(800);
   const need = p.locator('.need', {hasText: 'Heracles'});

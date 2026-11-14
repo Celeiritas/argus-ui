@@ -58,7 +58,7 @@ section.persona{margin-top:var(--s4)}
 .ph h2{margin:0;font-size:var(--fs-h2);font-weight:600;line-height:1.2}
 .ph .dom{color:var(--powder);font-size:var(--fs-meta);line-height:1.4}
 .ph .counts{margin-left:auto;color:var(--powder);font-size:var(--fs-meta);text-align:right}
-.ph .counts .failed{color:var(--bad)}.ph .counts .running{color:var(--run)}.ph .counts .frozen{color:var(--stone)}
+.ph .counts .failed{color:var(--bad)}.ph .counts .running{color:var(--run)}.ph .counts .frozen{color:var(--stone)}.ph .counts .known{color:var(--frost)}
 .grid{display:grid;gap:var(--s2);grid-template-columns:repeat(auto-fill,minmax(256px,1fr))}
 .card{position:relative;overflow:hidden;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:var(--s3);box-shadow:inset 0 1px 0 rgba(255,255,255,.04);transition:border-color var(--t3) ease-out}
 .card.target,.card.armed-target:focus-visible{border-color:var(--bolt);outline:none}
@@ -67,12 +67,12 @@ section.persona{margin-top:var(--s4)}
 .card .job{font-weight:600;font-size:var(--fs-body);word-break:break-word;line-height:1.25}
 .card .unit{color:var(--frost);font-size:var(--fs-meta);line-height:1.4}
 .pill{font-size:var(--fs-meta);font-weight:600;line-height:20px;padding:0 var(--s2);border-radius:99px;border:1px solid currentColor;white-space:nowrap}
-.pill.warn{color:var(--run)}.pill.ok{color:var(--ok)}.pill.failed{color:var(--bad)}.pill.running{color:var(--run)}.pill.never{color:var(--frost)}.pill.frozen{color:var(--stone)}
+.pill.warn{color:var(--run)}.pill.ok{color:var(--ok)}.pill.failed{color:var(--bad)}.pill.running{color:var(--run)}.pill.never{color:var(--frost)}.pill.frozen{color:var(--stone)}.pill.known{color:var(--frost)}
 dl{display:grid;grid-template-columns:auto 1fr auto 1fr;gap:0 var(--s2);margin:var(--s2) 0;font-size:var(--fs-sec);line-height:1.5}
 dt{color:var(--powder);font-size:var(--fs-meta);align-self:baseline}dd{margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;align-self:baseline}
 dl .wide{grid-column:2/5}
 .notes{color:var(--powder);font-size:var(--fs-meta);line-height:1.4;margin:0 0 var(--s2);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;max-width:70ch}
-.actions{display:flex;gap:var(--s2);align-items:center}
+.actions{display:flex;flex-wrap:wrap;gap:var(--s2);align-items:center}   /* wraps only when "Mark as known" does not fit beside Run */
 .actions [data-act=bolt]{margin-left:var(--s4)}   /* Run / Restart stands 24 px from Pause / Resume: a thumb can't hit the wrong one */
 .why{margin:var(--s2) 0 0;font-size:var(--fs-sec);line-height:1.4;color:var(--snow)}.why b{color:var(--bad);font-weight:600}
 button{font:inherit;font-size:var(--fs-sec);font-weight:600;color:var(--snow);background:transparent;border:1px solid var(--line);border-radius:8px;padding:0 var(--s3);cursor:pointer;min-height:var(--hit);min-width:var(--hit);position:relative;transition:border-color var(--t2)}   /* 44 px to the thumb, and it looks it */
@@ -88,6 +88,9 @@ pre{white-space:pre-wrap;word-break:break-all;font-size:var(--fs-meta);line-heig
  radial-gradient(ellipse at 30% 30%,#6e8a7a,#4d6358 55%,#3e5148);opacity:.93}
 .stone svg{position:absolute;inset:0;width:100%;height:100%}
 .card.alerted{border-color:var(--bad)}.card.warned{border-color:var(--run)}
+/* a failure the owner marked "Known, low priority" (core.js card, server/quiet.py): grey, never red; the words stay readable */
+.card.known .why b{color:var(--powder)}
+.knownline{margin:var(--s2) 0 0;font-size:var(--fs-sec);line-height:1.4;color:var(--powder)}
 .alert-msg{margin:0 0 var(--s2);font-size:var(--fs-sec);line-height:1.4;color:var(--snow);max-width:70ch}
 .alert-msg b{font-weight:600}.alert-msg.alert b{color:var(--bad)}.alert-msg.warn b{color:var(--run)}
 .alert-msg small{font-size:var(--fs-meta);color:var(--frost)}
@@ -203,11 +206,14 @@ dialog .confirm{border-color:var(--danger);color:var(--danger)}
 .openlink{display:inline-flex;align-items:center;gap:var(--s2);min-height:var(--hit);padding:var(--s1) var(--s3) var(--s1) var(--s1);border:1px solid var(--line);border-radius:99px;text-decoration:none;color:var(--powder)}
 .openlink svg{width:32px;height:32px;flex:none}.openlink b{display:block;color:var(--snow);font-size:var(--fs-sec);font-weight:600;line-height:1.2}.openlink small{display:block;font-size:var(--fs-meta);line-height:1.2}
 .openlink:hover{border-color:var(--powder)}.openlink:focus-visible{outline:2px solid var(--powder);outline-offset:3px}
-/* Open's groups (4.45.0): a small label over each kind of chip, only when there is more than one kind; the groups sit side by
-   side when they fit (a wide screen keeps Open as short as before), each on its own row on a phone. The label in the heading's
-   colour, so it stays below "Open" */
-.opengroups{display:flex;flex-wrap:wrap;gap:var(--s2) var(--s6)}.og{min-width:0;max-width:100%}
+/* Open's groups (4.45.0), only when links.json gives a link a "group": the chips without a group first, unlabelled, then each
+   group with its small label. A wide screen: the groups side by side, the label over its chips, all chips on one bottom line.
+   A phone: everything flows in the one wrap of chips, as with no groups, and each label sits in front of its own chips (the
+   label and its chips wrap together, so a label never ends a line alone). The label in the heading's colour, below "Open". */
+.opengroups{display:flex;flex-wrap:wrap;align-items:flex-end;gap:var(--s2) var(--s6)}.og{min-width:0;max-width:100%}
 .opengroup{margin:0 0 var(--s1);font-size:var(--fs-meta);font-weight:600;line-height:1.4;color:var(--frost)}
+@media (max-width:600px){.opengroups{align-items:center;gap:var(--s2)}.opengroups>.openlist{display:contents}
+ .og{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s2)}.og>.openlist{display:contents}.opengroup{margin:0 var(--s1) 0 0}}
 /* a section's compact tile (4.45.0): its mark, its plain word and its status line under it (two lines at most, cut at a word by
    home.js fitLines); the whole tile is the link. Two tiles a row on a phone, more on wider screens. The realm name stays in
    the link's name for a screen reader. */
@@ -241,6 +247,7 @@ dialog .confirm{border-color:var(--danger);color:var(--danger)}
 .fixbtn.hold .hold-ring{background:conic-gradient(#1C2127 calc(var(--p,0) * 360deg),rgba(28,33,39,.3) 0)}
 .need .nb{min-width:0}.need .nb .tl{font-size:var(--fs-sec)}
 .need .nacts{display:flex;flex-wrap:wrap;gap:var(--s2);align-items:center;justify-content:flex-end}.need .nacts .fixbtn{margin-top:0}
+.need .nacts .knownbtn{white-space:nowrap}   /* "Mark as known": the quiet one beside the way to Argus (the plain button look) */
 @media (max-width:600px){.need .nacts{grid-column:1 / -1;justify-content:stretch}.need .nacts>*{flex:1 1 auto;justify-content:center}}
 .crows{list-style:none;margin:0 0 var(--s2);padding:var(--s1) var(--s3);background:var(--card);border:1px solid var(--line);border-radius:12px}
 .crow{display:flex;align-items:center;gap:var(--s3);min-height:var(--hit);padding:var(--s1) 0;border-top:1px solid var(--line)}.crow:first-child{border-top:0}

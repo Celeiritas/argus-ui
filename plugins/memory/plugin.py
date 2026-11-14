@@ -29,7 +29,7 @@ MARKER_MAX = 65536      # the marker is a few dozen bytes; more than this is not
 # the row names (docs/memory.md): what each copy is, in plain words
 NAMES = {'server': 'Snapshots the server keeps of itself', 'pc': "Your PC's own weekly backup", 'offsite': "The server's copy outside your home"}
 KEYS = 'your passwords and keys are left out on purpose: you back those up by hand, typing the passphrase'
-WATCH = 'look at its weekly job under Mnemosyne on the Watch page'
+WATCH = 'look at its weekly job under Mnemosyne on the Argus page'
 
 def init(ctx):
     global ALERTS
@@ -183,7 +183,7 @@ def server_copy(s, now, job, stale, total_h):
         return copy('server', 'no', 'failed', f"The server's newest snapshot of itself is from {ago(last, now)}{', older than a week,' if stale else ','} and its last try failed, so {WATCH}."
                     if last else f"The server's first try to take a snapshot of itself failed, so {WATCH}.", a)
     if not last:
-        return copy('server', 'no', 'none', 'The server has no snapshot of itself yet: its weekly job is paused; press Resume on its card on the Watch page first.'
+        return copy('server', 'no', 'none', 'The server has no snapshot of itself yet: its weekly job is paused; press Resume on its card on the Argus page first.'
                     if job and job.get('state') == 'frozen' else
                     'The server has no snapshot of itself yet: hold Back up now to take the first one.' if job else 'The server has no snapshot of itself yet, and no weekly job to take one was found.')
     if stale:
@@ -232,11 +232,11 @@ def offsite_copy(js, now):
     st, t = j.get('state'), job_time(j)
     a = age(t, now) if t else None
     if st == 'never':
-        return copy('offsite', 'unknown', 'never', "The job that copies the server's backups outside your home is set up but has not run yet: see when it runs under Mnemosyne on the Watch page.")
+        return copy('offsite', 'unknown', 'never', "The job that copies the server's backups outside your home is set up but has not run yet: see when it runs under Mnemosyne on the Argus page.")
     if st == 'running':
         return copy('offsite', 'running', 'running', "The server's backups are being copied outside your home now.", a)
     if st == 'failed':
-        return copy('offsite', 'no', 'failed', f"The last try to copy the server's backups outside your home failed{' ' + ago(t, now) if t else ''}, so look at its job under Mnemosyne on the Watch page.", a)
+        return copy('offsite', 'no', 'failed', f"The last try to copy the server's backups outside your home failed{' ' + ago(t, now) if t else ''}, so look at its job under Mnemosyne on the Argus page.", a)
     return copy('offsite', 'yes', 'done', f"The server's backups were last copied outside your home {ago(t, now)}." if t
                 else "The server's backups have been copied outside your home.", a)
 
@@ -254,7 +254,7 @@ def view(ctx, now=None):
     running = bool(job) and job.get('state') == 'running'
     why = ''
     if not job: why = 'No brain job found (a mnemosyne-<server>-brain unit), so there is nothing to start.'
-    elif job.get('state') == 'frozen': why = 'The brain job is frozen: thaw it on the Watch page first.'
+    elif job.get('state') == 'frozen': why = 'The brain job is frozen: thaw it on the Argus page first.'
     elif running: why = 'A backup is running now.'
     elif game(): why = 'A game is running: Back up now waits until it has been closed for a minute.'
     biggest = max((x['size'] for x in s[:SHELF]), default=0)
