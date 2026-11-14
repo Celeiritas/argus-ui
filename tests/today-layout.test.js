@@ -9,21 +9,24 @@ const HOME = path.join(path.dirname(process.env.FIXTURES), 'home'), CFG = path.j
 const MD = path.join(CFG, 'media.json'), LK = path.join(CFG, 'links.json'), RM = path.join(HOME, '.config/leafy/realm.json');
 const LONG = 'Backing up the server now; no word from the backup of your computer yet, so nothing is copied off-site';
 const WORD = 'Supercalifragilisticexpialidociousworkoutplannerline';
+// a route handler whose page closed while its request was in flight (the next check already started) ends quietly;
+// anything else still throws (CI 2f48fef: TargetClosedError from route.fetch failed the whole run)
+const settle = fn => async r => { try { await fn(r); } catch (e) { if (!/closed|disposed/i.test(String(e && e.message))) throw e; } };
 const LINKS = [{name: 'Notes', what: 'Pages', href: '/notes-test/', group: 'Tools'}, {name: 'Sound Lab', what: 'Studio', href: '/studio-test/', group: 'Studio'},
   {name: 'Files', what: 'Shared files', href: '/files-test/', group: 'Tools'}];
 const settled = p => p.waitForFunction(() => { const h = document.querySelector('#main .home'); return h && !/Checking…|Asking every section/.test(h.textContent); });
 // every section quiet but two long lines; no failed task, no failed check and no alert
 // (own: each section keeps its own line, only quiet)
 async function quiet(p, own = false) {
-  if (own) await p.route('**/api/*/status', async r => { const res = await r.fetch(); let j = {}; try { j = await res.json(); } catch (e) {} await r.fulfill({json: {...j, needs: false, action: ''}}); });
+  if (own) await p.route('**/api/*/status', settle(async r => { const res = await r.fetch(); let j = {}; try { j = await res.json(); } catch (e) {} await r.fulfill({json: {...j, needs: false, action: ''}}); }));
   else {
     await p.route('**/api/*/status', r => r.fulfill({json: {line: 'All quiet', needs: false, action: ''}}));
     await p.route('**/api/demo-server/status', r => r.fulfill({json: {line: LONG, needs: false, action: ''}}));
     await p.route('**/api/heracles/status', r => r.fulfill({json: {line: WORD, needs: false, action: ''}}));
   }
-  await p.route('**/api/state', async r => { const res = await r.fetch(), j = await res.json();
+  await p.route('**/api/state', settle(async r => { const res = await r.fetch(), j = await res.json();
     (j.jobs || []).forEach(x => { if (x.state === 'failed') x.state = 'running'; delete x.works; }); (j.watch || []).forEach(w => { if (w.works === false) w.works = true; });
-    j.alerts = []; await r.fulfill({response: res, json: j}); });
+    j.alerts = []; await r.fulfill({response: res, json: j}); }));
 }
 async function today(b, w, h, own = false) {
   const p = await page(b, w, h); await quiet(p, own); await p.goto(BASE);

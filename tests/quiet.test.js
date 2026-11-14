@@ -7,6 +7,9 @@ const JOB = 'hermes-rename';
 const settled = p => p.waitForFunction(() => { const h = document.querySelector('#main .home'); return h && !/Checking…|Asking every section/.test(h.textContent); }, null, {timeout: 8000}).catch(() => {});
 const known = (p, on) => p.request.post(BASE + 'api/known', {data: {job: JOB, on}});
 const jobNow = async p => (await (await p.request.get(BASE + 'api/state')).json()).jobs.find(j => j.job === JOB);
+// a route handler whose page closed while its request was in flight (the next check already started) ends quietly;
+// anything else still throws (CI 2f48fef: TargetClosedError from route.fetch failed the whole run)
+const settle = fn => async r => { try { await fn(r); } catch (e) { if (!/closed|disposed/i.test(String(e && e.message))) throw e; } };
 const fail = (u, status = '1') => Object.assign(u[JOB], {Result: 'exit-code', ActiveState: 'failed', ExecMainStatus: status});
 run(async b => {
   let saved; units(u => { saved = JSON.stringify(u); });           // given back at the end, for the checks after this one
@@ -16,8 +19,8 @@ run(async b => {
   await known(p, false);                                               // no mark left from an earlier run
   // the realm otherwise quiet (alerts and checks from earlier tests left out, every other section's line kept but needing
   // nothing), and Mentor with six cards due that says it needs him: the page itself must keep Mentor quiet, whatever it says
-  await p.route('**/api/state*', async r => { const res = await r.fetch(); const j = await res.json(); j.alerts = []; j.watch = []; await r.fulfill({json: j}); });
-  await p.route('**/api/*/status*', async r => { const res = await r.fetch(); let j = {}; try { j = await res.json(); } catch (e) {} await r.fulfill({json: {...j, needs: false, action: ''}}); });
+  await p.route('**/api/state*', settle(async r => { const res = await r.fetch(); const j = await res.json(); j.alerts = []; j.watch = []; await r.fulfill({json: j}); }));
+  await p.route('**/api/*/status*', settle(async r => { const res = await r.fetch(); let j = {}; try { j = await res.json(); } catch (e) {} await r.fulfill({json: {...j, needs: false, action: ''}}); }));
   await p.route('**/api/mentor/status*', r => r.fulfill({json: {line: '6 cards due', needs: true, action: 'Study 10 minutes', count: 6}}));
   await p.goto(BASE); await settled(p); await p.waitForTimeout(400);
   const name = await p.evaluate(j => S.jobs.find(x => x.job === j).name, JOB);
@@ -52,7 +55,7 @@ run(async b => {
   check(await row().count() === 1 && !(await jobNow(p)).known && await p.locator('#needs-h').textContent() === '1 thing needs you', 'Undo: the row comes back, the mark is gone');
 
   // ---- from its card on Argus: grey, "Known, low priority · marked today", Unmark ----
-  const w = await page(b, 412, 915); await w.route('**/api/state*', async r => { const res = await r.fetch(); const j = await res.json(); j.alerts = []; j.watch = []; await r.fulfill({json: j}); });
+  const w = await page(b, 412, 915); await w.route('**/api/state*', settle(async r => { const res = await r.fetch(); const j = await res.json(); j.alerts = []; j.watch = []; await r.fulfill({json: j}); }));
   await w.goto(BASE + 'argus'); await w.waitForTimeout(900);
   const card = w.locator(`.card[data-job="${JOB}"]`);
   await card.locator('button.knownbtn[data-on="1"]').click();
