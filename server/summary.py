@@ -69,14 +69,17 @@ def names(subjects, title):
     return f'{n[0]}, {n[1]} and {len(n) - 2} more'
 
 
-def compose(events, rows, now, backups=''):
+def compose(events, rows, now, backups='', hushed=None):
     """The summary event's {title, body, url} for the last 24 hours (events newest first, as read_events gives them).
-    `backups`: the Memory plugin's one line when backups need a look (summary_line there), added as the body's last line."""
+    `backups`: the Memory plugin's one line when backups need a look (summary_line there), added as the body's last line.
+    `hushed(event)`: True for what keeps still (a quiet section, or a check of a task marked known; server/quiet.py): its
+    events and its row are left out, so it is neither a need nor counted."""
     since = now - timedelta(hours=24)
-    rows = [r for r in rows or [] if isinstance(r, dict) and r.get('id')]
+    still = hushed or (lambda e: False)
+    rows = [r for r in rows or [] if isinstance(r, dict) and r.get('id') and not still({'subject': r['id']})]
     title_of = {r['id']: str(r.get('title') or r['id']) for r in rows}
     title = lambda s: title_of.get(s, s)
-    recent = [e for e in events if e.get('kind') in TROUBLE and (_when(e) or since - timedelta(1)) >= since]
+    recent = [e for e in events if e.get('kind') in TROUBLE and (_when(e) or since - timedelta(1)) >= since and not still(e)]
     latest, last, stopped = {}, {}, []
     for e in recent:                                   # newest first: the first event of a subject is its latest
         s = str(e.get('subject') or '')
@@ -130,9 +133,10 @@ def backups_line(backups):
         return ''
 
 
-def tick(rows=lambda: [], now=None, backups=None):
+def tick(rows=lambda: [], now=None, backups=None, quiet=None):
     """Send today's summary if it is due. -> the event sent, or None. `backups`: a callable that answers the Memory
-    plugin's one line (argus_ui.backups_line); it is asked once, only when the summary goes out."""
+    plugin's one line (argus_ui.backups_line); it is asked once, only when the summary goes out. `quiet`: a callable that
+    answers hushed(event) as it is now (argus_ui.hushed_now), asked once, only when the summary goes out."""
     if os.environ.get('ARGUS_SUMMARY') == '0': return None
     now = now or datetime.now().astimezone()
     day = due(now, last_date(), at())
@@ -141,17 +145,21 @@ def tick(rows=lambda: [], now=None, backups=None):
     try: rs = rows()
     except Exception as e:
         log(f'the watch rows could not be read ({type(e).__name__})'); rs = []
-    s = compose(notify.read_events(500), rs, now, backups_line(backups))
+    hushed = None
+    if quiet is not None:
+        try: hushed = quiet()
+        except Exception as e: log(f'what keeps quiet could not be read ({type(e).__name__})')
+    s = compose(notify.read_events(500), rs, now, backups_line(backups), hushed)
     return notify.notify(notify.make('summary', 'daily-summary', s['title'], s['body'], s['url'], 'info'))
 
 
-def start(rows, backups=None):
+def start(rows, backups=None, quiet=None):
     """Its own small thread (one line in the server's start). ARGUS_SUMMARY=0: nothing starts."""
     if os.environ.get('ARGUS_SUMMARY') == '0': return None
     at()                                               # a bad setting is logged once, at start
     def loop():
         while not STOP.is_set():
-            try: tick(rows, backups=backups)
+            try: tick(rows, backups=backups, quiet=quiet)
             except Exception as e: log(f'failed ({type(e).__name__}: {e})')
             STOP.wait(EVERY)
     t = threading.Thread(target=loop, name='argus-summary', daemon=True); t.start()

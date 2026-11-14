@@ -24,20 +24,21 @@ run(async b => {
   check((await p.locator('#needs-h').textContent()).trim() === `${n} things need you`, `one line says the state in words ("${(await p.locator('#needs-h').textContent()).trim()}")`);
   const task = p.locator('.need[data-key^="task-"]');           // one row per broken thing (4.40.0): what, since, what Argus did, what you can do
   const t1 = (await p.locator('.need').first().textContent()).replace(/\s+/g, ' ');
-  check(/rename failed/.test(t1) && await p.locator('.need').first().locator('a.go').textContent() === 'Look at it on Watch', 'the failed thing comes first, with "Look at it on Watch": ' + t1);
+  check(/rename failed/.test(t1) && await p.locator('.need').first().locator('a.go').textContent() === 'Open Argus', 'the failed thing comes first, with "Open Argus" (the god\'s name, 4.45.0): ' + t1);
+  check(await task.first().locator('small').textContent().then(t => /^Hermes · Argus · /.test(t)), 'its who line: "Hermes · Argus", the god whose task it is on Argus\'s page');
   check(/Argus: Does not restart a failed task by himself\./.test(t1) && /You: Read its log on its card, then press Run to try again\./.test(t1), 'in plain words: what Argus did and what you can do');
   check(/\/argus\/argus$/.test(await task.first().locator('a.go').getAttribute('href')), 'and the button goes to Watch');
-  check(await need('deploy waiting').locator('a.go').textContent() === 'Review app 9.9.9' && /Approvals · Zeus/.test(await need('deploy waiting').textContent()), 'a section that needs you: its line, its plain name, its verb-first button');
-  const place = t => p.locator('.place', {hasText: t});
+  check(await need('deploy waiting').locator('a.go').textContent() === 'Review app 9.9.9' && await need('deploy waiting').locator('small').textContent() === 'Zeus', 'a section that needs you: its line, its god\'s name and only that (Zeus), its verb-first button');
+  const place = t => p.locator('.place', {hasText: t}), tile = id => p.locator(`.place[data-id="${id}"]`);
   for (const t of ['Spartamelee', 'Demo Server']) check(await place(t).count() === 1, `a card for ${t}`);
   // one place for each fact (4.44.0): Watch (a failed task), Approvals (a deploy) and Heracles (workouts) have rows above, so no card
   await p.waitForFunction(() => !/Checking…|Asking every section/.test(document.querySelector('#main .home').textContent));
   const listed = await p.evaluate(() => [...document.querySelectorAll('.needlist .need .go')].map(a => a.getAttribute('href').replace(/.*\//, '')));
-  check(await place('Study').count() === 1, 'Study (nothing due) keeps its card');
-  for (const [t, id] of [['Watch', 'argus'], ['Approvals', 'throne'], ['Heracles', 'heracles']])
-    check(listed.includes(id) && await place(t).count() === 0, `${t} has a row above (${listed.join(', ')}), so it has no card under Sections`);
-  check(await place('Playground').count() === 1 && await place('Playground').locator('.pl').textContent() === 'Powers, weather, seasons'
-    && /\/olympus$/.test(await place('Playground').getAttribute('href')), 'a card for the Playground, with what it is');
+  check(await tile('mentor').count() === 1 && await tile('mentor').locator('.pw b').textContent() === 'Mentor', 'Mentor (nothing due) keeps its card, called Mentor');
+  for (const [t, id] of [['Argus', 'argus'], ['Zeus', 'throne'], ['Heracles', 'heracles']])
+    check(listed.includes(id) && await tile(id).count() === 0, `${t} has a row above (${listed.join(', ')}), so it has no card under Sections`);
+  check(await tile('olympus').count() === 1 && await tile('olympus').locator('.pw b').textContent() === 'Olympus' && await tile('olympus').locator('.pl').textContent() === 'Powers, weather, seasons'
+    && /\/olympus$/.test(await tile('olympus').getAttribute('href')), 'a card called Olympus (not "Playground"), with what it is');
   await place('Demo Server').locator('.pl', {hasText: '1 ping answered · all well'}).waitFor({timeout: 5000});
   check(true, "a server plugin's card shows its status line");
   check(await need('Demo Server').count() === 0, 'a plugin whose status does not say "needs" stays out of the list');
@@ -92,11 +93,11 @@ run(async b => {
   await p.evaluate(() => refresh()); await p.waitForTimeout(700);
   const al = need('Janus could not verify');
   check(await al.count() === 1 && await al.locator('a.go').textContent() === 'Open Demo Server' && /rename failed/.test(await p.locator('.need').first().textContent()), 'an alert gets a row, with its link as the button, after the failed task');
-  check(/^Zeus · Watch/.test(await al.locator('small').textContent()), 'an alert row says who in plain words (Zeus · Watch)');
+  check(/^Zeus · Argus/.test(await al.locator('small').textContent()), 'an alert row says who by the gods\' names (Zeus · Argus)');
   fs.writeFileSync(path.join(AL, 'hermes.json'), JSON.stringify({job: 'hermes-sort', level: 'alert', message: 'A delivery waits in quarantine'}));
   await p.evaluate(() => refresh()); await need('waits in quarantine').waitFor({timeout: 5000}).catch(() => {});
   const hl = need('waits in quarantine');
-  check(/^Hermes · Watch/.test(await hl.locator('small').textContent()) && await hl.locator('a.go').textContent() === 'Look at Hermes on Watch' && /\/argus\/hermes$/.test(await hl.locator('a.go').getAttribute('href')), 'an alert without a link opens Watch showing that agent\'s tasks');
+  check(/^Hermes · Argus/.test(await hl.locator('small').textContent()) && await hl.locator('a.go').textContent() === 'Open Argus' && /\/argus\/hermes$/.test(await hl.locator('a.go').getAttribute('href')), 'an alert without a link: "Open Argus", which shows that agent\'s tasks');
   // one number: the line counts what the bar counts (every task in trouble, every alert, each section that needs you)
   const sums = async () => p.evaluate(() => { drawNav(); const line = parseInt(document.getElementById('needs-h').textContent, 10);
     const bar = [...document.querySelectorAll('#realms .realm:not(.over) .dot, #realmMore:not([hidden]) .dot')].reduce((t, d) => t + (parseInt(d.textContent, 10) || 1), 0); return [line, bar]; });   // a folded pill's count is in More's
@@ -108,10 +109,12 @@ run(async b => {
   check(nf >= 3 && line === bar && await task.count() === nf, `with ${nf} failed tasks too, one row each, each counted (${line} = ${bar})`);
   fs.rmSync(path.join(AL, 'hermes.json'), {force: true}); await p.evaluate(() => refresh()); await p.waitForTimeout(700);
   await shot(p, 'home');
-  // a met need fades out where it stood, then is gone
+  // a met need fades out where it stood, then is gone. Watch before the file goes: any redraw (the timer, a section's answer)
+  // can start the 200 ms fade, and it can be over before this test's own refresh() returns
+  const goes = p.waitForFunction(() => { const li = document.querySelector('.need.leaving'); return li && /Janus/.test(li.textContent) && li.getAttribute('aria-hidden') === 'true'; }, null, {timeout: 5000}).then(() => true, () => false);
   fs.rmSync(path.join(AL, 'zeus.json'), {force: true});
   await p.evaluate(() => refresh());
-  const leaving = await p.waitForFunction(() => { const li = document.querySelector('.need.leaving'); return li && /Janus/.test(li.textContent) && li.getAttribute('aria-hidden') === 'true'; }, null, {timeout: 2000}).then(() => true, () => false);
+  const leaving = await goes;
   check(leaving, 'a met need leaves with a short fade (hidden from screen readers while it goes)');
   await p.waitForTimeout(400);
   check(await need('Janus could not verify').count() === 0, 'and is gone after it');
@@ -124,17 +127,17 @@ run(async b => {
   await p.locator('#needs-h', {hasText: 'Nothing needs you'}).waitFor({timeout: 2000});
   check(content, 'Needs you emptied: "Nothing needs you", and Argus gives a slow, contented blink');
   const back = await p.locator('.placelist .place .pw b').allTextContents();
-  check(back.slice(0, 3).join(' ') === 'Watch Study Approvals', `with their rows gone, Watch, Study and Approvals have their cards again, first, in the bar's order (${back.slice(0, 4).join(', ')})`);
-  check(/^All \d+ tasks well$/.test(await place('Watch').locator('.pl').textContent()), "Watch's card says all is well");
+  check(back.slice(0, 3).join(' ') === 'Argus Mentor Zeus', `with their rows gone, Argus, Mentor and Zeus have their cards again, first, in the bar's order (${back.slice(0, 4).join(', ')})`);
+  check(/^All \d+ tasks well$/.test(await tile('argus').locator('.pl').textContent()), "Argus's card says all is well");
   // a learner whose one section has a row above: nothing under Sections, so no Sections heading either
   await p.route('**/api/mentor/status', r => r.fulfill({json: {line: '3 due', needs: true, action: 'Study 10 minutes'}}));
   await p.evaluate(() => { S.role = 'learner'; render(); }); await p.locator('.need', {hasText: '3 due'}).waitFor({timeout: 3000}).catch(() => {});
   check(await need('3 due').count() === 1 && await p.locator('#places-h').count() === 0 && await p.locator('.home .places').count() === 0,
-    'a learner with Study in the list: no empty Sections heading');
+    'a learner with Mentor in the list (not quiet for her): no empty Sections heading');
   check(await p.locator('.home p.now').count() === 0 && await p.locator('.home .open').count() === 0, "and no server line and no Open row: those are the owner's");
   await p.unroute('**/api/mentor/status'); await p.route('**/api/mentor/status', r => r.fulfill({json: {line: 'Nothing due', needs: false, action: ''}}));
   await p.evaluate(() => home.show()); await p.locator('#places-h').waitFor({timeout: 3000}).catch(() => {});
-  check(await p.locator('#places-h').count() === 1 && await place('Study').count() === 1 && await p.locator('.placelist .place').count() === 1, 'and with nothing due, Study is her one card under Sections');
+  check(await p.locator('#places-h').count() === 1 && await tile('mentor').count() === 1 && await p.locator('.placelist .place').count() === 1, 'and with nothing due, Mentor is her one card under Sections');
   await p.unroute('**/api/mentor/status'); await p.evaluate(() => { delete S.role; render(); });
   await p.waitForTimeout(900); await p.evaluate(() => home.show()); await p.waitForTimeout(300);
   check(!await p.locator('#argus').evaluate(e => e.classList.contains('content')), 'a redraw while it stays empty does not blink again');

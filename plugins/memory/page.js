@@ -15,8 +15,8 @@
       ['Next run', v.job ? e(v.job.next || '—') : 'No weekly job found'],
       ['On the server', `${plural(v.count, 'snapshot')}, ${e(v.total_h)} in all`]];
     let warn = '';
-    if (v.job && v.job.state === 'failed') warn = `<p class="mem-warn"><span aria-hidden="true">!</span> The last try failed (${e(v.job.last)}): its card under Mnemosyne on the Watch page has the log.</p>`;
-    else if (v.stale) warn = `<p class="mem-warn"><span aria-hidden="true">!</span> The newest snapshot is older than a week: look at its weekly job under Mnemosyne on the Watch page.</p>`;
+    if (v.job && v.job.state === 'failed') warn = `<p class="mem-warn"><span aria-hidden="true">!</span> The last try failed (${e(v.job.last)}): its card under Mnemosyne on the Argus page has the log.</p>`;
+    else if (v.stale) warn = `<p class="mem-warn"><span aria-hidden="true">!</span> The newest snapshot is older than a week: look at its weekly job under Mnemosyne on the Argus page.</p>`;
     if (v.running) warn = `<p class="mem-run"><span aria-hidden="true">●</span> Backing up now: the new snapshot fills its jar on the shelf.</p>`;
     return `<dl class="mem-facts">${rows.map(([k, d]) => `<div><dt>${k}</dt><dd>${d}</dd></div>`).join('')}</dl>${warn}`;
   }

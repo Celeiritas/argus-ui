@@ -33,7 +33,7 @@ run(async b => {
       problem: 'people_problem' in S}));
     check(S.role === 'learner' && S.person === 'learner-two' && S.name === 'Learner Two', `learner: the server says who she is (${S.role}, ${S.person})`);
     check(S.jobs === 0 && S.alerts === 0 && S.links === 0 && !S.problem, 'learner: her state has no tasks, alerts, links or owner notices');
-    const want = STUDY ? ['Today', 'Study'] : ['Today'];
+    const want = STUDY ? ['Today', 'Mentor'] : ['Today'];
     check(JSON.stringify(await slots(p)) === JSON.stringify(want) && await p.locator('#tabbar [data-more]').count() === 0,
       `learner: the bar shows ${want.join(' and ')} and no More (${(await slots(p)).join(', ')}; this Mentor opens paths to learners: ${STUDY})`);
     check(await p.locator('#argus').isHidden() && await p.locator('#alarm').evaluate(e => !e.offsetParent), 'learner: no Argus in the corner, no badge');
@@ -54,7 +54,7 @@ run(async b => {
     check(bolt.status() === 403 && /Only the owner/.test((await bolt.json()).error), 'learner: Restart is refused with a sentence');
     if (STUDY) {
       const [m] = await open(lc, 'mentor');
-      check(/\/mentor$/.test(m.url()) && m.errors.length === 0, 'learner: Study opens and stays open, no page errors ' + m.errors.join(' | '));
+      check(/\/mentor$/.test(m.url()) && m.errors.length === 0, 'learner: Mentor opens and stays open, no page errors ' + m.errors.join(' | '));
     }
     await lc.close();
 
@@ -62,7 +62,7 @@ run(async b => {
     const oc = await as(b, OWNER);
     [p] = await open(oc);
     check(await p.evaluate(() => S.role === 'owner' && S.person === 'owner-one' && S.jobs.length > 0 && S.people_problem === null), 'owner: everything, as Owner One');
-    check((await slots(p)).includes('Watch') && await p.locator('#peopleProblem').isHidden(), 'owner: Watch in the bar, no people-file line while the file is fine');
+    check((await slots(p)).includes('Argus') && await p.locator('#peopleProblem').isHidden(), 'owner: Argus in the bar, no people-file line while the file is fine');
     write('{"people": [ a typo');
     for (const where of ['', 'argus']) {
       const [q] = await open(oc, where), line = q.locator('#peopleProblem');
@@ -73,7 +73,7 @@ run(async b => {
       await q.close();
     }
     const [m2] = await open(oc, 'olympus');
-    check(await m2.locator('#peopleProblem').isHidden(), 'owner elsewhere (Olympus): the line stays on Today and Watch');
+    check(await m2.locator('#peopleProblem').isHidden(), 'owner elsewhere (Olympus): the line stays on Today and Argus');
     const narrow = await (await as(b, OWNER, '192.0.2.20', 360)).newPage(); await narrow.goto(BASE); await narrow.waitForTimeout(1000);
     check(await narrow.evaluate(() => document.documentElement.scrollWidth <= innerWidth) && await narrow.locator('#peopleProblem').isVisible(),
       'owner at 360 px: the line wraps, no sideways scrolling');

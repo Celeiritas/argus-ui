@@ -9,7 +9,7 @@ run(async b => {
     await p.goto(BASE + where); await p.waitForLoadState('networkidle'); await p.evaluate(() => document.fonts.ready);
   }
   const away = [...new Set(asked.filter(u => /^https?:/.test(u) && new URL(u).origin !== ORIGIN))];
-  check(away.length === 0, 'Today, Watch, Study, Playground and Phone alerts ask no third party for anything ' + JSON.stringify(away));
+  check(away.length === 0, 'Today, Argus, Mentor, Olympus and Phone alerts ask no third party for anything ' + JSON.stringify(away));
   check(!(await p.locator('link[href*="fonts.googleapis"],link[href*="fonts.gstatic"]').count()), 'no Google Fonts link in the page');
 
   await p.goto(BASE); await p.evaluate(() => document.fonts.ready);

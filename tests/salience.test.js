@@ -47,12 +47,12 @@ run(async b => {
   try {
     const p = await page(b, 1440, 900); await p.addInitScript(spy);
     await p.goto(BASE + 'argus?night=1'); await p.waitForTimeout(600);
-    check(await until(p, JB, true), 'the watch finds Jellyfin broken and Watch shows a block for it');
+    check(await until(p, JB, true), 'the watch finds Jellyfin broken and Argus shows a block for it');
     // --- slice 3: trouble first, three plain lines, the one fix, every check, what happened lately
     const firstTop = await p.evaluate(() => [document.querySelector('#main > *').className, document.querySelector('.tblock')?.dataset.trouble]);
-    check(firstTop[0] === 'trouble' && firstTop[1] === 'check-jellyfin', `trouble comes first on Watch, Jellyfin first in it (${firstTop.join(', ')})`);
+    check(firstTop[0] === 'trouble' && firstTop[1] === 'check-jellyfin', `trouble comes first on Argus, Jellyfin first in it (${firstTop.join(', ')})`);
     const blk = (await p.locator(JB).textContent()).replace(/\s+/g, ' ');
-    check(/Jellyfin runs, but cannot read its drive/.test(blk) && /Mnemosyne · Watch · since/.test(blk), 'line 1: what is wrong, whose, and since when: ' + blk.slice(0, 90));
+    check(/Jellyfin runs, but cannot read its drive/.test(blk) && /Mnemosyne · Argus · since/.test(blk), 'line 1: what is wrong, whose, and since when: ' + blk.slice(0, 90));
     check(/Argus: Did not restart it and waits for your yes\./.test(blk) && /You: Hold the button to restart Jellyfin once\. Argus looks again for up to 90 seconds and tells you if it helped\./.test(blk), 'lines 2 and 3: what Argus did (his name said once), what you can do (one restart, then what follows)');
     check(!/Argus: Argus/.test(await p.locator('#main').textContent()), 'no "Argus: Argus" anywhere');
     check(await p.locator(`${JB} button.fixbtn.hold`).count() === 1 && /Restart Jellyfin/.test(await p.locator(`${JB} button.fixbtn`).textContent()), 'one press-and-hold button: Restart Jellyfin');
@@ -194,7 +194,7 @@ run(async b => {
     const td = await page(b, 412, 915); await td.goto(BASE + '?night=1'); await td.locator('.need[data-key="check-jellyfin"]').waitFor({timeout: 10000}).catch(() => {});
     const tr = (await td.locator('.need[data-key="check-jellyfin"]').textContent()).replace(/\s+/g, ' ');
     check(/Jellyfin runs, but cannot read its drive/.test(tr) && /You: Hold the button/.test(tr) && await td.locator('.need[data-key="check-jellyfin"] button.fixbtn.hold').count() === 1, 'Today: the same block, with its fix button');
-    check(await td.locator('.sat').count() === 0, 'Today has no satellite eye (it is Watch\'s)');
+    check(await td.locator('.sat').count() === 0, 'Today has no satellite eye (it is Argus\'s)');
     await td.waitForTimeout(400); await shot(td, 'W-today-trouble-412-night'); await td.close();
     // a learner never sees any of it
     const ln = await page(b, 412, 915); await ln.goto(BASE + '?night=1'); await ln.waitForTimeout(800);

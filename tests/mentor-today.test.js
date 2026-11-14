@@ -37,7 +37,7 @@ run(async b => {
     const refused = await api(p, 'settings', {learner: 'learner-two', pinned: ['a', 'b', 'c', 'd']});
     check(!refused.ok && /Unpin/.test(refused.msg), 'a fourth pin is refused with a sentence that says how to free a slot');
     const st = await api(p, 'status?' + L);
-    check(st.line === '3 new cards waiting' && st.action === 'Study 10 minutes', `status for Elaia's Today card: "${st.line}" · ${st.action}`);
+    check(st.line === '3 new cards waiting' && st.action === '' && st.needs === false, `status asked by the owner: the line, no button and never needs him (Mentor is quiet for the owner, 4.45.0): "${st.line}" · ${st.action}`);
 
     // Today is the first view: who is studying, one primary button
     await p.goto(BASE + 'mentor'); await p.waitForTimeout(1000);

@@ -26,7 +26,7 @@ run(async b => {
   check((await p.request.get(BASE + 'plugins/heracles/plugin.py')).status() === 404 && (await p.request.get(BASE + 'plugins/heracles/page.js')).status() === 200,
     'bundled: plugin.py is never served, the page script is');
   const hs = await (await p.request.get(BASE + 'api/heracles/status')).json();
-  check(hs.line === '2 workouts this week · 1 skipped' && hs.needs === true && hs.action === 'Log a workout and more words than'.slice(0, 32), 'status v2: line, needs, and the action cut to 32 characters');
+  check(hs.line === '2 workouts this week · 1 skipped' && hs.needs === true && hs.action === 'Log a workout and more words…', 'status v2: line, needs, and the action cut to 32 characters at a word, with "…" (4.45.0)');
   const ds = await (await p.request.get(BASE + 'api/demo-server/status')).json();
   check(ds.needs === false && ds.action === '', 'status v2: a plugin that only gives a line never needs you');
   const men = st.plugins.find(x => x.id === 'mentor');
@@ -36,11 +36,11 @@ run(async b => {
   check(/due|to learn|waiting|Nothing due/.test((await (await p.request.get(BASE + 'api/mentor/status')).json()).line), 'Mentor: api/mentor/status gives Home its line');
   await p.goto(BASE); await p.waitForTimeout(500);
   const pills = await p.locator('#realms a.realm b').allTextContents();
-  check(pills.filter(t => t === 'Study').length === 1 && pills.indexOf('Study') === pills.indexOf('Watch') + 1, 'Mentor: one pill, called Study, right after Watch');
+  check(pills.filter(t => t === 'Mentor').length === 1 && pills.indexOf('Mentor') === pills.indexOf('Argus') + 1, 'Mentor: one pill, called Mentor (the god\'s name, 4.45.0), right after Argus');
 
   await p.goto(BASE + 'home'); await p.waitForTimeout(800);
   const need = p.locator('.need', {hasText: 'Heracles'});
-  check(await need.count() === 1 && /2 workouts this week/.test(await need.textContent()) && (await need.locator('a.go').textContent()) === 'Log a workout and more words than'.slice(0, 32),
+  check(await need.count() === 1 && /2 workouts this week/.test(await need.textContent()) && (await need.locator('a.go').textContent()) === 'Log a workout and more words…',
     'Home: a plugin that needs you gets a row in "Needs you" with its action as the button');
   check(await p.locator('.place', {hasText: 'Heracles'}).count() === 0, 'Home: and no card under Sections while it has that row (one place for each fact)');
   check(p.errors.length === 0, 'no page errors ' + p.errors.join(' | '));

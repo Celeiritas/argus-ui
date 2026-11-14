@@ -7,6 +7,8 @@
   * the server's name from ~/.config/leafy/realm.json (SERVER, any case), "The server" without a usable one
   * media(): media.json's jellyfin and audiobookshelf, http(s) addresses only; no file or a broken one, no rows
   * only the owner's state carries `now` and `media`; a learner's has neither
+  * 4.45.0: `now_name` beside `now` (the name `now` starts with, for the band's two colours; none for a learner), the links'
+    optional `group` (trimmed, at most 40 characters), and clip(): status v2's line and action cut after a whole word with "…"
 The server module runs in this process with a temporary HOME and fake units (tests/fixtures/fake_systemctl.py)."""
 import importlib.util, json, os, shutil, sys, tempfile, unittest
 
@@ -151,7 +153,52 @@ class OwnerOnly(Base):
         self.assertEqual(mine['now'], 'The server: busy with Hermes media and Zeus deploy')
         self.assertEqual([m['id'] for m in mine['media']], ['jellyfin'])
         hers = a.state_for(LEARNER)
-        self.assertNotIn('now', hers); self.assertNotIn('media', hers)
+        self.assertNotIn('now', hers); self.assertNotIn('media', hers); self.assertNotIn('now_name', hers)
+
+
+class NowName(Base):
+    # 4.45.0: the page colours the name and the words apart, so the server sends the name on its own too
+    def test_now_starts_with_the_name_it_sends(self):
+        for doc in (None, {'SERVER': 'Testbox'}, {'SERVER': 'Box: two'}):
+            with self.subTest(doc=doc):
+                if doc: put(REALM, doc)
+                s = a.state()
+                self.assertTrue(s['now'].startswith(s['now_name'] + ': '), (s['now'], s['now_name']))
+        self.assertEqual(a.state()['now_name'], 'Box: two')
+
+    def test_the_owner_gets_it(self):
+        put(REALM, {'SERVER': 'Shelf'})
+        self.assertEqual(a.state_for(OWNER)['now_name'], 'Shelf')
+
+
+class LinkGroup(Base):
+    # 4.45.0: links.json entries may carry "group"; Today's Open shows a label per group when there is more than one
+    def setUp(self):
+        super().setUp(); self.addCleanup(set_aside, os.environ['ARGUS_LINKS'])
+
+    def test_the_group_is_kept_trimmed_and_cut(self):
+        put(os.environ['ARGUS_LINKS'], [{'name': 'Recipes', 'what': 'Meals', 'href': 'https://recipes.example/', 'group': '  Kitchen '},
+                                        {'name': 'Lab', 'href': '/lab/'}, {'name': 'Odd', 'href': '/odd/', 'group': 'g' * 60},
+                                        {'name': 'Num', 'href': '/num/', 'group': 7}])
+        self.assertEqual([(x['name'], x['group']) for x in a.state()['links']], [('Recipes', 'Kitchen'), ('Lab', ''), ('Odd', 'g' * 40), ('Num', '7')])
+
+
+class Clip(unittest.TestCase):
+    # 4.45.0: status v2's line (160) and action (32) are cut at a word with "…", never in the middle of one
+    def test_cut_at_a_word(self):
+        self.assertEqual(a.clip('Log a workout and more words than fit', 32), 'Log a workout and more words…')
+        self.assertEqual(a.clip('Approve argus-ui 4.15.0', 32), 'Approve argus-ui 4.15.0')
+        self.assertEqual(a.clip('one two three', 13), 'one two three')
+        self.assertEqual(a.clip('one two three', 12), 'one two…')
+        self.assertEqual(a.clip('one two · three', 10), 'one two…')
+
+    def test_one_word_longer_than_the_room_is_cut_with_an_ellipsis(self):
+        self.assertEqual(a.clip('x' * 40, 32), 'x' * 31 + '…')
+
+    def test_never_longer_than_asked(self):
+        for s in ('a ' * 100, 'word ' * 40, 'ab' * 90):
+            with self.subTest(s=s[:12]):
+                self.assertLessEqual(len(a.clip(s, 32)), 32); self.assertLessEqual(len(a.clip(s, 160)), 160)
 
 
 if __name__ == '__main__':

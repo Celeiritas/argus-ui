@@ -25,6 +25,7 @@ import watch        # "works, not just runs": checks.json, the mount table, one 
 import identity     # who is asking: Tailscale Serve's login (trusted only from Serve's own connection) and the people file (docs/people.md)
 import push, summary  # phone alerts (Web Push) and the daily summary (docs/phone-alerts.md)
 import notify       # the events file those changes go to (notify.py); api/events reads it for Watch's "What happened lately"
+import quiet        # what keeps still: quiet sections (Mentor) and tasks marked "Known, low priority" (quiet.py, docs/home.md)
 SHARE = os.path.expanduser('~/.local/share/argus-ui')
 
 def load_theme():
@@ -53,7 +54,7 @@ LINKS = os.path.expanduser(os.environ.get('ARGUS_LINKS', '~/.config/argus-ui/lin
 BUNDLED = os.path.expanduser(os.environ.get('ARGUS_BUNDLED', '~/.local/share/argus-ui/bundled'))
 PLUGIN_ID = re.compile(r'^[a-z][a-z0-9-]{0,31}$')
 RESERVED = {'api', 'static', 'plugins', 'play', 'all', 'argus', 'sw.js', 'manifest.webmanifest',   # 'play' means Olympus in the page
-            'state', 'sky', 'health', 'log', 'freeze', 'thaw', 'bolt', 'run', 'whoami', 'push', 'events', 'watch'}   # built-in api/<name> routes
+            'state', 'sky', 'health', 'log', 'freeze', 'thaw', 'bolt', 'run', 'whoami', 'push', 'events', 'watch', 'known'}   # built-in api/<name> routes
 mimetypes.add_type('text/javascript', '.js'); mimetypes.add_type('text/javascript', '.mjs')
 mimetypes.add_type('model/gltf-binary', '.glb'); mimetypes.add_type('application/json', '.json')
 mimetypes.add_type('application/wasm', '.wasm'); mimetypes.add_type('font/woff2', '.woff2')
@@ -139,7 +140,9 @@ def plugin_jobs(prefix=''):
 def backups_line():
     """The daily summary's one backups line (server/summary.py), straight from the Memory plugin's own view and rules
     (summary_line there), so the backup folders are read once, by the plugin. '' when backups are fine. LookupError when
-    Memory is not loaded (or is too old to have the line): the summary then goes out without it and says so once."""
+    Memory is not loaded (or is too old to have the line): the summary then goes out without it and says so once.
+    '' too while Memory's section is quiet (quiet.py)."""
+    if quiet.is_quiet('memory'): return ''
     p = SERVER_PLUGINS.get('memory')
     if p is None or not callable(getattr(p, 'summary_line', None)): raise LookupError('the Memory plugin is not loaded')
     return p.summary_line(p.view(plugin_ctx('memory', PLUGIN_DIR['memory'])))
@@ -368,7 +371,7 @@ def has_timer(u):
 
 def info(u, fz):
     p = props(u + '.service', 'Result', 'ActiveState', 'ExecMainExitTimestamp', 'ExecMainStartTimestamp',
-              'MemoryPeak', 'IOWriteBytes', 'Description', 'Type')
+              'MemoryPeak', 'IOWriteBytes', 'Description', 'Type', 'ExecMainStatus')
     timer = has_timer(u)
     t = props(u + '.timer', 'NextElapseUSecRealtime', 'ActiveState') if timer else {}
     if u in fz: state = 'frozen'
@@ -387,7 +390,8 @@ def info(u, fz):
                 notes=reg.get('notes', '') or p.get('Description', ''), canfreeze=u not in NEVER_FREEZE, canrun=True,
                 restarts=bolt_verb(timer, p.get('Type')) == 'restart',     # its button says Restart (always on) or Run: bolt()'s own choice
                 frozen_at=fz.get(u, {}).get('at', ''), base=base if reg.get('transient') is True and base != u else '',
-                started=started(p.get('ExecMainStartTimestamp', '')))
+                started=started(p.get('ExecMainStartTimestamp', '')),
+                result=p.get('Result', ''), status=p.get('ExecMainStatus', ''))     # how it failed: the known mark's fingerprint (quiet.py)
 
 def collapse(jobs):
     """Transient units (registry "transient": true, e.g. zeus-deploy-<id>): one card per base name showing the latest run
@@ -408,9 +412,19 @@ def links():
     for x in raw if isinstance(raw, list) else []:
         if not isinstance(x, dict): continue
         name, what, href = str(x.get('name') or '').strip()[:40], str(x.get('what') or '').strip()[:40], str(x.get('href') or '').strip()
+        group = str(x.get('group') or '').strip()[:40]     # optional: Today's Open puts entries with the same group under one label (4.45.0)
         if name and (re.fullmatch(r'/[\w./~%+-]*', href) and not href.startswith('//') or re.fullmatch(r'https://[^\s"\'<>]+', href)):
-            out.append(dict(name=name, what=what, href=href))
+            out.append(dict(name=name, what=what, href=href, group=group))
     return out[:8]
+
+def clip(s, n):
+    """s cut to at most n characters at a word, ending with "…" when it was cut ("Log a workout and more words…"), never
+    in the middle of a word unless one word is longer than n."""
+    s = ' '.join(str(s).split())
+    if len(s) <= n: return s
+    cut = s[:n - 1]
+    if s[n - 1] != ' ' and ' ' in cut: cut = cut[:cut.rindex(' ')]
+    return cut.rstrip(' ,;:·-–—') + '…'
 
 # ---------- Today's line on what the server is doing, and its Open rows for the media players (docs/home.md, 4.44.0) ----------
 # Both read the host's own files on every state(); the repository holds no name and no address.
@@ -459,11 +473,12 @@ def plain_task(persona, name):
 def and_list(xs): return xs[0] if len(xs) == 1 else ', '.join(xs[:-1]) + ' and ' + xs[-1]
 def few(xs): return and_list(xs) if len(xs) <= 3 else ', '.join(xs[:3]) + f' and {len(xs) - 3} more'
 
-def now_line(jobs, ws):
+def now_line(jobs, ws, name=None):
     """One line on what the server is doing now, only from what it already knows: the game guard's record, the runs in
     progress (a timer's run or a transient job's; an always-on service is not "busy") and the watch's restarts.
     "<name>: calm" / "<name>: busy with Hermes media" / "<name>: a game is running, the local AI is paused". One colon, after
-    the name: the parts are joined with "; "."""
+    the name: the parts are joined with "; ". state() passes the name it also sends as now_name, so the page can colour the
+    name and the words apart (4.45.0) without splitting the line itself."""
     game, paused = game_guard()
     parts = []
     if game:
@@ -473,7 +488,7 @@ def now_line(jobs, ws):
     fixing = [str(r.get('title') or r.get('id')) for r in ws if r.get('fixing') or r.get('queued')]
     if busy: parts.append('busy with ' + few(busy))
     if fixing: parts.append('restarting ' + few(fixing))
-    return f'{server_name()}: {"; ".join(parts) or "calm"}'
+    return f'{name or server_name()}: {"; ".join(parts) or "calm"}'
 
 WATCH_INTERVAL = int(os.environ.get('ARGUS_WATCH_INTERVAL', 60))   # seconds between rounds; 0 turns the loop off (the tests do, unless they ask)
 WATCH_ON = os.environ.get('ARGUS_WATCH') != '0' and WATCH_INTERVAL > 0
@@ -489,15 +504,50 @@ def watch_env():
     # the task cards keep their own idea of running
     return watch.Env(lambda u: watch.unit_state(sc('is-active', u + '.service')), lambda u: u in frozen(), watch_restart)
 
+def known_marks(jobs, ws):
+    """Put `known` (when it was marked) on each task marked "Known, low priority", after clearing the marks whose task
+    works again or fails another way (quiet.reconcile). -> jobs."""
+    marks = quiet.reconcile(jobs, ws)
+    for j in jobs:
+        m = marks.get(quiet.key(j))
+        if m: j['known'] = m['at']
+    return jobs
+
+def marks_now():
+    """The known marks as they are now, for the phone and the summary (which run without a page open): the marked tasks
+    are looked up again first, so one that works again or fails another way is not kept quiet. No marks: no systemctl call."""
+    marks = quiet.load()
+    if not marks: return {}
+    fz, ws = frozen(), watch.snapshot(WATCH_INTERVAL or 60)
+    us =[u for u in units() if u in marks or any(u.startswith(k + '-') for k in marks)]   # a transient task's runs too
+    return quiet.reconcile(watch.attach(collapse([info(u, fz) for u in us]), ws), ws)
+
+KNOWN_EVERY = max(5, int(os.environ.get('ARGUS_KNOWN_EVERY') or 60))   # seconds between looks at the marked tasks
+
+def known_loop():
+    """While anything is marked known, look at the marked tasks once a minute, also with no page open: a task that ran well
+    in between loses its mark, so its next failure counts again (quiet.reconcile). Nothing marked: no systemctl call."""
+    while True:
+        try: marks_now()
+        except Exception as e: print(f'argus-ui: the known marks could not be checked: {e}', file=sys.stderr, flush=True)
+        threading.Event().wait(KNOWN_EVERY)
+
+def hushed_now():
+    """hushed(event) as things are now (quiet.hushed): one look at the marks and the watch rows, for one event or one summary."""
+    marks, ws = marks_now(), watch.snapshot(WATCH_INTERVAL or 60)
+    return lambda e: quiet.hushed(e, ws, marks)
+
 def state(reach=None):
     fz = frozen()
     ws = watch.snapshot(WATCH_INTERVAL or 60)
-    jobs = watch.attach(collapse([info(u, fz) for u in units()]), ws)
+    jobs = known_marks(watch.attach(collapse([info(u, fz) for u in units()]), ws), ws)
     ps = plugins()
+    name = server_name()                  # once: now starts with exactly this, and now_name lets the page colour it (4.45.0)
     return dict(updated=datetime.now().strftime('%I:%M %p').lstrip('0'), jobs=jobs,
                 title=THEME.get('title', 'Argus'), subtitle=THEME.get('subtitle', 'tasks'),
                 personas=[dict(key=k, name=n, domain=d) for k, n, d in PERSONAS],
-                soon=THEME.get('coming_soon', []), links=links(), media=media(), now=now_line(jobs, ws),
+                soon=THEME.get('coming_soon', []), links=links(), media=media(), now=now_line(jobs, ws, name), now_name=name,
+                quiet=sorted(quiet.quiet_sections()),     # the sections that never count as needing him (quiet.py); a learner's state has none
                 plugins=[plugin_view(p, reach) for p in ps], watch=ws, watch_ready=not WATCH_ON or watch.ready(),   # until its first round: the saved rows
                 alerts=sorted(alerts(set(PKEYS) | set(PAGES) | {p['id'] for p in ps}) + watch.alert_list(ws, lambda j: bool(GODS.match(j) and ALERT_JOB.match(j))), key=lambda a: (a['since'], a['file'])))
 
@@ -833,8 +883,10 @@ class H(BaseHTTPRequestHandler):
         if verb == 'get' and path == 'status':        # reserved: Home's line (+ needs, a verb-first action), or null; never an error
             d = r[1] if r and 200 <= r[0] < 300 and isinstance(r[1], dict) else {}
             line, act, n = d.get('line'), d.get('action'), d.get('count')
-            out = {'line': str(line)[:160] if line else None, 'needs': bool(line) and d.get('needs') is True, 'action': str(act)[:32] if line and act else ''}
+            out = {'line': clip(line, 160) if line else None, 'needs': bool(line) and d.get('needs') is True, 'action': clip(act, 32) if line and act else ''}   # cut at a word (4.45.0)
             if line and isinstance(n, int) and not isinstance(n, bool) and n >= 0: out['count'] = min(n, 9999)   # how many wait (the bar shows "2")
+            if self.who['role'] == 'owner' and quiet.is_quiet(pid):   # a quiet section keeps its line, never needs him (quiet.py)
+                out.update(needs=False, action=''); out.pop('count', None)
             return self.out(json.dumps(out), 'application/json')
         if not r: return self.deny(404, 'not found')
         self.out(r[2], 'application/json', r[0])
@@ -910,6 +962,21 @@ class H(BaseHTTPRequestHandler):
         except Exception: ok, code, msg = False, 500, 'Argus could not start the fix. Try again in a moment.'
         return self.out(json.dumps({'ok': ok, 'msg': msg}), 'application/json', code)
 
+    def known(self, body):
+        # POST api/known {"job": "<task>", "on": true | false}: mark a failed task "Known, low priority", or take the mark off
+        # (Undo, Unmark). The owner's (need()). Not a power: it changes what reminds him, never what runs (quiet.py).
+        u, on = str(body.get('job', '')), body.get('on')
+        if not isinstance(on, bool): return self.deny(400, 'Say on (true) or off (false).')
+        if u not in units(): return self.deny(400, 'unknown task')
+        ws = watch.snapshot(WATCH_INTERVAL or 60)
+        j = watch.attach(collapse([info(u, frozen())]), ws)[0]
+        if not on:
+            quiet.unmark(quiet.key(j))
+            return self.out(json.dumps({'ok': True, 'msg': 'It counts again: it shows under what needs you while it fails.'}), 'application/json')
+        ok, at = quiet.mark(j, ws)
+        if not ok: return self.deny(409, at)
+        return self.out(json.dumps({'ok': True, 'at': at, 'msg': 'Marked as known, low priority. It comes back if it fails another way.'}), 'application/json')
+
     def deny(self, code, msg): return self.out(json.dumps({'ok': False, 'msg': msg}), 'application/json', code)
 
     def do_POST(self):
@@ -939,6 +1006,9 @@ class H(BaseHTTPRequestHandler):
             except Exception: return self.deny(500, 'server error')
             return self.out(json.dumps(obj), 'application/json', code)
         if p == 'api/watch/fix': return self.watch_fix(body)
+        if p == 'api/known':
+            try: return self.known(body)
+            except OSError: return self.deny(500, 'The mark could not be saved. Try again in a moment.')
         u = str(body.get('job', ''))
         actions = {'api/freeze': freeze, 'api/thaw': thaw, 'api/bolt': bolt, 'api/run': bolt}
         if p not in actions: return self.deny(404, 'not found')
@@ -1060,6 +1130,8 @@ if __name__ == '__main__':
     except Exception: print(f'argus-ui: no plugin gets its own address:\n{traceback.format_exc()}', file=sys.stderr, flush=True)
     if WATCH_ON: watch.start(watch_env(), WATCH_INTERVAL)
     push.start(lambda person: push.role_in(PEOPLE.current(), person),      # phone alerts: owners' devices only (docs/phone-alerts.md)
-               lambda s: next((w.get('title', '') for w in watch.snapshot(WATCH_INTERVAL or 60) if w.get('id') == s), ''))
-    summary.start(lambda: watch.snapshot(WATCH_INTERVAL or 60), backups=backups_line)   # the daily summary, its own small thread
+               lambda s: next((w.get('title', '') for w in watch.snapshot(WATCH_INTERVAL or 60) if w.get('id') == s), ''),
+               lambda e: hushed_now()(e))                                   # never for a quiet section or a task marked known
+    summary.start(lambda: watch.snapshot(WATCH_INTERVAL or 60), backups=backups_line, quiet=hushed_now)   # the daily summary, its own small thread
+    threading.Thread(target=known_loop, name='argus-known', daemon=True).start()   # a known task that works again loses its mark
     ThreadingHTTPServer((BIND, PORT), H).serve_forever()

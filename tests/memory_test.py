@@ -94,7 +94,7 @@ class Job(Base):
         v = self.view(); self.assertEqual(v['count'], 3); self.assertIsNone(v['job']); self.assertFalse(v['can_backup'])
 
 KEYS = 'your passwords and keys are left out on purpose: you back those up by hand, typing the passphrase'
-WATCH = 'look at its weekly job under Mnemosyne on the Watch page'
+WATCH = 'look at its weekly job under Mnemosyne on the Argus page'
 STATUS_WORDS = re.compile(r'\b(Done|Old|None|Unknown|Not yet|Failed|Not run)\b')   # 1.1.0: never in what the owner reads
 
 class Copies(Base):
@@ -238,13 +238,13 @@ class Copies(Base):
         self.jobs.append(dict(job('mnemosyne-server-offsite', 'never', last='—'), started=''))
         c = self.copy('offsite')
         self.assertEqual((c['state'], c['kind']), ('unknown', 'never'))
-        self.assertEqual(c['say'], "The job that copies the server's backups outside your home is set up but has not run yet: see when it runs under Mnemosyne on the Watch page.")
+        self.assertEqual(c['say'], "The job that copies the server's backups outside your home is set up but has not run yet: see when it runs under Mnemosyne on the Argus page.")
 
     def test_offsite_failed(self):
         self.jobs.append(dict(job('mnemosyne-server-offsite', 'failed'), started='2026-11-08 04:30:00'))
         c = self.copy('offsite')
         self.assertEqual((c['state'], c['kind']), ('no', 'failed'))
-        self.assertEqual(c['say'], "The last try to copy the server's backups outside your home failed 2 days ago (Sunday, 4:30 AM), so look at its job under Mnemosyne on the Watch page.")
+        self.assertEqual(c['say'], "The last try to copy the server's backups outside your home failed 2 days ago (Sunday, 4:30 AM), so look at its job under Mnemosyne on the Argus page.")
 
     def test_offsite_done(self):
         self.jobs.append(dict(job('mnemosyne-server-offsite'), started='2026-11-08 04:30:00'))
@@ -297,7 +297,7 @@ class Copies(Base):
     def test_server_frozen_with_no_snapshot_does_not_say_to_hold_the_button(self):
         os.makedirs(os.path.join(self.tmp, 'empty')); self.write(m.CONFIG, {'folder': os.path.join(self.tmp, 'empty')})
         self.jobs[1]['state'] = 'frozen'
-        self.assertEqual(self.say('server'), 'The server has no snapshot of itself yet: its weekly job is paused; press Resume on its card on the Watch page first.')
+        self.assertEqual(self.say('server'), 'The server has no snapshot of itself yet: its weekly job is paused; press Resume on its card on the Argus page first.')
 
 class Times(Base):
     def test_ages_and_clock_times(self):

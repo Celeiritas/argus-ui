@@ -13,7 +13,7 @@ const CONFIG = path.join(HOME, '.config/argus-ui/memory.json');
 const MINE = path.join(HOME, 'backups'), SNAPS = path.join(MINE, 'Server-brain'), MARKER = path.join(MINE, 'last-backup.json');
 const STATUS_WORDS = /\b(Done|Old|None|Unknown|Not yet|Failed|Not run)\b/;
 const KEYS = 'your passwords and keys are left out on purpose: you back those up by hand, typing the passphrase';
-const WATCH = 'look at its weekly job under Mnemosyne on the Watch page';
+const WATCH = 'look at its weekly job under Mnemosyne on the Argus page';
 const brain = () => JSON.parse(fs.readFileSync(path.join(process.env.FIXTURES, 'units.json')))[BRAIN];
 async function hold(p, btn, ms) { await btn.focus(); await p.keyboard.down('Space'); await p.waitForTimeout(ms); await p.keyboard.up('Space'); }
 
@@ -45,8 +45,8 @@ run(async b => {
   try {
     const p = await page(b);
     await p.goto(BASE + 'memory'); await p.locator('.mem-shelf .mem-jar').first().waitFor({timeout: 5000});
-    check(await p.locator('#realms a.realm', {hasText: 'Backups'}).count() === 1 && /Mnemosyne/.test(await p.locator('#realms a.realm', {hasText: 'Backups'}).textContent()), 'a Backups pill in the section bar, with Mnemosyne under it');
-    check(await p.locator('.title h1').textContent() === 'Backups' && /mnemosyne\.png$/.test(await p.locator('#hero').getAttribute('src')) && !(await p.locator('#hero').isHidden()), 'the page heading says Backups, under Mnemosyne\'s medallion');
+    check(await p.locator('#realms a.realm[data-id="memory"] b').textContent() === 'Mnemosyne' && await p.locator('#realms a.realm', {hasText: 'Backups'}).count() === 0, 'a Mnemosyne pill in the section bar, her name its only title (4.45.0)');
+    check(await p.locator('.title h1').textContent() === 'Mnemosyne' && /mnemosyne\.png$/.test(await p.locator('#hero').getAttribute('src')) && !(await p.locator('#hero').isHidden()), 'the page heading says Mnemosyne, under her medallion');
     check(/~\/\.mnemosyne\/Server-brain\//.test(await p.locator('#mem-where').textContent()), 'it says which folder it reads');
     check(await p.locator('.mem-shelf .mem-jar').count() === 3 && await p.locator('.mem-list li').count() === 3, 'three snapshots on the shelf and in the list; the decoys are not listed');
     const list = await p.locator('.mem-list').textContent();
@@ -89,9 +89,9 @@ run(async b => {
     check(p.errors.length === 0, 'no page errors ' + p.errors.join(' | '));
 
     const h = await page(b);
-    await h.goto(BASE); await h.locator('.place', {hasText: 'Backups'}).locator('.pl', {hasText: 'Backing up'}).waitFor({timeout: 5000}).catch(() => {});
-    check(await h.locator('.place', {hasText: 'Backups'}).locator('.pl').textContent() === "Backing up the server now; no word from your PC's backup yet. The server has no copy outside your home yet.",
-      "Today: the Backups card shows Memory's line, the running backup first");
+    await h.goto(BASE); await h.locator('.place[data-id="memory"]').locator('.pl', {hasText: 'Backing up'}).waitFor({timeout: 5000}).catch(() => {});
+    check(await h.locator('.place[data-id="memory"]').locator('.pl').textContent() === "Backing up the server now; no word from your PC's backup yet. The server has no copy outside your home yet.",
+      "Today: Mnemosyne's card shows Memory's line, the running backup first");
     await p.close(); await h.close();              // their 15-second refreshes would only slow the checks below
 
     const ph = await page(b, 375, 760);
@@ -151,17 +151,17 @@ run(async b => {
         await n.close();
       }
       const t = await page(b, 412, 915);
-      // Today: the line is in one place (4.44.0): the row in Needs you when it needs you, else the Backups card
-      await t.goto(BASE); const card = t.locator('.place', {hasText: 'Backups'}).locator('.pl'), row = t.locator('.need', {hasText: s.today});
+      // Today: the line is in one place (4.44.0): the row in Needs you when it needs you, else Mnemosyne's card
+      await t.goto(BASE); const card = t.locator('.place[data-id="memory"]').locator('.pl'), row = t.locator('.need', {hasText: s.today});
       await (s.needs ? row : card.filter({hasText: s.today})).waitFor({timeout: 5000}).catch(() => {});
       await t.waitForFunction(() => !/Checking…|Asking every section/.test(document.querySelector('#main .home').textContent), null, {timeout: 5000}).catch(() => {});
       if (!s.needs) check(await card.textContent() === s.today, `${s.name}: Today's line: ${await card.textContent()}`);
       check(s.needs ? await row.count() === 1 && await row.locator('a.go').textContent() === (s.action || 'Check backups') && await card.count() === 0 : await row.count() === 0,
-        `${s.name}: ${s.needs ? 'Needs you shows the line with ' + (s.action || 'Check backups') + ', and no Backups card' : 'nothing in Needs you'}`);
+        `${s.name}: ${s.needs ? 'Needs you shows the line with ' + (s.action || 'Check backups') + ', and no Mnemosyne card' : 'nothing in Needs you'}`);
       await t.close();
       if (s.verdict) for (const [w, h] of [[360, 800], [412, 915], [1440, 900]]) {        // a card shows only the start of the line, a row all of it: the verdict must be in what shows
         const v = await page(b, w, h); await v.goto(BASE);
-        const pl = s.needs ? v.locator('.need', {hasText: s.verdict}).locator('.nb p') : v.locator('.place', {hasText: 'Backups'}).locator('.pl');
+        const pl = s.needs ? v.locator('.need', {hasText: s.verdict}).locator('.nb p') : v.locator('.place[data-id="memory"]').locator('.pl');
         await pl.filter({hasText: s.verdict}).waitFor({timeout: 5000}).catch(() => {});
         const shown = await pl.evaluate(el => { const n = el.lastChild, r = document.createRange(), box = el.getBoundingClientRect(); let i = 0;
           for (; i < n.length; i++) { r.setStart(n, i); r.setEnd(n, i + 1); if (r.getBoundingClientRect().right > box.right + 0.5) break; } return i; });

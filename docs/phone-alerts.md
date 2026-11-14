@@ -12,6 +12,10 @@ of them each phone gets:
 It never buzzes when Argus fixed something by itself, or when something came back on its own (`fixed`, `recovered`): that
 stays on the page and goes into the next daily summary.
 
+It never buzzes, and is never in the daily summary, for **a quiet section** (Mentor: the owner wants no Mentor notifications,
+ever) or **a task the owner marked "Known, low priority"** until it works again or fails another way (4.45.0;
+`server/quiet.py`, docs/home.md "Quiet"). The event is still written to the events file.
+
 So that the phone never becomes noise:
 - the same thing (same check, same kind) does not buzz again within **30 minutes**. If it keeps going wrong, the quiet
   time grows to 1 hour, 2 hours, then 4 hours, and it is back to 30 minutes once that thing has been quiet for 12 hours;

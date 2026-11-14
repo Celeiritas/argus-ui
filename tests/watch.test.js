@@ -10,7 +10,7 @@ run(async b => {
   const p = await page(b);
   await p.goto(BASE + 'argus'); await p.waitForTimeout(1000);
   check(await p.locator('.card').count() >= 5, 'task cards are shown');
-  check(await p.locator('.title h1').textContent() === 'Watch' && /^Argus · /.test(await p.locator('#sub').textContent()) && /^Watch · /.test(await p.title()), 'the heading says Watch, with Argus under it');
+  check(await p.locator('.title h1').textContent() === 'Argus' && /^\d+ tasks watched · /.test(await p.locator('#sub').textContent()) && /^Argus · /.test(await p.title()), 'the heading says Argus, his name the only title (4.45.0), the tasks under it');
   const h = await (await p.request.get(BASE + 'api/health')).json();
   check(h.ok === true && /^\d+\.\d+\.\d+$/.test(h.version) && h.uptime_s >= 0, 'api/health answers with the version and uptime');
   check(await p.locator('nav.chips a').count() >= 3, 'agent tabs are shown');
@@ -56,7 +56,7 @@ run(async b => {
   check(await p.locator('section.persona').first().locator('.card').first().getAttribute('data-job') === 'hermes-media', 'a running task that does not work comes first');
   check(/Running, but not working: cannot read its drive/.test(await nw.locator('.why').textContent()), 'its card says so, with the reason from the server (works_reason)');
   check(await p.locator('.card[data-job="hermes-mail"] .why').count() === 0, 'works: null shows nothing new');
-  check(await p.locator('#argus').evaluate(e => e.classList.contains('glare')) && await p.evaluate(() => needCount('argus')) === 1, 'Argus glares, and Watch counts it once');
+  check(await p.locator('#argus').evaluate(e => e.classList.contains('glare')) && await p.evaluate(() => needCount('argus')) === 1, 'Argus glares, and his place counts it once');
   // all well: the alarm goes away
   units(u => Object.values(u).forEach(v => { if (v.Result !== 'success') v.Result = 'success'; }));
   await p.evaluate(() => refresh()); await p.waitForTimeout(800);
