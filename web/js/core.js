@@ -226,6 +226,62 @@ async function askFix(id) {
   } catch (e) { toast("Couldn't reach the server to restart it. Check that it's on, then try again."); return false; }
 }
 function wireFixes() { $$('#main button[data-fix]:not(.hold)').forEach(b => holdConfirm(b, () => askFix(b.dataset.fix))); }
+
+/* ---------- Desktop / Game mode (docs/modes.md): the pill at the top of every section, when state.modes exists ---------- */
+// The mode the server is in, lit in its colour; the other one is a button: press and hold (holdConfirm) to switch. While it
+// switches, both are off and the note says so; this page then asks every 2 s until the server is in that mode, 2 minutes at most.
+let modeWait = null, modeStale = null;    // {to, until}: the switch this page started; modeStale: the mode it never reached in time
+function modeHues(list) {   // the colours (argus.css): Game purple, Desktop green; one other id gets the colour left, two others green then purple
+  const h = list.map(x => x.id === 'game' || x.id === 'desktop' ? x.id : null), other = k => k === 'game' ? 'desktop' : 'game';
+  if (h[0] === h[1]) return ['desktop', 'game'];
+  return [h[0] || other(h[1]), h[1] || other(h[0])];
+}
+function drawModes() {
+  const box = $('#modes'), m = S?.modes, list = Array.isArray(m?.modes) ? m.modes : [];
+  if (!box) return;
+  if (!m || list.length !== 2 || role() !== 'owner') { box.hidden = true; put($('#modePill'), ''); $('#modeNote').textContent = ''; return; }
+  const label = id => list.find(x => x.id === id)?.label || id;
+  const waiting = modeWait && m.current !== modeWait.to ? modeWait.to : null;   // the server lost its note of the switch (a restart)
+  const to = m.switching || waiting;
+  if (modeStale && m.current === modeStale) modeStale = null;
+  box.hidden = false; box.setAttribute('aria-label', `${m.name || 'The server'} mode`);
+  box.classList.toggle('switching', !!to); box.classList.toggle('unknown', !to && m.current === 'unknown');
+  let html;
+  if (!to && m.current === 'unknown') html = '<span class="mode-seg mode-unknown">Mode unknown</span>';
+  else html = list.map((x, i) => {
+    const hue = `m-${modeHues(list)[i]}`;
+    if (x.id === m.current) return `<span class="mode-seg on ${hue}" data-mode="${esc(x.id)}">${esc(x.label)}<span class="sr"> (current)</span></span>`;
+    return `<button type="button" class="mode-seg ${hue}" data-mode="${esc(x.id)}" data-mode-to="${esc(x.id)}"${to ? ' disabled' : ''}>${esc(x.label)}</button>`;
+  }).join('');
+  if (put($('#modePill'), html)) $$('#modePill button[data-mode-to]:not([disabled])').forEach(b => holdConfirm(b, () => askMode(b.dataset.modeTo)));
+  const note = to ? (modeStale === to ? 'Still switching: check the TV' : `Switching to ${label(to)}…`) : modeStale ? 'Still switching: check the TV' : '';
+  const n = $('#modeNote'); if (n.textContent !== note) n.textContent = note;
+  n.classList.toggle('busy', !!to && modeStale !== to);
+}
+// POST api/mode {"to"}: the server starts that mode's switch unit and nothing else. A refusal or a failure: the toast says
+// what the server said, and false makes Argus wince (holdConfirm).
+async function askMode(to) {
+  try {
+    const r = await fetch(url('api/mode'), {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({to})});
+    const j = await r.json();
+    if (!j.ok) { toast(j.msg || "Couldn't switch modes. Try again in a moment."); setTimeout(refresh, 300); return false; }
+    toast(j.msg || 'Switching.');
+    modeWait = {to, until: Date.now() + 120000}; modeStale = null;
+    if (S.modes && S.modes.current !== to) S.modes = {...S.modes, switching: to};
+    setTimeout(() => { drawModes(); modePoll(); }, 0);   // after holdConfirm puts the button back: the pill is redrawn as switching
+    return true;
+  } catch (e) { toast("Couldn't reach the server to switch modes. Check that it's on, then try again."); return false; }
+}
+// every 2 s after a switch this page started: only the mode is read again and drawn, the rest of the page stays as it is
+async function modePoll() {
+  clearTimeout(modePoll.t); const w = modeWait; if (!w) return;
+  try { const r = await fetch(url('api/state'), {cache: 'no-store'}); if (r.ok) { const j = await r.json(); if (S) S.modes = j.modes; } } catch (e) {}
+  if (modeWait !== w) return;                                          // another press started a new wait meanwhile
+  const m = S?.modes;
+  if (!m || (m.current === w.to && !m.switching)) { modeWait = null; drawModes(); return; }
+  if (Date.now() >= w.until) { modeWait = null; modeStale = w.to; drawModes(); return; }
+  drawModes(); modePoll.t = setTimeout(modePoll, 2000);
+}
 // what needs you in a place: a number when it is known, true when the place needs you but gives no number, 0 when nothing
 function needCount(id) {
   if (id === 'argus') return trouble().n;
@@ -353,7 +409,7 @@ function render() {
     const a = wordOf('argus'); $('.title h1').textContent = a; document.title = `${a} · ${name}`;
     $('#sub').innerHTML = `<b>${S.jobs.length}</b> tasks watched · updated ${esc(S.updated)}`;
   }
-  drawNav(); askStatus().then(drawNav);
+  drawNav(); askStatus().then(drawNav); drawModes();
   // the people file cannot be used (the server keeps its last good copy): one plain line for the owner, on Today and Watch only
   const pp = $('#peopleProblem'), ppShow = role() === 'owner' && !!S.people_problem && (here === 'home' || (!plugin && !side && !onOlympus));
   pp.textContent = ppShow ? S.people_problem : ''; pp.hidden = !ppShow;          // textContent: the sentence is never read as HTML

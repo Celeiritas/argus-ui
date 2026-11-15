@@ -12,6 +12,10 @@
  --fs-body:16px;--fs-sec:14px;--fs-meta:12px;--fs-h2:18px;--fs-h1:24px;
  --t1:100ms;--t2:150ms;--t3:200ms;--t4:300ms;--hit:44px;--wide:1600px;--gutter:max(var(--s4),calc((100vw - var(--wide)) / 2));
  --server-bg:var(--card);--server-border:var(--line);--server-name:var(--snow);--server-words:var(--powder)}   /* Today's server band: neutral here; a theme's "colors" set its own (docs/themes.md, 4.45.0) */
+/* the Desktop / Game pill's colours (docs/modes.md): Game purple, Desktop green, white words on each (6.4:1 and 6.0:1) and an
+   edge that stands out from the page (5.5:1, 6.4:1). To swap the colours, exchange the game pair (#6B46C1, #A383F0) with
+   the desktop pair (#287043, #52B67A) on this one line: */
+:root{--mode-game:#6B46C1;--mode-game-edge:#A383F0;--mode-desktop:#287043;--mode-desktop-edge:#52B67A;--mode-ink:#FFFFFF}
 *{box-sizing:border-box}html,body{margin:0;background:var(--night);color:var(--snow);font:400 var(--fs-sec)/1.5 Nunito,system-ui,sans-serif;overflow-x:hidden}
 body{background:transparent}   /* the page background is the scene (sky, Olympus, grass); html keeps the night colour behind it */
 a{color:inherit}
@@ -117,6 +121,21 @@ pre{white-space:pre-wrap;word-break:break-all;font-size:var(--fs-meta);line-heig
 .hold.holding{border-color:var(--bolt)}.hold.done .hold-ring{background:var(--ok)}
 .hold-label{font-variant-numeric:tabular-nums}
 @media (prefers-reduced-motion:reduce){.hold-ring{display:none}}
+/* Desktop / Game mode (core.js drawModes, docs/modes.md): one rounded pill under the name, on every section. The mode the
+   server is in is filled with its colour; the other is a hold-to-confirm button. Long labels wrap inside their half. */
+.modes{display:flex;flex-wrap:wrap;align-items:center;margin-top:var(--s2);max-width:100%}.modes[hidden]{display:none}
+.mode-pill{display:inline-flex;max-width:100%;background:var(--card);border:1px solid var(--line);border-radius:22px}
+.mode-seg{position:relative;flex:0 1 auto;display:inline-flex;align-items:center;justify-content:center;min-height:var(--hit);min-width:var(--hit);padding:0 var(--s3);
+  border:1px solid transparent;border-radius:22px;font-size:var(--fs-sec);font-weight:600;line-height:1.2;text-align:center;overflow-wrap:anywhere;color:var(--powder)}
+button.mode-seg{background:transparent}button.mode-seg:hover:not([disabled]){color:var(--snow);border-color:var(--powder)}
+.mode-seg.on{color:var(--mode-ink)}
+.mode-seg.on.m-game{background:var(--mode-game);border-color:var(--mode-game-edge)}.mode-seg.on.m-desktop{background:var(--mode-desktop);border-color:var(--mode-desktop-edge)}
+.modes.switching .mode-seg.on{opacity:.6}                     /* both halves are off while it switches */
+.mode-seg.mode-unknown{color:var(--frost);font-weight:400;cursor:default}.modes.unknown .mode-pill{border-style:dashed}
+.mode-note{display:inline-flex;align-items:center;gap:var(--s1);margin-left:var(--s2);font-size:var(--fs-meta);line-height:1.4;color:var(--powder)}.mode-note:empty{margin:0}
+.mode-note.busy::before{content:"";flex:none;width:8px;height:8px;border-radius:50%;background:var(--powder);animation:mode-busy 1.2s ease-in-out infinite}
+@keyframes mode-busy{50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.mode-note.busy::before{animation:none}}   /* the dot stays still */
 .mute{margin-left:auto;align-self:center;color:var(--powder)}
 /* Mentor / Practice (pattern: 3 Form - one card at a time, stats strip above) */
 .practice{max-width:760px}
