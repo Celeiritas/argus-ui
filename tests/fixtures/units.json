@@ -60,5 +60,21 @@
   "ExecMainStartTimestamp": "Sun 2026-10-18 09:24:02 MDT",
   "service_en": true,
   "MemoryPeak": "25165824"
+ },
+ "fake-desktop-shell": {
+  "Result": "success",
+  "ActiveState": "active"
+ },
+ "fake-game-session": {
+  "Result": "success",
+  "ActiveState": "inactive"
+ },
+ "fake-to-desktop": {
+  "Result": "success",
+  "ActiveState": "inactive"
+ },
+ "fake-to-game": {
+  "Result": "success",
+  "ActiveState": "inactive"
  }
 }

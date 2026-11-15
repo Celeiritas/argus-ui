@@ -26,6 +26,7 @@ import identity     # who is asking: Tailscale Serve's login (trusted only from 
 import push, summary  # phone alerts (Web Push) and the daily summary (docs/phone-alerts.md)
 import notify       # the events file those changes go to (notify.py); api/events reads it for Watch's "What happened lately"
 import quiet        # what keeps still: quiet sections (Mentor) and tasks marked "Known, low priority" (quiet.py, docs/home.md)
+import modes        # Desktop / Game mode: the pill at the top and POST api/mode, set up in modes.json on the host (modes.py, docs/modes.md)
 SHARE = os.path.expanduser('~/.local/share/argus-ui')
 
 def load_theme():
@@ -54,7 +55,7 @@ LINKS = os.path.expanduser(os.environ.get('ARGUS_LINKS', '~/.config/argus-ui/lin
 BUNDLED = os.path.expanduser(os.environ.get('ARGUS_BUNDLED', '~/.local/share/argus-ui/bundled'))
 PLUGIN_ID = re.compile(r'^[a-z][a-z0-9-]{0,31}$')
 RESERVED = {'api', 'static', 'plugins', 'play', 'all', 'argus', 'sw.js', 'manifest.webmanifest',   # 'play' means Olympus in the page
-            'state', 'sky', 'health', 'log', 'freeze', 'thaw', 'bolt', 'run', 'whoami', 'push', 'events', 'watch', 'known'}   # built-in api/<name> routes
+            'state', 'sky', 'health', 'log', 'freeze', 'thaw', 'bolt', 'run', 'whoami', 'push', 'events', 'watch', 'known', 'mode'}   # built-in api/<name> routes
 mimetypes.add_type('text/javascript', '.js'); mimetypes.add_type('text/javascript', '.mjs')
 mimetypes.add_type('model/gltf-binary', '.glb'); mimetypes.add_type('application/json', '.json')
 mimetypes.add_type('application/wasm', '.wasm'); mimetypes.add_type('font/woff2', '.woff2')
@@ -543,13 +544,17 @@ def state(reach=None):
     jobs = known_marks(watch.attach(collapse([info(u, fz) for u in units()]), ws), ws)
     ps = plugins()
     name = server_name()                  # once: now starts with exactly this, and now_name lets the page colour it (4.45.0)
-    return dict(updated=datetime.now().strftime('%I:%M %p').lstrip('0'), jobs=jobs,
+    d = dict(updated=datetime.now().strftime('%I:%M %p').lstrip('0'), jobs=jobs,
                 title=THEME.get('title', 'Argus'), subtitle=THEME.get('subtitle', 'tasks'),
                 personas=[dict(key=k, name=n, domain=d) for k, n, d in PERSONAS],
                 soon=THEME.get('coming_soon', []), links=links(), media=media(), now=now_line(jobs, ws, name), now_name=name,
                 quiet=sorted(quiet.quiet_sections()),     # the sections that never count as needing him (quiet.py); a learner's state has none
                 plugins=[plugin_view(p, reach) for p in ps], watch=ws, watch_ready=not WATCH_ON or watch.ready(),   # until its first round: the saved rows
                 alerts=sorted(alerts(set(PKEYS) | set(PAGES) | {p['id'] for p in ps}) + watch.alert_list(ws, lambda j: bool(GODS.match(j) and ALERT_JOB.match(j))), key=lambda a: (a['since'], a['file'])))
+    try: m = modes.probe(sc, name)        # Desktop / Game mode, only when modes.json sets it up (modes.py); a learner's state has none
+    except Exception as e: m = None; print(f'argus-ui: the Desktop / Game mode could not be read: {e}', file=sys.stderr, flush=True)
+    if m: d['modes'] = m
+    return d
 
 def state_for(who, people_problem=None, reach=None):
     """api/state (and the state inside the page) for this person. The owner gets everything, as before. A learner gets a
@@ -977,6 +982,14 @@ class H(BaseHTTPRequestHandler):
         if not ok: return self.deny(409, at)
         return self.out(json.dumps({'ok': True, 'at': at, 'msg': 'Marked as known, low priority. It comes back if it fails another way.'}), 'application/json')
 
+    def mode(self, body):
+        # POST api/mode {"to": "<mode id>"}: switch the host to Desktop or Game mode (docs/modes.md). The owner's (need()).
+        # Only the switch unit modes.json names for that mode is started (--no-block), never a session unit; one switch at a
+        # time, under modes.py's own lock (never LOCK). Off (no modes.json): 404.
+        try: code, ok, msg = modes.switch(body.get('to'), sc, sc_ok, server_name())
+        except Exception: code, ok, msg = 500, False, 'Argus could not switch modes. Try again in a moment.'
+        return self.out(json.dumps({'ok': ok, 'msg': msg}), 'application/json', code)
+
     def deny(self, code, msg): return self.out(json.dumps({'ok': False, 'msg': msg}), 'application/json', code)
 
     def do_POST(self):
@@ -1009,6 +1022,7 @@ class H(BaseHTTPRequestHandler):
         if p == 'api/known':
             try: return self.known(body)
             except OSError: return self.deny(500, 'The mark could not be saved. Try again in a moment.')
+        if p == 'api/mode': return self.mode(body)
         u = str(body.get('job', ''))
         actions = {'api/freeze': freeze, 'api/thaw': thaw, 'api/bolt': bolt, 'api/run': bolt}
         if p not in actions: return self.deny(404, 'not found')

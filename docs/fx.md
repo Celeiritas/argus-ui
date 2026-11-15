@@ -30,7 +30,7 @@ api.fx.burst(row.querySelector('.tick'), {colors: ['#8EC9E8', '#E6ECF1'], n: 10,
 await api.fx.motes(parcel, shelf, {color: '#8EC9E8'});
 ```
 
-## `holdConfirm(button, onDone, {ms = 3000})`
+## `holdConfirm(button, onDone, {ms = 3000, name})`
 For anything that changes what runs: approve a deploy, roll back, release a held delivery. It returns `{cancel}`.
 
 - **Press and hold** for 3 seconds: a ring fills and the label counts down ("Hold… 3", "2", "1"). At the end the label says "Working…" while `onDone()` runs, then comes back.
@@ -40,6 +40,7 @@ For anything that changes what runs: approve a deploy, roll back, release a held
 - **Reduced motion:** no ring; the countdown words still show.
 - **Argus watches** the button while it is held, eyes wide, then nods when `onDone()` finishes, or winces if it returns `false` or throws. Return `false` when the server said no, so the character agrees with the toast.
 - The button keeps its label (verb-first, like "Approve argus-ui 4.18.0") and gets an `aria-label` that adds "hold 3 seconds to confirm". Touch can't scroll, select text or open a menu on it.
+- `name`: when the visible label is not a verb (the mode pill shows "Game", docs/modes.md), pass the verb-first name, `{name: 'Switch to Game'}`. A screen reader then hears "Switch to Game (hold 3 seconds to confirm)" and an armed button says "Click again to switch to Game"; the visible label and the toasts keep the word on the button.
 
 ```js
 api.holdConfirm(el.querySelector('#approve'), async () => {

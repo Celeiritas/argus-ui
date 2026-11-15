@@ -49,7 +49,10 @@
 <div class="realms" role="navigation" aria-label="Sections"><span id="realms" style="display:contents"></span><button class="realm more" id="realmMore" type="button" data-more aria-haspopup="dialog" aria-controls="moreSheet" aria-expanded="false" hidden></button><span class="wx" id="wxText"></span><button class="mute" id="mute" type="button">Mute sounds</button></div>
 <header>
  <img class="hero" id="hero" alt="">
- <div class="title"><h1>Elaia</h1><div class="sub" id="sub"></div></div>
+ <div class="title"><h1>Elaia</h1><div class="sub" id="sub"></div>
+  <!-- Desktop / Game mode, on every section, when the server's modes.json sets it up (state.modes; core.js drawModes(),
+       docs/modes.md): the mode it is in, lit; the other one, press and hold to switch. Hidden for everyone else: no space. -->
+  <div class="modes" id="modes" role="group" tabindex="-1" hidden><span class="mode-pill" id="modePill"></span><span class="mode-note" id="modeNote" role="status"></span></div></div>
  <div class="argus calm" id="argus" role="img" aria-label="Argus, the watchman">
   <img src="static/icons/argus.png" alt="">
   <span class="alarm" id="alarm" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 0 0-6 6v4l-2 3h16l-2-3V9a6 6 0 0 0-6-6zm-2 15a2 2 0 0 0 4 0" fill="#fff"/></svg><span id="alarmN"></span></span>

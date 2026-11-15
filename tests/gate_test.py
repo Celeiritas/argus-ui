@@ -144,6 +144,7 @@ ROUTES = [  # (verb, path, what it is, owner, learner, none)
     (P, 'api/run', 'run a task', 200, 403, 403),
     (P, 'api/watch/fix', "the owner's yes to a check's declared fix (4.40.0; no id here: 400)", 400, 403, 403),
     (P, 'api/known', "mark a failed task known, low priority (4.45.0; no 'on' here: 400)", 400, 403, 403),
+    (P, 'api/mode', 'switch Desktop / Game mode (4.46.0; no modes.json here: 404)', 404, 403, 403),
     (P, 'api/heracles/answer', 'a plugin POST opened to learners', 200, 200, 403),
     (P, 'api/heracles/wipe', 'a plugin POST not opened', 200, 403, 403),
     (P, 'api/quiet/note', 'a plugin POST opened to learners (no who)', 200, 200, 403),
