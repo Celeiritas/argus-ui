@@ -1,7 +1,8 @@
 // Desktop / Game mode (4.46.0, docs/modes.md): the pill at the top of every section when the server's modes.json sets it up
 // (tests/run.sh points ARGUS_MODES at tests/fixtures/modes.json: fake-desktop-shell, fake-game-session, fake-to-desktop,
 // fake-to-game). The current mode is lit in its colour; holding the other one starts its switch unit (the fake systemctl
-// writes each start to starts.log); when the fake units flip, the pill follows. The server side (the file, the probe, every
+// writes each start to starts.log); when the fake units flip, the pill follows; when the switch unit fails, the note says so
+// (the fake turns InactiveEnterTimestampMonotonic "now" into the monotonic clock). The server side (the file, the probe, every
 // answer of POST api/mode, a learner's 403 and her state without modes) is tests/modes_test.py.
 const fs = require('fs'), path = require('path');
 const {BASE, check, page, noOverflow, units, run} = require('./lib');
@@ -46,7 +47,11 @@ run(async b => {
   check(s.segs[0].on && s.segs[0].tag === 'SPAN' && s.segs[0].text === 'Desktop (current)' && s.segs[0].bg === 'rgb(40, 112, 67)' && s.segs[0].ink === 'rgb(255, 255, 255)',
     `Desktop is lit in green and read out as current (${s.segs[0].text}, ${s.segs[0].bg})`);
   check(s.segs[1].tag === 'BUTTON' && !s.segs[1].on && s.segs[1].text === 'Game' && !s.segs[1].disabled, 'Game is a button');
-  check(/Game \(hold 3 seconds to confirm\)/.test(await p.locator('#modePill button[data-mode-to=game]').getAttribute('aria-label') || ''), 'press and hold to confirm (holdConfirm)');
+  check(await p.locator('#modePill button[data-mode-to=game]').getAttribute('aria-label') === 'Switch to Game (hold 3 seconds to confirm)',
+    'a verb-first name, press and hold to confirm (holdConfirm)');
+  const g = p.locator('#modePill button[data-mode-to=game]');
+  await g.evaluate(b => b.click());                                  // a screen reader's click: no press behind it, so it arms the button
+  check(await g.locator('.hold-label').textContent() === 'Click again to switch to Game', `armed, verb first: "${await g.locator('.hold-label').textContent()}"`);
   check(s.segs.every(x => x.h >= 44 && x.w >= 44), `44 px hit areas (${s.segs.map(x => `${Math.round(x.w)}x${Math.round(x.h)}`).join(', ')})`);
   for (const at of ['argus', 'olympus', 'mentor', 'phone']) {
     await p.goto(BASE + at); await p.waitForTimeout(500);
@@ -74,6 +79,8 @@ run(async b => {
     `while it switches: "${s.note}", nothing to press`);
   check(/Switching to Game mode\. The TV goes dark/.test(await p.locator('#toastText').textContent()), 'the toast says what happens');
   check(await p.evaluate(() => getComputedStyle(document.getElementById('modeNote'), '::before').animationName) === 'mode-busy', 'a small dot pulses');
+  const leaving = await p.evaluate(() => { const c = getComputedStyle(document.querySelector('#modePill .mode-seg.on')); return {op: c.opacity, edge: c.borderTopStyle}; });
+  check(leaving.op === '1' && leaving.edge === 'dashed', `the mode it leaves keeps its full colour and contrast, with a dashed edge (opacity ${leaving.op}, ${leaving.edge})`);
 
   // ---- the fake units flip: the pill follows, without a reload ----
   set('inactive', 'active');
@@ -89,8 +96,24 @@ run(async b => {
   await p.keyboard.down('Space'); await p.waitForTimeout(3400); await p.keyboard.up('Space');
   const kt = await newStarts(before);
   check(kt.length === 1 && kt[0] === 'start --no-block fake-to-desktop.service', `holding Space starts the other switch (${JSON.stringify(kt)})`);
+  check(await p.waitForFunction(() => document.activeElement && document.activeElement.id === 'modes', null, {timeout: 4000}).then(() => true, () => false),
+    'the pill is drawn again as switching: the keyboard stays on it (the group), not lost to the page');
   set('active', 'inactive');
   check(await lit(p, 'desktop'), 'and back in Desktop');
+  check(await p.evaluate(() => !!document.activeElement.closest('#modes')), 'still on the pill when the switch is done');
+
+  // ---- a switch that fails: the note and the toast say so at once, and Game can be pressed again ----
+  before = started().length;
+  await holdPointer(p, p.locator('#modePill button[data-mode-to=game]'));
+  check((await newStarts(before)).length === 1, 'holding Game starts its switch unit');
+  await p.waitForTimeout(300);                                       // the fake systemctl has saved its own change first
+  units(u => { u['fake-to-game'].ActiveState = 'failed'; u['fake-to-game'].InactiveEnterTimestampMonotonic = 'now'; });   // and it fails
+  const said = await p.waitForFunction(() => document.getElementById('modeNote').textContent === "Couldn't switch to Game", null, {timeout: 10000}).then(() => true, () => false);
+  s = await pill(p);
+  check(said && s.segs[0].on && s.segs[1].tag === 'BUTTON' && !s.segs[1].disabled, `a failed switch: "${s.note}", Desktop still lit, Game can be pressed again`);
+  check(/couldn't switch to Game mode\. Try again, or check the TV\.$/.test(await p.locator('#toastText').textContent()), `the toast says so: "${await p.locator('#toastText').textContent()}"`);
+  check(await p.evaluate(() => getComputedStyle(document.getElementById('modeNote'), '::before').animationName) === 'none', 'its dot stays still');
+  units(u => { u['fake-to-game'] = {ActiveState: 'inactive'}; });
 
   // ---- unknown: muted words, no buttons ----
   set('inactive', 'inactive'); await p.waitForTimeout(2200); await p.evaluate(() => refresh()); await p.waitForTimeout(400);

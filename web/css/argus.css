@@ -130,10 +130,14 @@ pre{white-space:pre-wrap;word-break:break-all;font-size:var(--fs-meta);line-heig
 button.mode-seg{background:transparent}button.mode-seg:hover:not([disabled]){color:var(--snow);border-color:var(--powder)}
 .mode-seg.on{color:var(--mode-ink)}
 .mode-seg.on.m-game{background:var(--mode-game);border-color:var(--mode-game-edge)}.mode-seg.on.m-desktop{background:var(--mode-desktop);border-color:var(--mode-desktop-edge)}
-.modes.switching .mode-seg.on{opacity:.6}                     /* both halves are off while it switches */
+/* while it switches, the mode it leaves keeps its colour (the white words keep 6.4:1 / 6.0:1) and gets a dashed white edge */
+.modes.switching .mode-seg.on{border-style:dashed;border-color:var(--mode-ink)}
+.modes:focus-visible{outline:2px solid var(--powder);outline-offset:2px;border-radius:22px}   /* the group holds the keyboard while it switches (core.js drawModes) */
 .mode-seg.mode-unknown{color:var(--frost);font-weight:400;cursor:default}.modes.unknown .mode-pill{border-style:dashed}
 .mode-note{display:inline-flex;align-items:center;gap:var(--s1);margin-left:var(--s2);font-size:var(--fs-meta);line-height:1.4;color:var(--powder)}.mode-note:empty{margin:0}
-.mode-note.busy::before{content:"";flex:none;width:8px;height:8px;border-radius:50%;background:var(--powder);animation:mode-busy 1.2s ease-in-out infinite}
+.mode-note.busy::before,.mode-note.bad::before{content:"";flex:none;width:8px;height:8px;border-radius:50%;background:var(--powder)}
+.mode-note.busy::before{animation:mode-busy 1.2s ease-in-out infinite}
+.mode-note.bad::before{background:var(--bad)}   /* a switch that failed: the words say so in the note's own colour; a still red dot adds to them */
 @keyframes mode-busy{50%{opacity:.25}}
 @media (prefers-reduced-motion:reduce){.mode-note.busy::before{animation:none}}   /* the dot stays still */
 .mute{margin-left:auto;align-self:center;color:var(--powder)}

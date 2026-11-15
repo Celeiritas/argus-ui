@@ -4,12 +4,15 @@
 // so it arms the button and a second click within 5 s confirms. Reduced motion: no ring (CSS), the countdown words only.
 // Server plugins get it as api.holdConfirm. Returns {cancel}; the button keeps its own label and look between holds.
 // Argus watches the button while it is held, then nods when onDone finishes, or winces if it returns false or throws.
-function holdConfirm(btn, onDone, {ms = 3000} = {}) {
+// `name`: when the visible label is not a verb (the mode pill shows "Game"), the verb-first name a screen reader hears
+// ("Switch to Game") and the armed button says ("Click again to switch to Game"). Default: the label itself.
+function holdConfirm(btn, onDone, {ms = 3000, name = ''} = {}) {
   const label = btn.textContent.trim(), secs = Math.ceil(ms / 1000);
+  const said = name || label, again = name ? name[0].toLowerCase() + name.slice(1) : label.toLowerCase();
   btn.classList.add('hold'); btn.type = 'button';
   btn.innerHTML = `<span class="hold-ring" aria-hidden="true"></span><span class="hold-label"></span>`;
   const text = $('.hold-label', btn), say = s => { text.textContent = s; };
-  say(label); btn.setAttribute('aria-label', `${label} (hold ${secs} seconds to confirm)`);
+  say(label); btn.setAttribute('aria-label', `${said} (hold ${secs} seconds to confirm)`);
   let t0 = 0, raf = 0, busy = false, armed = 0, pressed = false;
   const set = p => btn.style.setProperty('--p', p);
   function tick() {
@@ -46,7 +49,7 @@ function holdConfirm(btn, onDone, {ms = 3000} = {}) {
     if (pressed || e.detail > 0) { pressed = false; return; }                // a real press was already handled as a hold
     if (busy) return;
     if (armed) return finish();
-    say(`Click again to ${label.toLowerCase()}`); toast(`Click ${label} again within 5 seconds to confirm.`);
+    say(`Click again to ${again}`); toast(`Click ${label} again within 5 seconds to confirm.`);
     armed = setTimeout(() => { armed = 0; btn.classList.remove('hold-armed'); say(label); }, 5000); btn.classList.add('hold-armed');   // a refresh leaves an armed button alone (core.js refresh)
   });
   return {cancel: () => stop(true)};

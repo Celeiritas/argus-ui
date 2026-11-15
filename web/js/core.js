@@ -230,6 +230,7 @@ function wireFixes() { $$('#main button[data-fix]:not(.hold)').forEach(b => hold
 /* ---------- Desktop / Game mode (docs/modes.md): the pill at the top of every section, when state.modes exists ---------- */
 // The mode the server is in, lit in its colour; the other one is a button: press and hold (holdConfirm) to switch. While it
 // switches, both are off and the note says so; this page then asks every 2 s until the server is in that mode, 2 minutes at most.
+// A switch that failed (state.modes.failed, from the server) or never got there in that time: the note says so.
 let modeWait = null, modeStale = null;    // {to, until}: the switch this page started; modeStale: the mode it never reached in time
 function modeHues(list) {   // the colours (argus.css): Game purple, Desktop green; one other id gets the colour left, two others green then purple
   const h = list.map(x => x.id === 'game' || x.id === 'desktop' ? x.id : null), other = k => k === 'game' ? 'desktop' : 'game';
@@ -241,9 +242,10 @@ function drawModes() {
   if (!box) return;
   if (!m || list.length !== 2 || role() !== 'owner') { box.hidden = true; put($('#modePill'), ''); $('#modeNote').textContent = ''; return; }
   const label = id => list.find(x => x.id === id)?.label || id;
-  const waiting = modeWait && m.current !== modeWait.to ? modeWait.to : null;   // the server lost its note of the switch (a restart)
+  const failed = !m.switching && m.failed ? m.failed : null;          // the server saw that switch unit fail, less than 2 minutes ago
+  const waiting = modeWait && m.current !== modeWait.to && failed !== modeWait.to ? modeWait.to : null;   // the server lost its note of the switch (a restart)
   const to = m.switching || waiting;
-  if (modeStale && m.current === modeStale) modeStale = null;
+  if (modeStale && (m.current === modeStale || failed)) modeStale = null;
   box.hidden = false; box.setAttribute('aria-label', `${m.name || 'The server'} mode`);
   box.classList.toggle('switching', !!to); box.classList.toggle('unknown', !to && m.current === 'unknown');
   let html;
@@ -253,10 +255,17 @@ function drawModes() {
     if (x.id === m.current) return `<span class="mode-seg on ${hue}" data-mode="${esc(x.id)}">${esc(x.label)}<span class="sr"> (current)</span></span>`;
     return `<button type="button" class="mode-seg ${hue}" data-mode="${esc(x.id)}" data-mode-to="${esc(x.id)}"${to ? ' disabled' : ''}>${esc(x.label)}</button>`;
   }).join('');
-  if (put($('#modePill'), html)) $$('#modePill button[data-mode-to]:not([disabled])').forEach(b => holdConfirm(b, () => askMode(b.dataset.modeTo)));
-  const note = to ? (modeStale === to ? 'Still switching: check the TV' : `Switching to ${label(to)}…`) : modeStale ? 'Still switching: check the TV' : '';
+  const had = box.contains(document.activeElement);
+  if (put($('#modePill'), html)) {
+    // the visible word is the mode ("Game"); its name for a screen reader starts with the verb ("Switch to Game")
+    $$('#modePill button[data-mode-to]:not([disabled])').forEach(b => holdConfirm(b, () => askMode(b.dataset.modeTo), {name: `Switch to ${label(b.dataset.modeTo)}`}));
+    // the half that had the keyboard was drawn again: the keyboard stays in the pill (its button, or the group while it switches)
+    if (had && !box.contains(document.activeElement)) ($('#modePill button[data-mode-to]:not([disabled])') || box).focus();
+  }
+  const note = to ? (modeStale === to ? 'Still switching: check the TV' : `Switching to ${label(to)}…`)
+    : failed ? `Couldn't switch to ${label(failed)}` : modeStale ? `Didn't reach ${label(modeStale)}: check the TV` : '';
   const n = $('#modeNote'); if (n.textContent !== note) n.textContent = note;
-  n.classList.toggle('busy', !!to && modeStale !== to);
+  n.classList.toggle('busy', !!to && modeStale !== to); n.classList.toggle('bad', !to && !!failed);
 }
 // POST api/mode {"to"}: the server starts that mode's switch unit and nothing else. A refusal or a failure: the toast says
 // what the server said, and false makes Argus wince (holdConfirm).
@@ -267,7 +276,7 @@ async function askMode(to) {
     if (!j.ok) { toast(j.msg || "Couldn't switch modes. Try again in a moment."); setTimeout(refresh, 300); return false; }
     toast(j.msg || 'Switching.');
     modeWait = {to, until: Date.now() + 120000}; modeStale = null;
-    if (S.modes && S.modes.current !== to) S.modes = {...S.modes, switching: to};
+    if (S.modes && S.modes.current !== to) S.modes = {...S.modes, switching: to, failed: null};
     setTimeout(() => { drawModes(); modePoll(); }, 0);   // after holdConfirm puts the button back: the pill is redrawn as switching
     return true;
   } catch (e) { toast("Couldn't reach the server to switch modes. Check that it's on, then try again."); return false; }
@@ -279,6 +288,10 @@ async function modePoll() {
   if (modeWait !== w) return;                                          // another press started a new wait meanwhile
   const m = S?.modes;
   if (!m || (m.current === w.to && !m.switching)) { modeWait = null; drawModes(); return; }
+  if (m.failed === w.to && !m.switching) {                             // its switch unit failed: said now, not after 2 minutes
+    modeWait = null; drawModes(); look.react('wince');
+    toast(`${m.name || 'The server'} couldn't switch to ${(m.modes || []).find(x => x.id === w.to)?.label || w.to} mode. Try again, or check the TV.`); return;
+  }
   if (Date.now() >= w.until) { modeWait = null; modeStale = w.to; drawModes(); return; }
   drawModes(); modePoll.t = setTimeout(modePoll, 2000);
 }
