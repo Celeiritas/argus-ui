@@ -1,0 +1,4 @@
+{"modes": [
+ {"id": "desktop", "label": "Desktop", "active_unit": "fake-desktop-shell", "switch_unit": "fake-to-desktop.service"},
+ {"id": "game", "label": "Game", "active_unit": "fake-game-session.service", "switch_unit": "fake-to-game"}
+]}
