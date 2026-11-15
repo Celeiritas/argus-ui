@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # A stand-in for `systemctl --user` used by the tests: units and their state live in units.json next to this file.
-import sys, json, os
+import sys, json, os, time
 F=os.path.join(os.path.dirname(__file__),'units.json')
 U=json.load(open(F))
 a=[x for x in sys.argv[1:] if x not in('--user','--no-legend','--no-block','--now','--type=service')]
@@ -11,7 +11,9 @@ if cmd=='list-unit-files':
   for n in U: print(n+'.service enabled enabled')
 elif cmd=='show' and 'Id' in props:   # several units at once, only the asked properties (server/modes.py): one block each, blank line between
   us=[x for i,x in enumerate(a[1:],1) if not x.startswith('-') and a[i-1]!='-p']
-  print('\n\n'.join('\n'.join(f'{k}='+(u if k=='Id' else U.get(u.rsplit('.',1)[0],{}).get(k,'inactive' if k=='ActiveState' else '')) for k in props) for u in us))
+  # a timestamp written as "now" is this moment on the monotonic clock, in microseconds as systemd gives it (tests/modes.test.js)
+  val=lambda u,k: (lambda v: str(int(time.monotonic()*1e6)) if v=='now' else str(v))(U.get(u.rsplit('.',1)[0],{}).get(k,'inactive' if k=='ActiveState' else ''))
+  print('\n\n'.join('\n'.join(f'{k}='+(u if k=='Id' else val(u,k)) for k in props) for u in us))
 elif cmd=='show':
   unit=a[1]; base,kind=unit.rsplit('.',1); u=U.get(base)
   if not u: print('LoadState=not-found'); sys.exit()

@@ -6,9 +6,12 @@
     repeated), the wrong number of modes, bad ids and labels, bad unit names (a leading "-", spaces, other unit kinds, a
     template), the same unit twice; read again when it changes
   * the probe, with a stand-in for systemctl: Game, Desktop, both and neither (unknown), switching because a switch unit
-    runs, switching because this server started one (until the target shows up, or 120 s pass), ONE call for all four
-    units, cached for 2 s, and a systemctl that fails
-  * switch(): one at a time, the start is `start --no-block <switch unit>`, a start that fails or times out
+    runs (not once it has run and stays active), switching because this server started one (until the target shows up,
+    its switch unit fails, or 120 s pass; a probe racing the switch never wipes the note), a failed switch reported, ONE
+    call for all four units, cached for 2 s, and a systemctl that fails
+  * after a restart or a new file: a switch unit that ended well a moment ago counts as a switch under way, once
+  * switch(): one at a time, the start is `start --no-block <switch unit>`, a start that fails, a start that times out
+    (it may still run: the note stays), a switch unit that stays active (refused)
   * the route, end to end on a real server in this process against the fake systemctl (tests/fixtures/fake_systemctl.py):
     the owner switches, a learner gets 403 and no "modes" in her state, off is 404, an unknown id 400, an unknown mode 409,
     already there 200, a second press while it switches 409 (also two at once: one start), and only switch units are ever
@@ -88,21 +91,32 @@ def doc(**change):
     for i in (0, 1): ms[i].update(change.get(f'm{i}', {}))
     return {'modes': ms}
 
-def reset():
-    with M._probe_lock: M._pending.clear()
+def reset(seed=False):
+    # seed=False: no look for a switch that ended a moment ago (that is tested on its own, in Restart)
+    with M._probe_lock: M._pending.clear(); M._seed[0] = seed
     M.clear_cache()
 
+PROPS = ('-p', 'Id', '-p', 'ActiveState', '-p', 'SubState', '-p', 'InactiveEnterTimestampMonotonic')
 
 class FakeSC:
-    """systemctl --user for the probe: states by unit; answers `show A B C D -p Id -p ActiveState` as systemctl does."""
-    def __init__(self, **states): self.states = {DESK: 'active', **states}; self.calls = []; self.fail = None
+    """systemctl --user for the probe: states by unit, each an ActiveState or a dict of properties; answers
+    `show A B C D -p Id -p ActiveState ...` as systemctl does: one block per unit, the asked properties, a blank line between."""
+    def __init__(self, **by): self.set(**{'desk': 'active', **by}); self.calls = []; self.fail = None
     def __call__(self, *args):
         self.calls.append(args)
         if self.fail: raise self.fail
-        return '\n\n'.join(f'Id={u}\nActiveState={self.states.get(u, "inactive")}' for u in args if u.endswith('.service')) + '\n'
+        props = [args[i + 1] for i, x in enumerate(args[:-1]) if x == '-p']
+        def prop(u, k):
+            s = self.states.get(u, 'inactive'); s = s if isinstance(s, dict) else {'ActiveState': s}
+            return u if k == 'Id' else str(s.get(k, 'inactive' if k == 'ActiveState' else ''))
+        return '\n\n'.join('\n'.join(f'{k}={prop(u, k)}' for k in props) for u in args if u.endswith('.service')) + '\n'
     def set(self, **by):
         names = {'desk': DESK, 'game': GAME, 'to_desk': TO_DESK, 'to_game': TO_GAME}
         self.states = {names[k]: v for k, v in by.items()}
+
+def stopped(at, state='inactive'):
+    """A switch unit that stopped (went inactive, or failed) at `at` seconds on the monotonic clock, as systemd gives it."""
+    return {'ActiveState': state, 'SubState': 'dead' if state == 'inactive' else 'failed', 'InactiveEnterTimestampMonotonic': int(at * 1e6)}
 
 
 class Config(unittest.TestCase):
@@ -185,7 +199,7 @@ class Probe(unittest.TestCase):
     def test_desktop_and_game(self):
         sc = FakeSC()
         p = self.look(sc, 100)
-        self.assertEqual(p, {'current': 'desktop', 'switching': None, 'name': 'Box',
+        self.assertEqual(p, {'current': 'desktop', 'switching': None, 'failed': None, 'name': 'Box',
                              'modes': [{'id': 'desktop', 'label': 'Desktop'}, {'id': 'game', 'label': 'Game'}]}, 'only ids and labels: no unit names')
         sc.set(game='active'); self.assertEqual(self.look(sc, 110)['current'], 'game')
         sc.set(game='reloading'); self.assertEqual(self.look(sc, 120)['current'], 'game')
@@ -203,10 +217,17 @@ class Probe(unittest.TestCase):
         sc.set(desk='active', to_game='inactive'); self.assertIsNone(self.look(sc, 200)['switching'])
         sc.set(desk='active', to_game='failed'); self.assertIsNone(self.look(sc, 210)['switching'], 'a failed switch is not switching')
 
+    def test_a_switch_unit_that_stays_active_is_done(self):
+        # RemainAfterExit=yes: a oneshot stays "active" (SubState exited) once it has run. That is not a switch under way.
+        sc = FakeSC(); sc.set(game='active', to_game={'ActiveState': 'active', 'SubState': 'exited'})
+        p = self.look(sc, 100); self.assertEqual((p['current'], p['switching']), ('game', None))
+        sc.set(desk='active', to_game={'ActiveState': 'active', 'SubState': 'start'}); M.clear_cache()
+        self.assertEqual(self.look(sc, 101)['switching'], 'game', 'still running its commands: switching')
+
     def test_one_call_for_all_four_cached_two_seconds(self):
         sc = FakeSC()
         self.look(sc, 100); self.look(sc, 101); self.look(sc, 101.9)
-        self.assertEqual(sc.calls, [('show', DESK, TO_DESK, GAME, TO_GAME, '-p', 'Id', '-p', 'ActiveState')])
+        self.assertEqual(sc.calls, [('show', DESK, TO_DESK, GAME, TO_GAME) + PROPS])
         self.look(sc, 102.1); self.assertEqual(len(sc.calls), 2, 'asked again after 2 s')
         M.clear_cache(); self.look(sc, 102.2); self.assertEqual(len(sc.calls), 3, 'and after the cache is cleared (a POST)')
 
@@ -218,8 +239,11 @@ class Probe(unittest.TestCase):
 
     def test_show_read_by_id_when_blocks_are_missing(self):
         us = [DESK, TO_DESK, GAME, TO_GAME]
-        self.assertEqual(M.parse_show(f'Id={GAME}\nActiveState=active\n\nId={DESK}\nActiveState=inactive\n', us), {GAME: 'active', DESK: 'inactive'})
+        self.assertEqual(M.parse_show(f'Id={GAME}\nActiveState=active\n\nId={DESK}\nActiveState=inactive\n', us),
+                         {GAME: {'Id': GAME, 'ActiveState': 'active'}, DESK: {'Id': DESK, 'ActiveState': 'inactive'}})
         self.assertEqual(M.parse_show('', us), {})
+        self.assertEqual(M.ended({'InactiveEnterTimestampMonotonic': '1500250000'}), 1500.25)
+        for v in ('0', '', 'n/a', None): self.assertIsNone(M.ended({'InactiveEnterTimestampMonotonic': v}), repr(v))
 
     def test_pending_switch(self):
         sc, starts = FakeSC(), []
@@ -260,6 +284,61 @@ class Probe(unittest.TestCase):
         sc.set(); p = self.look(sc, 1003)            # the desktop stopped, the game is not up yet: the dark seconds
         self.assertEqual((p['current'], p['switching']), ('unknown', 'game'))
 
+    def test_a_failed_switch_is_reported(self):
+        sc = FakeSC(to_game=stopped(900, 'failed'))   # an old failure, from before this switch
+        M.switch('game', sc, lambda *a: (True, ''), 'Box', now=1000)
+        p = self.look(sc, 1001); self.assertEqual((p['switching'], p['failed']), ('game', None), 'an old failure does not end a new switch')
+        sc.set(desk='active', to_game='activating'); M.clear_cache(); self.assertEqual(self.look(sc, 1002)['switching'], 'game')
+        sc.set(desk='active', to_game=stopped(1004, 'failed')); M.clear_cache()
+        p = self.look(sc, 1005)
+        self.assertEqual((p['current'], p['switching'], p['failed']), ('desktop', None, 'game'), 'it failed: not switching any more, and the pill says so')
+        self.assertEqual(M._pending, {}, 'the note is gone at once, not after 120 s')
+        M.clear_cache(); self.assertEqual(self.look(sc, 1004 + 119)['failed'], 'game', 'said for up to 120 s')
+        M.clear_cache(); self.assertIsNone(self.look(sc, 1004 + 121)['failed'], 'then it is history')
+        sc.set(game='active', to_game=stopped(1004, 'failed')); M.clear_cache()
+        self.assertIsNone(self.look(sc, 1006)['failed'], 'the host got into that mode after all: nothing to report')
+        sc.set(desk='active', to_game=stopped(1004)); M.clear_cache()
+        self.assertIsNone(self.look(sc, 1006)['failed'], 'a switch that ended well is no failure')
+
+
+class Restart(unittest.TestCase):
+    """The switch note lives in memory. Started again (a deploy) or given a new file mid-switch, Argus looks once for a switch
+    unit that ended well a moment ago into a mode the host is not in yet: that switch is still under way."""
+    def setUp(self):
+        os.environ['ARGUS_MODES'] = MODES; write(MODES, FIXTURE); M.config(); reset(seed=True)
+
+    def look(self, sc, now): return M.probe(sc, 'Box', now=now)
+
+    def test_a_switch_that_just_ended(self):
+        sc = FakeSC(desk='inactive', to_game=stopped(1000))   # the dark seconds: the desktop stopped, the game not up yet
+        p = self.look(sc, 1010)
+        self.assertEqual((p['current'], p['switching']), ('unknown', 'game'))
+        self.assertEqual(M._pending, {'to': 'game', 'at': 1000}, 'counted from when the switch unit ended')
+        starts = []
+        self.assertEqual(M.switch('desktop', sc, lambda *a: (starts.append(a), (True, ''))[1], 'Box', now=1011)[0], 409, 'a second press is refused')
+        self.assertEqual(starts, [])
+        sc.set(game='active', to_game=stopped(1000)); M.clear_cache()
+        self.assertEqual((self.look(sc, 1015)['current'], self.look(sc, 1015)['switching']), ('game', None), 'and it ends when the game shows up')
+
+    def test_only_once_and_only_recent(self):
+        sc = FakeSC(to_game=stopped(1000))
+        self.assertEqual(self.look(sc, 1000 + 121)['switching'], None, 'ended more than 120 s ago: history')
+        reset(seed=True); sc.set(desk='active', to_game=stopped(1000, 'failed'))
+        p = self.look(sc, 1010); self.assertEqual((p['switching'], p['failed']), (None, 'game'), 'a failed one is a failure, not a switch')
+        reset(seed=True); sc.set(game='active', to_game=stopped(1000))
+        self.assertIsNone(self.look(sc, 1010)['switching'], 'already in that mode: done')
+        reset(seed=True); sc.fail = OSError('no systemctl'); self.look(sc, 1010); sc.fail = None
+        self.assertTrue(M._seed[0], 'no answer from systemctl: it looks again next time')
+        sc.set(desk='active'); M.clear_cache(); self.look(sc, 1012)
+        self.assertFalse(M._seed[0], 'it looked')
+        sc.set(desk='active', to_game=stopped(1013)); M.clear_cache()
+        self.assertIsNone(self.look(sc, 1014)['switching'], 'only once: a switch it did not start is not noted later')
+
+    def test_a_new_file_looks_again(self):
+        self.look(FakeSC(), 1000); self.assertFalse(M._seed[0])
+        write(MODES, doc(m1={'label': 'Couch'})); M.config()
+        self.assertTrue(M._seed[0])
+
 
 class Switch(unittest.TestCase):
     def setUp(self):
@@ -276,6 +355,15 @@ class Switch(unittest.TestCase):
         self.assertEqual(M.switch('game', sc, ok, 'The server', now=30)[2], "Can't tell which mode the server is in right now. Try again in a minute.")
         sc.set(desk='active', to_game='active')
         self.assertEqual(M.switch('desktop', sc, ok, 'Box', now=40), (409, False, 'Box is already switching to Game mode.'))
+
+    def test_a_switch_unit_that_stays_active_is_refused(self):
+        # RemainAfterExit=yes: the unit is still active from its last run, so a start would do nothing and the pill would
+        # say "switching" for two minutes. Refused, with the reason; nothing started.
+        sc, starts = FakeSC(), []
+        sc.set(desk='active', to_game={'ActiveState': 'active', 'SubState': 'exited'})
+        self.assertEqual(M.switch('game', sc, lambda *a: (starts.append(a), (True, ''))[1], 'Box', now=10),
+                         (409, False, "Box can't switch to Game mode: its switch unit stays active after it runs (RemainAfterExit=yes), so a start would do nothing."))
+        self.assertEqual((starts, M._pending), ([], {}))
 
     def test_start_fails_or_hangs(self):
         sc = FakeSC()
@@ -356,7 +444,7 @@ class Route(unittest.TestCase):
     def state(self, login=OWNER): return self.req('GET', 'api/state', login)[1]
 
     def test_owner_switches(self):
-        self.assertEqual(self.state()['modes'], {'current': 'desktop', 'switching': None, 'name': 'Box',
+        self.assertEqual(self.state()['modes'], {'current': 'desktop', 'switching': None, 'failed': None, 'name': 'Box',
                                                  'modes': [{'id': 'desktop', 'label': 'Desktop'}, {'id': 'game', 'label': 'Game'}]})
         code, d = self.mode('game')
         self.assertEqual((code, d), (200, {'ok': True, 'msg': 'Switching to Game mode. The TV goes dark for a few seconds.'}))

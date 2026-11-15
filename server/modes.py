@@ -14,8 +14,8 @@ The host's two modes and their units live in one file on the host, never in the 
 The host rule: Argus only ever starts a switch unit (start --no-block), never a session unit itself. Starting a game session
 from a script while the desktop runs makes a hidden second session (a black screen until a reboot).
 
-probe(sc, name)              -> {"current": id | "unknown", "switching": id | None, "modes": [{"id", "label"}], "name"},
-                                or None when off. ONE systemctl call for all four units, cached for CACHE_S seconds.
+probe(sc, name)              -> {"current": id | "unknown", "switching": id | None, "failed": id | None, "modes": [{"id", "label"}],
+                                "name"}, or None when off. ONE systemctl call for all four units, cached for CACHE_S seconds.
 switch(to, sc, sc_ok, name)  -> (HTTP code, ok, msg): one switch at a time, re-probed under its own lock.
 `sc` / `sc_ok` are the server's systemctl --user helpers (argus_ui.sc / sc_ok, with their 20 s timeout)."""
 import json, os, re, subprocess, sys, threading, time
@@ -23,17 +23,22 @@ import json, os, re, subprocess, sys, threading, time
 ID = re.compile(r'^[a-z][a-z0-9-]{0,15}$')
 UNIT = re.compile(r'^[A-Za-z0-9@._:-]+$')
 OTHER_KINDS = ('.target', '.timer', '.socket', '.scope', '.slice', '.mount', '.automount', '.path', '.device', '.swap')
-PENDING_S = 120          # a switch Argus started counts as "switching" this long, unless the target mode shows up first
+PENDING_S = 120          # a switch counts as "switching" this long after it starts (or "failed" after it fails), unless the target mode shows up first
 CACHE_S = 2.0            # one systemctl call per this many seconds, however many pages ask
 MAX_FILE = 64 * 1024
 ON = ('active', 'reloading')              # an active_unit in one of these: the host is in that mode
-BUSY = ('activating', 'active', 'reloading')   # a switch_unit in one of these: a switch is under way
+BUSY = ('activating', 'active', 'reloading')   # a switch_unit in one of these: a switch is under way (but see busy(): active + exited is done)
+# the one show call asks for these. InactiveEnterTimestampMonotonic: when the unit last stopped (inactive or failed), on
+# CLOCK_MONOTONIC, the clock time.monotonic() reads on Linux; it tells a failure of this switch from an old one, and lets a
+# restarted Argus see a switch that ended a moment ago.
+PROPS = ('Id', 'ActiveState', 'SubState', 'InactiveEnterTimestampMonotonic')
 
 _cfg_lock = threading.Lock()
 _cfg = {'key': None, 'modes': None}
-_probe_lock = threading.Lock()            # the cache and the pending switch; never the server's LOCK
+_probe_lock = threading.Lock()            # the cache, the pending switch and _seed; never the server's LOCK
 _cache = {'at': None, 'modes': None, 'states': None}
-_pending = {}                             # {'to': id, 'at': monotonic seconds} after a start this server sent
+_pending = {}                             # {'to': id, 'at': monotonic seconds}: a start this server sent (noted just before it), or one _seed found
+_seed = [True]                            # the next probe looks for a switch that ended a moment ago (Argus restarted, or the file changed, mid-switch)
 _switch_lock = threading.Lock()           # one switch at a time
 
 
@@ -92,7 +97,7 @@ def config():
                 why = e.strerror if isinstance(e, OSError) and e.strerror else e
                 print(f'argus-ui: {os.path.basename(path)}: {why}; the Desktop / Game pill is off', file=sys.stderr, flush=True)
         _cfg.update(key=key, modes=modes)
-    with _probe_lock: _cache.update(at=None, modes=None, states=None); _pending.clear()
+    with _probe_lock: _cache.update(at=None, modes=None, states=None); _pending.clear(); _seed[0] = True
     return modes
 
 
@@ -101,8 +106,8 @@ def unit_list(modes):
 
 
 def parse_show(text, units):
-    """{unit: ActiveState} from `systemctl show A B C D -p Id -p ActiveState`: one block per unit, in the order asked,
-    with a blank line between. Read by position when the count matches (an alias's Id is its real name), else by Id."""
+    """{unit: {property: value}} from `systemctl show A B C D -p Id -p ActiveState ...`: one block per unit, in the order
+    asked, with a blank line between. Read by position when the count matches (an alias's Id is its real name), else by Id."""
     blocks = []
     for chunk in re.split(r'\n\s*\n', (text or '').strip()):
         d = {}
@@ -110,28 +115,56 @@ def parse_show(text, units):
             k, sep, v = line.partition('=')
             if sep: d[k.strip()] = v.strip()
         if d: blocks.append(d)
-    if len(blocks) == len(units): return {u: d.get('ActiveState', '') for u, d in zip(units, blocks)}
-    return {d['Id']: d.get('ActiveState', '') for d in blocks if d.get('Id') in units}
+    if len(blocks) == len(units): return dict(zip(units, blocks))
+    return {d['Id']: d for d in blocks if d.get('Id') in units}
 
 
 def show(modes, sc):
     """The four units' states in ONE systemctl call; {} when systemctl fails or hangs (then the mode is unknown)."""
     us = unit_list(modes)
-    try: return parse_show(sc('show', *us, '-p', 'Id', '-p', 'ActiveState'), us)
+    try: return parse_show(sc('show', *us, *[x for p in PROPS for x in ('-p', p)]), us)
     except Exception: return {}
 
 
+def busy(d):
+    """A switch unit under way. A oneshot with RemainAfterExit=yes stays active (SubState exited) once it is done: not busy."""
+    return d.get('ActiveState') in BUSY and not (d.get('ActiveState') == 'active' and d.get('SubState') == 'exited')
+
+
+def ended(d):
+    """When the unit last stopped (went inactive or failed), in time.monotonic() seconds; None if it has not since boot."""
+    try: us = int(d.get('InactiveEnterTimestampMonotonic') or 0)
+    except (TypeError, ValueError): return None
+    return us / 1e6 if us > 0 else None
+
+
 def compute(modes, states, now):
-    """(current, switching) from the units' states and the pending switch. Call with _probe_lock held.
-    A note newer than `now` (age below 0) counts as fresh: it is never cleared for being written a moment after `now` was read."""
-    on = [m['id'] for m in modes if states.get(m['active_unit']) in ON]
+    """(current, switching, failed) from the units' states and the pending switch. Call with _probe_lock held.
+    Ages below 0 (a note or a unit's stop newer than `now`, which was read a moment before) count as fresh."""
+    st = lambda u: states.get(u) or {}
+    on = [m['id'] for m in modes if st(m['active_unit']).get('ActiveState') in ON]
     current = on[0] if len(on) == 1 else 'unknown'          # both or neither: Argus can't tell
-    switching = next((m['id'] for m in modes if states.get(m['switch_unit']) in BUSY), None)
+    switching = next((m['id'] for m in modes if busy(st(m['switch_unit']))), None)
+    # for each mode: when its switch unit last stopped, and whether it failed then
+    end = {m['id']: (ended(st(m['switch_unit'])), st(m['switch_unit']).get('ActiveState') == 'failed') for m in modes}
+    if _seed[0] and states:
+        # once after a start or a new file (the note lives in memory): a switch unit that ended well a moment ago into a mode
+        # the host is not in yet is a switch still under way, as if this server had sent it (a deploy mid-switch)
+        _seed[0] = False
+        done = [(t, i) for i, (t, bad) in end.items() if t is not None and not bad and i != current and now - t < PENDING_S]
+        if done and not _pending: t, i = max(done); _pending.update(to=i, at=t)
     p = dict(_pending)
     if p:
-        if p['to'] == current or now - p['at'] >= PENDING_S or p['to'] not in [m['id'] for m in modes]: _pending.clear()
+        t, bad = end.get(p['to'], (None, False))
+        if (p['to'] == current or now - p['at'] >= PENDING_S or p['to'] not in end
+                or (bad and t is not None and t >= p['at'])):      # its switch unit failed after this switch began: it is over
+            _pending.clear()
         elif switching is None: switching = p['to']
-    return current, switching
+    failed = None
+    if switching is None:   # a switch into a mode the host is not in failed less than PENDING_S ago: the pill says so
+        bad = [(t, i) for i, (t, b) in end.items() if b and t is not None and i != current and now - t < PENDING_S]
+        failed = max(bad)[1] if bad else None
+    return current, switching, failed
 
 
 def probe(sc, name, now=None):
@@ -142,8 +175,8 @@ def probe(sc, name, now=None):
         t = time.monotonic() if now is None else now     # read under the lock: a note switch() wrote meanwhile is never newer
         fresh = _cache['modes'] is modes and _cache['at'] is not None and 0 <= t - _cache['at'] < CACHE_S
         if not fresh: _cache.update(at=t, modes=modes, states=show(modes, sc))
-        current, switching = compute(modes, _cache['states'], t)
-    return {'current': current, 'switching': switching, 'modes': [{'id': m['id'], 'label': m['label']} for m in modes], 'name': name}
+        current, switching, failed = compute(modes, _cache['states'], t)
+    return {'current': current, 'switching': switching, 'failed': failed, 'modes': [{'id': m['id'], 'label': m['label']} for m in modes], 'name': name}
 
 
 def clear_cache():
@@ -170,6 +203,9 @@ def switch(to, sc, sc_ok, name, now=None):
         if p['switching']: return 409, False, f'{name} is already switching to {label.get(p["switching"], p["switching"])} mode.'
         if p['current'] == 'unknown': return 409, False, f"Can't tell which mode {'the server' if name == 'The server' else name} is in right now. Try again in a minute."
         if p['current'] == to: return 200, True, f'Already in {m["label"]} mode.'
+        with _probe_lock: d = (_cache['states'] or {}).get(m['switch_unit']) or {}
+        if d.get('ActiveState') == 'active' and d.get('SubState') == 'exited':      # RemainAfterExit=yes: a start would do nothing
+            return 409, False, f"{name} can't switch to {m['label']} mode: its switch unit stays active after it runs (RemainAfterExit=yes), so a start would do nothing."
         at = time.monotonic() if now is None else now
         with _probe_lock:                      # the note goes in BEFORE the start: no page ever sees the unit started and no note
             _cache.update(at=None, modes=None, states=None); _pending.clear(); _pending.update(to=to, at=at)
