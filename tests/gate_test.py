@@ -70,10 +70,13 @@ MENTOR_PLUGIN = textwrap.dedent('''
 ''')
 for pid, code, extra in (('heracles', WHO_PLUGIN, {'agent': True, 'roles': {'get': {'lessons': 'learner', 'status': 'learner'}, 'post': {'answer': 'learner'}}}),
                          ('quiet', OLD_PLUGIN, {'name': 'Quiet', 'roles': {'get': {'ping': 'learner'}, 'post': {'note': 'learner'}}}),
-                         ('closed', WHO_PLUGIN, {'name': 'Closed'}),
+                         ('closed', WHO_PLUGIN, {'name': 'Closed', 'open_folder': 'board/'}),
                          ('mentor', MENTOR_PLUGIN, {'name': 'Mentor', 'roles': {'get': {'status': 'learner'}}})):
     put(os.path.join(PLUG, pid, 'plugin.json'), dict(id=pid, kind='server', page='page.js', **extra))
     put(os.path.join(PLUG, pid, 'plugin.py'), code); put(os.path.join(PLUG, pid, 'page.js'), f'// {pid}')
+# closed's "open_folder" (4.47.0): board/ goes out without the sandbox; a .py inside it is still never served
+put(os.path.join(PLUG, 'closed', 'board', 'index.html'), '<p>board</p>'); put(os.path.join(PLUG, 'closed', 'board', 'sw.js'), '// sw')
+put(os.path.join(PLUG, 'closed', 'board', 'secret.py'), 'X = 1'); put(os.path.join(PLUG, 'closed', 'boardish.js'), '// next door')
 put(os.path.join(PLUG, 'kwonly', 'plugin.json'), {'id': 'kwonly', 'kind': 'server', 'page': 'page.js'})
 put(os.path.join(PLUG, 'kwonly', 'page.js'), '// kwonly')
 put(os.path.join(PLUG, 'kwonly', 'plugin.py'), 'def get(path, query, ctx, *, who=None):\n    return 200, {"who": who}\n')
@@ -379,6 +382,31 @@ class Headers(Base):
         code, h, _ = self.req(G, 'plugins/heracles/page.js'); etag = h['etag']
         code, h, _ = self.req(G, 'plugins/heracles/page.js', **{'If-None-Match': etag})
         self.assertEqual(code, 304); self.assertNotIn('access-control-allow-origin', h)
+
+    def test_open_folder_of_a_server_plugin_has_no_sandbox(self):
+        for path in ('plugins/closed/board/', 'plugins/closed/board/index.html', 'plugins/closed/board/sw.js'):
+            code, h, _ = self.req(G, path)
+            self.assertEqual(code, 200, path)
+            self.assertEqual(h['content-security-policy'], a.OWN_HEADERS['Content-Security-Policy'], path)
+            self.assertNotIn('sandbox', h['content-security-policy'], path); self.assertNotIn('access-control-allow-origin', h, path)
+            self.assertEqual((h['x-frame-options'], h['cross-origin-resource-policy']), ('SAMEORIGIN', 'same-origin'), path)
+        etag = self.req(G, 'plugins/closed/board/index.html')[1]['etag']
+        code, h, _ = self.req(G, 'plugins/closed/board/index.html', **{'If-None-Match': etag})
+        self.assertEqual(code, 304); self.assertNotIn('sandbox', h['content-security-policy'])
+        self.assertEqual(self.req(G, 'plugins/closed/board/secret.py')[0], 404, 'a server plugin never serves Python')
+        for path in ('plugins/closed/page.js', 'plugins/closed/boardish.js', 'plugins/heracles/page.js'):
+            self.assertIn('sandbox', self.req(G, path)[1]['content-security-policy'], f'{path} keeps the sandbox')
+        self.assertIn('sandbox', self.req(G, 'plugins/closed/board/../page.js')[1].get('content-security-policy', 'sandbox'))
+
+    def test_open_folder_manifest_values(self):
+        d = os.path.join(PLUG, 'closed')
+        self.assertEqual(a.safe_dir(d, 'board/'), 'board'); self.assertEqual(a.safe_dir(d, 'board'), 'board')
+        for bad in ('', None, '.', '/', '..', '../closed/board', 'board/..', 'board/./', 'nope', 'page.js', 'board\\x', 'C:/x', 7, '//board//x'):
+            self.assertEqual(a.safe_dir(d, bad), '', repr(bad))
+        out = os.path.join(TMP, 'outside-folder'); os.makedirs(out, exist_ok=True)
+        try: os.symlink(out, os.path.join(d, 'linked'), target_is_directory=True)
+        except (OSError, NotImplementedError): self.skipTest('no symbolic links here (Windows without the right); CI on Linux checks it')
+        self.assertEqual(a.safe_dir(d, 'linked'), '', 'a link that leads out of the plugin folder is no open folder')
 
     def test_bind_default(self):
         self.assertEqual(a.BIND, '127.0.0.1', 'without ARGUS_BIND the server listens on this machine only')

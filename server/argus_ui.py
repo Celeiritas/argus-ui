@@ -77,6 +77,15 @@ def safe_file(d, name):
     name = str(name or '')
     return name if name and '..' not in name and not name.startswith('/') and os.path.isfile(os.path.join(d, name)) else ''
 
+def safe_dir(d, name):
+    # a folder named in a manifest (a server plugin's "open_folder"): plain segments, inside the folder (links resolved),
+    # there, and not the plugin's folder itself; '' otherwise
+    name = str(name or '').strip('/')
+    parts = name.split('/')
+    if not name or '\\' in name or '\0' in name or ':' in name or any(x in ('', '.', '..') for x in parts): return ''
+    root = os.path.realpath(d); f = os.path.realpath(os.path.join(root, *parts))
+    return name if f != root and inside(root, f) and os.path.isdir(f) else ''
+
 def plugin_dirs():
     """id -> folder of every plugin folder: the bundled ones, then yours (yours win on the same id)."""
     found = {}
@@ -111,6 +120,9 @@ def manifest(pid, d):
     if p['kind'] == 'server':
         p['server'], p['page'] = safe_file(d, m.get('server') or 'plugin.py'), safe_file(d, m.get('page') or 'page.js')
         p['style'] = safe_file(d, m.get('style'))
+        # 4.47.0: one folder whose files go out on Elaia's origin without the sandbox (OPEN_FOLDER_HEADERS), for a trusted
+        # page that needs storage, a service worker and its own API (Ariad-Node's workspace); '' = none, the default
+        p['open_folder'] = safe_dir(d, m.get('open_folder'))
         # a larger POST limit for its own api/<id>/... (a page that saves records or uploads images), never below the
         # default and never above PLUGIN_MAX_BODY; every other check on a POST stays the same
         mb = m.get('max_body')
@@ -217,6 +229,10 @@ OWN_HEADERS = {'Content-Security-Policy': "default-src 'self'; script-src 'self'
                                           "frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'",
                'X-Frame-Options': 'SAMEORIGIN', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'same-origin',
                'Cross-Origin-Resource-Policy': 'same-origin', 'Cross-Origin-Opener-Policy': 'same-origin'}
+# A server plugin's "open_folder" (4.47.0): the same policy, on Elaia's own origin. Server plugins are trusted code whose page
+# script already runs in Elaia's page; this lets one folder of theirs be a page of its own (a frame or a tab) with storage,
+# a service worker scoped to that folder and same-origin calls to its api/<id>/. Every other plugin file keeps the sandbox.
+OPEN_FOLDER_HEADERS = dict(OWN_HEADERS)
 
 def load_own_origin(path=None, left_out=None):
     """The checked own-origin.json: {id: {port, public, links}}. A missing file is {}; a broken file or entry is logged
@@ -824,7 +840,11 @@ class H(BaseHTTPRequestHandler):
         if '/' not in rest:                                   # plugins/<id> -> plugins/<id>/ so relative URLs resolve
             self.send_response(301); self.send_header('Location', self.path.split('?', 1)[0] + '/')
             self.send_header('Content-Length', '0'); self.end_headers(); return
-        return self.send_plugin_file(p, sub, PLUGIN_HEADERS if p['kind'] == 'static' else SERVER_FILE_HEADERS)
+        own = PLUGIN_HEADERS if p['kind'] == 'static' else SERVER_FILE_HEADERS
+        if p.get('open_folder'):                              # only a file that, links resolved, is inside that folder
+            _, f = plugin_target(p['dir'], sub)
+            if f and inside(os.path.realpath(os.path.join(p['dir'], p['open_folder'])), f): own = OPEN_FOLDER_HEADERS
+        return self.send_plugin_file(p, sub, own)
 
     def send_plugin_file(self, p, sub, own):
         # one file of plugin p by its path inside the folder (sub; '' is the entry page), with the headers own: the
