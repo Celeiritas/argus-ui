@@ -238,6 +238,22 @@ class Probe(unittest.TestCase):
         self.assertEqual((p['current'], p['switching']), ('game', None)); self.assertEqual(M._pending, {})
         sc.set(desk='active'); self.assertIsNone(self.look(sc, 1006)['switching'], 'gone back to Desktop later: not switching')
 
+    def test_pending_newer_than_now_stays(self):
+        # a page's probe read its clock, then the switch wrote its note a moment later: the note is not wiped as "too old"
+        sc = FakeSC()
+        with M._probe_lock: M._pending.update(to='game', at=1005)
+        p = self.look(sc, 1000)
+        self.assertEqual((p['current'], p['switching']), ('desktop', 'game'))
+        self.assertEqual(M._pending, {'to': 'game', 'at': 1005}, 'the note is kept')
+
+    def test_no_gap_around_the_start(self):
+        # the note is written before the start: a page that asks while systemctl starts the unit already sees "switching"
+        sc, seen = FakeSC(), []
+        def start(*a): seen.append(M.probe(sc, 'Box', now=1000.5)['switching']); return True, ''
+        self.assertEqual(M.switch('game', sc, start, 'Box', now=1000)[:2], (200, True))
+        self.assertEqual(seen, ['game'])
+        self.assertEqual(self.look(sc, 1001)['switching'], 'game')
+
     def test_pending_while_neither_runs(self):
         sc = FakeSC()
         M.switch('game', sc, lambda *a: (True, ''), 'Box', now=1000)
@@ -266,9 +282,25 @@ class Switch(unittest.TestCase):
         self.assertEqual(M.switch('game', sc, lambda *a: (False, 'Failed to start fake-to-game.service: Unit not found.\nmore'), 'Box', now=10),
                          (200, False, 'Box could not start the switch to Game mode: Failed to start fake-to-game.service: Unit not found.'))
         self.assertEqual(M._pending, {}, 'nothing pending after a failed start')
-        def hang(*a): raise subprocess.TimeoutExpired('systemctl', 20)
-        self.assertEqual(M.switch('game', sc, hang, 'Box', now=20)[1:], (False, 'Box could not start the switch to Game mode: systemctl timed out'))
-        self.assertEqual(M.switch('game', sc, lambda *a: (False, ''), 'Box', now=30)[2], 'Box could not start the switch to Game mode: systemctl gave no reason')
+        self.assertEqual(M.switch('game', sc, lambda *a: (False, ''), 'Box', now=15)[2], 'Box could not start the switch to Game mode: systemctl gave no reason')
+        def oops(*a): raise OSError('no systemctl')
+        self.assertEqual(M.switch('game', sc, oops, 'Box', now=18)[1:], (False, 'Box could not start the switch to Game mode: systemctl could not be run'))
+        self.assertEqual(M._pending, {})
+
+    def test_start_that_times_out_may_still_run(self):
+        # with --no-block, no answer in 20 s means a busy manager: the start may still have been queued, so the note stays
+        # and a second press is refused until the mode shows up or 120 s pass
+        sc, starts = FakeSC(), []
+        def hang(*a): starts.append(a); raise subprocess.TimeoutExpired('systemctl', 20)
+        self.assertEqual(M.switch('game', sc, hang, 'Box', now=20),
+                         (200, False, 'Box may be switching to Game mode: systemctl did not answer in time. Check the TV before you try again.'))
+        self.assertEqual(M._pending, {'to': 'game', 'at': 20})
+        self.assertEqual(self.look_switching(sc, 25), 'game')
+        self.assertEqual(M.switch('game', sc, hang, 'Box', now=30), (409, False, 'Box is already switching to Game mode.'))
+        self.assertEqual(len(starts), 1, 'the second press started nothing')
+        self.assertIsNone(self.look_switching(sc, 141), 'after 120 s it gives up')
+
+    def look_switching(self, sc, now): return M.probe(sc, 'Box', now=now)['switching']
 
     def test_one_at_a_time(self):
         sc, starts, gate = FakeSC(), [], threading.Event()

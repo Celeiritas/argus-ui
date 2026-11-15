@@ -122,13 +122,14 @@ def show(modes, sc):
 
 
 def compute(modes, states, now):
-    """(current, switching) from the units' states and the pending switch. Call with _probe_lock held."""
+    """(current, switching) from the units' states and the pending switch. Call with _probe_lock held.
+    A note newer than `now` (age below 0) counts as fresh: it is never cleared for being written a moment after `now` was read."""
     on = [m['id'] for m in modes if states.get(m['active_unit']) in ON]
     current = on[0] if len(on) == 1 else 'unknown'          # both or neither: Argus can't tell
     switching = next((m['id'] for m in modes if states.get(m['switch_unit']) in BUSY), None)
     p = dict(_pending)
     if p:
-        if p['to'] == current or not 0 <= now - p['at'] < PENDING_S or p['to'] not in [m['id'] for m in modes]: _pending.clear()
+        if p['to'] == current or now - p['at'] >= PENDING_S or p['to'] not in [m['id'] for m in modes]: _pending.clear()
         elif switching is None: switching = p['to']
     return current, switching
 
@@ -137,8 +138,8 @@ def probe(sc, name, now=None):
     """What the pill shows, or None when the feature is off. Cached for CACHE_S seconds; never holds the server's LOCK."""
     modes = config()
     if not modes: return None
-    t = time.monotonic() if now is None else now
     with _probe_lock:
+        t = time.monotonic() if now is None else now     # read under the lock: a note switch() wrote meanwhile is never newer
         fresh = _cache['modes'] is modes and _cache['at'] is not None and 0 <= t - _cache['at'] < CACHE_S
         if not fresh: _cache.update(at=t, modes=modes, states=show(modes, sc))
         current, switching = compute(modes, _cache['states'], t)
@@ -169,11 +170,19 @@ def switch(to, sc, sc_ok, name, now=None):
         if p['switching']: return 409, False, f'{name} is already switching to {label.get(p["switching"], p["switching"])} mode.'
         if p['current'] == 'unknown': return 409, False, f"Can't tell which mode {'the server' if name == 'The server' else name} is in right now. Try again in a minute."
         if p['current'] == to: return 200, True, f'Already in {m["label"]} mode.'
+        at = time.monotonic() if now is None else now
+        with _probe_lock:                      # the note goes in BEFORE the start: no page ever sees the unit started and no note
+            _cache.update(at=None, modes=None, states=None); _pending.clear(); _pending.update(to=to, at=at)
+        timed_out = False
         try: ok, err = sc_ok('start', '--no-block', m['switch_unit'])
-        except subprocess.TimeoutExpired: ok, err = False, 'systemctl timed out'
+        except subprocess.TimeoutExpired: ok, err, timed_out = False, '', True
         except Exception: ok, err = False, 'systemctl could not be run'
-        clear_cache()
+        with _probe_lock:
+            _cache.update(at=None, modes=None, states=None)
+            # refused: nothing is switching. No answer in 20 s: the start may still have been queued (--no-block), so the note
+            # stays and a second press is refused until the mode shows up or PENDING_S pass.
+            if not ok and not timed_out and _pending.get('to') == to and _pending.get('at') == at: _pending.clear()
+        if timed_out: return 200, False, f'{name} may be switching to {m["label"]} mode: systemctl did not answer in time. Check the TV before you try again.'
         if not ok: return 200, False, f'{name} could not start the switch to {m["label"]} mode: {short(err)}'
-        with _probe_lock: _pending.clear(); _pending.update(to=to, at=time.monotonic() if now is None else now)
         return 200, True, f'Switching to {m["label"]} mode. The TV goes dark for a few seconds.'
     finally: _switch_lock.release()
