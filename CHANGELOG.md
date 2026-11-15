@@ -1,5 +1,11 @@
 # Changelog
 
+## 4.47.0 – 2026-11-15
+A server plugin may name one folder that is not sandboxed (the owner chose this route for Ariad-Node's workspace, which sat at *Opening your workspace* because its sandboxed files could not load their module script, keep storage or save).
+- **`"open_folder"` in a server plugin's manifest** (docs/leafy-plugin.md, *An open folder*): files in that folder go out on Elaia's origin with the own-address policy (`OPEN_FOLDER_HEADERS`, the same as `OWN_HEADERS`: no sandbox, `default-src 'self'`, framed only by Elaia, no wildcard CORS), so the page there has storage, a service worker scoped to its folder and same-origin calls to its own API. Static plugins cannot name one; every other plugin file keeps the sandbox.
+- **Checked like a path:** plain folder names only, inside the plugin with links resolved, not the plugin's folder itself; a bad value is ignored. A file gets the open headers only when, links resolved, it is inside that folder; Python files are still never served.
+- Tests: `tests/gate_test.py` checks the open folder's headers (also on a 304), that `.py` stays hidden, that the plugin's other files, a look-alike name next door and other plugins keep the sandbox, and the bad manifest values (a link out of the folder on Linux).
+
 ## 4.46.0 – 2026-11-14
 Desktop / Game mode, from the top of every section (the owner: "Where is the toggle? I need it today").
 - **One pill shows which mode the server is in and switches it.** Under the section's name, on every section, for the owner only: two halves in the order of the host's file, the mode the server is in filled with its colour (Game purple, Desktop green, white words 6.4:1 and 6.0:1) and read out as current, the other a button: press and hold it for 3 seconds (or hold Space or Enter) and the server starts that mode's switch unit. The toast says *Switching to Game mode. The TV goes dark for a few seconds.*
