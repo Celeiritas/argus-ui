@@ -129,7 +129,6 @@ ROUTES = [  # (verb, path, what it is, owner, learner, none)
     (G, 'api/push/status', 'phone alerts: available, this person\'s devices', 200, 403, 403),
     (G, 'api/log/hermes-secretsort', 'a program log', 200, 403, 403),
     (G, 'api/events', "what happened lately: the watch's events (4.40.0)", 200, 403, 403),
-    (G, 'api/pads/list', "a moved section's old api", 200, 403, 403),
     (G, 'api/nothing', 'an unknown api', 404, 403, 403),
     (G, 'plugins/heracles/page.js', 'files of a plugin that opens a path to learners', 200, 200, 'page'),
     (G, 'plugins/quiet/page.js', 'files of another such plugin', 200, 200, 'page'),

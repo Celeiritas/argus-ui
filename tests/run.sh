@@ -100,7 +100,7 @@ if [ -z "$1" ] || [ "$1" = naming ]; then
   echo "== naming"
   $PYTHON -W ignore::ResourceWarning "$R/tests/naming_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1
 fi
-# Leafy Controllers' probe over fixture sysfs trees, and the old names (pads.json, ARGUS_PADS, <base>/pads) on a real server:
+# Leafy Controllers' probe over fixture sysfs trees, and its settings and the old address <base>/pads on a real server:
 # tests/controllers_test.py; the browser side is tests/controllers.test.js
 if [ -z "$1" ] || [ "$1" = controllers ]; then
   echo "== controllers model"
