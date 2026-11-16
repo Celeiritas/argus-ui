@@ -1037,7 +1037,9 @@ class H(BaseHTTPRequestHandler):
     def today_save(self, body):
         # POST api/today {the layout} or {"reset": true}: save the owner's own Today (today.py, docs/home.md "Edit Today").
         # The owner's (need()); checked strictly: anything this version cannot use is refused with the reason, nothing saved.
+        # Zeus is never quiet (quiet.NEVER_QUIET): a "quiet" that lists him is saved without him, not refused (an older page).
         reset = body == {'reset': True}
+        if not reset and isinstance(body, dict) and 'quiet' in body: body = dict(body, quiet=quiet.switchable(body['quiet']))
         try: lay = today.save({} if reset else body)
         except ValueError as e: return self.deny(400, str(e))
         except OSError: return self.deny(500, 'Today could not be saved. Try again in a moment.')

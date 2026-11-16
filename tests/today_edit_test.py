@@ -8,7 +8,8 @@
   * saving: checked strictly (each refusal says why, nothing written), written whole (no .tmp left), a broken file moved aside
     first (today.set-aside-<YYYYMMDD-HHMM>.json, the same bytes), Reset writes {} and keeps the file
   * quiet: Mentor is always quiet whatever the file says; a section switched off is quiet for the status, Today's count
-    and the phone (quiet.hushed); a broken file leaves only Mentor quiet
+    and the phone (quiet.hushed); a broken file leaves only Mentor quiet; Zeus (throne) is never quiet, from the file or a
+    save (saved without it, not refused); Mnemosyne (memory) off leaves the backup line out of the daily summary
   * the route on a real server: the owner saves and resets; a learner gets 403 and no `today` in her state; not JSON 415,
     from another site 403, over 16 KB 413, a bad layout 400 with its reason
 The page side is tests/today-edit.test.js. Who is asking comes from the real check on Linux; without /proc (Windows, macOS)
@@ -56,13 +57,14 @@ def wrapper(name, script):
     put(os.path.join(FX, name), f'#!/bin/sh\nexec "{sys.executable}" "{os.path.join(FX, script)}" "$@"\n'); os.chmod(os.path.join(FX, name), 0o755)
     return os.path.join(FX, name)
 
-# two server plugins whose status says they need him: mentor (always quiet) and throne (quiet once switched off)
+# three server plugins whose status says they need him: mentor (always quiet), throne (Zeus: never quiet, 4.50.1) and
+# memory (quiet once switched off). This memory has no summary_line, so backups_line() raises unless it is quiet.
 NEEDY = textwrap.dedent('''
     def get(path, query, ctx, who=None):
         if path == 'status': return 200, {'line': '3 waiting', 'needs': True, 'action': 'Look now', 'count': 3}
         return 404, {'error': 'Not here.'}
 ''')
-for pid in ('mentor', 'throne'):
+for pid in ('mentor', 'throne', 'memory'):
     put(os.path.join(PLUG, pid, 'plugin.json'), {'id': pid, 'kind': 'server', 'page': 'page.js', 'name': pid.title(), 'roles': {'get': {'status': 'learner'}}})
     put(os.path.join(PLUG, pid, 'plugin.py'), NEEDY); put(os.path.join(PLUG, pid, 'page.js'), f'// {pid}')
 
@@ -87,9 +89,9 @@ put(PEOPLE, {'people': [{'id': 'owner-one', 'name': 'Owner One', 'role': 'owner'
 GOOD = {'tiles': {'order': ['olympus', 'argus', 'argus'], 'hidden': ['controllers'], 'names': {'olympus': '  Play\tground '}},
         'open': {'order': ['link:/studio/', 'media:jellyfin'], 'hidden': ['link:https://example.com/'],
                  'names': {'link:/studio/': 'Music'}, 'groups': {'link:/studio/': 'Make', 'media:jellyfin': ''}},
-        'quiet': ['throne']}
+        'quiet': ['memory']}
 TIDY = {'tiles': {'order': ['olympus', 'argus'], 'hidden': ['controllers'], 'names': {'olympus': 'Play ground'}},
-        'open': GOOD['open'], 'quiet': ['throne']}
+        'open': GOOD['open'], 'quiet': ['memory']}
 
 
 class File(unittest.TestCase):
@@ -102,7 +104,7 @@ class File(unittest.TestCase):
     def test_good_file_is_read_and_tidied(self):
         write(TODAY, dict(v=1, **GOOD))
         self.assertEqual(T.load(), (TIDY, None))
-        self.assertEqual(a.quiet.quiet_sections(), {'mentor', 'throne'})
+        self.assertEqual(a.quiet.quiet_sections(), {'mentor', 'memory'})
         write(TODAY, {'quiet': []})                 # changed on disk: read again
         self.assertEqual(T.load(), ({}, None))
 
@@ -112,7 +114,7 @@ class File(unittest.TestCase):
                  'too many': {'quiet': [f's{i}' for i in range(65)]}, 'bad id': {'tiles': {'order': ['Not An Id']}},
                  'bad key': {'open': {'hidden': ['file:/etc/passwd']}}, 'other version': {'v': 2},
                  'too big': ' ' * (T.FILE_MAX + 1) + '{}', 'Today renamed': {'tiles': {'names': {'home': 'Mine'}}},
-                 'quiet broken': {'quiet': 'throne'}, 'not text': {'tiles': {'names': {'olympus': 7}}},
+                 'quiet broken': {'quiet': 'memory'}, 'not text': {'tiles': {'names': {'olympus': 7}}},
                  'nested too deeply': '[' * 60000}
         for what, data in cases.items():
             with self.subTest(what):
@@ -146,12 +148,12 @@ class File(unittest.TestCase):
     def test_save_over_a_broken_file_sets_it_aside(self):
         write(TODAY, '{"hand": "edited", ')
         self.assertTrue(T.load()[1])
-        T.save({'quiet': ['throne']})
+        T.save({'quiet': ['memory']})
         kept = asides()
         self.assertEqual(len(kept), 1, 'the broken file is moved aside, not overwritten')
         self.assertRegex(os.path.basename(kept[0]), r'^today\.set-aside-\d{8}-\d{4}\.json$')
         self.assertEqual(read(kept[0]), '{"hand": "edited", ', 'the same bytes')
-        self.assertEqual(T.load(), ({'quiet': ['throne']}, None))
+        self.assertEqual(T.load(), ({'quiet': ['memory']}, None))
         T.save({})                                  # a good file is simply replaced: no second set-aside
         self.assertEqual(len(asides()), 1)
 
@@ -161,11 +163,32 @@ class File(unittest.TestCase):
         self.assertEqual(T.load(), ({}, None))
 
     def test_mentor_is_quiet_whatever_the_file_says(self):
-        T.save({'quiet': ['throne']})
+        T.save({'quiet': ['memory']})
         self.assertIn('mentor', a.quiet.quiet_sections())
-        self.assertTrue(a.quiet.hushed({'section': 'throne', 'subject': 'x'}, [], {}), 'switched off: no buzz')
+        self.assertTrue(a.quiet.hushed({'section': 'memory', 'subject': 'x'}, [], {}), 'switched off: no buzz')
         self.assertTrue(a.quiet.hushed({'section': 'mentor', 'subject': 'x'}, [], {}))
         self.assertFalse(a.quiet.hushed({'section': 'argus', 'subject': 'x'}, [], {}), 'the others still buzz')
+
+    def test_zeus_is_never_quiet_whatever_the_file_says(self):
+        # a hand-edited file or an older page: "throne" in quiet is read, but never makes Zeus quiet (quiet.NEVER_QUIET)
+        self.assertEqual(a.quiet.NEVER_QUIET, frozenset({'throne'}))
+        write(TODAY, {'quiet': ['throne']})
+        self.assertEqual(T.load(), ({'quiet': ['throne']}, None), 'the file itself is good: no problem line')
+        self.assertIs(a.quiet.quiet_sections(), a.quiet.DEFAULT_QUIET, 'only Mentor is quiet')
+        self.assertFalse(a.quiet.is_quiet('throne'))
+        self.assertFalse(a.quiet.hushed({'section': 'throne', 'subject': 'x'}, [], {}), 'a request for his yes still buzzes')
+        write(TODAY, {'quiet': ['throne', 'memory']})
+        self.assertEqual(a.quiet.quiet_sections(), {'mentor', 'memory'}, 'the rest of the list still counts')
+        self.assertEqual(a.quiet.switchable(['throne', 'memory', 'throne']), ['memory'])
+        self.assertEqual(a.quiet.switchable('not a list'), 'not a list', 'left for today.clean to refuse')
+
+    def test_mnemosyne_off_leaves_the_backup_line_out_of_the_summary(self):
+        # this fixture's Memory has no summary_line: while it reminds him, backups_line() asks it (and says it cannot)
+        with self.assertRaises(LookupError): a.backups_line()
+        T.save({'quiet': ['memory']})
+        self.assertEqual(a.backups_line(), '', 'switched off: no backup line in the 08:00 summary')
+        T.save({})
+        with self.assertRaises(LookupError): a.backups_line()
 
 
 class Route(unittest.TestCase):
@@ -195,18 +218,31 @@ class Route(unittest.TestCase):
         code, d = self.save(GOOD)
         self.assertEqual((code, d), (200, {'ok': True, 'today': TIDY, 'msg': 'Today saved.'}))
         s = self.state()
-        self.assertEqual(s['today'], TIDY); self.assertEqual(s['quiet'], ['mentor', 'throne'])
+        self.assertEqual(s['today'], TIDY); self.assertEqual(s['quiet'], ['memory', 'mentor'])
         code, d = self.save({'reset': True})
         self.assertEqual((code, d), (200, {'ok': True, 'today': {}, 'msg': 'Today is back to the default.'}))
         self.assertEqual(self.state()['quiet'], ['mentor'])
 
     def test_a_switched_off_section_never_needs_him(self):
-        code, st = self.req('GET', 'api/throne/status')
+        code, st = self.req('GET', 'api/memory/status')
         self.assertTrue(st['needs'])
-        self.save({'quiet': ['throne']})
-        code, st = self.req('GET', 'api/throne/status')
+        self.save({'quiet': ['memory']})
+        code, st = self.req('GET', 'api/memory/status')
         self.assertEqual((st['needs'], st.get('action', ''), st.get('count')), (False, '', None), st)
         self.assertEqual(st['line'], '3 waiting', 'its tile keeps its own line')
+
+    def test_zeus_cannot_be_switched_off(self):
+        # an older page (or a hand-made request) that sends throne in quiet: saved without it, not refused; Zeus still asks
+        code, d = self.save({'quiet': ['throne', 'memory']})
+        self.assertEqual((code, d['ok'], d['today']), (200, True, {'quiet': ['memory']}))
+        self.assertEqual(json.loads(read(TODAY)), {'v': 1, 'quiet': ['memory']}, 'the file never holds throne')
+        self.assertEqual(self.state()['quiet'], ['memory', 'mentor'])
+        code, d = self.save({'quiet': ['throne']})
+        self.assertEqual((code, d['today']), (200, {}), 'only throne: nothing left to keep quiet')
+        write(TODAY, {'quiet': ['throne']})         # by hand
+        self.assertEqual(self.state()['quiet'], ['mentor'])
+        code, st = self.req('GET', 'api/throne/status')
+        self.assertEqual((st['needs'], st.get('count')), (True, 3), 'Zeus still needs him')
 
     def test_bad_layout_is_400_with_the_reason(self):
         self.save(GOOD)
@@ -227,7 +263,7 @@ class Route(unittest.TestCase):
         self.assertEqual(code, 200)
         self.assertEqual(s['today'], {})
         self.assertRegex(s['today_problem'] or '', r'could not be used \(it is (nested too deeply|not valid JSON)\)')
-        self.assertEqual(self.save({'quiet': ['throne']})[0], 200, 'Edit can save over it')
+        self.assertEqual(self.save({'quiet': ['memory']})[0], 200, 'Edit can save over it')
         self.assertEqual(len(asides()), 1, 'the nested file is kept beside the new one')
         self.assertEqual(self.state()['today_problem'], None)
 
@@ -235,19 +271,22 @@ class Route(unittest.TestCase):
         code, d = self.save(GOOD, LEARNER)
         self.assertEqual(code, 403); self.assertFalse(d.get('ok', False))
         self.assertFalse(os.path.exists(TODAY), 'nothing saved for a learner')
-        self.save({'quiet': ['throne'], 'tiles': {'names': {'olympus': 'Secret name'}}})
+        self.save({'quiet': ['memory'], 'tiles': {'names': {'olympus': 'Secret name'}}})
         s = self.state(LEARNER)
         self.assertNotIn('today', s); self.assertNotIn('today_problem', s); self.assertNotIn('Secret name', json.dumps(s))
-        code, st = self.req('GET', 'api/throne/status', LEARNER)
+        code, st = self.req('GET', 'api/memory/status', LEARNER)
         self.assertTrue(st['needs'], "a learner's page is not quiet")
 
     def test_protections(self):
-        self.assertEqual(self.save(None, raw='quiet=throne', **{'Content-Type': 'application/x-www-form-urlencoded'})[0], 415)
+        self.assertEqual(self.save(None, raw='quiet=memory', **{'Content-Type': 'application/x-www-form-urlencoded'})[0], 415)
         self.assertEqual(self.save(GOOD, **{'Sec-Fetch-Site': 'cross-site'})[0], 403)
         self.assertEqual(self.save(GOOD, Origin='http://evil.example')[0], 403)
         self.assertEqual(self.save(None, raw=json.dumps({'quiet': []}) + ' ' * (T.BODY_MAX + 1))[0], 413)
         self.assertEqual(self.save(None, raw=json.dumps(GOOD) + ' ' * (8 * 1024))[0], 200, 'a body over 4 KB but under 16 KB is fine')
         self.assertEqual(self.save([1])[0], 400)
+        for odd in ([{}], [[1]], [1]):              # a quiet entry that is not text: refused with the reason, never a crash
+            code, d = self.save({'quiet': odd})
+            self.assertEqual((code, d['ok']), (400, False), odd); self.assertIn('not a section or link', d['msg'])
 
 
 if __name__ == '__main__':

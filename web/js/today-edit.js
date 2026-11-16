@@ -5,7 +5,9 @@
 //   Open: each link or player shown or hidden, renamed, put in a group (typing a new group name makes the group, an empty one
 //         takes it out), moved up or down in its group; a group renamed or moved as a whole. As compact on Today as before.
 //   Reminders: one switch per section that can need him (a server plugin's status). Off: its tile keeps its line, but it never
-//         asks for him on Today or buzzes his phone (server/quiet.py). Mentor is always off and cannot be switched on.
+//         asks for him on Today or buzzes his phone (server/quiet.py). Mentor is always off and cannot be switched on; Zeus
+//         is always on and cannot be switched off (he asks for the owner's yes). Mnemosyne's says off also drops the backup
+//         line from the 08:00 summary.
 // Saved on the server (POST api/today -> ~/.config/argus-ui/today.json, server/today.py), so every device shows the same Today
 // and an update keeps it. Only the owner sees the button; the server refuses anyone else. Every name he types is drawn with
 // esc(), never as HTML. Moving is by buttons (keyboard and touch alike); the keyboard stays on the button it pressed.
@@ -17,6 +19,11 @@ const todayEdit = (() => {
   const plainWord = e => WORDS[e.id]?.name || e.own || e.id;          // a tile's name before the owner renamed it
   const same = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
   const QUIET_ALWAYS = ['mentor'];         // server/quiet.py DEFAULT_QUIET: never reminds him, whatever the file says
+  const QUIET_NEVER = ['throne'];          // server/quiet.py NEVER_QUIET: Zeus asks for his yes, so he always reminds (4.50.1)
+  const quietable = id => !QUIET_ALWAYS.includes(id) && !QUIET_NEVER.includes(id);
+  // a plain line under a switch whose "off" does more than Today and the phone (server/argus_ui.py backups_line())
+  const SWITCH_NOTE = {memory: 'Off also leaves the backup line out of the daily summary.',
+    throne: 'Zeus asks for your yes before deploys and merges, so he always reminds you.'};
   // the draft from a layout: `lay` is today.json's (S.today) or {} for Reset to default
   function draft(lay) {
     const was = S.today; S.today = lay;    // tileList / openList read the layout through myToday()
@@ -24,7 +31,7 @@ const todayEdit = (() => {
       const names = lay.tiles?.names || {}, onames = lay.open?.names || {};
       const tiles = home.tileList().map(e => ({id: e.id, mark: e.mark, god: godOwned(e.id), word: e.word, def: plainWord(e), name: godOwned(e.id) ? '' : names[e.id] || plainWord(e), shown: e.shown}));
       const open = home.openList().filter(x => x.key.length <= 300).map(x => ({key: x.key, what: x.what || '', def: x.def, own: x.own, name: onames[x.key] || x.def, group: x.group, shown: x.shown}));
-      return {tiles, open: tidy(open), quiet: new Set((lay.quiet || []).filter(id => !QUIET_ALWAYS.includes(id)))};
+      return {tiles, open: tidy(open), quiet: new Set((lay.quiet || []).filter(quietable))};
     } finally { S.today = was; }
   }
   // Open's order as Today shows it: the entries without a group first, then each group, in the order the groups first come
@@ -67,9 +74,12 @@ const todayEdit = (() => {
   }
   function quietPart() {
     const rs = reminders(); if (!rs.length) return '';
-    const sw = r => { const always = QUIET_ALWAYS.includes(r.id), onn = !always && !d.quiet.has(r.id);
-      return `<li><label class="edswitch${always ? ' locked' : ''}"><input type="checkbox" role="switch" data-q="${esc(r.id)}"${onn ? ' checked' : ''}${always ? ' disabled' : ''}>`
-        + `<span class="edsw"><b>${esc(r.word)}</b><small>${always ? 'Never reminds you' : onn ? 'Reminds you' : 'Off: never asks for you'}</small></span></label></li>`; };
+    // a locked switch (Mentor always off, Zeus always on) is disabled but still read out: its label says its state in words
+    const sw = r => { const off = QUIET_ALWAYS.includes(r.id), lock = !quietable(r.id), onn = !off && !d.quiet.has(r.id);
+      const state = off ? 'Never reminds you' : lock ? 'Always reminds you' : onn ? 'Reminds you' : 'Off: never asks for you';
+      const note = SWITCH_NOTE[r.id], nid = note && `edq-note-${esc(r.id)}`;
+      return `<li><label class="edswitch${lock ? ' locked' : ''}"><input type="checkbox" role="switch" data-q="${esc(r.id)}"${onn ? ' checked' : ''}${lock ? ' disabled' : ''}${note ? ` aria-describedby="${nid}"` : ''}>`
+        + `<span class="edsw"><b>${esc(r.word)}</b><small class="edstate">${state}</small></span></label>${note ? `<p class="ednote" id="${nid}">${esc(note)}</p>` : ''}</li>`; };
     return `<section aria-labelledby="ed-quiet"><h2 id="ed-quiet">Reminders</h2><p class="edhint">Off: its tile keeps its line, but it never asks for you on Today and never buzzes your phone.</p>`
       + `<ul class="edswitches">${rs.map(sw).join('')}</ul></section>`;
   }
@@ -132,7 +142,7 @@ const todayEdit = (() => {
       $$('#main [data-ed=done]').forEach(b => { b.disabled = false; b.removeAttribute('aria-busy'); });
       toast((j && j.msg) || "Couldn't save Today. Try again in a moment."); return;
     }
-    S.today = j.today; S.today_problem = null; S.quiet = [...new Set([...QUIET_ALWAYS, ...(j.today.quiet || [])])];
+    S.today = j.today; S.today_problem = null; S.quiet = [...new Set([...QUIET_ALWAYS, ...(j.today.quiet || []).filter(quietable)])];
     stop(); toast(j.msg || 'Today saved.'); refresh();
   }
   function resetDraft() { d = draft({}); draw(); refocus('#editDone'); toast('Back to the default layout. Press Done to keep it, or Cancel.'); }
@@ -180,7 +190,7 @@ const todayEdit = (() => {
     if (!on()) return;
     const el = e.target, row = el.closest('[data-i]');
     if (el.dataset.q) { if (el.checked) d.quiet.delete(el.dataset.q); else d.quiet.add(el.dataset.q);
-      const s = el.closest('label').querySelector('small'); if (s) s.textContent = el.checked ? 'Reminds you' : 'Off: never asks for you'; return; }
+      const s = el.closest('label').querySelector('.edstate'); if (s) s.textContent = el.checked ? 'Reminds you' : 'Off: never asks for you'; return; }
     if (row && el.dataset.f === 'shown') { (row.dataset.list === 'tiles' ? d.tiles : d.open)[+row.dataset.i].shown = el.checked; row.classList.toggle('off', !el.checked); return; }
     if (pressed && (el.dataset.f === 'group' || el.classList.contains('edgname'))) { later = el; return; }   // waits for the click (above)
     regroup(el, false);
