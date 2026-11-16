@@ -32,7 +32,7 @@ const devices = (() => {
   // Check again pressed while a background ask runs is kept (pending) and run, then said, when that ask ends.
   async function ask(fresh) {
     if (role() !== 'owner') return;
-    if (busy) { if (fresh && !freshRun) pending = true; return; }
+    if (busy) { if (fresh && !freshRun) { pending = true; drawPanel(); } return; }   // the press shows "Checking…" at once
     if (!fresh && Date.now() - at < 10000) return;
     busy = true; freshRun = !!fresh; at = Date.now(); if (fresh) drawPanel();
     try {

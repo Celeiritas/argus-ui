@@ -107,12 +107,17 @@ run(async b => {
     check(hung === 1 && stuck === 'Check again' && /Could not ask/.test(after), `a request that hangs is given up after 12 s ("${stuck}", "${after}", ${hung} asked)`);
     check(reqs === n0, `and the next is not started at once: 10 s from the answer, not the question (${reqs - n0} more)`);
     // Check again pressed while the page's own background ask runs: kept, run when that ask ends, and said (review R2, finding 3)
-    await p.waitForTimeout(10300);                                                   // past the 10 s since the last answer
     let fresh = 0; const order = [];
     await p.route('**/api/devices*', async q => { const f = /fresh=1/.test(q.request().url()); order.push(f ? 'fresh' : 'bg'); if (f) fresh++; else await sleep(2000); await q.continue(); });
-    await p.evaluate(() => { document.querySelector('#devsay').textContent = ''; devices.ask(); });   // a background ask, slowed to 2 s
-    await p.waitForTimeout(300); await again.focus(); await p.keyboard.press('Enter'); await p.waitForTimeout(3500);
+    await p.evaluate(() => { document.querySelector('#devsay').textContent = ''; });
+    // a background ask, slowed to 2 s: asked every 0.5 s until one starts (the 10 s gate, or the page's own 15 s refresh, may refuse
+    // an ask; waiting a fixed time could land just after a refresh and make the press run at once)
+    for (let i = 0; i < 30 && !order.length; i++) { await p.evaluate(() => { devices.ask(); }); await p.waitForTimeout(500); }
+    await again.focus(); await p.keyboard.press('Enter'); await p.waitForTimeout(150);
+    const waiting = await again.textContent(), kept = await p.evaluate(() => document.activeElement?.matches('#devices .devagain'));
+    await p.waitForTimeout(3500);
     const later = await p.locator('#devsay').textContent(); await p.unroute('**/api/devices*');
+    check(waiting === 'Checking…' && kept, `the waiting press shows at once and keeps the focus ("${waiting}", focus ${kept})`);
     check(order.join() === 'bg,fresh' && fresh === 1 && /^Checked\. /.test(later), `Check again during a background ask runs after it and is said (${order.join(' then ')}, "${later}")`);
     await p.close();
     p = await page(b, 375, 812); await p.goto(WATCH); await p.waitForSelector('#devices .dev', {timeout: 8000}).catch(() => {});
@@ -190,7 +195,10 @@ run(async b => {
     check(!r.some(x => x.status === 'offline'), 'never "offline" when Argus cannot tell');
     const stamp = await p.locator('#devices .devmeta span').textContent();
     check(/^Tried \d/.test(stamp), `Tailscale failing: the time says Tried, not Checked ("${stamp}")`);
-    await p.locator('#devices').scrollIntoViewIfNeeded(); await shot(p, 'devices-cant-tell-412'); await p.close();
+    await p.locator('#devices').scrollIntoViewIfNeeded(); await shot(p, 'devices-cant-tell-412');
+    await p.locator('#devices .devagain').click(); await p.waitForTimeout(1500);
+    const triedSaid = await p.locator('#devsay').textContent();
+    check(/^Tried\. Tailscale gave an error\. 1 online, 6 can't tell\.$/.test(triedSaid), `Tailscale failing: Check again says Tried, not Checked ("${triedSaid}")`); await p.close();
     p = await today(b, 412, 915);
     check((await chips(p)).join() === "1 online,6 can't tell", `Today: ${(await chips(p)).join(' / ')}`); await p.close();
     answer('ok');
