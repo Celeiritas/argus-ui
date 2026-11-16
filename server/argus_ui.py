@@ -971,7 +971,7 @@ class H(BaseHTTPRequestHandler):
             q = urlsplit(self.path).query                                   # relative, so it is right at /, at /argus/ and behind a proxy that strips the prefix
             self.send_response(302); self.send_header('Location', '../' * p.count('/') + MOVED[first] + ('?' + q if q else ''))
             self.send_header('Cache-Control', 'no-store'); self.send_header('Content-Length', '0'); self.end_headers(); return  # for now, and not remembered: the old id is free again later
-        if p.startswith('api/') and moved(pid) and MOVED[pid] in ids:       # a page left open since before the move still asks the old api:
+        if p.startswith('api/') and pid != 'pads' and moved(pid) and MOVED[pid] in ids:   # a page left open since before the move still asks the old api (not pads: 404 since 4.49.0):
             name = next(x['name'] for x in live if x['id'] == MOVED[pid])   # it shows "problem" in place of its list and "line" on Home, both true
             return self.out(json.dumps({'ok': False, 'moved': MOVED[pid], 'line': f'Now called {name}: reload this page',
                                         'problem': f'This section is now called {name}. Reload this page to open it.'}), 'application/json')
