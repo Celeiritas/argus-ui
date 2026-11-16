@@ -338,6 +338,7 @@ dialog .confirm{border-color:var(--danger);color:var(--danger)}
 .dev.s-unknown .dstat{background:transparent;color:var(--snow);border:1px dashed var(--dc)}
 .devmeta{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--s2);margin:var(--s2) 0 0;font-size:var(--fs-meta);color:var(--powder)}
 .devagain[aria-disabled=true]{opacity:.7;cursor:progress}
+.devprobe{max-width:760px;margin:0 0 var(--s2);font-size:var(--fs-sec);color:var(--snow);overflow-wrap:anywhere}   /* Tailscale could not be asked: said once */
 /* a broken file reads as a problem (the trouble panel's edge); the help link is a full 44 px target; on a wide screen the
    list stops at a readable width so a name and its badge stay close */
 .devices .devbad{border:1px solid var(--bad)}.devwhy{display:block;color:var(--snow);margin-bottom:var(--s1);overflow-wrap:anywhere}

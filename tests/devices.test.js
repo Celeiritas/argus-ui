@@ -18,7 +18,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 // the rows as the page shows them
 const rows = p => p.$$eval('#devices .dev', ls => ls.map(l => {
   const st = l.querySelector('.dstat'), cs = getComputedStyle(st), r = l.getBoundingClientRect();
-  return {name: l.querySelector('b').textContent, meta: l.querySelector('.dw span').textContent, status: [...l.classList].find(c => c.startsWith('s-')).slice(2),
+  return {name: l.querySelector('b').textContent, meta: l.querySelector('.dw span')?.textContent || '', status: [...l.classList].find(c => c.startsWith('s-')).slice(2),
           label: st.textContent, bg: cs.backgroundColor, ink: cs.color, border: cs.borderStyle, h: r.height};
 }));
 const token = (p, name) => p.evaluate(n => { const d = document.createElement('i'); d.style.color = `var(${n})`; document.body.append(d); const c = getComputedStyle(d).color; d.remove(); return c; }, name);
@@ -65,7 +65,10 @@ run(async b => {
     check(r.map(x => x.name).join() === 'Shelf,Desk PC,Spare PC,Phone,Tablet,Laptop,Old console', `the devices in the file's order (${r.map(x => x.name).join(', ')})`);
     check(by.Shelf.status === 'desktop' && by.Shelf.label === 'Desktop mode' && /this machine/.test(by.Shelf.meta), `this machine shows its mode: ${by.Shelf.label} (${by.Shelf.meta})`);
     check(by['Desk PC'].status === 'online' && by['Desk PC'].label === 'Online' && by.Phone.label === 'Online', 'online peers say Online');
-    check(by['Spare PC'].status === 'offline' && by['Spare PC'].label === 'Offline' && /last seen/.test(by['Spare PC'].meta), `offline, with when it was last seen (${by['Spare PC'].meta})`);
+    check(by['Spare PC'].status === 'offline' && by['Spare PC'].label === 'Offline' && /last seen .+ ago \(.*\d.*\)/.test(by['Spare PC'].meta), `offline, with when it was last seen and the exact time in the row (${by['Spare PC'].meta})`);
+    check(await p.locator('#devices .dev.s-offline time[datetime]').count() === 1 && await p.locator('#devices .dev [title]').count() === 0, 'the exact time is text in a <time>, not a hover title');
+    check(by.Phone.meta === '' && by['Desk PC'].meta === '' && /^Server · this machine$/.test(by.Shelf.meta) && by.Tablet.meta === 'Tailscale did not say',
+      `the kind word is left out when the name says it (Phone "${by.Phone.meta}", Desk PC "${by['Desk PC'].meta}", Shelf "${by.Shelf.meta}", Tablet "${by.Tablet.meta}")`);
     check(['Tablet', 'Laptop', 'Old console'].every(k => by[k].status === 'unknown' && by[k].label === "Can't tell"), "the rest: Can't tell, in words");
     check(/Tailscale did not say/.test(by.Tablet.meta) && /Not on the Tailscale list/.test(by.Laptop.meta) && /does not check/.test(by['Old console'].meta), 'each "can\'t tell" says why');
     const tok = {};
@@ -87,6 +90,19 @@ run(async b => {
     let asked = 0; p.on('request', q => { if (/api\/devices\?fresh=1/.test(q.url())) asked++; });
     await again.focus(); await p.keyboard.press('Enter'); await p.waitForTimeout(1500);
     check(asked === 1 && await p.evaluate(() => document.activeElement?.classList.contains('devagain')), `Enter on Check again asks again (${asked}) and keeps the focus there`);
+    const said = await p.locator('#devsay').textContent();
+    check(said === "Checked. 3 online, 1 offline, 3 can't tell." && await p.locator('#devsay').getAttribute('aria-live') === 'polite' && !await p.locator('#main #devsay').count(),
+      `Check again's result is said in a polite live region outside the redrawn page ("${said}")`);
+    await p.evaluate(() => render());          // the page's 15 s refresh rebuilds Watch: the keyboard stays on Check again
+    check(await p.evaluate(() => document.activeElement?.matches('#devices .devagain')), 'the 15 s refresh keeps the focus on Check again');
+    // a stalled connection: given up after 12 s, then not asked again straight away (no back-to-back loop)
+    let hung = 0, reqs = 0; p.on('request', q => { if (/api\/devices/.test(q.url())) reqs++; });
+    await p.route('**/api/devices*', () => { hung++; });                          // never answered
+    await p.evaluate(() => devices.ask(true)); await p.waitForTimeout(12800);
+    const stuck = await again.textContent(), after = await p.locator('#devsay').textContent(); await p.unroute('**/api/devices*');
+    const n0 = reqs; await p.evaluate(() => devices.ask()); await p.waitForTimeout(500);
+    check(hung === 1 && stuck === 'Check again' && /Could not ask/.test(after), `a request that hangs is given up after 12 s ("${stuck}", "${after}", ${hung} asked)`);
+    check(reqs === n0, `and the next is not started at once: 10 s from the answer, not the question (${reqs - n0} more)`);
     await p.close();
     p = await page(b, 375, 812); await p.goto(WATCH); await p.waitForSelector('#devices .dev', {timeout: 8000}).catch(() => {});
     check(await noOverflow(p), '375 px: no sideways scroll'); await p.close();
@@ -98,6 +114,8 @@ run(async b => {
     check(await line.count() === 1, 'Today has the device line');
     const c = await chips(p);
     check(c.join() === "3 online,1 offline,3 can't tell", `the counts, Desktop counted as online (${c.join(' / ')})`);
+    const al = await line.getAttribute('aria-label');
+    check(al === "Devices: 3 online, 1 offline, 3 can't tell. Open the list", `the link's spoken name, with pauses and what it does ("${al}")`);
     const lb = await line.boundingBox();
     check(lb.height >= 44 && lb.height <= 100, `one compact line, 44 px or more to the thumb (${Math.round(lb.height)} px)`);
     check(await noOverflow(p), 'Today with the line, 412 px: no sideways scroll');
@@ -112,6 +130,31 @@ run(async b => {
     check(await noOverflow(p), 'Today, 375 px: no sideways scroll'); await p.close();
     p = await today(b, 1920, 1080); await shot(p, 'devices-today-1920'); await p.close();
 
+    // ---- the server cannot be reached: Today says so instead of counts that may be old ----
+    p = await today(b, 412, 915);
+    await p.route('**/api/devices*', r => r.abort()); await p.evaluate(() => devices.ask(true)); await p.waitForTimeout(800);
+    const off = await p.locator('.home .devline').textContent(), offl = await p.locator('.home .devline').getAttribute('aria-label');
+    check(/Could not reach the server/.test(off) && !/online|offline/.test(off) && /could not reach/.test(offl), `no answer: the line says so, no old counts ("${off}")`);
+    await p.unroute('**/api/devices*'); await p.evaluate(() => devices.ask(true)); await p.waitForTimeout(800);
+    check((await chips(p)).join() === "3 online,1 offline,3 can't tell", 'an answer again: the counts are back'); await p.close();
+
+    // ---- Edit Today with the line on Today (review finding 3) ----
+    p = await today(b, 412, 915);
+    await p.locator('#editToday').click(); await p.locator('#main .home.edit').waitFor();
+    await p.waitForTimeout(11000);                 // past one device ask (10 s) and a page refresh (15 s from load)
+    check(await p.locator('#main .home.edit').count() === 1 && await p.locator('#main .edit .edtop [data-ed=cancel]').count() === 1,
+      'Edit Today stays open while the device list is asked for again');
+    await p.locator('#main .edit .edtop [data-ed=cancel]').click(); await p.locator('#editToday').waitFor(); await p.waitForTimeout(300);
+    check(await p.locator('.home .devline').count() === 1 && (await chips(p)).join() === "3 online,1 offline,3 can't tell", 'after Cancel the device line is back');
+    check(await p.evaluate(() => document.activeElement?.id) === 'editToday', 'and the keyboard is back on Edit Today');
+    const tl = await p.evaluate(() => home.tileList().map(e => e.id));
+    check((await p.request.post(BASE + 'api/today', {data: {tiles: {hidden: tl}}})).ok(), 'save a Today with every tile hidden');
+    await p.close();
+    p = await today(b, 375, 812);
+    check(await p.locator('.home .devline').count() === 1, 'every tile hidden: the device line still shows');
+    check(await noOverflow(p), 'every tile hidden, 375 px: no sideways scroll'); await p.close();
+    p = await page(b, 412, 915); check((await p.request.post(BASE + 'api/today', {data: {reset: true}})).ok(), 'Today back to the default'); await p.close();
+
     // ---- Game mode: this machine in the pill's purple ----
     game(); await sleep(2500);
     p = await watch(b, 412, 915); await p.waitForFunction(() => /Game mode/.test(document.querySelector('#devices')?.textContent || ''), null, {timeout: 8000}).catch(() => {});
@@ -125,8 +168,10 @@ run(async b => {
     // ---- Tailscale fails: every peer "can't tell", never "offline" ----
     answer('fail'); await sleep(1100);
     p = await watch(b, 412, 915); r = await rows(p);
-    check(r.filter(x => !['Shelf'].includes(x.name)).every(x => x.status === 'unknown' && /Tailscale gave an error|does not check/.test(x.meta)),
-      `Tailscale failing: ${r.map(x => x.label).join(', ')}`);
+    check(r.filter(x => !['Shelf'].includes(x.name)).every(x => x.status === 'unknown' && !/Tailscale gave an error/.test(x.meta)),
+      `Tailscale failing: ${r.map(x => x.label).join(', ')}, the reason not repeated on the rows`);
+    const why = await p.locator('#devices .devprobe').textContent().catch(() => '');
+    check(await p.locator('#devices .devprobe').count() === 1 && /^Tailscale gave an error, so Argus can't tell/.test(why), `the reason is said once, above the list ("${why}")`);
     check(!r.some(x => x.status === 'offline'), 'never "offline" when Argus cannot tell');
     await p.locator('#devices').scrollIntoViewIfNeeded(); await shot(p, 'devices-cant-tell-412'); await p.close();
     p = await today(b, 412, 915);
@@ -137,7 +182,7 @@ run(async b => {
     put(ACTIVE, '{"devices": [{"name": "Desk PC", "probe": "tailscale", "host": "pc one"}]}'); await sleep(300);
     p = await watch(b, 412, 915);
     const bad = await p.locator('#devbody').textContent();
-    check(/Fix that line/.test(bad) && (await p.locator('#devbody .devbad a').boundingBox()).height >= 44, 'a broken file says what to do, with a 44 px help link');
+    check(/Fix device 1 in active\.json on the server/.test(bad) && (await p.locator('#devbody .devbad a').boundingBox()).height >= 44, 'a broken file names the file and device the server read, with a 44 px help link');
     check(/could not be read/.test(bad) && /Tailscale host name/.test(bad), `a broken file says why ("${bad.slice(0, 90)}…")`);
     await p.locator('#devices').scrollIntoViewIfNeeded(); await shot(p, 'devices-broken-412'); await p.close();
     p = await page(b, 412, 915); await p.goto(BASE); await p.waitForTimeout(1500);
