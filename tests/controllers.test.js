@@ -19,8 +19,8 @@ run(async b => {
   check(status.line === '3 connected · 1 Steam virtual' && status.needs === false, 'api/controllers/status: Home\'s line, never "needs you"');
 
   await p.goto(BASE + 'controllers'); await p.locator('.controllers .controller').first().waitFor({timeout: 5000});
-  check(await p.locator('.title h1').textContent() === 'Controllers', 'the page heading says Controllers');
-  check(await p.locator('a.realm[aria-current="page"] b').textContent() === 'Controllers', 'the sections bar marks Controllers as the open section');
+  check(await p.locator('.title h1').textContent() === 'Daedalus' && await p.locator('#sub').textContent() === 'Build · controllers, console', 'the page heading is its god\'s name, Daedalus (4.48.0), and under it what he does');
+  check(await p.locator('a.realm[aria-current="page"] b').textContent() === 'Daedalus', 'the sections bar marks Daedalus (Controllers) as the open section');
   const rows = await p.locator('.controllers .controller').evaluateAll(els => els.map(e => ({
     slot: e.querySelector('.slot').textContent.trim(), name: e.querySelector('.who b').textContent.trim(),
     mode: e.querySelector('.mode').textContent.replace('Mode: ', '').trim(), kind: e.querySelector('.kind').textContent.trim(),
@@ -105,9 +105,9 @@ run(async b => {
   await ph.unroute('**/api/controllers/list', withNotice); await p.unroute('**/api/controllers/list', withNotice);
 
   await p.goto(BASE + 'home');
-  const place = p.locator('.place', {hasText: 'Controllers'});
+  const place = p.locator('.place[data-id="controllers"]');
   await place.filter({hasText: 'connected'}).waitFor({timeout: 5000}).catch(() => {});       /* the line comes with a second request: wait for it, the check below says what is wrong */
-  check(await place.count() === 1 && /3 connected\s· 1 Steam virtual/.test(await place.textContent()), 'Home: a Controllers place with its line');
+  check(await place.count() === 1 && /3 connected\s· 1 Steam virtual/.test(await place.textContent()), 'Home: the Controllers place (called Daedalus since 4.48.0) with its line');
   check(await place.getAttribute('href') === new URL(BASE).pathname + 'controllers' && await p.locator('.place', {hasText: /\bPads\b/}).count() === 0,
     'Home: the place opens <base>/controllers and none is called Pads');
   check(p.errors.length === 0, 'no page errors ' + p.errors.join(' | '));

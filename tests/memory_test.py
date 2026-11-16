@@ -251,7 +251,7 @@ class Copies(Base):
         c = self.copy('offsite')
         self.assertEqual((c['state'], c['kind']), ('yes', 'done'))
         self.assertEqual(c['say'], "The server's backups were last copied outside your home 2 days ago (Sunday, 4:30 AM).")
-        del self.jobs[-1]['started']                                           # an older Elaia without "started"
+        del self.jobs[-1]['started']                                           # an older LeafyGrove without "started"
         self.assertEqual(self.say('offsite'), "The server's backups have been copied outside your home.")
 
     def test_offsite_running(self):

@@ -2,7 +2,7 @@
 
     python3 tests/mentor_people_test.py -v        (tests/run.sh runs it under "== mentor people")
 
-The plugin is loaded the way Elaia loads it, inside a temporary HOME; every path (people file, databases, decks, the AI
+The plugin is loaded the way LeafyGrove loads it, inside a temporary HOME; every path (people file, databases, decks, the AI
 config) is in that folder. Names are placeholders ("Owner One", "Learner Two")."""
 import contextlib, importlib.util, io, json, os, shutil, sqlite3, sys, tempfile, threading, time, types, unittest
 

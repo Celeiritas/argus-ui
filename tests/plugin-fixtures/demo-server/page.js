@@ -1,4 +1,4 @@
-// Test stand-in for a server plugin's page: runs inside Elaia's page and talks to its own API.
+// Test stand-in for a server plugin's page: runs inside LeafyGrove's page and talks to its own API.
 leafy.register('demo-server', {
   async show(el, api) {
     el.innerHTML = `<p id="demo-ping">asking…</p><button type="button" id="demo-echo">Send echo</button><p id="demo-out" aria-live="polite"></p>

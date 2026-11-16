@@ -11,7 +11,7 @@ const REST = location.pathname.slice(MOUNT.length - (location.pathname === '/arg
 const AGENT_KEYS = (S?.personas || []).map(p => p.key);
 const PAGES = ['olympus', 'home', 'phone'];                   // sections that are not agents (Today, once called Home: docs/home.md; Phone alerts: docs/phone-alerts.md)
 const PLUGINS = S?.plugins || [];                             // LeafyPlugins: each has its own section (docs/leafy-plugin.md)
-// Elaia opens on Today (here = 'home'): the bare address and its old name <base>/home. Watch is Argus's section, <base>/argus;
+// LeafyGrove opens on Today (here = 'home'): the bare address and its old name <base>/home. Watch is Argus's section, <base>/argus;
 // <base>/<agent> is Watch showing one agent's tasks, and <base>/argus/argus Argus's own.
 const SEG = REST.split('/');
 const here = [...AGENT_KEYS, ...PAGES, ...PLUGINS.map(p => p.id)].includes(SEG[0]) ? SEG[0] : 'home';
@@ -114,10 +114,10 @@ const isRunning = c => c.dataset.state === 'running';
 // its page heading (4.45.0, the owner: "I need it as the ONLY title"). `god`: the theme's agent whose name it takes (and
 // whose medallion a plugin without its own icon shows); `name`: the name when the theme has no such agent. `was`: the plain
 // word it had before 4.45.0, kept so a search (the next build) still finds "Watch", "Study", "Approvals", "Backups",
-// "Playground". Sections without a god (Controllers, Spartamelee, Heracles' plugin, Ariad-Node, links) keep their own name.
+// "Playground". Sections without a god (Spartamelee, Ariad-Node, links) keep their own name; Controllers is Daedalus's since 4.48.0.
 const WORDS = {home: {name: 'Today'}, argus: {god: 'argus', name: 'Argus', was: 'Watch'}, mentor: {god: 'mentor', name: 'Mentor', was: 'Study'},
   throne: {god: 'zeus', name: 'Zeus', was: 'Approvals'}, memory: {god: 'mnemosyne', name: 'Mnemosyne', was: 'Backups'},
-  olympus: {name: 'Olympus', was: 'Playground'}};
+  controllers: {god: 'daedalus', name: 'Controllers', was: 'Controllers'}, olympus: {name: 'Olympus', was: 'Playground'}};
 // the name a section is called by: its god's name in this theme, else WORDS' name, else its own
 const wordOf = (id, own) => { const w = WORDS[id] || {}; return (S?.personas || []).find(p => p.key === w.god)?.name || w.name || own || id; };
 // Quiet sections (server/quiet.py; Mentor for now): their tile keeps its line, but they never count as needing the owner,
@@ -158,7 +158,9 @@ function trouble() {
 // its block), then programs that run but do not work (they have a fix), then failed tasks, then agents' alerts. Each in three plain
 // lines: what is wrong and since when, what Argus did (or would have done), what you can do; and the one fix that checks.json
 // declares, when there is one (docs/home.md "Trouble first"). The "Argus:" line never repeats his name (the label says it).
-const agentOf = w => { const k = (w.job || '').split('-')[0]; return AGENT_KEYS.includes(k) && !SIDE.includes(k) ? k : 'argus'; };
+// whose a job is: its name's first word, or the agent an old first word now belongs to (theme "renamed_prefixes", 4.48.0)
+const ownerKey = job => { const k = String(job || '').split('-')[0]; return (S?.renamed || {})[k] || k; };
+const agentOf = w => { const k = ownerKey(w.job); return AGENT_KEYS.includes(k) && !SIDE.includes(k) ? k : 'argus'; };
 const agentName = k => (S.personas.find(p => p.key === k) || {name: k}).name;
 // whose row it is, said with Argus's name for the place it is on: "Hermes · Argus", or just "Argus" for his own (4.45.0)
 const onArgus = k => k === 'argus' ? wordOf('argus') : `${agentName(k)} · ${wordOf('argus')}`;
@@ -190,7 +192,7 @@ function taskItem(j) {
     can: `Read its log on its card, then press ${always(j) ? 'Restart' : 'Run'} to try again.`, fix: null, href: WATCH, known: j.job};
 }
 function alertItem(a) {
-  const k = a.job.split('-')[0], g = S.personas.find(p => p.key === k), name = g ? g.name : k, watch = g && !SIDE.includes(k);
+  const k = ownerKey(a.job), g = S.personas.find(p => p.key === k), name = g ? g.name : k, watch = g && !SIDE.includes(k);
   return {key: `alert-${a.file || a.job}`, agent: k, who: g ? onArgus(k) : a.job, what: a.message, say: a.message, when: sinceText(a.since), of: a.link || 'argus',
     did: `Passes on what ${name} raised.`, can: a.link ? `Open ${sectionName(a.link)} to deal with it.` : `Look at ${name}'s tasks on ${wordOf('argus')}.`, fix: null,
     label: a.link ? `Open ${sectionName(a.link)}` : `Open ${wordOf('argus')}`, href: a.link ? url(a.link) : watch ? (k === 'argus' ? WATCH + '/argus' : url(k)) : WATCH};
@@ -401,7 +403,7 @@ function render() {
   // not know (here falls back to 'home'): that is not hers either.
   const unknown = SEG[0] !== '' && SEG[0] !== 'home' && here === 'home';
   if (role() !== 'owner' && (!LEARNER.includes(placeOf()) || unknown)) { location.replace(url('')); return; }
-  const me = S.personas.find(p => p.key === here), name = S.title || 'Elaia';
+  const me = S.personas.find(p => p.key === here), name = S.title || 'LeafyGrove';
   const head = (h1, sub, title) => { $('.title h1').textContent = h1; $('#sub').textContent = sub; document.title = `${title} · ${name}`; };
   if (plugin) {
     // one title, the god's name (WORDS); under it what the god does in this theme (its domain), else the plugin's own subtitle
@@ -412,7 +414,7 @@ function render() {
   } else if (here === 'home') {
     head(name, home.greet().join(' · '), 'Today'); $('#hero').hidden = true;
   } else if (here === 'phone') {
-    head('Phone alerts', 'Argus · what makes your phone buzz', 'Phone alerts'); $('#hero').hidden = true;
+    head('Phone alerts', 'What makes your phone buzz', 'Phone alerts'); $('#hero').hidden = true;
   } else if (side && !onOlympus) {
     head(wordOf(here, me.name), me.domain, wordOf(here, me.name));
     $('#hero').src = `static/icons/${here}.png`;
@@ -428,7 +430,7 @@ function render() {
   pp.textContent = ppShow ? S.people_problem : ''; pp.hidden = !ppShow;          // textContent: the sentence is never read as HTML
   phoneAlerts.hint();                                                            // Today's one quiet line about phone alerts (alerts.js)
   const by = {}; S.jobs.forEach(j => (by[j.persona] ||= []).push(j));
-  const lone = {}; loneAlerts().forEach(a => (lone[a.job.split('-')[0]] ||= []).push(a));   // alerts with no task card of their own
+  const lone = {}; loneAlerts().forEach(a => (lone[ownerKey(a.job)] ||= []).push(a));   // alerts with no task card of their own
   const rows = {}; (S.watch || []).filter(w => !hasCard(w)).forEach(w => (rows[agentOf(w)] ||= []).push(w));   // checks with no card: compact rows
   const shown = S.personas.filter(p => (by[p.key] || lone[p.key] || rows[p.key] || p.key === only) && !SIDE.includes(p.key));
   const chip = (k, label, href) => `<a href="${href}" class="${only === k ? 'on' : ''}" ${only === k ? 'aria-current="page"' : ''}>${esc(label)}</a>`;
@@ -450,7 +452,7 @@ function render() {
     const js = (by[p.key] || []).map((j, i) => [j, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(x => x[0]), ls = lone[p.key] || [];
     const cr = (rows[p.key] || []).map((w, i) => [w, i]).sort((a, b) => (a[0].works === false ? 0 : 1) - (b[0].works === false ? 0 : 1) || a[1] - b[1]).map(x => x[0]);
     const c = s => js.filter(j => j.state === s && !(s === 'failed' && j.known)).length, kc = js.filter(j => j.known && failing(j)).length;
-    const na = (S.alerts || []).filter(a => a.level === 'alert' && a.job.split('-')[0] === p.key && !js.some(j => j.known && jobIs(j, a.job))).length;
+    const na = (S.alerts || []).filter(a => a.level === 'alert' && ownerKey(a.job) === p.key && !js.some(j => j.known && jobIs(j, a.job))).length;
     const counts = (na ? [`<span class="failed">${na} alert${na === 1 ? '' : 's'}</span>`] : []).concat(['failed', 'running', 'frozen'].filter(s => c(s)).map(s => `<span class="${s}">${c(s)} ${s}</span>`))
       .concat(kc ? [`<span class="known">${kc} known</span>`] : []).concat(`${js.length} task${js.length === 1 ? '' : 's'}`).join(' · ');
     return `<section class="persona" aria-labelledby="h-${p.key}"><a class="ph" href="${p.key === 'argus' ? WATCH + '/argus' : url(p.key)}"><img src="static/icons/${p.key}.png" alt=""><div><h2 id="h-${p.key}">${esc(p.name)}</h2><div class="dom">${esc(p.domain)}</div></div><div class="counts">${counts}</div></a>

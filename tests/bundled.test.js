@@ -1,31 +1,31 @@
-// Bundled plugins and agent sections (docs/leafy-plugin.md): tests/bundled-fixtures/ is installed next to Elaia (ARGUS_BUNDLED).
-// heracles claims the theme's Heracles section ("agent": true); the bundled demo-server is replaced by the owner's own copy.
+// Bundled plugins and agent sections (docs/leafy-plugin.md): tests/bundled-fixtures/ is installed next to LeafyGrove (ARGUS_BUNDLED).
+// chiron claims the theme's Chiron section ("agent": true); the bundled demo-server is replaced by the owner's own copy.
 const {BASE, check, page, noOverflow, run} = require('./lib');
 const fs = require('fs'), path = require('path');
 run(async b => {
   const p = await page(b);
   const st = await (await p.request.get(BASE + 'api/state')).json();
-  const her = st.plugins.find(x => x.id === 'heracles'), demo = st.plugins.find(x => x.id === 'demo-server');
-  check(her && her.agent === true && her.name === 'Heracles' && her.subtitle === 'Strength', 'agent plugin: listed, with the agent\'s name and subtitle from the theme');
+  const her = st.plugins.find(x => x.id === 'chiron'), demo = st.plugins.find(x => x.id === 'demo-server');
+  check(her && her.agent === true && her.name === 'Chiron' && her.subtitle === 'Train', 'agent plugin: listed, with the agent\'s name and subtitle from the theme');
   check(demo && demo.version === '0.0.1-test' && demo.name === 'Demo Server', 'bundled: your plugin wins over a bundled one with the same id');
-  check(!st.plugins.some(x => x.id === 'chronos'), 'an agent\'s name without "agent": true is skipped');
+  check(!st.plugins.some(x => x.id === 'janus'), 'an agent\'s name without "agent": true is skipped');
   const log = fs.readFileSync(path.join(path.dirname(process.env.FIXTURES), 'server.log'), 'utf8');
-  check(/loaded server plugin heracles 0\.0\.1-bundled \(bundled\)/.test(log) && !/must not load/.test(log), 'bundled: the log marks it bundled, and the replaced copy never ran');
+  check(/loaded server plugin chiron 0\.0\.1-bundled \(bundled\)/.test(log) && !/must not load/.test(log), 'bundled: the log marks it bundled, and the replaced copy never ran');
 
   // 1920: every fixture pill is on the strip (narrower, the last ones fold into More since 4.44.0; tests/layout.test.js)
   await p.setViewportSize({width: 1920, height: 1080}); await p.goto(BASE); await p.waitForTimeout(600);
-  const pill = p.locator('#realms a.realm', {hasText: 'Heracles'});
-  check(await pill.count() === 1 && /static\/icons\/heracles\.png$/.test(await pill.locator('img').getAttribute('src')), 'agent plugin: one pill, with the agent\'s icon');
-  await pill.click(); await p.waitForURL(/\/heracles$/);
+  const pill = p.locator('#realms a.realm', {hasText: 'Chiron'});
+  check(await pill.count() === 1 && /static\/icons\/chiron\.png$/.test(await pill.locator('img').getAttribute('src')), 'agent plugin: one pill, with the agent\'s icon');
+  await pill.click(); await p.waitForURL(/\/chiron$/);
   await p.locator('#her-where', {hasText: 'from bundled'}).waitFor({timeout: 5000});
   check(true, 'agent plugin: its page runs in the agent\'s section and its API answers from the bundled folder');
   check(/theme found/.test(await p.locator('#her-where').textContent()), 'ctx.theme_dir: the plugin finds the installed theme (theme.json, decks)');
-  check(await p.locator('.title h1').textContent() === 'Heracles' && /heracles\.png$/.test(await p.locator('#hero').getAttribute('src')) && !(await p.locator('#hero').isHidden()),
+  check(await p.locator('.title h1').textContent() === 'Chiron' && /chiron\.png$/.test(await p.locator('#hero').getAttribute('src')) && !(await p.locator('#hero').isHidden()),
     'agent plugin: the title and hero are the agent\'s');
   check(await p.locator('body.side').count() === 1, 'agent plugin: a side page (Argus in the corner)');
-  check((await p.request.get(BASE + 'plugins/heracles/plugin.py')).status() === 404 && (await p.request.get(BASE + 'plugins/heracles/page.js')).status() === 200,
+  check((await p.request.get(BASE + 'plugins/chiron/plugin.py')).status() === 404 && (await p.request.get(BASE + 'plugins/chiron/page.js')).status() === 200,
     'bundled: plugin.py is never served, the page script is');
-  const hs = await (await p.request.get(BASE + 'api/heracles/status')).json();
+  const hs = await (await p.request.get(BASE + 'api/chiron/status')).json();
   check(hs.line === '2 workouts this week · 1 skipped' && hs.needs === true && hs.action === 'Log a workout and more words…', 'status v2: line, needs, and the action cut to 32 characters at a word, with "…" (4.45.0)');
   const ds = await (await p.request.get(BASE + 'api/demo-server/status')).json();
   check(ds.needs === false && ds.action === '', 'status v2: a plugin that only gives a line never needs you');
@@ -39,12 +39,12 @@ run(async b => {
   check(pills.filter(t => t === 'Mentor').length === 1 && pills.indexOf('Mentor') === pills.indexOf('Argus') + 1, 'Mentor: one pill, called Mentor (the god\'s name, 4.45.0), right after Argus');
 
   await p.goto(BASE + 'home'); await p.waitForTimeout(800);
-  const need = p.locator('.need', {hasText: 'Heracles'});
+  const need = p.locator('.need', {hasText: 'Chiron'});
   check(await need.count() === 1 && /2 workouts this week/.test(await need.textContent()) && (await need.locator('a.go').textContent()) === 'Log a workout and more words…',
     'Home: a plugin that needs you gets a row in "Needs you" with its action as the button');
-  check(await p.locator('.place', {hasText: 'Heracles'}).count() === 0, 'Home: and no card under Sections while it has that row (one place for each fact)');
+  check(await p.locator('.place', {hasText: 'Chiron'}).count() === 0, 'Home: and no card under Sections while it has that row (one place for each fact)');
   check(p.errors.length === 0, 'no page errors ' + p.errors.join(' | '));
 
-  const ph = await page(b, 375, 760); await ph.goto(BASE + 'heracles'); await ph.locator('#her-where').waitFor({timeout: 5000});
+  const ph = await page(b, 375, 760); await ph.goto(BASE + 'chiron'); await ph.locator('#her-where').waitFor({timeout: 5000});
   check(await noOverflow(ph), 'phone: no sideways scrolling');
 });

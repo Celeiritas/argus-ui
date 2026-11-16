@@ -1,4 +1,4 @@
-// Today (docs/home.md): what needs *you*, and what Elaia opens on. One line with the state in words, the rows that need you
+// Today (docs/home.md): what needs *you*, and what LeafyGrove opens on. One line with the state in words, the rows that need you
 // (the failed thing first, verb-first buttons), the "Open" links, then one one-line card per section (status v2). A met need
 // fades out. /home still works. Keyboard, focus across redraws, phone.
 const {BASE, check, page, noOverflow, shot, run} = require('./lib');
@@ -8,15 +8,15 @@ run(async b => {
   const p = await page(b);
   await p.goto(BASE); await p.waitForTimeout(800);
   const pill = p.locator('#realms a.realm').first();
-  check(await pill.textContent() === 'Today' && await pill.getAttribute('aria-current') === 'page', 'Elaia opens on Today, the first place in the bar');
+  check(await pill.textContent() === 'Today' && await pill.getAttribute('aria-current') === 'page', 'LeafyGrove opens on Today, the first place in the bar');
   check(await p.locator('.card').count() === 0 && await p.locator('.home').count() === 1, 'the bare address is Today, not Watch');
-  check(await p.locator('.title h1').textContent() === 'Elaia' && await p.title() === 'Today · Elaia', 'the page is called Elaia');
+  check(await p.locator('.title h1').textContent() === 'LeafyGrove' && await p.title() === 'Today · LeafyGrove', 'the page is called LeafyGrove');
   check(/^Good (morning|afternoon|evening|night) · (Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)/.test(await p.locator('#sub').textContent()), 'under the name: a greeting by the time of day, and the date');
   await p.locator('#sub', {hasText: 'Light rain'}).waitFor({timeout: 3000}).catch(() => {});
   check(/· Light rain · 48°F$/.test(await p.locator('#sub').textContent()), 'and the weather, even when it arrives after the page is drawn');
   check(await p.locator('body.side').count() === 1, 'it is a side page (Argus in the corner)');
   const man = await (await p.request.get(BASE + 'manifest.webmanifest')).json();
-  check(man.name === 'Elaia' && man.short_name === 'Elaia' && man.display === 'standalone' && man.start_url === './' && man.scope === './', 'installed from the browser, the app is called Elaia and opens on Today');
+  check(man.name === 'LeafyGrove' && man.short_name === 'LeafyGrove' && man.display === 'standalone' && man.start_url === './' && man.scope === './', 'installed from the browser, the app is called LeafyGrove and opens on Today');
 
   const need = t => p.locator('.need', {hasText: t});
   await need('deploy waiting').waitFor({timeout: 5000});
@@ -31,11 +31,11 @@ run(async b => {
   check(await need('deploy waiting').locator('a.go').textContent() === 'Review app 9.9.9' && await need('deploy waiting').locator('small').textContent() === 'Zeus', 'a section that needs you: its line, its god\'s name and only that (Zeus), its verb-first button');
   const place = t => p.locator('.place', {hasText: t}), tile = id => p.locator(`.place[data-id="${id}"]`);
   for (const t of ['Spartamelee', 'Demo Server']) check(await place(t).count() === 1, `a card for ${t}`);
-  // one place for each fact (4.44.0): Watch (a failed task), Approvals (a deploy) and Heracles (workouts) have rows above, so no card
+  // one place for each fact (4.44.0): Watch (a failed task), Approvals (a deploy) and Chiron (workouts) have rows above, so no card
   await p.waitForFunction(() => !/Checking…|Asking every section/.test(document.querySelector('#main .home').textContent));
   const listed = await p.evaluate(() => [...document.querySelectorAll('.needlist .need .go')].map(a => a.getAttribute('href').replace(/.*\//, '')));
   check(await tile('mentor').count() === 1 && await tile('mentor').locator('.pw b').textContent() === 'Mentor', 'Mentor (nothing due) keeps its card, called Mentor');
-  for (const [t, id] of [['Argus', 'argus'], ['Zeus', 'throne'], ['Heracles', 'heracles']])
+  for (const [t, id] of [['Argus', 'argus'], ['Zeus', 'throne'], ['Chiron', 'chiron']])
     check(listed.includes(id) && await tile(id).count() === 0, `${t} has a row above (${listed.join(', ')}), so it has no card under Sections`);
   check(await tile('olympus').count() === 1 && await tile('olympus').locator('.pw b').textContent() === 'Olympus' && await tile('olympus').locator('.pl').textContent() === 'Powers, weather, seasons'
     && /\/olympus$/.test(await tile('olympus').getAttribute('href')), 'a card called Olympus (not "Playground"), with what it is');
@@ -65,11 +65,11 @@ run(async b => {
 
   // the media players (4.44.0): their addresses come from ~/.config/argus-ui/media.json on the host, never from the repository
   const MD = path.join(path.dirname(process.env.FIXTURES), 'home/.config/argus-ui/media.json');
-  fs.writeFileSync(MD, JSON.stringify({audiobookshelf: 'http://books.example:13378/', jellyfin: 'https://films.example/web/', qbittorrent: 'https://x.example/', Bad: 'javascript:alert(1)'}));
+  fs.writeFileSync(MD, JSON.stringify({audiobookshelf: 'http://books.example:13378/', jellyfin: 'https://films.example/web/', mealie: 'http://food.example:9925/', qbittorrent: 'https://x.example/', Bad: 'javascript:alert(1)'}));
   await p.evaluate(() => refresh()); await p.locator('.home .open .openlink').first().waitFor({timeout: 3000}).catch(() => {});
   const md = await p.locator('.home .open .openlink').evaluateAll(as => as.map(a => [a.textContent.replace(/\s+/g, ' ').trim(), a.getAttribute('href'), a.getAttribute('rel'), a.getAttribute('target')]));
-  check(JSON.stringify(md) === JSON.stringify([['JellyfinFilms and shows', 'https://films.example/web/', 'noopener noreferrer', null], ['AudiobookshelfAudiobooks and podcasts', 'http://books.example:13378/', 'noopener noreferrer', null]]),
-    'Open: a row for Jellyfin and one for Audiobookshelf from media.json, plain links with rel="noopener noreferrer"; other keys and unsafe addresses dropped ' + JSON.stringify(md));
+  check(JSON.stringify(md) === JSON.stringify([['JellyfinFilms and shows', 'https://films.example/web/', 'noopener noreferrer', null], ['AudiobookshelfAudiobooks and podcasts', 'http://books.example:13378/', 'noopener noreferrer', null], ['MealieRecipes', 'http://food.example:9925/', 'noopener noreferrer', null]]),
+    'Open: a row each for Jellyfin, Audiobookshelf and Mealie (4.48.0) from media.json, plain links with rel="noopener noreferrer"; other keys and unsafe addresses dropped ' + JSON.stringify(md));
   fs.unlinkSync(MD); await p.evaluate(() => refresh()); await p.locator('.home .open').waitFor({state: 'detached', timeout: 3000}).catch(() => {});
   check(await p.locator('.home .open').count() === 0, 'no media.json, no rows for the players');
 
@@ -121,7 +121,7 @@ run(async b => {
 
   // when Needs you empties, Argus gives a slow, contented blink
   await p.evaluate(() => askStatus());   // let any question already on its way come back first
-  await p.route('**/api/*/status', r => r.fulfill({json: {line: 'All quiet', needs: false, action: ''}}));   // every section (Heracles, Mentor and the Throne say "needs" in the fixtures)
+  await p.route('**/api/*/status', r => r.fulfill({json: {line: 'All quiet', needs: false, action: ''}}));   // every section (Chiron, Mentor and the Throne say "needs" in the fixtures)
   await p.evaluate(() => { S.alerts = []; S.jobs.forEach(j => { if (j.state === 'failed') j.state = 'running'; }); home.show(); });
   const content = await p.waitForFunction(() => document.getElementById('argus').classList.contains('content'), null, {timeout: 2000}).then(() => true, () => false);
   await p.locator('#needs-h', {hasText: 'Nothing needs you'}).waitFor({timeout: 2000});

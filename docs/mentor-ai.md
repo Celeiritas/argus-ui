@@ -32,7 +32,7 @@ Only for an **owner** studying as an owner: a learner's answer (or an owner's an
 | `allow_remote` | `false` | allow a model server on another machine |
 
 - The file is read again when it changes; no restart needed. Another path can be set with `ARGUS_MENTOR_AI`.
-- A broken file, an unknown `api` or a remote URL leaves the AI off. The Lessons view says why, and Elaia's log has one line.
+- A broken file, an unknown `api` or a remote URL leaves the AI off. The Lessons view says why, and LeafyGrove's log has one line.
 - **Status:** the Lessons view shows "Local AI: off", "on (nomic-embed-text, feedback by …)", or "on, but its server is not answering". The server is asked at most once a minute.
 
 ## How it fits together

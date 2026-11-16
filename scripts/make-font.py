@@ -5,7 +5,7 @@
 # arrows and symbols the page writes, every OpenType feature and every name record (the copyright line stays in the font;
 # the style names now say Regular, the new default, instead of ExtraLight).
 # The name carries the first 8 hex digits of the file's SHA-256, so the server can let browsers keep it a year.
-# Needs fontTools and brotli (made with fonttools 4.55.3 and brotli 1.1.0 in a throwaway venv); never needed to build or run Elaia.
+# Needs fontTools and brotli (made with fonttools 4.55.3 and brotli 1.1.0 in a throwaway venv); never needed to build or run LeafyGrove.
 # usage: python -I scripts/make-font.py <Nunito[wght].ttf> <out dir>   -> prints the file it wrote; update the two names
 #        in web/index.html (preload) and web/css/argus.css (@font-face)
 import hashlib, os, sys

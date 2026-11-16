@@ -31,7 +31,7 @@ function decrypt(body, k) {
   d.setAuthTag(ct.subarray(ct.length - 16)); const pt = Buffer.concat([d.update(ct.subarray(0, ct.length - 16)), d.final()]);
   return JSON.parse(pt.subarray(0, pt.lastIndexOf(2)).toString());
 }
-// ---- the browser's side, made in each page before Elaia's scripts run ----
+// ---- the browser's side, made in each page before LeafyGrove's scripts run ----
 // noIdb: 'throw' = IndexedDB blocked, 'hang' = it never answers. sessionStorage "t-next" = the address the next subscribe() gives
 // (a browser that dropped its address and makes a new one).
 function standIn({mode, sub, noStorage, noIdb}) {
@@ -89,7 +89,7 @@ async function contrast(p, sel = '#main .phone') {   // computed: every piece of
 }
 
 // The service worker in a real browser: Chromium's own hook delivers a push message to it (CDP ServiceWorker.deliverPushMessage),
-// it must show a notification, and its tap handler must send the open Elaia window to the alert's place. The headless shell
+// it must show a notification, and its tap handler must send the open LeafyGrove window to the alert's place. The headless shell
 // that the other checks use answers every notification permission with "denied", so this part runs in Playwright's full
 // Chromium build in its new headless mode (channel "chromium", installed by "npx playwright install chromium").
 async function serviceWorker() {
@@ -104,12 +104,12 @@ async function serviceWorker() {
     await p.goto(BASE + 'phone'); await p.waitForTimeout(800);
     await p.evaluate(async () => { await navigator.serviceWorker.register('sw.js'); await navigator.serviceWorker.ready; });
     await p.reload(); await p.waitForTimeout(800);
-    check(await p.evaluate(() => !!navigator.serviceWorker.controller), 'the service worker looks after the open Elaia page');
+    check(await p.evaluate(() => !!navigator.serviceWorker.controller), 'the service worker looks after the open LeafyGrove page');
     const cdp = await ctx.newCDPSession(p); let regs = [];
     cdp.on('ServiceWorker.workerRegistrationUpdated', e => { regs = regs.concat(e.registrations); });
     await cdp.send('ServiceWorker.enable'); await p.waitForTimeout(500);
     const reg = regs.find(r => r.scopeURL === BASE && !r.isDeleted);
-    check(!!reg, "the service worker is registered for Elaia's address");
+    check(!!reg, "the service worker is registered for LeafyGrove's address");
     if (!reg) return;
     const notes = () => p.evaluate(async () => (await (await navigator.serviceWorker.getRegistration()).getNotifications()).map(n => ({title: n.title, body: n.body, tag: n.tag, url: n.data && n.data.url, icon: n.icon})));
     const msg = {id: 'e1', kind: 'broke', title: 'Media player runs, but cannot read its drive', body: 'The drive was unplugged and came back.', url: 'argus', at: '', tag: 'media'};
@@ -117,7 +117,7 @@ async function serviceWorker() {
     await p.waitForTimeout(1200);
     let ns = await notes();
     check(ns.length === 1 && ns[0].title === msg.title && ns[0].body === msg.body && ns[0].tag === 'media', `a delivered message is shown as a notification (${JSON.stringify(ns.map(n => n.title))})`);
-    check(ns.length === 1 && ns[0].url === BASE + 'argus' && /static\/argus-192\.png$/.test(ns[0].icon), `its place is Argus inside Elaia, with the existing icon (${ns[0] && ns[0].url})`);
+    check(ns.length === 1 && ns[0].url === BASE + 'argus' && /static\/argus-192\.png$/.test(ns[0].icon), `its place is Argus inside LeafyGrove, with the existing icon (${ns[0] && ns[0].url})`);
     await cdp.send('ServiceWorker.deliverPushMessage', {origin, registrationId: reg.registrationId, data: JSON.stringify({...msg, title: 'Media player still cannot read its drive'})});
     await p.waitForTimeout(800); ns = await notes();
     check(ns.length === 1 && ns[0].title === 'Media player still cannot read its drive', 'a newer message about the same thing replaces the older one, it does not stack');
@@ -126,10 +126,10 @@ async function serviceWorker() {
     if (worker) {
       await worker.evaluate(async () => { const n = (await self.registration.getNotifications())[0]; let w; onTap({notification: n, waitUntil: x => { w = x; }}); await w; });
       await p.waitForURL(u => new URL(u).pathname === new URL(BASE + 'argus').pathname, {timeout: 5000}).catch(() => {});
-      check(new URL(p.url()).pathname === new URL(BASE + 'argus').pathname, `a tap: the open Elaia window goes to the alert's place (${new URL(p.url()).pathname})`);
+      check(new URL(p.url()).pathname === new URL(BASE + 'argus').pathname, `a tap: the open LeafyGrove window goes to the alert's place (${new URL(p.url()).pathname})`);
       check((await worker.evaluate(async () => (await self.registration.getNotifications()).length)) === 0, 'a tap: the notification closes');
 
-      // A new address while Elaia is closed: the real worker's own listener, the real IndexedDB it shares with the page, the
+      // A new address while LeafyGrove is closed: the real worker's own listener, the real IndexedDB it shares with the page, the
       // real server. The event is dispatched by hand (Chromium has no way to make the browser fire it), and it brings the new
       // address itself, because a real subscribe() would contact the browser maker's push service.
       const kOld = phoneKeys('sw-old'), kNew = phoneKeys('sw-new');
@@ -177,9 +177,9 @@ run(async b => {
     check(await p.locator('[data-do=on]').count() === 0, 'not available: no button that cannot work');
     await shot(p, 'phone-412-unavailable'); await ctx.close();
 
-    // ---- this browser cannot: add Elaia to the home screen first, three steps ----
+    // ---- this browser cannot: add LeafyGrove to the home screen first, three steps ----
     ctx = await phone(b, {mode: 'cannot'}); p = await open(ctx);
-    check(await heading(p) === 'This browser cannot do it yet: add Elaia to your home screen first', `cannot: the state in words (${await heading(p)})`);
+    check(await heading(p) === 'This browser cannot do it yet: add LeafyGrove to your home screen first', `cannot: the state in words (${await heading(p)})`);
     check(await p.locator('.psteps li').count() === 3 && /Add to home screen/.test(await p.locator('.psteps').textContent()), 'cannot: the three steps for Chrome on Android');
     await shot(p, 'phone-412-cannot'); await ctx.close();
 
@@ -240,10 +240,10 @@ run(async b => {
     // ---- a test buzz reaches the (fake) push service, encrypted, and reads right ----
     got.length = 0;
     await p.locator('[data-do=test]').click(); await p.waitForTimeout(1500);
-    check(/within a few seconds, also when Elaia is closed/.test(await p.locator('#main .psay').textContent()), 'test buzz: it says what to expect');
+    check(/within a few seconds, also when LeafyGrove is closed/.test(await p.locator('#main .psay').textContent()), 'test buzz: it says what to expect');
     check(got.length === 1 && got[0].path === '/send/phone-1' && got[0].headers['content-encoding'] === 'aes128gcm' && /^vapid t=/.test(got[0].headers.authorization), 'test buzz: one encrypted message to this phone\'s service');
     let m = null; try { m = decrypt(got[0].body, k1); } catch (e) {}
-    check(m && m.title === 'Test buzz from Elaia' && m.kind === 'test' && m.url === 'phone', `test buzz: the phone can read it (${m && m.title})`);
+    check(m && m.title === 'Test buzz from LeafyGrove' && m.kind === 'test' && m.url === 'phone', `test buzz: the phone can read it (${m && m.title})`);
 
     // ---- other devices: listed with Remove ----
     const k2 = phoneKeys('tablet-2');
@@ -360,7 +360,7 @@ run(async b => {
       const dc = await phone(b, {width: 1440, ua: DESK_UA, sub: phoneKeys('desk').sub}), q = await open(dc, '', 1800);
       check(await q.locator('#phoneHint span').textContent() === 'Your computer can show an alert when something needs you.' && await q.locator('#phoneHint a').textContent() === 'Set up alerts', `computer, Today: "${await q.locator('#phoneHint').innerText()}"`);
       await q.goto(BASE + 'phone'); await q.waitForTimeout(1500);
-      check(/^Your computer can show an alert when Elaia needs you: .* It does not show one when Argus fixed something by itself/.test(await q.locator('.plead').textContent()), 'computer: the lead says "can show an alert"');
+      check(/^Your computer can show an alert when LeafyGrove needs you: .* It does not show one when Argus fixed something by itself/.test(await q.locator('.plead').textContent()), 'computer: the lead says "can show an alert"');
       check(await q.locator('h1').textContent() === 'Phone alerts', 'computer: the page is still called Phone alerts');
       await q.locator('[data-do=on]').click(); await q.locator('#main .pstate.on').waitFor({timeout: 8000});
       check(await q.locator('#pkinds-h').textContent() === 'What shows an alert on this computer' && await q.locator('[data-do=test]').textContent() === 'Send a test alert', 'computer: the switches\' heading and the test button say alert, not buzz');
@@ -425,7 +425,7 @@ run(async b => {
       const on = d.toDateString() === new Date().toDateString() ? 'today' : d.toDateString() === y.toDateString() ? 'yesterday' : d.toLocaleDateString([], {month: 'long', day: 'numeric'});
       return time ? on + ', ' + d.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'}) : on; }, [iso, time]);
     const sameDay = (q, a, z) => q.evaluate(([a, z]) => new Date(a).toDateString() === new Date(z).toDateString(), [a, z]);
-    const SLOW = "The browser's message service did not answer in time. Elaia tried twice.";   // say_failure('timeout') in server/push.py
+    const SLOW = "The browser's message service did not answer in time. LeafyGrove tried twice.";   // say_failure('timeout') in server/push.py
     // every Remove keeps its word inside its own border, and all of them are one width (review F4)
     const removeFits = q => q.locator('.pdevices [data-do=forget]').evaluateAll(es => es.map(e => { const r = document.createRange(); r.selectNodeContents(e);
       const t = r.getBoundingClientRect(), o = e.getBoundingClientRect(); return {fits: t.left >= o.left && t.right <= o.right, w: Math.round(o.width)}; }));
@@ -479,7 +479,7 @@ run(async b => {
       check(card.includes(`On since ${await rel(q, knMade, true)}.`) && tried === `Last message delivered to your ${name}'s message service: ${await rel(q, iso(t0), true)}.`,
         `${w}x${h}: this device's card says its moments the way the rows do (${card.split('\n').find(x => /On since/.test(x))} / ${tried})`);
       const sub = await q.locator('#sub').textContent();
-      check(sub === `Argus · what makes your ${name} ${name === 'phone' ? 'buzz' : 'show an alert'}`, `${w}x${h}: the line under the title says ${name} (${sub})`);
+      check(sub === `What makes your ${name} ${name === 'phone' ? 'buzz' : 'show an alert'}`, `${w}x${h}: the line under the title says ${name} (${sub})`);
       check(!/reached|arrived|showed|on the phone|on your phone/i.test(await q.locator('.pdevices').innerText()), `${w}x${h}: no row claims a message reached the device itself`);
       check(!/push|subscription|endpoint|vapid|service worker/i.test(await q.locator('#main').innerText()), `${w}x${h}: no technical word anywhere a person reads`);
       check(await q.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${w}x${h}: no sideways scroll`);
@@ -559,7 +559,7 @@ run(async b => {
 
     await serviceWorker();
 
-    // ---- the two listeners as plain functions too (a tap with no Elaia window open; a message that is not JSON) ----
+    // ---- the two listeners as plain functions too (a tap with no LeafyGrove window open; a message that is not JSON) ----
     const calls = [];
     const self = {addEventListener() {}, registration: {scope: 'https://home.example/argus/', showNotification: (t, o) => { calls.push(['show', t, o]); return Promise.resolve(); }},
       clients: {matchAll: async () => [], openWindow: async u => calls.push(['open', u]), claim() {}}, skipWaiting() {}};
@@ -568,13 +568,13 @@ run(async b => {
     box.onPush(ev({json: () => { throw new Error('not json'); }, text: () => 'plain words'})); await pending;
     check(calls[0][0] === 'show' && calls[0][1] === 'plain words', 'a message that is not JSON still shows a notification');
     box.onPush(ev(null)); await pending;
-    check(calls[1][1] === 'Elaia', 'an empty message still shows a notification ("Elaia")');
+    check(calls[1][1] === 'LeafyGrove', 'an empty message still shows a notification ("LeafyGrove")');
     box.onPush(ev({json: () => ({title: 'T', url: 'https://evil.example/x'})})); await pending;
-    check(calls[2][2].data.url === 'https://home.example/argus/', 'a place outside Elaia opens Today instead');
+    check(calls[2][2].data.url === 'https://home.example/argus/', 'a place outside LeafyGrove opens Today instead');
     box.onTap({notification: {close() {}, data: {url: 'https://home.example/argus/argus'}}, waitUntil: x => { pending = x; }}); await pending;
-    check(JSON.stringify(calls[3]) === '["open","https://home.example/argus/argus"]', 'a tap with no Elaia window open opens one at the place');
+    check(JSON.stringify(calls[3]) === '["open","https://home.example/argus/argus"]', 'a tap with no LeafyGrove window open opens one at the place');
 
-    // ---- a new address while Elaia is closed (sw.js pushsubscriptionchange), every case, with a stand-in browser ----
+    // ---- a new address while LeafyGrove is closed (sw.js pushsubscriptionchange), every case, with a stand-in browser ----
     {
       const KEY = Buffer.concat([Buffer.from([4]), crypto.randomBytes(64)]).toString('base64url'), OLD = 'f1d8771f00000000';
       const mk = e => ({endpoint: e, toJSON: () => ({endpoint: e, keys: {p256dh: 'p', auth: 'a'}})});
@@ -604,7 +604,7 @@ run(async b => {
         `the event brings both addresses: no new sign-up, the old address's record is the one replaced (${JSON.stringify(pp.map(x => x.body.replaces))})`);
       w = world({}); await w.change({}); pp = posts(w);
       check(w.fetched[0].url === 'https://home.example/argus/api/push/status' && w.subscribed.join() === KEY && pp.length === 1 && !('replaces' in pp[0].body),
-        `nothing kept (Elaia before 4.43): it asks the server for its key, signs up and names no record (${w.fetched.map(x => x.method + ' ' + x.url).join(', ')})`);
+        `nothing kept (LeafyGrove before 4.43): it asks the server for its key, signs up and names no record (${w.fetched.map(x => x.method + ' ' + x.url).join(', ')})`);
       w = world({store: {id: idOf('https://push.example/same'), key: KEY}, current: mk('https://push.example/same')}); await w.change({}); pp = posts(w);
       check(w.subscribed.length === 0 && pp.length === 1 && !('replaces' in pp[0].body), 'the same address as before: the server is told, nothing is replaced');
       w = world({store: {id: OLD, key: KEY}, ok: false}); await w.change({});

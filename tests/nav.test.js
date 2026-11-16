@@ -53,7 +53,7 @@ run(async b => {
     const sheet = p.locator('#moreSheet');
     check(await sheet.isVisible() && await more.getAttribute('aria-expanded') === 'true', `${w}: More opens the sheet`);
     const rows = await p.locator('#moreList .srow b').allTextContents();
-    check(rows[0] === 'Mnemosyne' && rows[1] === 'Olympus' && rows.includes('Controllers') && rows.includes('Spartamelee'), `${w}: the sheet lists the other places: ${rows.join(', ')}`);
+    check(rows[0] === 'Mnemosyne' && rows[1] === 'Olympus' && rows.includes('Daedalus') && rows.includes('Spartamelee'), `${w}: the sheet lists the other places: ${rows.join(', ')}`);
     check(/static\/icons\/mnemosyne\.png$/.test(await p.locator('#moreList .srow[data-id=memory] img').getAttribute('src')) && /Mnemosyne/.test(await p.locator('#moreList .srow[data-id=memory]').textContent()), `${w}: Mnemosyne wears her medallion and is named`);
     check(await p.locator('#muteMore').isVisible(), `${w}: the sound switch is in the sheet`);
     const sm = await p.locator('#moreSheet a, #moreSheet button').evaluateAll(es => es.map(e => e.getBoundingClientRect()).filter(r => r.width && (r.width < 44 || r.height < 44)).length);

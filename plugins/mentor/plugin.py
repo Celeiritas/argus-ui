@@ -1,5 +1,5 @@
 # Mentor as a bundled server plugin (docs/leafy-plugin.md, docs/mentor.md): the Learn section and api/mentor/...
-# The study logic is mentor.py next to this file; this is only the door between Elaia's server and it.
+# The study logic is mentor.py next to this file; this is only the door between LeafyGrove's server and it.
 # The owner's database stays where Mentor has always kept it (~/.local/share/argus-ui/mentor.db, or ARGUS_MENTOR_DB),
 # not in ctx.data_dir, so moving Mentor into a plugin moved no one's review history. Since 4.38 every other person in the
 # people file (learners.py) has a database of their own next to it, mentor-<id>.db, holding only their own lessons
@@ -115,7 +115,7 @@ def line(s):
     return plural(s['new'], 'new card') + ' waiting' if s['new'] else 'Nothing due'
 
 def status(t):
-    """Elaia's Today card (and Home's line): "6 due" with the action "Study 10 minutes", per person."""
+    """LeafyGrove's Today card (and Home's line): "6 due" with the action "Study 10 minutes", per person."""
     if t['due']: ln = f"{t['due']} due"
     elif t['new_left']: ln = f"{plural(t['new_left'], 'new card')} waiting"
     else: ln = 'Nothing due today'
@@ -197,7 +197,7 @@ def _get(b, person, path, query):
         if (b.path, aid) in PENDING: return 200, {'state': 'pending'}
         d = mentor.get_ai(db, aid)
         return 200, {'state': 'none'} if not d else {'state': 'error', 'error': d['error']} if 'error' in d else {'state': 'done', **d}
-    if path == 'status':                         # Elaia's Today card and Home: the line, "needs you", a verb-first action
+    if path == 'status':                         # LeafyGrove's Today card and Home: the line, "needs you", a verb-first action
         return 200, status(mentor.today(db, deck_names(b)))
     return 404, {'ok': False, 'msg': 'not found'}
 

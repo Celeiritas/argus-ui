@@ -1,7 +1,7 @@
 // Its own address (docs/leafy-plugin.md "Its own address", 4.42.0): with own-origin.json the Spartamelee section is a large
 // Open button and its links, no frame; the game runs in its own tab on its own origin, keeps its storage, and still cannot
-// touch Elaia. Without the file the sandboxed frame stays (tests/plugins.test.js runs against tests/run.sh's server, which has none).
-// This check starts its own Elaia from the built package: its own temporary HOME and files, ports picked free at run time.
+// touch LeafyGrove. Without the file the sandboxed frame stays (tests/plugins.test.js runs against tests/run.sh's server, which has none).
+// This check starts its own LeafyGrove from the built package: its own temporary HOME and files, ports picked free at run time.
 const {check, page, noOverflow, shot, run} = require('./lib');
 const fs = require('fs'), path = require('path'), net = require('net'), http = require('http');
 const {spawn} = require('child_process');
@@ -48,7 +48,7 @@ run(async b => {
   const srv = spawn(PY, [path.join(T, 'pkg', 'argus_ui.py')], {env, stdio: ['ignore', log, log]});
   try {
     const ELAIA = `http://127.0.0.1:${MAIN}/argus/`, OWN = `http://127.0.0.1:${LOCAL}/`;
-    await until(ELAIA, 'Elaia'); await until(OWN, 'the own address');
+    await until(ELAIA, 'LeafyGrove'); await until(OWN, 'the own address');
     const p = await page(b);
     await p.goto(ELAIA + 'spartamelee'); await p.waitForTimeout(800);
     const open = p.locator('.plugin-own a.plugin-open');
@@ -74,7 +74,7 @@ run(async b => {
     const errors = []; game.on('pageerror', e => errors.push(String(e)));
     await game.waitForLoadState(); await game.locator('#out', {hasText: 'ready'}).waitFor({timeout: 5000});
     check(game.url() === OWN, 'Enter opens the game at its own address');
-    check(await game.evaluate(() => window.opener === null), 'the game has no handle on Elaia\'s tab');
+    check(await game.evaluate(() => window.opener === null), 'the game has no handle on LeafyGrove\'s tab');
     const out = game.locator('#out');
     check(await out.getAttribute('data-loaded') === 'from the plugin folder', 'the game loads its own module script and JSON from the root');
     check(await out.getAttribute('data-storage') === 'ok', 'it has storage of its own (the sandbox has none)');
@@ -83,15 +83,15 @@ run(async b => {
     check(await out.getAttribute('data-freeze') !== '200' && await out.getAttribute('data-state') === 'blocked',
       'it has no API of its own address to use (no api/freeze, no api/state there)');
 
-    // the game, on its own origin, tries Elaia's powers and state the ways a page could
+    // the game, on its own origin, tries LeafyGrove's powers and state the ways a page could
     await game.goto(OWN + '?argus=' + encodeURIComponent(ELAIA)); await out.filter({hasText: 'ready'}).waitFor({timeout: 5000});
-    check(await out.getAttribute('data-argus-post') !== '200', 'a JSON POST to Elaia\'s api/freeze from the game\'s origin fails');
-    check(await out.getAttribute('data-argus-state') === 'blocked', 'it cannot read Elaia\'s api/state');
+    check(await out.getAttribute('data-argus-post') !== '200', 'a JSON POST to LeafyGrove\'s api/freeze from the game\'s origin fails');
+    check(await out.getAttribute('data-argus-state') === 'blocked', 'it cannot read LeafyGrove\'s api/state');
     const st = await (await p.request.get(ELAIA + 'api/state')).json();
     check(st.jobs.find(j => j.job === 'hermes-sort')?.state !== 'frozen', 'and the task it tried to freeze is untouched');
     check(errors.length === 0, 'the game page had no errors' + (errors.length ? ': ' + errors.join('; ') : ''));
 
-    // its extra page, from Elaia's link, in its own tab
+    // its extra page, from LeafyGrove's link, in its own tab
     const [frames] = await Promise.all([p.context().waitForEvent('page'), more.click()]);
     await frames.waitForLoadState();
     check(frames.url() === OWN + 'frames/' && await frames.locator('#frames').textContent() === 'Frame data', 'the Frame data link opens frames/ at the own address');
@@ -104,6 +104,6 @@ run(async b => {
     const pb = await open.boundingBox();
     check(await noOverflow(p) && pb.x >= 0 && pb.x + pb.width <= 375, 'at 375 px the section fits, button included');
     await shot(p, 'plugin-own-phone');
-    check(p.errors.length === 0, 'Elaia\'s page had no errors' + (p.errors.length ? ': ' + p.errors.join('; ') : ''));
+    check(p.errors.length === 0, 'LeafyGrove\'s page had no errors' + (p.errors.length ? ': ' + p.errors.join('; ') : ''));
   } finally { srv.kill(); fs.closeSync(log); }
 });

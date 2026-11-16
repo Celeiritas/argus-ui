@@ -17,7 +17,7 @@ fi
 cp "$D/argus_ui.py" ~/.local/bin/argus-ui; chmod +x ~/.local/bin/argus-ui
 cp "$D/sky.py" $S/sky.py; cp "$D/watch.py" $D/notify.py "$D/identity.py" "$D/push.py" "$D/summary.py" "$D/quiet.py" "$D/modes.py" $S/; mkdir -p $S/decks   # your own decks go in ~/.local/share/argus-ui/decks (Mentor reads them; its database stays in $S/mentor.db)
 cp -r "$D/static" $S/static
-mkdir -p $S/bundled; cp -r "$D/bundled/." $S/bundled/ 2>/dev/null || true   # plugins that ship with Elaia; yours in ~/.config/argus-ui/plugins win on the same id
+mkdir -p $S/bundled; cp -r "$D/bundled/." $S/bundled/ 2>/dev/null || true   # plugins that ship with LeafyGrove; yours in ~/.config/argus-ui/plugins win on the same id
 # your own sounds live in ~/.config/argus-ui/sfx/ and are added on every install, so a package built from git
 # (which carries no sound files) keeps them. The first time, it is filled from the sounds already installed.
 X=~/.config/argus-ui/sfx; mkdir -p $X
