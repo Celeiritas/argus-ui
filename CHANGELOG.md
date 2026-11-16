@@ -1,5 +1,9 @@
 # Changelog
 
+## 4.51.2 – 2026-11-16
+A machine added to Tailscale again (reinstalled) no longer shows *Offline* while it is on (the owner's pick, 2026-11-16: "Can't tell + reason").
+- When the device's Tailscale entry is offline and another machine with the same machine name is online, the row says *Can't tell* and *Another machine on Tailscale has this name and is online: remove the old entry* (review R2, finding 1). Both offline: still *Offline*.
+
 ## 4.51.1 – 2026-11-16
 The device list's look, as the owner chose from the pictures (colours kept).
 - **Can't tell** has a small solid *?* in its colour, on Today's line and on the list's badge, in place of the dashed ring; the words stay.

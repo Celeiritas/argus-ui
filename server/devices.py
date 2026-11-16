@@ -39,6 +39,7 @@ FRESH_S = 5.0                     # Check again asks Tailscale again only if the
 STATUSES = ('online', 'offline', 'unknown', 'desktop', 'game')
 LABEL = {'online': 'Online', 'offline': 'Offline', 'unknown': "Can't tell"}
 TWO = 'Two machines on the Tailscale list have this name'
+TWIN = 'Another machine on Tailscale has this name and is online: remove the old entry'
 
 
 class Bad(ValueError):
@@ -216,6 +217,16 @@ def peers(doc):
     return out
 
 
+def twin_online(doc, n, host):
+    """True when a machine other than n, online now, has the HostName host. That is a reinstalled or re-added machine:
+    Tailscale keeps the old node (offline) under the DNS name "host" and calls the new one "host-1". The old node's Offline
+    would be a guess about a device that may well be on, so its row says Can't tell and why (review R2, finding 1)."""
+    nodes = list((doc.get('Peer') or {}).values()) if isinstance(doc.get('Peer'), dict) else []
+    if isinstance(doc.get('Self'), dict): nodes.append(doc['Self'])
+    return any(isinstance(m, dict) and m is not n and label(m.get('HostName')) == host
+               and (m is doc.get('Self') or m.get('Online') is True) for m in nodes)   # n is one of these dicts (peers())
+
+
 def seen(v):
     """LastSeen as an ISO time, or None (Tailscale writes the year 1 for a peer that is online now or never seen)."""
     if not isinstance(v, str): return None
@@ -264,7 +275,9 @@ def one(d, doc, why, mode):
     if n.get('_self'): return dict(row, status='online', label='Online', why='This machine')
     on = n.get('Online')
     if on is True: return dict(row, status='online', label='Online')
-    if on is False: return dict(row, status='offline', label='Offline', last_seen=seen(n.get('LastSeen')))
+    if on is False:
+        if twin_online(doc, n, d['host'].casefold()): return dict(row, status='unknown', label=LABEL['unknown'], why=TWIN)
+        return dict(row, status='offline', label='Offline', last_seen=seen(n.get('LastSeen')))
     return dict(row, status='unknown', label=LABEL['unknown'], why='Tailscale did not say')
 
 
