@@ -338,6 +338,14 @@ class Fallback(unittest.TestCase):
         self.assertEqual((v['set_up'], v['devices'], v['probe_problem']), (True, [], None))
         self.assertIn('could not read the device list', v['problem'])
 
+    def test_memory_is_capped(self):
+        """An error text that changes every time (a time, a path) never grows the once-per-error memory past 100 (R2 6b)."""
+        with contextlib.redirect_stderr(io.StringIO()):
+            for i in range(250):
+                try: raise ValueError(f'changing text {i}')
+                except ValueError as e: D.failed_view(e)
+        self.assertLessEqual(len(D._logged), 100)
+
 
 class Route(unittest.TestCase):
     """GET api/devices on a real server."""

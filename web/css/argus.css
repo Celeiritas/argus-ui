@@ -18,7 +18,7 @@
 :root{--mode-game:#6B46C1;--mode-game-edge:#A383F0;--mode-desktop:#287043;--mode-desktop-edge:#52B67A;--mode-ink:#FFFFFF}
 /* the device list's colours (docs/devices.md, devices.js): one per status, each the fill of its badge under white words (--mode-ink)
    and of its dot on Today; the edge is the same colour lightened. Online and Desktop are the pill's green, Game its purple,
-   Offline a slate (7.0:1 under white), Can't tell no fill, only a dashed ring in this colour. Change one value to recolour one status: */
+   Offline a slate (7.0:1 under white), Can't tell no fill, a ring and a small solid "?" in this colour. Change one value to recolour one status: */
 :root{--dev-online:var(--mode-desktop);--dev-desktop:var(--mode-desktop);--dev-game:var(--mode-game);--dev-offline:#4F5A65;--dev-unknown:var(--frost)}
 *{box-sizing:border-box}html,body{margin:0;background:var(--night);color:var(--snow);font:400 var(--fs-sec)/1.5 Nunito,system-ui,sans-serif;overflow-x:hidden}
 body{background:transparent}   /* the page background is the scene (sky, Olympus, grass); html keeps the night colour behind it */
@@ -336,7 +336,10 @@ dialog .confirm{border-color:var(--danger);color:var(--danger)}
 .dev,.dchip{--dc:var(--dev-unknown)}.s-online{--dc:var(--dev-online)}.s-offline{--dc:var(--dev-offline)}.s-desktop{--dc:var(--dev-desktop)}.s-game{--dc:var(--dev-game)}
 .dstat{flex:none;padding:2px var(--s3);border-radius:999px;font-size:var(--fs-meta);font-weight:600;line-height:1.5;white-space:nowrap;
   background:var(--dc);color:var(--mode-ink);border:1px solid color-mix(in srgb,var(--dc) 55%,#fff)}
-.dev.s-unknown .dstat{background:transparent;color:var(--snow);border:1px dashed var(--dc)}
+.dev.s-unknown .dstat{display:inline-flex;align-items:center;gap:6px;background:transparent;color:var(--snow);border:1px solid var(--dc)}
+/* can't tell: a small solid "?" in its colour (Today's chip and the list's badge), in place of a dot */
+.dq{display:inline-grid;place-items:center;width:14px;height:14px;border-radius:50%;flex:none;background:var(--dc)}
+.dq::before{content:"?";font-size:var(--fs-meta);font-weight:600;line-height:1;color:var(--night)}
 .devmeta{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--s2);margin:var(--s2) 0 0;font-size:var(--fs-meta);color:var(--powder)}
 .devagain[aria-disabled=true]{opacity:.7;cursor:progress}
 .devprobe{max-width:760px;margin:0 0 var(--s2);font-size:var(--fs-sec);color:var(--snow);overflow-wrap:anywhere}   /* Tailscale could not be asked: said once */
@@ -346,12 +349,11 @@ dialog .confirm{border-color:var(--danger);color:var(--danger)}
 .devices .empty a{display:inline-flex;align-items:center;min-height:var(--hit)}
 .devlist,.devmeta,.devices .empty{max-width:760px}
 .home>.devline{grid-column:1 / -1;display:flex;flex-wrap:wrap;align-items:center;gap:var(--s1) var(--s3);min-height:var(--hit);margin:0 0 var(--s4);
-  padding:var(--s1) var(--s4);border-radius:12px;background:rgb(28 33 39 / .86);color:var(--snow);text-decoration:none;font-size:var(--fs-meta)}
+  padding:var(--s1) var(--s4);border-radius:12px;background:rgb(28 33 39 / .86);color:var(--snow);text-decoration:none;font-size:var(--fs-sec)}
 .home>.devline>b{font-size:var(--fs-sec);font-weight:600}
 .home>.devline:hover{background:var(--card)}
 .dchips{display:flex;flex-wrap:wrap;gap:var(--s1) var(--s3)}.dchip{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;color:var(--snow)}
 .ddot{width:10px;height:10px;border-radius:50%;flex:none;background:var(--dc);box-shadow:0 0 0 2px color-mix(in srgb,var(--dc) 55%,#fff)}
-.dchip.s-unknown .ddot{background:transparent;box-shadow:none;border:2px dashed var(--dc)}
 @media (max-width:600px){.home>.devline{padding:var(--s1) var(--s3);margin-bottom:var(--s3)}}
 .worksline{margin:var(--s2) 0 0;font-size:var(--fs-sec);line-height:1.4;color:var(--powder)}.worksline b{color:var(--ok);font-weight:600}
 .events{list-style:none;margin:0;padding:0}
