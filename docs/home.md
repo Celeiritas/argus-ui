@@ -161,7 +161,7 @@ reach the server. The server's own check comes with sign-in.
 What Today, the phone and the 08:00 summary keep still about, in **one place**: `server/quiet.py` (the owner, 2026-11-13: "the
 cognitive annoyance of the alert is taking up space, same with Mentor. I don't need Mentor notifications like EVER").
 - **Quiet sections**: `quiet_sections()`: the default set `DEFAULT_QUIET = {'mentor'}` plus the sections the owner switched
-  off in Edit Today (4.50.0, `quiet` in `today.json`). For the owner a quiet section never needs him: its tile keeps
+  off in Edit Today (4.50.0, `quiet` in `today.json`), never `NEVER_QUIET = {'throne'}` (Zeus, 4.50.1). For the owner a quiet section never needs him: its tile keeps
   its line ("6 cards due"), but the server answers its status with `needs: false`, no `action` and no `count` (so no row, no
   number under "N things need you", no "Study 10 minutes" button, no dot or count on the bar, the strip or More), an event about
   it never buzzes the phone, and it is never in the daily summary. The page gets the set as `quiet` in the owner's state and
@@ -196,7 +196,14 @@ same as Cancel.
   or empty it to let its links go) and Move up / down for the whole group. Open on Today keeps its compact look ("What it
   shows", item 4): the links without a group first, then each group. A hidden entry stays in More.
 - **Reminders**: one switch per server section (the ones whose status can say "needs"). Off, it is quiet (see *Quiet* below):
-  its tile keeps its line, but it never asks for him on Today and never buzzes his phone. Mentor is always off and locked.
+  its tile keeps its line, but it never asks for him on Today and never buzzes his phone. Mentor is always off and locked
+  (*Never reminds you*). **Zeus is always on and locked** (*Always reminds you*; 4.50.1, the owner: "Lock Zeus on"): he asks
+  for the owner's yes (deploys, merges, root changes), and off, those requests would leave Today and never buzz the phone, so
+  work would wait without him knowing. The server keeps it so (`NEVER_QUIET = {'throne'}` in `server/quiet.py`): `throne` in
+  `today.json`'s `quiet` (by hand, or from an older page) is ignored, and a save that sends it is kept without it, not refused.
+  A locked switch is disabled but keeps its name and state in words, so a screen reader still says what it is.
+  **Mnemosyne's** switch has one line under it, tied to it with `aria-describedby`: *Off also leaves the backup line out of
+  the 08:00 summary.* (`backups_line()` in `server/argus_ui.py` is empty while `memory` is quiet.)
   Argus has no switch: a failed task always counts (*Mark as known* is the way to set one aside).
 - **Reset to default** fills the lists with the default; Done keeps it (the file then holds only `{"v": 1}`).
 - **Keyboard**: every move is a button; after a move the keyboard stays on the same button of the same row (or on the other one
