@@ -279,7 +279,8 @@ dialog .confirm{border-color:var(--danger);color:var(--danger)}
 .edrow.off .edmark,.edrow.off .edname b,.edrow.off .edname small{opacity:.55}   /* hidden from Today: still here to show again */
 .edg+.edg{margin-top:var(--s3)}
 .edgh{margin:var(--s2) 0 0;font-size:var(--fs-meta);font-weight:600;color:var(--frost)}
-.edghead{display:flex;align-items:center;gap:var(--s2)}.edghead .edgname{flex:1 1 auto;max-width:20rem;font-weight:600}
+.edghead{display:flex;align-items:flex-end;gap:var(--s2)}.edgnamein{flex:1 1 auto;max-width:20rem;display:flex;flex-direction:column;min-width:0}
+.edgnamein span{font-size:var(--fs-meta);line-height:1.3;color:var(--frost)}.edgname{font-weight:600}   /* a visible "Group name": not mistaken for a link's name */
 .edswitches{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:0 var(--s4)}
 .edswitch{display:flex;align-items:center;gap:var(--s3);min-height:var(--hit);padding:var(--s1) 0;cursor:pointer}
 .edswitch input{appearance:none;-webkit-appearance:none;flex:none;position:relative;width:44px;height:26px;margin:0;border:1px solid var(--frost);border-radius:13px;background:var(--line);cursor:pointer;transition:background-color var(--t2),border-color var(--t2)}

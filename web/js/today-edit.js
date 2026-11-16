@@ -58,7 +58,7 @@ const todayEdit = (() => {
     if (!d.open.length) return '';
     const gs = groupsOf(), at = x => d.open.indexOf(x);
     const block = (items, g, gi) => `<div class="edg">${g === null ? (gs.length ? '<h3 class="edgh">Without a group</h3>' : '')
-      : `<div class="edghead"><input type="text" class="edin edgname" data-g="${esc(g)}" maxlength="40" value="${esc(g)}" aria-label="Name of the group ${esc(g)}" autocomplete="off" spellcheck="false">${mv('group', gi, gs.length, `the group ${g}`, ` data-g="${esc(g)}"`)}</div>`}`
+      : `<div class="edghead"><label class="edgnamein"><span>Group name</span><input type="text" class="edin edgname" data-g="${esc(g)}" maxlength="40" value="${esc(g)}" autocomplete="off" spellcheck="false"></label>${mv('group', gi, gs.length, `the group ${g}`, ` data-g="${esc(g)}"`)}</div>`}`
       + `<ol class="edlist">${items.map((x, k) => openRow(x, at(x), k, items.length)).join('')}</ol></div>`;
     const loose = d.open.filter(x => !x.group.trim());
     return `<section aria-labelledby="ed-open"><h2 id="ed-open">Open</h2><p class="edhint">Type a group name on a link to put it in that group, or a new name to make one. Empty takes it out of its group.</p>`
@@ -137,15 +137,39 @@ const todayEdit = (() => {
   }
   function resetDraft() { d = draft({}); draw(); refocus('#editDone'); toast('Back to the default layout. Press Done to keep it, or Cancel.'); }
 
+  // A press of the mouse or a finger that takes the keyboard out of a group field fires 'change' (so regroup) before its click.
+  // Redrawing then would replace the button under the finger and lose the tap (Done, Cancel, Reset or a Move pressed straight
+  // after typing a group). So while a press is down the regroup waits in `later`: the click applies it first and then does what
+  // was pressed, on the same row or group (found by the object, not its old place); a press that ends anywhere else applies it
+  // just after (mouseup). Enter and Tab are not presses: they apply at once, as before.
+  let pressed = false, later = null;
+  const listOf = what => what === 'tiles' ? d.tiles : d.open;
+  function settle() {
+    const el = later; later = null; if (!el || !on() || !el.isConnected) return;
+    const a = document.activeElement, r = a && a !== el && a.dataset?.f && a.closest('#main .edit [data-i]');   // the field he pressed into, if any
+    const x = r && listOf(r.dataset.list)[+r.dataset.i];
+    regroup(el, false);
+    if (x) refocus(`[data-list=${r.dataset.list}][data-i="${listOf(r.dataset.list).indexOf(x)}"] [data-f=${a.dataset.f}]`);
+  }
+  document.addEventListener('mousedown', e => { pressed = e.button === 0 && on(); }, true);   // before the press moves the keyboard
+  document.addEventListener('mouseup', () => { pressed = false; if (later) setTimeout(settle, 0); }, true);   // after its click
+  document.addEventListener('keydown', () => { pressed = false; }, true);
+
   // ---- wiring: one listener each on the page for clicks, typing and switches ----
   document.addEventListener('click', e => {
     if (e.target.closest('#editToday')) return start();
     if (!on()) return;
     const b = e.target.closest('#main .edit button'); if (!b || b.disabled) return;
+    const row = b.closest('[data-i]'), x = row && listOf(row.dataset.list)[+row.dataset.i];   // what was pressed, before a regroup
+    const lr = later?.dataset.f === 'group' && later.closest('[data-i]'), moving = lr && d.open[+lr.dataset.i];   // a link about to change group
+    const gx = b.dataset.g !== undefined && d.open.find(y => y.group.trim() === b.dataset.g && y !== moving);   // a member of the pressed group
+    settle();
     if (b.dataset.ed === 'done') return done();
     if (b.dataset.ed === 'cancel') return stop();
     if (b.dataset.ed === 'reset') return resetDraft();
-    if (b.dataset.mv) { const row = b.closest('[data-i]'); move(b.dataset.what, row ? +row.dataset.i : -1, +b.dataset.mv, b.dataset.g); }
+    if (!b.dataset.mv) return;
+    if (b.dataset.what === 'group') { if (gx) move('group', -1, +b.dataset.mv, gx.group.trim()); return; }
+    if (x) move(b.dataset.what, listOf(b.dataset.what).indexOf(x), +b.dataset.mv);
   });
   document.addEventListener('input', e => {             // typing: kept in the draft as it is typed, nothing redrawn
     if (!on()) return;
@@ -158,6 +182,7 @@ const todayEdit = (() => {
     if (el.dataset.q) { if (el.checked) d.quiet.delete(el.dataset.q); else d.quiet.add(el.dataset.q);
       const s = el.closest('label').querySelector('small'); if (s) s.textContent = el.checked ? 'Reminds you' : 'Off: never asks for you'; return; }
     if (row && el.dataset.f === 'shown') { (row.dataset.list === 'tiles' ? d.tiles : d.open)[+row.dataset.i].shown = el.checked; row.classList.toggle('off', !el.checked); return; }
+    if (pressed && (el.dataset.f === 'group' || el.classList.contains('edgname'))) { later = el; return; }   // waits for the click (above)
     regroup(el, false);
   });
   // Enter in a group field applies it at once and keeps the keyboard there (the row may have moved to its new group)

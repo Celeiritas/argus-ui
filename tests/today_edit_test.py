@@ -43,7 +43,7 @@ def set_aside(path):
 
 def asides(): return sorted(glob.glob(os.path.join(CONF, 'today.set-aside-*.json')))
 
-put(os.path.join(STATIC, 'theme.json'), {'title': 'Elaia', 'agents': [{'key': 'argus', 'name': 'Argus'}, {'key': 'zeus', 'name': 'Zeus'}]})
+put(os.path.join(STATIC, 'theme.json'), {'title': 'LeafyGrove', 'agents': [{'key': 'argus', 'name': 'Argus'}, {'key': 'zeus', 'name': 'Zeus'}]})
 put(os.path.join(STATIC, 'index.html'), '<!doctype html><title>the page</title><script>const STATE = /*STATE*/null;</script>')
 put(os.path.join(STATIC, 'VERSION'), '9.9.9')
 shutil.copy(os.path.join(R, 'tests', 'fixtures', 'fake_systemctl.py'), FX)
@@ -111,7 +111,8 @@ class File(unittest.TestCase):
                  'too many': {'quiet': [f's{i}' for i in range(65)]}, 'bad id': {'tiles': {'order': ['Not An Id']}},
                  'bad key': {'open': {'hidden': ['file:/etc/passwd']}}, 'other version': {'v': 2},
                  'too big': ' ' * (T.FILE_MAX + 1) + '{}', 'Today renamed': {'tiles': {'names': {'home': 'Mine'}}},
-                 'quiet broken': {'quiet': 'throne'}, 'not text': {'tiles': {'names': {'olympus': 7}}}}
+                 'quiet broken': {'quiet': 'throne'}, 'not text': {'tiles': {'names': {'olympus': 7}}},
+                 'nested too deeply': '[' * 5000}
         for what, data in cases.items():
             with self.subTest(what):
                 write(TODAY, data)
@@ -207,6 +208,16 @@ class Route(unittest.TestCase):
         write(TODAY, 'not json')
         s = self.state()
         self.assertEqual(s['today'], {}); self.assertIn('could not be used (it is not valid JSON)', s['today_problem'])
+
+    def test_a_deeply_nested_file_still_opens_the_page(self):
+        # json.load raises RecursionError on thousands of "[": the page and api/state must still answer, so Edit can repair it
+        write(TODAY, '[' * 5000)
+        code, s = self.req('GET', 'api/state')
+        self.assertEqual(code, 200)
+        self.assertEqual(s['today'], {}); self.assertIn('could not be used (it is nested too deeply)', s['today_problem'])
+        self.assertEqual(self.save({'quiet': ['throne']})[0], 200, 'Edit can save over it')
+        self.assertEqual(len(asides()), 1, 'the nested file is kept beside the new one')
+        self.assertEqual(self.state()['today_problem'], None)
 
     def test_learner(self):
         code, d = self.save(GOOD, LEARNER)

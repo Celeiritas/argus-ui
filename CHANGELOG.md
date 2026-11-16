@@ -28,6 +28,9 @@ make groups in Open; switch reminders off or on per section.
   the POST protections) and `tests/today-edit.test.js` (Edit at 412, 1920 and 375 px: hide, keyboard Move up, rename with HTML
   in it, a new group moved first, a hidden link, a switch off, Done, reload, Cancel, Reset, every tile hidden, a broken file,
   44 px controls, no sideways scroll, pictures); `tests/gate_test.py` (the route's row, `today` never in a learner's state).
+- Review fixes: a group typed and then Done, Cancel, Reset or a Move tapped at once works on the first tap (it used to
+  need a second); a group's own field is labelled **Group name** on screen; a today.json nested thousands deep shows the
+  default and the problem line instead of a server error, so Edit can repair it.
 
 ## 4.49.0 – 2026-11-16
 Small fixes: the old Pads names go, a count stays with its word on Today, and a test for holding Enter.

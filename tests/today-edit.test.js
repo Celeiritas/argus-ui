@@ -148,6 +148,26 @@ run(async b => {
     await flow(b, 412, 915, '');
     await flow(b, 1920, 1080, '');
 
+    // a group typed and then a button pressed at once (no Enter, no Tab): leaving the field regroups, and the first press
+    // still counts (a Move acts on the same link in its new group; Done saves the new group)
+    const f = await today(b, 412, 915);
+    await f.locator('#editToday').click(); await f.locator('#main .home.edit').waitFor();
+    const order = () => f.locator('#main .edit .edlink').evaluateAll(rs => rs.map(r => r.dataset.key));
+    await lrow(f, '/notes-test/').locator('input[data-f=group]').fill('Studio');
+    await lrow(f, '/notes-test/').locator('[data-mv="1"]').click();
+    const o1 = await order(), focus = await f.evaluate(() => document.activeElement.closest('.edrow')?.dataset.key);
+    check(await lrow(f, '/notes-test/').locator('input[data-f=group]').inputValue() === 'Studio' && o1.indexOf('link:/studio-test/') < o1.indexOf('link:/notes-test/') && focus === 'link:/notes-test/',
+      `a group typed, then Move down pressed once: the link joins the group and moves down in it, the keyboard on it (${o1.join(', ')}; focus ${focus})`);
+    await lrow(f, '/files-test/').locator('input[data-f=group]').fill('Later');
+    await f.locator('#main .edit .edtop [data-ed=done]').click();
+    const closed = await f.locator('#editToday').waitFor({timeout: 5000}).then(() => true, () => false);
+    const kept = closed && JSON.parse(fs.readFileSync(TD, 'utf8'));
+    check(closed && kept.open?.groups?.['link:/files-test/'] === 'Later' && kept.open?.groups?.['link:/notes-test/'] === 'Studio',
+      `a group typed, then Done pressed once: saved with the new group (${closed ? JSON.stringify(kept.open) : 'still in Edit'})`);
+    check(!f.errors.length, `first press after a group: no page errors (${f.errors.join(' | ')})`);
+    await f.close();
+    check((await save(q, {reset: true})).ok(), 'back to the default layout');
+
     // the narrowest phone: Edit fits at 375 px
     const s = await today(b, 375, 812);
     await s.locator('#editToday').click(); await s.locator('#main .home.edit').waitFor();

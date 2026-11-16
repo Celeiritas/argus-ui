@@ -1,5 +1,5 @@
 """The owner's own Today (docs/home.md "Edit Today", 4.50.0): which tiles show and in what order, their names, Open's links
-(shown, order, names, groups) and which sections may remind him. Saved on the server, so every device he opens Elaia on
+(shown, order, names, groups) and which sections may remind him. Saved on the server, so every device he opens LeafyGrove on
 shows the same Today, and in ~/.config/argus-ui/ (ARGUS_TODAY), next to links.json and media.json, because an install
 replaces ~/.local/share/argus-ui/ but never touches the config folder: the layout is kept through updates.
 
@@ -11,7 +11,7 @@ The file, version 1 (every part may be left out; an empty object {} is the defau
 A section id is the one in its address ("controllers"); an Open key is "link:<its href>" or "media:<its id>". Names and
 labels are plain text of at most 40 characters (the page escapes them); at most 64 entries in each list or map.
 
-Missing file: the default layout, nothing said. Broken file (not JSON, the wrong shape, too big): the default layout, and
+Missing file: the default layout, nothing said. Broken file (not JSON, nested too deeply, the wrong shape, too big): the default layout, and
 problem() says so in one plain line on the owner's Today; the next save from Edit first moves the broken file aside
 (today.set-aside-<YYYYMMDD-HHMM>.json beside it), so nothing he wrote by hand is lost. A save writes a new file and swaps
 it in (os.replace): a crash mid-write never leaves half a file.
@@ -112,6 +112,7 @@ def load():
         except OSError: return {}, None              # gone or unreadable for a moment: the default, ask again next time
         except (json.JSONDecodeError, UnicodeDecodeError): why = 'it is not valid JSON'
         except ValueError as e: why = str(e).rstrip('.')
+        except RecursionError: why = 'it is nested too deeply'   # thousands of "[" deep: json.load gives up, Today must not
     val = ({}, f'Your Today settings (today.json) could not be used ({why[:1].lower() + why[1:]}), so Today shows the default layout. '
                'Save from Edit to replace them; the old file is kept beside it.') if why else (d, None)
     _cache.update(sig=sig, val=val)
