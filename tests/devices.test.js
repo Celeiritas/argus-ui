@@ -98,7 +98,7 @@ run(async b => {
     // a stalled connection: given up after 12 s, then not asked again straight away (no back-to-back loop)
     let hung = 0, reqs = 0; p.on('request', q => { if (/api\/devices/.test(q.url())) reqs++; });
     await p.route('**/api/devices*', () => { hung++; });                          // never answered
-    await p.evaluate(() => devices.ask(true)); await p.waitForTimeout(12800);
+    await p.evaluate(() => { devices.ask(true); }); await p.waitForTimeout(12800);   // not awaited: the clock runs from the ask
     const stuck = await again.textContent(), after = await p.locator('#devsay').textContent(); await p.unroute('**/api/devices*');
     const n0 = reqs; await p.evaluate(() => devices.ask()); await p.waitForTimeout(500);
     check(hung === 1 && stuck === 'Check again' && /Could not ask/.test(after), `a request that hangs is given up after 12 s ("${stuck}", "${after}", ${hung} asked)`);
