@@ -49,7 +49,8 @@ opens on: the bare address `<base>/`, and `<base>/home`, its old address, which 
    44 px, and a screen reader hears its name and its whole line ("Mnemosyne, Backing up now").
    **A line takes two lines at most** and is cut after the last whole word that fits, with "…" (`fitLines()` in
    `web/js/home.js`; never inside a word, unless one word alone is wider than the tile). A " · " keeps its dot on the line
-   before (a no-break space), so no line starts with "·". The words cut off stay in the link's name, so a screen reader hears
+   before (a no-break space), so no line starts with "·", and a number keeps the word after it ("1 known", "3 connected";
+   4.49.0), so no line ends on a bare number: "All 6 tasks well ·" / "1 known". The words cut off stay in the link's name, so a screen reader hears
    the whole line. With nothing needing you, all of Today fits above the phone's bottom bar
    at 412 x 915 (measured with two players, links in two groups and nine tiles, the panels 12 px apart on a phone: the
    Sections panel ends at 749 px with one-line statuses and at 775 px with six of nine on two lines; the bar starts

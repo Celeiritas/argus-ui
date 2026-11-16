@@ -5,11 +5,7 @@
 #   /sys/<that sysfs path>/capabilities/ff   force-feedback bits: non-zero means rumble can reach the controller
 # The probe is a port of the owner's read-only shell check (controllers section): name, real or virtual, rumble.
 # `sysroot` points both at a copy for tests (tests/fixtures/controllers-sysfs/); ARGUS_CONTROLLERS_SYSROOT does it for the server.
-# Until 4.33.0 this section was called Pads: where() still reads the old names for one release (docs/controllers.md).
 import json, os, re
-
-# The names from before 4.33.0 and what each is called now. An old one is read only while its new one is absent.
-RENAMED = {'ARGUS_PADS_SYSROOT': 'ARGUS_CONTROLLERS_SYSROOT', 'ARGUS_PADS': 'ARGUS_CONTROLLERS', 'pads.json': 'controllers.json'}
 
 # The OpenPuck (a Steam Controller dongle) changes its USB ids with its mode, so the ids name the mode.
 MODES = {'28de:1304': 'Steam', '045e:028e': 'Xbox 360', '2e8a:10c6': 'SInput', '0f0d:0092': 'Switch'}
@@ -22,34 +18,14 @@ WAKE_HINT = "Press a controller's Home or Steam button to wake it. Still missing
 EV_ABS = 0x08
 
 def where(env=None, config=None):
-    """(sysroot, slot map path, old names in use), asked on every request so a renamed file counts without a restart.
+    """(sysroot, slot map path), asked on every request so a new or changed file counts without a restart.
     Settings: ARGUS_CONTROLLERS_SYSROOT (default /) and ARGUS_CONTROLLERS (default controllers.json in ~/.config/argus-ui/).
-    Old names, read for one release when the new one is absent: ARGUS_PADS_SYSROOT, ARGUS_PADS, and pads.json in that folder."""
+    An empty setting counts as unset. The names from before 4.33.0 (pads.json, ARGUS_PADS...) are not read since 4.49.0."""
     env = os.environ if env is None else env
-    old = []
-    def setting(new):
-        was = next(o for o, n in RENAMED.items() if n == new)
-        if env.get(new): return env[new]
-        if env.get(was): old.append(was); return env[was]
-        return ''
-    sysroot = setting('ARGUS_CONTROLLERS_SYSROOT') or '/'
-    path = os.path.expanduser(setting('ARGUS_CONTROLLERS'))
-    if not path:
-        config = config or os.path.join(os.path.expanduser('~'), '.config', 'argus-ui')
-        path, was = os.path.join(config, 'controllers.json'), os.path.join(config, 'pads.json')
-        if not os.path.exists(path) and os.path.exists(was): path = was; old.append('pads.json')
-    return sysroot, path, old
-
-# what the person would see once an old name is no longer read (the release after 4.33.0)
-AFTER = {'ARGUS_PADS_SYSROOT': "the list would come from the machine's real /proc and /sys",
-         'ARGUS_PADS': 'every controller would show No slot', 'pads.json': 'every controller would show No slot'}
-
-def notice(old):
-    """For the page, one entry per name from before 4.33.0 that is still in use: {do: what to do, why: what happens otherwise}.
-    [] when none is. pads.json is only looked for in ~/.config/argus-ui/ (where()), so its line can name the folder."""
-    return [{'do': (f'Copy {o} to {RENAMED[o]} in ~/.config/argus-ui/ on the server.' if o == 'pads.json'
-                    else f'Rename the setting {o} to {RENAMED[o]} where the service is set up.'),
-             'why': f'The next release ignores {o}, so {AFTER[o]}.'} for o in old]
+    sysroot = env.get('ARGUS_CONTROLLERS_SYSROOT') or '/'
+    path = os.path.expanduser(env.get('ARGUS_CONTROLLERS') or '')
+    if not path: path = os.path.join(config or os.path.join(os.path.expanduser('~'), '.config', 'argus-ui'), 'controllers.json')
+    return sysroot, path
 
 def _read(path):
     try:
@@ -142,14 +118,14 @@ def mode_for(d, reg):
     name = MODES.get(ids) or (str(extra.get(ids))[:30] if extra.get(ids) else '')
     return name or f"Unknown ({ids or 'no ids'})"
 
-def scan(sysroot, registry_path, old=()):
-    """Everything the page shows: {ok, controllers: [...], connected, virtual, wake_hint, problem, notice}.
-    The three arguments are what where() returns."""
+def scan(sysroot, registry_path):
+    """Everything the page shows: {ok, controllers: [...], connected, virtual, wake_hint, problem}.
+    The two arguments are what where() returns."""
     reg, problem = registry(registry_path)
     devs = devices(sysroot)
     hint = str(reg.get('wake_hint') or WAKE_HINT)[:200]
     if devs is None:
-        return {'ok': False, 'controllers': [], 'connected': 0, 'virtual': 0, 'wake_hint': hint, 'notice': notice(old),
+        return {'ok': False, 'controllers': [], 'connected': 0, 'virtual': 0, 'wake_hint': hint,
                 'problem': "Can't read /proc/bus/input/devices here: controllers are read on the machine LeafyGrove runs on (Linux)."}
     found = []
     for d in devs:
@@ -163,8 +139,7 @@ def scan(sysroot, registry_path, old=()):
     found.sort(key=lambda c: (c['_order'], c['kind'] != 'real', c['name'].lower()))
     for c in found: del c['_order']
     real = sum(c['kind'] == 'real' for c in found)
-    return {'ok': True, 'controllers': found, 'connected': real, 'virtual': len(found) - real, 'wake_hint': hint, 'problem': problem,
-            'notice': notice(old)}
+    return {'ok': True, 'controllers': found, 'connected': real, 'virtual': len(found) - real, 'wake_hint': hint, 'problem': problem}
 
 def line(s):
     """Home's one line under the Controllers place."""

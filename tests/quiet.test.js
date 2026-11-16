@@ -32,7 +32,7 @@ run(async b => {
     'Mentor with 6 cards due is not in "things need you": no row, no Study button');
   check(await p.locator('#needs-h').textContent() === '1 thing needs you', `the count is the failed task alone (${await p.locator('#needs-h').textContent()})`);
   check(await p.locator('#tabbar .tab[data-id=mentor] .tabcount').count() === 0 && await p.locator('#tabbar .tab[data-id=mentor] .sr').count() === 0, 'no count or dot on Mentor in the bar');
-  check(await tile('mentor').count() === 1 && /6 cards due/.test(await tile('mentor').locator('.pl').textContent()), `Mentor's tile still says it: "${await tile('mentor').locator('.pl').textContent().catch(() => '')}"`);
+  check(await tile('mentor').count() === 1 && /6\u00a0cards due/.test(await tile('mentor').locator('.pl').textContent()), `Mentor's tile still says it: "${await tile('mentor').locator('.pl').textContent().catch(() => '')}"`);
   const real = await (await p.request.get(BASE + 'api/mentor/status')).json();
   check(real.needs === false && real.action === '' && !('count' in real), `the server says the same to the owner: never needs him, no button, no count (${JSON.stringify(real)})`);
   await p.setViewportSize({width: 1440, height: 900}); await p.evaluate(() => render()); await p.waitForTimeout(300);
@@ -47,7 +47,7 @@ run(async b => {
   await mark.click();
   await p.waitForFunction(() => document.getElementById('needs-h')?.textContent === 'Nothing needs you' && /known/.test(document.querySelector('#main .place[data-id="argus"] .pl')?.textContent || ''), null, {timeout: 6000}).catch(() => {});
   check(await row().count() === 0 && await p.locator('#needs-h').textContent() === 'Nothing needs you', `marked known, it leaves Today: "${await p.locator('#needs-h').textContent()}"`);
-  check(/^All \d+ tasks well ·\u00a01\u00a0known$/.test(await tile('argus').locator('.pl').textContent()), `Argus's tile: "${await tile('argus').locator('.pl').textContent()}", "· 1 known" wraps as one piece`);
+  check(/^All \d+\u00a0tasks well\u00a0· 1\u00a0known$/.test(await tile('argus').locator('.pl').textContent()), `Argus's tile: "${await tile('argus').locator('.pl').textContent()}", the dot stays with "well" and "1 known" wraps as one piece`);
   check(!!(await jobNow(p)).known, 'the server keeps the mark');
   check(await p.locator('#toastAct').isVisible() && await p.locator('#toastAct').textContent() === 'Undo' && await p.evaluate(() => document.activeElement?.id === 'toastAct'), 'a toast offers Undo, and focus is on it');
   await p.locator('#toastAct').click();

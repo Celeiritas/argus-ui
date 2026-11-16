@@ -155,7 +155,8 @@ run(async b => {
       await t.goto(BASE); const card = t.locator('.place[data-id="memory"]').locator('.pl'), row = t.locator('.need', {hasText: s.today});
       await (s.needs ? row : card.filter({hasText: s.today})).waitFor({timeout: 5000}).catch(() => {});
       await t.waitForFunction(() => !/Checking…|Asking every section/.test(document.querySelector('#main .home').textContent), null, {timeout: 5000}).catch(() => {});
-      if (!s.needs) check(await card.textContent() === s.today, `${s.name}: Today's line: ${await card.textContent()}`);
+      if (!s.needs) check((await card.textContent()).replace(/\u00a0/g, ' ') === s.today,   /* a count keeps its word on a tile (a no-break space, 4.49.0) */
+      `${s.name}: Today's line: ${await card.textContent()}`);
       check(s.needs ? await row.count() === 1 && await row.locator('a.go').textContent() === (s.action || 'Check backups') && await card.count() === 0 : await row.count() === 0,
         `${s.name}: ${s.needs ? 'Needs you shows the line with ' + (s.action || 'Check backups') + ', and no Mnemosyne card' : 'nothing in Needs you'}`);
       await t.close();
