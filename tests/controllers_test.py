@@ -6,8 +6,9 @@ tests/fixtures/controllers-sysfs/four holds an OpenPuck in SInput mode, a puck i
 parts, which are not controllers), a Steam-virtual Xbox controller and a GameCube adapter without rumble; .../none has a
 keyboard only. Real sysfs paths have colons (pci0000:00); the fixtures use dashes so a Windows checkout can hold them.
 
-OldNames and OldNamesOnTheServer: until 4.33.0 the section was called Pads. For one release the old names (pads.json,
-ARGUS_PADS, ARGUS_PADS_SYSROOT, the address <base>/pads) still work when the new ones are absent."""
+Settings and OnTheServer: where the slot map and the kernel views are read from. Until 4.33.0 the section was called Pads;
+since 4.49.0 the old names (pads.json, ARGUS_PADS, ARGUS_PADS_SYSROOT) are not read, and only the address <base>/pads
+still lands on Controllers."""
 import http.client, importlib.util, json, os, shutil, socket, subprocess, sys, tempfile, time, unittest
 from unittest import mock
 
@@ -16,13 +17,6 @@ _spec = importlib.util.spec_from_file_location('leafy_controllers', os.path.join
 ctl = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(ctl)
 FX = os.path.join(R, 'tests', 'fixtures')
 FOUR, NONE, REG = os.path.join(FX, 'controllers-sysfs', 'four'), os.path.join(FX, 'controllers-sysfs', 'none'), os.path.join(FX, 'controllers.json')
-# the old-name notice word for word, one entry per old name still in use: what to do, then what happens otherwise
-COPY_FILE = {'do': 'Copy pads.json to controllers.json in ~/.config/argus-ui/ on the server.',
-             'why': 'The next release ignores pads.json, so every controller would show No slot.'}
-RENAME_MAP = {'do': 'Rename the setting ARGUS_PADS to ARGUS_CONTROLLERS where the service is set up.',
-              'why': 'The next release ignores ARGUS_PADS, so every controller would show No slot.'}
-RENAME_ROOT = {'do': 'Rename the setting ARGUS_PADS_SYSROOT to ARGUS_CONTROLLERS_SYSROOT where the service is set up.',
-               'why': "The next release ignores ARGUS_PADS_SYSROOT, so the list would come from the machine's real /proc and /sys."}
 
 class Probe(unittest.TestCase):
     def setUp(self):
@@ -64,7 +58,7 @@ class Probe(unittest.TestCase):
         self.assertEqual((self.s['connected'], self.s['virtual']), (3, 1))
         self.assertEqual(ctl.line(self.s), '3 connected · 1 Steam virtual')
         self.assertEqual(self.s['wake_hint'], 'Test hint: press the Home button.')
-        self.assertEqual(self.s['notice'], [], 'no old name in use: nothing to say')
+        self.assertNotIn('notice', self.s, 'the old-name notice is gone (4.49.0)')
 
     def test_no_controllers(self):
         s = ctl.scan(NONE, REG)
@@ -102,8 +96,8 @@ class Registry(unittest.TestCase):
         self.assertEqual(len(s['controllers']), 4); self.assertIn('controllers.json could not be read', s['problem'])
         s = ctl.scan(FOUR, self.reg('[1, 2]'))
         self.assertIn('controllers.json could not be read', s['problem'])
-        s = ctl.scan(FOUR, self.reg('{not json', 'pads.json'))
-        self.assertIn('pads.json could not be read', s['problem'], 'the problem names the file that was read, old name or new')
+        s = ctl.scan(FOUR, self.reg('{not json', 'elsewhere.json'))
+        self.assertIn('elsewhere.json could not be read', s['problem'], 'the problem names the file that was read')
 
     def test_own_mode_names_and_bad_entries(self):
         s = ctl.scan(FOUR, self.reg(json.dumps({'modes': {'2dc8:3019': 'GameCube adapter'}, 'slots': ['x', {'match': ['puck']}, {'slot': 'P4', 'match': ['', 5]}]})))
@@ -151,12 +145,13 @@ class Parsing(unittest.TestCase):
 
     def test_api(self):
         with mock.patch.dict(os.environ, {'ARGUS_CONTROLLERS_SYSROOT': FOUR, 'ARGUS_CONTROLLERS': REG}):
-            code, r = ctl.get('list', {}, None); self.assertEqual((code, len(r['controllers']), r['notice']), (200, 4, []))
+            code, r = ctl.get('list', {}, None); self.assertEqual((code, len(r['controllers'])), (200, 4))
             self.assertEqual(ctl.get('status', {}, None), (200, {'line': '3 connected · 1 Steam virtual'}))
             self.assertEqual(ctl.get('nope', {}, None)[0], 404)
 
-class OldNames(unittest.TestCase):
-    """4.33.0 renamed Pads to Controllers. For one release an old name is read when its new one is absent; the new one wins."""
+class Settings(unittest.TestCase):
+    """Where the slot map and the kernel views are read from: ARGUS_CONTROLLERS and ARGUS_CONTROLLERS_SYSROOT, else the
+    defaults. The names from before 4.33.0 (pads.json, ARGUS_PADS, ARGUS_PADS_SYSROOT) are not read since 4.49.0."""
     def setUp(self): self.tmp = tempfile.mkdtemp(prefix='controllers-test-')
     def tearDown(self): shutil.rmtree(self.tmp, ignore_errors=True)
     def put(self, name, label='Main controller'):
@@ -164,64 +159,37 @@ class OldNames(unittest.TestCase):
         with open(os.path.join(self.tmp, name), 'w', encoding='utf-8') as f: f.write(text)
         return os.path.join(self.tmp, name)
 
-    def test_env_old_names_are_read_when_the_new_ones_are_absent(self):
+    def test_settings_and_defaults(self):
+        new = self.put('new.json')
+        self.assertEqual(ctl.where({'ARGUS_CONTROLLERS_SYSROOT': FOUR, 'ARGUS_CONTROLLERS': new}, self.tmp), (FOUR, new))
+        self.assertEqual(ctl.where({}, self.tmp), ('/', os.path.join(self.tmp, 'controllers.json')), 'nothing set: the defaults')
+        self.assertEqual(ctl.where({'ARGUS_CONTROLLERS': '', 'ARGUS_CONTROLLERS_SYSROOT': ''}, self.tmp), ('/', os.path.join(self.tmp, 'controllers.json')),
+                         'an empty setting counts as unset')
+
+    def test_old_names_are_not_read_any_more(self):
         old = self.put('elsewhere.json', 'From the old setting')
-        self.assertEqual(ctl.where({'ARGUS_PADS_SYSROOT': NONE, 'ARGUS_PADS': old}, self.tmp), (NONE, old, ['ARGUS_PADS_SYSROOT', 'ARGUS_PADS']))
-        self.assertEqual(ctl.where({'ARGUS_PADS': old}, self.tmp), ('/', old, ['ARGUS_PADS']))
-        self.assertEqual(ctl.where({'ARGUS_PADS_SYSROOT': NONE}, self.tmp), (NONE, os.path.join(self.tmp, 'controllers.json'), ['ARGUS_PADS_SYSROOT']))
-
-    def test_env_new_names_win(self):
-        new, old = self.put('new.json'), self.put('old.json')
-        env = {'ARGUS_CONTROLLERS_SYSROOT': FOUR, 'ARGUS_PADS_SYSROOT': NONE, 'ARGUS_CONTROLLERS': new, 'ARGUS_PADS': old}
-        self.assertEqual(ctl.where(env, self.tmp), (FOUR, new, []))
-        self.assertEqual(ctl.where(dict(env, ARGUS_CONTROLLERS='', ARGUS_CONTROLLERS_SYSROOT=''), self.tmp), (NONE, old, ['ARGUS_PADS_SYSROOT', 'ARGUS_PADS']),
-                         'an empty new setting counts as absent')
-        self.assertEqual(ctl.where({}, self.tmp), ('/', os.path.join(self.tmp, 'controllers.json'), []), 'nothing set: the defaults, new names')
-
-    def test_file_pads_json_is_read_only_while_controllers_json_is_absent(self):
-        new, old = os.path.join(self.tmp, 'controllers.json'), os.path.join(self.tmp, 'pads.json')
-        self.assertEqual(ctl.where({}, self.tmp)[1:], (new, []), 'neither file: the new name, nothing old in use')
-        self.put('pads.json')
-        self.assertEqual(ctl.where({}, self.tmp)[1:], (old, ['pads.json']))
-        self.put('controllers.json')
-        self.assertEqual(ctl.where({}, self.tmp)[1:], (new, []), 'both files: the new one wins, the old one is ignored')
-        self.assertEqual(ctl.where({'ARGUS_CONTROLLERS': os.path.join(self.tmp, 'x.json')}, self.tmp)[1:], (os.path.join(self.tmp, 'x.json'), []),
-                         'a path from the environment is used as written')
+        self.assertEqual(ctl.where({'ARGUS_PADS_SYSROOT': NONE, 'ARGUS_PADS': old}, self.tmp), ('/', os.path.join(self.tmp, 'controllers.json')),
+                         'ARGUS_PADS and ARGUS_PADS_SYSROOT are ignored')
+        self.put('pads.json', 'From pads.json')
+        self.assertEqual(ctl.where({}, self.tmp), ('/', os.path.join(self.tmp, 'controllers.json')), 'pads.json in the folder is ignored')
+        s = ctl.scan(FOUR, ctl.where({}, self.tmp)[1])
+        self.assertTrue(all(c['slot'] is None for c in s['controllers']) and s['problem'] == '', 'only pads.json: no slots, and no problem to report')
 
     def test_default_folder_is_the_config_folder(self):
         with mock.patch.dict(os.environ, {'HOME': self.tmp, 'USERPROFILE': self.tmp}):
             self.assertEqual(ctl.where({})[1], os.path.join(self.tmp, '.config', 'argus-ui', 'controllers.json'))
 
-    def test_old_file_still_gives_slots_and_the_page_is_told(self):
-        self.put('pads.json', 'From pads.json')
-        s = ctl.scan(*ctl.where({'ARGUS_PADS_SYSROOT': FOUR}, self.tmp))
-        self.assertEqual([(c['slot'], c['label']) for c in s['controllers']][:2], [('P1', 'From pads.json'), ('P2', '')])
-        self.assertEqual(s['notice'], [RENAME_ROOT, COPY_FILE], 'one entry per old name: the thing to do, and what happens otherwise')
-        self.put('controllers.json', 'From controllers.json')          # the copy the owner makes: it counts on the next request
-        s = ctl.scan(*ctl.where({'ARGUS_CONTROLLERS_SYSROOT': FOUR}, self.tmp))
-        self.assertEqual((s['controllers'][0]['label'], s['notice']), ('From controllers.json', []))
-        self.assertEqual(ctl.notice(['pads.json']), [COPY_FILE])
-        self.assertEqual(ctl.notice(['ARGUS_PADS_SYSROOT', 'ARGUS_PADS', 'pads.json']), [RENAME_ROOT, RENAME_MAP, COPY_FILE])
-        self.assertEqual(sorted(ctl.AFTER), sorted(ctl.RENAMED), 'every old name says what happens without it')
-
-    def test_api_through_the_old_environment_names(self):
-        old = self.put('elsewhere.json', 'From the old setting')
-        env = {k: v for k, v in os.environ.items() if not k.startswith('ARGUS_')}
-        with mock.patch.dict(os.environ, dict(env, ARGUS_PADS_SYSROOT=FOUR, ARGUS_PADS=old), clear=True):
-            code, r = ctl.get('list', {}, None)
-            self.assertEqual((code, r['controllers'][0]['label']), (200, 'From the old setting'))
-            self.assertEqual(r['notice'], [RENAME_ROOT, RENAME_MAP])
-            self.assertEqual(ctl.get('status', {}, None), (200, {'line': '3 connected · 1 Steam virtual'}), "Home's line stays the same: no nagging there")
-
-class OldNamesOnTheServer(unittest.TestCase):
-    """The real server (server/argus_ui.py in its own process, on a free port) started the way an install untouched since
-    4.32 runs: the slot map still named pads.json in ~/.config/argus-ui/, and only the old ARGUS_PADS_SYSROOT set.
-    HOME and USERPROFILE point at a temporary folder; nothing outside it is touched."""
+class OnTheServer(unittest.TestCase):
+    """The real server (server/argus_ui.py in its own process, on a free port) with the slot map in ~/.config/argus-ui/
+    controllers.json and ARGUS_CONTROLLERS_SYSROOT set; a stray pads.json lies beside it and the old ARGUS_PADS settings
+    point elsewhere, all ignored. HOME and USERPROFILE point at a temporary folder; nothing outside it is touched."""
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.mkdtemp(prefix='controllers-server-test-')
         home = os.path.join(cls.tmp, 'home'); cls.conf = os.path.join(home, '.config', 'argus-ui'); os.makedirs(cls.conf)
-        shutil.copyfile(REG, os.path.join(cls.conf, 'pads.json'))
+        shutil.copyfile(REG, os.path.join(cls.conf, 'controllers.json'))
+        with open(REG, encoding='utf-8') as f: text = f.read().replace('Main controller', 'From pads.json')
+        with open(os.path.join(cls.conf, 'pads.json'), 'w', encoding='utf-8') as f: f.write(text)
         bundled, static = os.path.join(cls.tmp, 'bundled'), os.path.join(cls.tmp, 'static'); os.makedirs(static)
         shutil.copytree(os.path.join(R, 'plugins', 'controllers'), os.path.join(bundled, 'controllers'), ignore=shutil.ignore_patterns('__pycache__'))
         with open(os.path.join(static, 'theme.json'), 'w') as f: f.write('{}')
@@ -229,7 +197,7 @@ class OldNamesOnTheServer(unittest.TestCase):
         with socket.socket() as s: s.bind(('127.0.0.1', 0)); cls.port = s.getsockname()[1]
         env = {k: v for k, v in os.environ.items() if not k.startswith('ARGUS_')}
         env.update(HOME=home, USERPROFILE=home, ARGUS_BIND='127.0.0.1', ARGUS_PORT=str(cls.port), ARGUS_STATIC=static, ARGUS_BUNDLED=bundled,
-                   ARGUS_PADS_SYSROOT=FOUR,
+                   ARGUS_CONTROLLERS_SYSROOT=FOUR, ARGUS_PADS=os.path.join(cls.conf, 'pads.json'), ARGUS_PADS_SYSROOT=NONE,
                    ARGUS_SYSTEMCTL=sys.executable)   # no units here: any program that prints nothing when asked for them
         cls.log = open(os.path.join(cls.tmp, 'server.log'), 'w')
         cls.proc = subprocess.Popen([sys.executable, os.path.join(R, 'server', 'argus_ui.py')], env=env, stdout=cls.log, stderr=cls.log)
@@ -254,22 +222,13 @@ class OldNamesOnTheServer(unittest.TestCase):
         r = c.getresponse(); body = r.read(); c.close()
         return r.status, {k.lower(): v for k, v in r.getheaders()}, body
 
-    def test_old_file_and_old_setting_still_give_the_slots(self):
+    def test_new_names_give_the_slots_and_old_names_are_ignored(self):
         code, _, body = self.get('api/controllers/list'); d = json.loads(body)
         self.assertEqual(code, 200)
-        self.assertEqual([c['slot'] for c in d['controllers']], ['P1', 'P2', 'Retro', None], 'four controllers through ARGUS_PADS_SYSROOT, slots from pads.json')
-        self.assertEqual(d['notice'], [RENAME_ROOT, COPY_FILE])
+        self.assertEqual([c['slot'] for c in d['controllers']], ['P1', 'P2', 'Retro', None], 'four controllers through ARGUS_CONTROLLERS_SYSROOT')
+        self.assertEqual(d['controllers'][0]['label'], 'Main controller', 'slots from controllers.json, never from pads.json or ARGUS_PADS')
+        self.assertNotIn('notice', d)
         self.assertEqual(json.loads(self.get('api/controllers/status')[2])['line'], '3 connected · 1 Steam virtual')
-
-    def test_copying_the_file_to_its_new_name_needs_no_restart(self):
-        new = os.path.join(self.conf, 'controllers.json')
-        with open(REG, encoding='utf-8') as f: text = f.read().replace('Main controller', 'From controllers.json')
-        with open(new, 'w', encoding='utf-8') as f: f.write(text)
-        try:
-            d = json.loads(self.get('api/controllers/list')[2])
-            self.assertEqual(d['controllers'][0]['label'], 'From controllers.json')
-            self.assertEqual(d['notice'], [RENAME_ROOT], 'the file line is gone; the setting this server was started with is still old')
-        finally: os.remove(new)
 
     def test_old_address_lands_on_the_new_section(self):
         # relative on purpose: right at <base>/pads whether the server is mounted at /, at /argus/, or behind a proxy that strips the prefix
@@ -278,7 +237,7 @@ class OldNamesOnTheServer(unittest.TestCase):
                            ('hephaestus', 'controllers'), ('argus/hephaestus', 'controllers')):   # 4.48.0: Hephaestus' workshop is Daedalus' section
             code, headers, body = self.get(path)
             self.assertEqual((code, headers.get('location'), body), (302, want, b''), path)
-            self.assertEqual(headers.get('cache-control'), 'no-store', 'browsers must not remember the move: the id pads is free again after this release')
+            self.assertEqual(headers.get('cache-control'), 'no-store', 'browsers must not remember the move: the id pads may be wanted again one day')
 
     def test_a_plugin_of_your_own_with_the_old_id_keeps_its_address(self):
         # the old address is sent on only while nothing lives there: a plugin of your own with the id pads (static, read fresh
@@ -297,15 +256,10 @@ class OldNamesOnTheServer(unittest.TestCase):
         code, headers, _ = self.get('pads')
         self.assertEqual((code, headers.get('location')), (302, 'controllers'), 'no plugin has the old id any more: sent on again')
 
-    def test_old_api_address_tells_a_page_left_open_to_reload(self):
-        # a 4.32 page that stayed open across the update still asks api/pads/...: it shows "problem" in place of its list
-        # (its script: ok false -> problem) and "line" under its Home place, so both must say what to do
+    def test_old_api_address_is_gone(self):
+        # until 4.49.0 api/pads/... told a page left open across the 4.33 update to reload; now it is an unknown address
         for path in ('api/pads/list', 'api/pads/status', 'argus/api/pads/list'):
-            code, headers, body = self.get(path)
-            self.assertEqual((code, headers.get('content-type'), headers.get('cache-control')), (200, 'application/json', 'no-store'), path)
-            self.assertEqual(json.loads(body), {'ok': False, 'moved': 'controllers', 'line': 'Now called Controllers: reload this page',
-                                                'problem': 'This section is now called Controllers. Reload this page to open it.'}, path)
-        self.assertEqual(self.get('api/nothing/list')[0], 404, 'only a moved id is answered this way')
+            self.assertEqual(self.get(path)[0], 404, path)
 
     def test_server_log_names_the_plugin_by_its_new_id(self):
         self.log.flush()

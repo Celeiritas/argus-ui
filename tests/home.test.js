@@ -128,7 +128,7 @@ run(async b => {
   check(content, 'Needs you emptied: "Nothing needs you", and Argus gives a slow, contented blink');
   const back = await p.locator('.placelist .place .pw b').allTextContents();
   check(back.slice(0, 3).join(' ') === 'Argus Mentor Zeus', `with their rows gone, Argus, Mentor and Zeus have their cards again, first, in the bar's order (${back.slice(0, 4).join(', ')})`);
-  check(/^All \d+ tasks well$/.test(await tile('argus').locator('.pl').textContent()), "Argus's card says all is well");
+  check(/^All \d+\u00a0tasks well$/.test(await tile('argus').locator('.pl').textContent()), "Argus's card says all is well");
   // a learner whose one section has a row above: nothing under Sections, so no Sections heading either
   await p.route('**/api/mentor/status', r => r.fulfill({json: {line: '3 due', needs: true, action: 'Study 10 minutes'}}));
   await p.evaluate(() => { S.role = 'learner'; render(); }); await p.locator('.need', {hasText: '3 due'}).waitFor({timeout: 3000}).catch(() => {});

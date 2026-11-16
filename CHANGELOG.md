@@ -1,5 +1,13 @@
 # Changelog
 
+## 4.49.0 – 2026-11-16
+Small fixes: the old Pads names go, a count stays with its word on Today, and a test for holding Enter.
+- **Controllers forgets the Pads names** (plugin 1.2.0): the server no longer reads `pads.json` or the `ARGUS_PADS*` settings, the section no longer shows the *Renamed from Pads* note, and `api/pads/...` is now an unknown address (404) instead of the *moved* answer. An old bookmark to `<base>/pads` still lands on Controllers (the plain 302 stays). On the host, the old `pads.json` and an empty `plugins/pads` folder can be set aside.
+- **Today: a count keeps its word.** On a 375 px phone the Controllers tile read *3 connected · 1* and then *Steam virtual* on the next line. A tile's line now joins a number to the word after it, and a ` · ` to the word before it, with no-break spaces, so a line never ends on a bare number or starts with a dot; the two-line cut still breaks only at real spaces. No sideways scrolling at 375 px. The Argus tile follows the same rule: a narrow tile now breaks *All 6 tasks well ·* / *1 known* (before, *· 1 known* moved down as one piece). Rows and headings are unchanged.
+- **Hold to confirm:** `tests/fx.test.js` now holds Enter for 3 seconds as well as Space (sends once, the label comes back).
+- Tests: `tests/controllers.test.js` checks the 375 px Today tile keeps *1* with *Steam*, that `api/pads` is 404 and the old bookmark still opens Controllers; `tests/controllers_test.py` checks the settings read only the Controllers names; tile text checks in `home`, `quiet` and `memory` tests accept the no-break spaces.
+- Checked and left alone: *Check backups* without a brain job was already fixed in 4.43.0 (Memory 1.2.0), and *phone: Home is one column, full width* has passed in every CI run since its timing fix on 2026-11-13.
+
 ## 4.48.0 – 2026-11-16
 The naming release (the owner's decisions of 2026-11-13): the page is LeafyGrove, two signers buzz, ten agents with one verb each.
 - **LeafyGrove everywhere a person reads it.** The page title, the installed app's name (`manifest.webmanifest`), the phone alert texts, the docs and the comments say LeafyGrove instead of Elaia. The repo (`argus-ui`) and the `/argus/` address stay. The lower-case keys an installed phone already holds (storage names, the IndexedDB name, the alert topic, `elaia-*` element ids) stay as they are, so phones keep their settings and alerts.

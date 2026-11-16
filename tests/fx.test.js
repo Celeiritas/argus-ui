@@ -52,11 +52,16 @@ run(async b => {
   await p.keyboard.down(' '); await p.waitForTimeout(3300); await p.keyboard.up(' ');
   await held.filter({hasText: 'held echo 2'}).waitFor({timeout: 3000});
   check(true, 'keyboard: Space held for 3 seconds sends');
+  // Enter held to the end sends too, once: keydown cancels the button's own Enter click, so no second send follows the hold
+  await btn.focus(); await p.keyboard.down('Enter'); await p.waitForTimeout(3300); await p.keyboard.up('Enter');
+  await held.filter({hasText: 'held echo 3'}).waitFor({timeout: 3000}); await p.waitForTimeout(300);
+  check(await held.textContent() === 'held echo 3: held' && await btn.locator('.hold-label').textContent() === 'Send held echo',
+    `keyboard: Enter held for 3 seconds sends, once, and the label comes back (got ${await held.textContent()})`);
 
   await btn.evaluate(e => e.click()); await p.waitForTimeout(200);       // a screen reader's click: no press behind it
-  check(/^Click again to send held echo$/.test(await btn.locator('.hold-label').textContent()) && await held.textContent() === 'held echo 2: held', 'a click that cannot be held arms the button and sends nothing');
+  check(/^Click again to send held echo$/.test(await btn.locator('.hold-label').textContent()) && await held.textContent() === 'held echo 3: held', 'a click that cannot be held arms the button and sends nothing');
   await btn.evaluate(e => e.click());
-  await held.filter({hasText: 'held echo 3'}).waitFor({timeout: 3000});
+  await held.filter({hasText: 'held echo 4'}).waitFor({timeout: 3000});
   check(true, 'a second click within 5 seconds confirms');
   check(p.errors.length === 0, 'no page errors ' + p.errors.join(' | '));
 
