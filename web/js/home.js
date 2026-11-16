@@ -11,11 +11,30 @@
 //      from status v2 (api/<id>/status: line, needs, action), cut at a word to two lines (fitLines). A new section (workouts,
 //      meals, music) only has to answer that to get its tile. A section with a row above has no tile; no tiles, no heading.
 //      A quiet section (server/quiet.py: Mentor) keeps its tile and its line, and never has a row.
+//   The owner makes Today his own (4.50.0, Edit Today, today-edit.js): tiles and Open's links shown or hidden, in his order,
+//   under his names, links in his groups (layout() below applies today.json). A learner's page has the default.
 // A row whose need is met fades out (200 ms); a new row slides in. Under reduced motion they just go and come.
 const home = (() => {
   let had = null;                          // how many things needed you at the last draw (null: not drawn yet)
   let seen = null;                         // the rows drawn last time, by key (null: not drawn yet)
   const plural = (n, one, many = one + 's') => `${n} ${n === 1 ? one : many}`;
+  // a list in the owner's saved order (today.json "order"): the ones he placed first, in his order, then the rest in their own
+  // order (a section or link that is new since he saved goes at the end); `key` gives each one's id
+  const ordered = (list, order, key) => { const at = new Map((Array.isArray(order) ? order : []).map((k, i) => [k, i]));
+    return list.map((x, i) => [x, at.has(key(x)) ? at.get(key(x)) : at.size + i]).sort((a, b) => a[1] - b[1]).map(x => x[0]); };
+  // Today's tiles and Open's entries as the owner set them (both also used by Edit Today, today-edit.js): all of them, in
+  // order, each with `shown`; Open's with its key, its name and its group (his, else links.json's)
+  function tileList() {
+    const t = myToday().tiles || {}, hid = new Set(t.hidden || []);
+    return ordered(sections().filter(e => !e.kind && e.id !== 'home' && e.id !== 'phone' && visible([e]).length), t.order, e => e.id).map(e => ({...e, shown: !hid.has(e.id)}));
+  }
+  function openList() {
+    const o = myToday().open || {}, hid = new Set(o.hidden || []), gs = o.groups || {};
+    const all = [...(S.media || []).map(x => ({...x, media: true})), ...(S.links || [])].map(x => { const key = openKey(x, x.media);
+      const own = typeof x.group === 'string' ? x.group.trim() : '';
+      return {...x, key, own, def: x.name, name: openName(x, x.media), group: typeof gs[key] === 'string' ? gs[key] : own, shown: !hid.has(key)}; });
+    return ordered(all, o.order, x => x.key);
+  }
   // the things to do: one row per broken thing on Watch first (troubleItems() in core.js: what is wrong and since when, what Argus
   // did, what you can do, and the declared fix as a hold button), then each section that says it needs you. `of`: the place it
   // belongs to; `n`: how many things the row stands for, so the line above counts what the bar counts (trouble() in core.js).
@@ -40,7 +59,7 @@ const home = (() => {
     const st = s => s === undefined ? 'Checking…' : s === null ? 'No news' : s.line;
     const tr = trouble(), fails = tr.n, allFailed = !tr.alerts.length && !tr.checks.length && tr.tasks.every(j => j.state === 'failed'), kn = tr.known.length;
     const listed = new Set(list.map(n => n.of));
-    return sections().filter(e => !e.kind && e.id !== 'home' && e.id !== 'phone' && !listed.has(e.id) && visible([e]).length).map(e => {
+    return tileList().filter(e => e.shown && !listed.has(e.id)).map(e => {
       const p = PLUGINS.find(x => x.id === e.id);
       // a task marked known is told apart, never in red: "All 12 tasks well · 1 known"
       const line = e.id === 'argus' ? (!fails ? `All ${plural(S.jobs.length, 'task')} well${kn ? ` · ${kn} known` : ''}` : allFailed ? `${plural(fails, 'task')} failed` : `${plural(fails, 'thing')} need${fails === 1 ? 's' : ''} a look`)
@@ -55,12 +74,14 @@ const home = (() => {
   // 2026-11-13): one list of chips that wraps, no labels. Only a link with a "group" gets a small label, in front of that
   // group's chips: on a phone the label and its chips flow in the same wrap as the others (argus.css), on a wide screen the
   // groups sit side by side. The chips without a group come first, unlabelled.
+  // The owner's Edit Today (4.50.0) may hide an entry, rename it, put it in a group or out of one, and order them; hidden ones
+  // stay in More.
   function opens() {
-    const li = (x, rel) => `<li><a class="openlink" href="${esc(x.href)}"${rel ? ' rel="noopener noreferrer"' : ''}>${LINK_MARK}<span><b>${esc(x.name)}</b>${x.what ? `<small>${esc(x.what)}</small>` : ''}</span></a></li>`;
+    const li = x => `<li><a class="openlink" href="${esc(x.href)}"${x.media ? ' rel="noopener noreferrer"' : ''}>${LINK_MARK}<span><b>${esc(x.name)}</b>${x.what ? `<small>${esc(x.what)}</small>` : ''}</span></a></li>`;
     const groups = new Map();              // label -> chips, in the order they first come
-    let loose = (S.media || []).map(x => li(x, true)).join('');
-    (S.links || []).forEach(x => { const g = typeof x.group === 'string' ? x.group.trim() : '';
-      if (g) groups.set(g, (groups.get(g) || '') + li(x, false)); else loose += li(x, false); });
+    let loose = '';
+    openList().filter(x => x.shown).forEach(x => { const g = x.group.trim();
+      if (g) groups.set(g, (groups.get(g) || '') + li(x)); else loose += li(x); });
     if (!groups.size) return loose ? `<ul class="openlist">${loose}</ul>` : '';
     return `<div class="opengroups">${loose ? `<ul class="openlist">${loose}</ul>` : ''}${[...groups].map(([g, chips], i) => `<div class="og"><h3 class="opengroup" id="open-g${i}">${esc(g)}</h3><ul class="openlist" aria-labelledby="open-g${i}">${chips}</ul></div>`).join('')}</div>`;
   }
@@ -92,21 +113,26 @@ const home = (() => {
   }
   let last = '';                           // the last page drawn: an unchanged page is not redrawn (focus and running fades stay)
   function draw() {
-    if (here !== 'home') return;
+    if (here !== 'home' || todayEdit.on()) return;           // Edit Today has the page: the 15 s refresh must not draw over it
     const list = needs(), asking = PLUGINS.some(p => p.kind === 'server' && STATUS[p.id] === undefined);
     const total = list.reduce((t, n) => t + n.n, 0);              // every failed task and every alert counts, as on the bar
     const state = total ? `${plural(total, 'thing')} need${total === 1 ? 's' : ''} you` : asking ? 'Asking every section…' : 'Nothing needs you';
     const keys = new Set(list.map(n => n.key)), links = role() === 'owner' ? opens() : '', places = cards(list);
     const now = role() === 'owner' && typeof S.now === 'string' ? S.now : '';   // what the server is doing (the server's own words)
+    const owner = role() === 'owner', why = owner && typeof S.today_problem === 'string' ? S.today_problem : '';   // today.json cannot be used
+    // Edit Today (the owner's): in the Sections heading's row, so Today gets no taller; with every tile hidden it stays
+    const edit = owner ? '<button type="button" class="editbtn" id="editToday">Edit Today</button>' : '';
+    const placesBody = places ? `<ul class="placelist">${places}</ul>` : owner && tileList().length && tileList().every(e => !e.shown) ? '<p class="quiet">Every section is hidden from Today. Edit Today to show them again.</p>' : '';
     // the server's line stands above the list, on its own: inside the list's panel it read as one more thing to do
-    const html = `<section class="home" aria-label="Today">${now ? nowBand(now) : ''}${devices.line()}
+    const html = `<section class="home" aria-label="Today">${now ? nowBand(now) : ''}${why ? `<p class="people-problem today-problem" role="status">${esc(why)}</p>` : ''}${devices.line()}
       <section class="needs" aria-labelledby="needs-h"><h2 class="state${list.length ? ' bad' : ''}" id="needs-h">${state}</h2>
         ${now || list.length || asking ? '' : '<p class="quiet">The realm is quiet.</p>'}
         <ul class="needlist">${list.map(n => row(n, seen && !seen.has(n.key))).join('')}</ul></section>
       ${links ? `<section class="open" aria-labelledby="open-h"><h2 id="open-h">Open</h2>${links}</section>` : ''}
-      ${places ? `<section class="places" aria-labelledby="places-h"><h2 id="places-h">Sections</h2><ul class="placelist">${places}</ul></section>` : ''}</section>`;
+      ${placesBody || edit ? `<section class="places" aria-labelledby="places-h"><div class="placeshead"><h2 id="places-h">Sections</h2>${edit}</div>${placesBody}</section>` : ''}</section>`;
     if (html.replace(/ fresh/g, '') === last) return;
     const focused = document.activeElement?.closest?.('#main a')?.getAttribute('href');   // a redraw must not drop keyboard focus
+    const onEdit = document.activeElement?.id === 'editToday';
     const gone = seen && !RM.matches ? $$('#main .need[data-key]').filter(li => !keys.has(li.dataset.key)).map(li => [li, [...li.parentNode.children].indexOf(li)]) : [];
     $('#main').innerHTML = html; last = html.replace(/ fresh/g, '');
     const ul = $('#main .needlist');       // a met need leaves with a short fade where it stood, then is gone
@@ -116,6 +142,7 @@ const home = (() => {
     wireFixes();                           // the fix buttons are press-and-hold (holdConfirm), as on Watch
     fitLines();                            // the tiles' lines, cut at a word to their two lines
     if (focused) $$('#main a').find(a => a.getAttribute('href') === focused)?.focus();
+    if (onEdit) $('#editToday')?.focus();
     if (had > 0 && !list.length) look.react('content');       // Needs you just emptied: Argus gives a slow, contented blink
     had = list.length; seen = keys;
   }
@@ -126,5 +153,5 @@ const home = (() => {
     return [h < 5 ? 'Good night' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening',
       new Date().toLocaleDateString([], {weekday: 'long', month: 'long', day: 'numeric'}) + (wx ? ` · ${wx}` : '')];
   }
-  return {show, greet, draw};
+  return {show, greet, draw, tileList, openList, reset: () => { last = ''; }};
 })();

@@ -11,6 +11,38 @@ Argus lists the owner's devices and whether each is on, each status in its own c
 - **The owner's only**: `GET api/devices` follows the role check (a learner gets 403); a learner's page never asks for it and shows no line.
 - Tests: `tests/devices_test.py` (the file, each status and each failure against a stand-in tailscale, the cache, the route for owner and learner) and `tests/devices.test.js` (the page at 375, 412 and 1920 px).
 
+## 4.50.0 – 2026-11-16
+The owner makes Today his own (his four picks, 2026-11-16): show, hide and order Today's tiles and Open's links; rename them;
+make groups in Open; switch reminders off or on per section.
+- **Edit Today**, a button in the Sections heading's row (the owner's only; a learner has none and the server refuses her with
+  403). It turns Today into three lists with **Done** and **Cancel** at the top and the bottom; nothing is kept until Done.
+  **Sections**: each tile with **Show**, **Move up** / **Move down** (buttons: the keyboard and touch path, the keyboard stays on
+  the button it pressed) and a name field; a god's tile has no field (*A god's name: it stays*), and Today keeps its name.
+  **Open**: each link or player with Show, a name, a **Group** field (a new name makes a group, empty takes it out; Enter applies
+  it at once) and Move up / down within its group; each group renamed or moved as a whole. Open on Today stays as compact as
+  before. **Reminders**: a switch per section that can need him; off, its tile keeps its line but it never asks for him on
+  Today and never buzzes his phone. Mentor's is off and locked (*Never reminds you*). **Reset to default** fills the lists with
+  the default; Done keeps it.
+- **A rename shows everywhere the section is named**: its tile, the bar, the strip, More (`wordOf()` in `core.js`). A hidden tile
+  still has its place in the bar and More, and its row on Today when it needs him; a hidden link stays in More.
+- **Saved on the server**, the same on every device and kept through updates: `~/.config/argus-ui/today.json` (or
+  `ARGUS_TODAY`; `server/today.py`). Only what differs from the default is saved, so a section or link added later still shows
+  (at the end of a saved order). No file: the default. A broken file (not JSON, a wrong shape, over 64 KB): Today shows the
+  default and a line says so; the next save moves the old file aside (`today.set-aside-<date>-<time>.json`), never over it.
+- **`POST api/today`** `{"tiles", "open", "quiet"}` or `{"reset": true}`: the owner's (403 to a learner), after the usual POST
+  checks (JSON only, Origin / Sec-Fetch-Site); a body up to 16 KB; checked strictly (names up to 40 characters, at most 64
+  entries a list, section ids and `link:` / `media:` keys only, Today keeps its name), 400 with the reason and nothing saved; written atomically.
+  Every name is drawn with `esc()`. `api/state` carries `today` and `today_problem` in the owner's state only.
+- **Quiet sections are his setting now**: `quiet_sections()` (`server/quiet.py`) is `{'mentor'}` plus the sections he switched off.
+- Packaging: `server/today.py` is copied by `scripts/build.sh` and `scripts/install.sh`. Docs: `docs/home.md` *Edit Today*.
+  Tests: new `tests/today_edit_test.py` (the file's checks, a broken file, the set-aside, the route with an owner and a learner,
+  the POST protections) and `tests/today-edit.test.js` (Edit at 412, 1920 and 375 px: hide, keyboard Move up, rename with HTML
+  in it, a new group moved first, a hidden link, a switch off, Done, reload, Cancel, Reset, every tile hidden, a broken file,
+  44 px controls, no sideways scroll, pictures); `tests/gate_test.py` (the route's row, `today` never in a learner's state).
+- Review fixes: a group typed and then Done, Cancel, Reset or a Move tapped at once works on the first tap (it used to
+  need a second); a group's own field is labelled **Group name** on screen; a today.json nested thousands deep shows the
+  default and the problem line instead of a server error, so Edit can repair it.
+
 ## 4.49.0 – 2026-11-16
 Small fixes: the old Pads names go, a count stays with its word on Today, and a test for holding Enter.
 - **Controllers forgets the Pads names** (plugin 1.2.0): the server no longer reads `pads.json` or the `ARGUS_PADS*` settings, the section no longer shows the *Renamed from Pads* note, and `api/pads/...` is now an unknown address (404) instead of the *moved* answer. An old bookmark to `<base>/pads` still lands on Controllers (the plain 302 stays). On the host, the old `pads.json` and an empty `plugins/pads` folder can be set aside.

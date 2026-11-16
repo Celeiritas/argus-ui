@@ -148,6 +148,7 @@ ROUTES = [  # (verb, path, what it is, owner, learner, none)
     (P, 'api/watch/fix', "the owner's yes to a check's declared fix (4.40.0; no id here: 400)", 400, 403, 403),
     (P, 'api/known', "mark a failed task known, low priority (4.45.0; no 'on' here: 400)", 400, 403, 403),
     (P, 'api/mode', 'switch Desktop / Game mode (4.46.0; no modes.json here: 404)', 404, 403, 403),
+    (P, 'api/today', "save the owner's own Today (4.50.0; this body is not a layout: 400)", 400, 403, 403),
     (P, 'api/heracles/answer', 'a plugin POST opened to learners', 200, 200, 403),
     (P, 'api/heracles/wipe', 'a plugin POST not opened', 200, 403, 403),
     (P, 'api/quiet/note', 'a plugin POST opened to learners (no who)', 200, 200, 403),
@@ -232,11 +233,12 @@ class Roles(Base):
         code, h, body = self.req(G, 'api/state', LEARNER); d = json.loads(body)
         self.assertEqual((d['role'], d['person'], d['name']), ('learner', 'learner-two', 'Learner Two'))
         for secret in (b'hermes', b'secretsort', b'mnemosyne', b'Private alert', b'Private Studio', b'/studio/', b'Workouts',
-                       b'closed', b'spartamelee', b'controllers', b'people_problem', b'Owner One'):
+                       b'closed', b'spartamelee', b'controllers', b'people_problem', b'Owner One', b'today_problem'):
             self.assertNotIn(secret, body, secret)
         self.assertEqual((d['jobs'], d['alerts'], d['links'], d['watch'], d['soon']), ([], [], [], [], []))
         self.assertEqual(sorted(p['id'] for p in d['plugins']), ['heracles', 'mentor', 'quiet'])
         self.assertEqual([p['key'] for p in d['personas']], ['heracles'], 'only the agents whose section she may open')
+        self.assertNotIn('today', d, "the owner's own Today (4.50.0) is not in her state")
         code, h, page = self.req(G, '', LEARNER)
         self.assertIn(b'"role": "learner"', page); self.assertNotIn(b'secretsort', page, 'the state inside the page is cut too')
         code, d = self.js(G, 'api/state', OWNER)

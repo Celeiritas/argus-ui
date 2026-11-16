@@ -27,6 +27,7 @@ import push, summary  # phone alerts (Web Push) and the daily summary (docs/phon
 import notify       # the events file those changes go to (notify.py); api/events reads it for Watch's "What happened lately"
 import quiet        # what keeps still: quiet sections (Mentor) and tasks marked "Known, low priority" (quiet.py, docs/home.md)
 import modes        # Desktop / Game mode: the pill at the top and POST api/mode, set up in modes.json on the host (modes.py, docs/modes.md)
+import today        # the owner's own Today: tiles, Open's links, reminders per section; POST api/today (today.py, docs/home.md)
 import devices      # the device list on Watch and its line on Today, set up in devices.json on the host (devices.py, docs/devices.md)
 SHARE = os.path.expanduser('~/.local/share/argus-ui')
 
@@ -63,7 +64,7 @@ LINKS = os.path.expanduser(os.environ.get('ARGUS_LINKS', '~/.config/argus-ui/lin
 BUNDLED = os.path.expanduser(os.environ.get('ARGUS_BUNDLED', '~/.local/share/argus-ui/bundled'))
 PLUGIN_ID = re.compile(r'^[a-z][a-z0-9-]{0,31}$')
 RESERVED = {'api', 'static', 'plugins', 'play', 'all', 'argus', 'sw.js', 'manifest.webmanifest',   # 'play' means Olympus in the page
-            'state', 'sky', 'health', 'log', 'freeze', 'thaw', 'bolt', 'run', 'whoami', 'push', 'events', 'watch', 'known', 'mode', 'devices'}   # built-in api/<name> routes
+            'state', 'sky', 'health', 'log', 'freeze', 'thaw', 'bolt', 'run', 'whoami', 'push', 'events', 'watch', 'known', 'mode', 'today', 'devices'}   # built-in api/<name> routes
 mimetypes.add_type('text/javascript', '.js'); mimetypes.add_type('text/javascript', '.mjs')
 mimetypes.add_type('model/gltf-binary', '.glb'); mimetypes.add_type('application/json', '.json')
 mimetypes.add_type('application/wasm', '.wasm'); mimetypes.add_type('font/woff2', '.woff2')
@@ -592,7 +593,11 @@ def state_for(who, people_problem=None, reach=None):
     at least one path to learners and the agents they take over, the title, and empty lists for everything else (no tasks,
     alerts, links, watch rows or coming-later pills: nothing that names the owner's programs)."""
     me = {'role': who['role'], 'person': who['person'], 'name': who['name']}
-    if who['role'] == 'owner': return dict(state(reach), **me, people_problem=people_problem)
+    if who['role'] == 'owner':
+        # his own Today (today.py): the layout he saved in Edit, and one plain line when its file cannot be used. Only here:
+        # a learner's state is built from nothing below, so she never gets it (and her page has no Edit)
+        lay, why = today.load()
+        return dict(state(reach), **me, people_problem=people_problem, today=lay, today_problem=why)
     ps = [p for p in plugins() if p['kind'] == 'server' and p['learner']]
     ids = {p['id'] for p in ps}
     return dict(updated=datetime.now().strftime('%I:%M %p').lstrip('0'), jobs=[], watch=[], alerts=[], links=[], soon=[],
@@ -1029,6 +1034,15 @@ class H(BaseHTTPRequestHandler):
         except Exception: code, ok, msg = 500, False, 'Argus could not switch modes. Try again in a moment.'
         return self.out(json.dumps({'ok': ok, 'msg': msg}), 'application/json', code)
 
+    def today_save(self, body):
+        # POST api/today {the layout} or {"reset": true}: save the owner's own Today (today.py, docs/home.md "Edit Today").
+        # The owner's (need()); checked strictly: anything this version cannot use is refused with the reason, nothing saved.
+        reset = body == {'reset': True}
+        try: lay = today.save({} if reset else body)
+        except ValueError as e: return self.deny(400, str(e))
+        except OSError: return self.deny(500, 'Today could not be saved. Try again in a moment.')
+        return self.out(json.dumps({'ok': True, 'today': lay, 'msg': 'Today is back to the default.' if reset else 'Today saved.'}), 'application/json')
+
     def deny(self, code, msg): return self.out(json.dumps({'ok': False, 'msg': msg}), 'application/json', code)
 
     def do_POST(self):
@@ -1047,7 +1061,7 @@ class H(BaseHTTPRequestHandler):
         if not identity.allows(self.who['role'], need): return self.refuse('post', p, need)   # a closed page (people file broken, no good copy) ends here too
         try: n = int(self.headers.get('Content-Length', 0) or 0)
         except ValueError: n = -1
-        limit = PLUGIN_BODY.get(pid, MAX_BODY) if p.startswith('api/') and pid in SERVER_PLUGINS else MAX_BODY
+        limit = PLUGIN_BODY.get(pid, MAX_BODY) if p.startswith('api/') and pid in SERVER_PLUGINS else today.BODY_MAX if p == 'api/today' else MAX_BODY
         if n < 0 or n > limit: return self.deny(413, 'request too large')
         try: body = json.loads(self.rfile.read(n) or b'{}')
         except Exception: return self.deny(400, 'bad json')
@@ -1062,6 +1076,7 @@ class H(BaseHTTPRequestHandler):
             try: return self.known(body)
             except OSError: return self.deny(500, 'The mark could not be saved. Try again in a moment.')
         if p == 'api/mode': return self.mode(body)
+        if p == 'api/today': return self.today_save(body)
         u = str(body.get('job', ''))
         actions = {'api/freeze': freeze, 'api/thaw': thaw, 'api/bolt': bolt, 'api/run': bolt}
         if p not in actions: return self.deny(404, 'not found')
