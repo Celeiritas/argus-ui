@@ -3,8 +3,9 @@
 1. Quiet sections. A section in quiet_sections() never counts as something that needs the owner: its tile keeps its own line
    ("6 due"), but its status answers needs false with no action and no count (no row under "N things need you", no number in
    it, no button on Today, no dot or count on the bar or the strip), and an event about it never buzzes and never goes into
-   the daily summary. DEFAULT_QUIET is {'mentor'} (the owner, 2026-11-13: no Mentor notifications, ever); the next build
-   turns it into the owner's own setting per section, read here. A learner's page is not quiet: Mentor is what she studies.
+   the daily summary. DEFAULT_QUIET is {'mentor'} (the owner, 2026-11-13: no Mentor notifications, ever); since 4.50.0 the
+   owner adds sections to it himself (Edit on Today, the reminders switches: today.py). A learner's page is not quiet:
+   Mentor is what she studies.
 
 2. Known marks ("Known, low priority"). A failed task the owner already knows about, marked from its card or its row on
    Today (POST api/known). It stays on Watch in grey, but leaves "N things need you", never buzzes and is not in the summary.
@@ -18,14 +19,18 @@
    systemd's list (a hiccup must not wake every known failure at once)."""
 import json, os, threading
 from datetime import datetime
+import today        # the owner's own Today (today.py, 4.50.0): the sections he switched reminders off for
 
 DEFAULT_QUIET = frozenset({'mentor'})
 _lock = threading.Lock()
 
 
 def quiet_sections():
-    """The sections that never count as needing the owner. One place: the next build reads the owner's setting here."""
-    return DEFAULT_QUIET
+    """The sections that never count as needing the owner: Mentor always, and each section he switched reminders off for in
+    Edit on Today (today.json "quiet"). One place: everything quiet reads goes through here."""
+    try: own = today.quiet()
+    except Exception: own = None                    # a settings file that cannot be read never stops an alert's path
+    return DEFAULT_QUIET | own if own else DEFAULT_QUIET
 
 
 def is_quiet(section): return isinstance(section, str) and section in quiet_sections()
