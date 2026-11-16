@@ -252,6 +252,48 @@ dialog .confirm{border-color:var(--danger);color:var(--danger)}
 .place .pl{grid-area:l;font-size:var(--fs-meta);line-height:1.25;max-height:2.5em;overflow:hidden;overflow-wrap:normal;white-space:normal}.place .pl:empty{display:none}
 .place .pl.cut::after{content:"…" / ""}   /* fitLines cut it at a word; the rest is still in the link's name (a .sr span) */
 .place.bad{box-shadow:inset 3px 0 0 var(--bad)}.place.bad .pl{color:var(--bad)}.place.needs{box-shadow:inset 3px 0 0 var(--bolt)}.place.needs .pl{color:var(--snow)}
+/* Edit Today (4.50.0, today-edit.js, docs/home.md "Edit Today"): the owner's button sits in the Sections heading's row and
+   takes no height of its own (Today stays clear of the phone's bar); a broken today.json is said in the people-file line's look */
+.placeshead{display:flex;align-items:center;justify-content:space-between;gap:var(--s2)}
+.editbtn{margin:-5px 0;flex:none}
+.home>.today-problem{grid-column:1 / -1;width:auto;margin:0 0 var(--s4)}
+/* Edit mode: one panel each for the top (Done, Cancel), Sections, Open, Reminders and the end (Reset to default). Each row: its
+   mark, its name (a field; a god's name as plain words), Show, and Move up / down (44 px buttons: the keyboard and touch path) */
+.home.edit{display:block;max-width:880px}
+.home.edit>.edtop,.home.edit>.edend{background:rgb(28 33 39 / .86);border-radius:12px;padding:var(--s2) var(--s4) var(--s3);margin-bottom:var(--s4)}
+.home.edit h2.state:focus{outline:none}.home.edit h2.state:focus-visible{outline:2px solid var(--powder);outline-offset:2px}
+.edhint{margin:0 0 var(--s2);color:var(--powder);font-size:var(--fs-sec)}
+.edacts{display:flex;flex-wrap:wrap;gap:var(--s2)}.edacts .edreset{margin-left:auto}
+.edlist{list-style:none;margin:0;padding:0}
+.edrow{display:grid;grid-template-columns:32px minmax(0,1fr) auto auto;grid-template-areas:"m n s v";align-items:center;gap:var(--s1) var(--s2);padding:var(--s2) 0;border-bottom:1px solid var(--line)}
+.edrow:last-child{border-bottom:0}
+.edrow.edlink{grid-template-columns:32px minmax(0,1fr) minmax(0,11rem) auto auto;grid-template-areas:"m n g s v"}
+.edmark{grid-area:m}.edmark img,.edmark svg{width:32px;height:32px;display:block}
+.edname{grid-area:n;min-width:0}.edname b{display:block;color:var(--snow);font-size:var(--fs-body);font-weight:600;line-height:1.3}
+.edname small{display:block;font-size:var(--fs-meta);line-height:1.3;color:var(--frost)}
+.edin{width:100%;min-height:var(--hit);padding:0 var(--s2);border:1px solid var(--line);border-radius:8px;background:var(--night);color:var(--snow);font:inherit;font-size:var(--fs-body)}
+.edin:hover{border-color:var(--powder)}.edin:focus-visible{outline:2px solid var(--powder);outline-offset:2px}
+.edgroupin{grid-area:g;display:flex;flex-direction:column;min-width:0}.edgroupin span{font-size:var(--fs-meta);line-height:1.3;color:var(--frost)}
+.edshow{grid-area:s;padding:0 var(--s1)}
+.edmove{grid-area:v;display:flex;gap:var(--s1)}.edmove .edbtn{padding:0;font-size:var(--fs-body)}
+.edrow.off .edmark,.edrow.off .edname b,.edrow.off .edname small{opacity:.55}   /* hidden from Today: still here to show again */
+.edg+.edg{margin-top:var(--s3)}
+.edgh{margin:var(--s2) 0 0;font-size:var(--fs-meta);font-weight:600;color:var(--frost)}
+.edghead{display:flex;align-items:flex-end;gap:var(--s2)}.edgnamein{flex:1 1 auto;max-width:20rem;display:flex;flex-direction:column;min-width:0}
+.edgnamein span{font-size:var(--fs-meta);line-height:1.3;color:var(--frost)}.edgname{font-weight:600}   /* a visible "Group name": not mistaken for a link's name */
+.edswitches{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:0 var(--s4)}
+.edswitch{display:flex;align-items:center;gap:var(--s3);min-height:var(--hit);padding:var(--s1) 0;cursor:pointer}
+.edswitch input{appearance:none;-webkit-appearance:none;flex:none;position:relative;width:44px;height:26px;margin:0;border:1px solid var(--frost);border-radius:13px;background:var(--line);cursor:pointer;transition:background-color var(--t2),border-color var(--t2)}
+.edswitch input::before{content:"";position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:var(--powder);transition:transform var(--t2)}
+.edswitch input:checked{background:var(--teal);border-color:var(--teal)}.edswitch input:checked::before{transform:translateX(18px);background:#fff}
+.edswitch input:focus-visible{outline:2px solid var(--powder);outline-offset:2px}
+.edswitch.locked{cursor:default}.edswitch.locked input{opacity:.5;cursor:default}
+.edsw b{display:block;color:var(--snow);font-size:var(--fs-sec);font-weight:600;line-height:1.3}.edsw small{display:block;font-size:var(--fs-meta);line-height:1.3;color:var(--powder)}
+@media (max-width:600px){
+ .edrow{grid-template-columns:32px minmax(0,1fr) auto;grid-template-areas:"m n n" ". s v"}
+ .edrow.edlink{grid-template-columns:32px minmax(0,1fr) auto;grid-template-areas:"m n n" ". g g" ". s v"}
+ .home.edit>.edtop,.home.edit>.edend{padding:var(--s2) var(--s3);margin-bottom:var(--s3)}}
+@media (prefers-reduced-motion:reduce){.edswitch input,.edswitch input::before{transition:none}}
 @media (max-width:600px){.need{grid-template-columns:44px 1fr}.need .go{grid-column:1 / -1;justify-content:center}.home>section,.home>.now{padding:var(--s2) var(--s3);margin-bottom:var(--s3)}}
 @media (prefers-reduced-motion:reduce){.need{animation:none}.place img,.place>svg{transition:none}}
 /* Screen sizes (docs/ui-plan.md §14). Wide: Home puts Needs you beside Places. Ultrawide (2:1 or wider, 1800px+): the sections

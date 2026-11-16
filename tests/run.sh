@@ -90,6 +90,14 @@ if [ -z "$1" ] || [ "$1" = modes ]; then
   st=0; out=$($PYTHON -W ignore::ResourceWarning "$R/tests/modes_test.py" 2>&1) || st=$?
   if [ $st = 0 ]; then grep -E "identity path|^Ran|^OK" <<<"$out" || true; else echo "$out"; fail=1; fi
 fi
+# Edit Today (4.50.0, server/today.py, docs/home.md "Edit Today"): the owner's settings file (missing, broken, set aside),
+# the reminders switches in quiet.py, and POST api/today for the owner and a learner; no browser (tests/today_edit_test.py).
+# The page: tests/today-edit.test.js.
+if [ -z "$1" ] || [ "$1" = today ] || [ "$1" = home ] || [ "$1" = today-edit ] || [ "$1" = quiet ]; then
+  echo "== edit today"
+  st=0; out=$($PYTHON -W ignore::ResourceWarning "$R/tests/today_edit_test.py" 2>&1) || st=$?
+  if [ $st = 0 ]; then grep -E "identity path|^Ran|^OK" <<<"$out" || true; else echo "$out"; fail=1; fi
+fi
 if [ -z "$1" ] || [ "$1" = memory ]; then
   echo "== memory model"   # the Memory page's server side, no browser (tests/memory_test.py)
   $PYTHON "$R/tests/memory_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1
