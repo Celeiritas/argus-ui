@@ -25,7 +25,7 @@ def put(path, text):
     with open(path, 'w', encoding='utf-8') as f: f.write(text if isinstance(text, str) else json.dumps(text))
 
 # ---- the theme, the page and its files ----
-put(os.path.join(STATIC, 'theme.json'), {'title': 'Elaia', 'agents': [{'key': 'argus', 'name': 'Argus', 'domain': 'Watchman'},
+put(os.path.join(STATIC, 'theme.json'), {'title': 'LeafyGrove', 'agents': [{'key': 'argus', 'name': 'Argus', 'domain': 'Watchman'},
     {'key': 'hermes', 'name': 'Hermes', 'domain': 'Delivery'}, {'key': 'mnemosyne', 'name': 'Mnemosyne', 'domain': 'Memory'},
     {'key': 'heracles', 'name': 'Heracles', 'domain': 'Study · lessons'}], 'coming_soon': [{'name': 'Workouts', 'what': 'Soon'}]})
 put(os.path.join(STATIC, 'index.html'), '<!doctype html><title>the page</title><script>const STATE = /*STATE*/null;</script>')

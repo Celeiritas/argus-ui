@@ -1,6 +1,6 @@
 {
   "name": "Leafy Realm",
-  "title": "Elaia",
+  "title": "LeafyGrove",
   "subtitle": "Leafy Realm agents",
   "colors": {
     "server-bg": "#3a2a5e",
@@ -16,62 +16,52 @@
     {
       "key": "argus",
       "name": "Argus",
-      "domain": "Watchman · monitoring"
+      "domain": "Watch · anything that can break"
     },
     {
       "key": "hermes",
       "name": "Hermes",
-      "domain": "Delivery · messaging"
+      "domain": "Carry · downloads, deliveries"
     },
     {
       "key": "mnemosyne",
       "name": "Mnemosyne",
-      "domain": "Memory · backups"
+      "domain": "Keep · library, backups, local AI"
     },
     {
       "key": "mentor",
       "name": "Mentor",
-      "domain": "Learn · coaching"
-    },
-    {
-      "key": "chronos",
-      "name": "Chronos",
-      "domain": "Time · automations"
+      "domain": "Teach · lessons"
     },
     {
       "key": "zeus",
       "name": "Zeus",
-      "domain": "Lightning · coding · run & restart"
-    },
-    {
-      "key": "hephaestus",
-      "name": "Hephaestus",
-      "domain": "The forge · modding"
-    },
-    {
-      "key": "poseidon",
-      "name": "Poseidon",
-      "domain": "Tides · cleaning · tidying"
+      "domain": "Decide · deploys, your yes, desktop or game"
     },
     {
       "key": "janus",
       "name": "Janus",
-      "domain": "Gatekeeper · Tailscale"
+      "domain": "Check · arrivals and approvals"
     },
     {
       "key": "calliope",
       "name": "Calliope",
-      "domain": "Song · music library"
-    },
-    {
-      "key": "heracles",
-      "name": "Heracles",
-      "domain": "Strength · workouts"
+      "domain": "Make music · the Studio"
     },
     {
       "key": "medusa",
       "name": "Medusa",
-      "domain": "Freeze · thaw"
+      "domain": "Pause · freeze and thaw"
+    },
+    {
+      "key": "chiron",
+      "name": "Chiron",
+      "domain": "Train · workouts"
+    },
+    {
+      "key": "daedalus",
+      "name": "Daedalus",
+      "domain": "Build · controllers, console"
     }
   ],
   "coming_soon": [
@@ -79,5 +69,8 @@
       "name": "Spartamelee",
       "what": "Play"
     }
-  ]
+  ],
+  "renamed_prefixes": {
+    "apollo": "calliope"
+  }
 }

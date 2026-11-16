@@ -38,15 +38,22 @@ FROZEN = f'{REG}/frozen.json'
 PERSONAS = [(a['key'], a['name'], a.get('domain', '')) for a in THEME.get('agents', [])] or [('argus', 'Argus', 'Watchman · monitoring')]
 NEVER_FREEZE = set(THEME.get('never_freeze', ['argus-ui']))
 PKEYS = [p[0] for p in PERSONAS]
+# Old job prefixes shown under another agent, in display only (theme.json "renamed_prefixes", 4.48.0): a unit keeps its name on
+# the host until it is renamed there, one at a time; until then apollo-studio is a Calliope task called "studio".
+RENAMED = {str(k): v for k, v in (THEME.get('renamed_prefixes') or {}).items()
+           if re.fullmatch(r'[a-z][a-z0-9]{0,31}', str(k)) and str(k) not in PKEYS and v in PKEYS}
 PAGES = ['olympus', 'home', 'phone']   # sections that are not agents: the Olympus playground, Home (docs/home.md), Phone alerts (docs/phone-alerts.md)
-MOVED = {'pads': 'controllers'}  # sections that changed their address: <base>/pads still lands on Controllers (4.33.0, for one release)
+# sections that changed their address: <base>/pads still lands on Controllers (4.33.0, for one release); the agents the
+# 4.48.0 naming retired land where their work went (Heracles' workouts: Chiron; Hephaestus' workshop: Daedalus), the two
+# with no work on Today. A redirect only to a place that exists (an agent, a page or a plugin), and never over a plugin's id.
+MOVED = {'pads': 'controllers', 'heracles': 'chiron', 'hephaestus': 'daedalus', 'chronos': 'home', 'poseidon': 'home'}
 
 # ---------- LeafyPlugins (docs/leafy-plugin.md) ----------
 # A plugin is a folder ~/.config/argus-ui/plugins/<id>/ with a plugin.json manifest. "static" plugins
 # (a browser game, a tool) are plain files shown in a sandboxed frame on their own section <base>/<id>.
 # "server" plugins are trusted code the owner installed: a Python side (plugin.py, loaded once at startup,
-# answering api/<id>/...) and a page script that runs inside Elaia's own page (Mentor is one, bundled).
-# Yours live outside the install, so upgrades keep them, like the sounds. Bundled plugins ship with Elaia (the repo's
+# answering api/<id>/...) and a page script that runs inside LeafyGrove's own page (Mentor is one, bundled).
+# Yours live outside the install, so upgrades keep them, like the sounds. Bundled plugins ship with LeafyGrove (the repo's
 # plugins/ folder, installed to ~/.local/share/argus-ui/bundled/) and are replaced by each install; yours win on the same id.
 PLUGINS = os.path.expanduser(os.environ.get('ARGUS_PLUGINS', '~/.config/argus-ui/plugins'))
 # Links to other pages on the same machine (a studio, a dashboard), shown in the section bar and on Home: a list of
@@ -120,7 +127,7 @@ def manifest(pid, d):
     if p['kind'] == 'server':
         p['server'], p['page'] = safe_file(d, m.get('server') or 'plugin.py'), safe_file(d, m.get('page') or 'page.js')
         p['style'] = safe_file(d, m.get('style'))
-        # 4.47.0: one folder whose files go out on Elaia's origin without the sandbox (OPEN_FOLDER_HEADERS), for a trusted
+        # 4.47.0: one folder whose files go out on LeafyGrove's origin without the sandbox (OPEN_FOLDER_HEADERS), for a trusted
         # page that needs storage, a service worker and its own API (Ariad-Node's workspace); '' = none, the default
         p['open_folder'] = safe_dir(d, m.get('open_folder'))
         # a larger POST limit for its own api/<id>/... (a page that saves records or uploads images), never below the
@@ -146,7 +153,7 @@ def plugin_ctx(pid, d):
 
 def plugin_jobs(prefix=''):
     """ctx.jobs(prefix): the tasks Watch shows (state, last, next, frozen ...) whose unit starts with prefix, so a server
-    plugin reads what Elaia already collects instead of running systemctl itself (Memory reads mnemosyne-*)."""
+    plugin reads what LeafyGrove already collects instead of running systemctl itself (Memory reads mnemosyne-*)."""
     fz = frozen()
     return collapse([info(u, fz) for u in units() if u.startswith(str(prefix))])
 
@@ -162,7 +169,7 @@ def backups_line():
 
 def load_server_plugins():
     """Import each server plugin's plugin.py by path and call its init(ctx) once. One that fails is logged and
-    skipped; the rest of Elaia starts. A newly installed server plugin needs a restart (static ones don't)."""
+    skipped; the rest of LeafyGrove starts. A newly installed server plugin needs a restart (static ones don't)."""
     for pid, d in sorted(plugin_dirs().items()):
         p = manifest(pid, d)
         if not p or p['kind'] != 'server': continue
@@ -229,14 +236,14 @@ OWN_HEADERS = {'Content-Security-Policy': "default-src 'self'; script-src 'self'
                                           "frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'",
                'X-Frame-Options': 'SAMEORIGIN', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'same-origin',
                'Cross-Origin-Resource-Policy': 'same-origin', 'Cross-Origin-Opener-Policy': 'same-origin'}
-# A server plugin's "open_folder" (4.47.0): the same policy, on Elaia's own origin. Server plugins are trusted code whose page
-# script already runs in Elaia's page; this lets one folder of theirs be a page of its own (a frame or a tab) with storage,
+# A server plugin's "open_folder" (4.47.0): the same policy, on LeafyGrove's own origin. Server plugins are trusted code whose page
+# script already runs in LeafyGrove's page; this lets one folder of theirs be a page of its own (a frame or a tab) with storage,
 # a service worker scoped to that folder and same-origin calls to its api/<id>/. Every other plugin file keeps the sandbox.
 OPEN_FOLDER_HEADERS = dict(OWN_HEADERS)
 
 def load_own_origin(path=None, left_out=None):
     """The checked own-origin.json: {id: {port, public, links}}. A missing file is {}; a broken file or entry is logged
-    and left out, so a mistake there never stops Elaia. left_out, a list, gets one line for the whole file or for each
+    and left out, so a mistake there never stops LeafyGrove. left_out, a list, gets one line for the whole file or for each
     plugin that was left out (not for a skipped link), so start_own_origins knows whether this start proves anything."""
     def say(m, lost=True):
         print(f'argus-ui: own-origin.json: {m}', file=sys.stderr, flush=True)
@@ -266,7 +273,12 @@ def load_own_origin(path=None, left_out=None):
         found[pid] = {'port': port, 'public': public, 'links': links[:4]}; used.add(port); published.add(public)
     return found
 
-GODS = re.compile(r'^(%s)-' % '|'.join(PKEYS))
+GODS = re.compile(r'^(%s)-' % '|'.join(PKEYS + list(RENAMED)))
+
+def owner_of(job):
+    """(agent key, the job's own prefix): apollo-studio -> ('calliope', 'apollo') while the old prefix is renamed in display only."""
+    prefix = job.split('-')[0]
+    return RENAMED.get(prefix, prefix), prefix
 
 # ---------- Alert files (docs/alerts.md) ----------
 # Any agent can make Argus glare without a failed unit: a JSON file in ~/.local/state/argus-ui/alerts/
@@ -397,11 +409,11 @@ def info(u, fz):
     elif not p.get('ExecMainExitTimestamp') and not p.get('ExecMainStartTimestamp'): state = 'never'
     else: state = 'ok'
     reg, base = registry(u)
-    persona = u.split('-')[0]
+    persona, prefix = owner_of(u)
     if u in fz: nxt = 'paused by Medusa'
     elif timer: nxt = when(t.get('NextElapseUSecRealtime', '')) or 'paused'
     else: nxt = 'always on' if state == 'running' else 'manual'
-    return dict(job=u, persona=persona, name=u[len(persona) + 1:], state=state,
+    return dict(job=u, persona=persona, name=u[len(prefix) + 1:], state=state,
                 last=when(p.get('ExecMainExitTimestamp') or p.get('ExecMainStartTimestamp', '')) or '—',
                 next=nxt, mem=hb(p.get('MemoryPeak')), wrote=hb(p.get('IOWriteBytes')),
                 notes=reg.get('notes', '') or p.get('Description', ''), canfreeze=u not in NEVER_FREEZE, canrun=True,
@@ -417,7 +429,7 @@ def collapse(jobs):
     for j in jobs: (runs.setdefault(j['base'], []) if j['base'] else out).append(j)
     for base, rs in runs.items():
         last = max(rs, key=lambda j: (j['state'] == 'running', j['started'], j['job']))
-        out.append(dict(last, name=base[len(last['persona']) + 1:], runs=len(rs), canfreeze=False, canrun=False))
+        out.append(dict(last, name=base[len(owner_of(base)[1]) + 1:], runs=len(rs), canfreeze=False, canrun=False))
     return sorted(out, key=lambda j: (j['persona'], j['name']))
 
 def links():
@@ -446,7 +458,8 @@ def clip(s, n):
 # ---------- Today's line on what the server is doing, and its Open rows for the media players (docs/home.md, 4.44.0) ----------
 # Both read the host's own files on every state(); the repository holds no name and no address.
 MEDIA = os.path.expanduser(os.environ.get('ARGUS_MEDIA') or '~/.config/argus-ui/media.json')
-MEDIA_APPS = (('jellyfin', 'Jellyfin', 'Films and shows'), ('audiobookshelf', 'Audiobookshelf', 'Audiobooks and podcasts'))
+MEDIA_APPS = (('jellyfin', 'Jellyfin', 'Films and shows'), ('audiobookshelf', 'Audiobookshelf', 'Audiobooks and podcasts'),
+              ('mealie', 'Mealie', 'Recipes'))      # Mealie: a plain service, no agent's name (4.48.0)
 REALM = os.path.expanduser(os.environ.get('LEAFY_REALM') or '~/.config/leafy/realm.json')     # the file Mentor fills {{SERVER}} from
 GAMEGUARD = os.path.expanduser(os.environ.get('ARGUS_GAMEGUARD') or '~/.local/state/medusa-gameguard/frozen-by-me.json')
 
@@ -456,7 +469,7 @@ def read_json(path):
     except (OSError, ValueError): return None
 
 def media():
-    """Today's Open rows for the players: media.json is {"jellyfin": "<address>", "audiobookshelf": "<address>"}, each an
+    """Today's Open rows for the players: media.json is {"jellyfin": "<address>", "audiobookshelf": "<address>", "mealie": ...}, each an
     http:// or https:// address (a player on the tailnet or the LAN is often plain http). Other keys, other kinds of address
     and a broken file are ignored; no file, no rows."""
     raw = read_json(MEDIA)
@@ -499,7 +512,7 @@ def now_line(jobs, ws, name=None):
     game, paused = game_guard()
     parts = []
     if game:
-        ps = list(dict.fromkeys(plain_task(*u.partition('-')[::2]) for u in paused))
+        ps = list(dict.fromkeys(plain_task(owner_of(u)[0], u.partition('-')[2]) for u in paused))
         parts.append('a game is running' + (f', {and_list(ps)} {"is" if len(ps) == 1 else "are"} paused' if ps else ''))
     busy = [plain_task(j['persona'], j['name']) for j in jobs if j['state'] == 'running' and (j.get('base') or j['next'] != 'always on')]
     fixing = [str(r.get('title') or r.get('id')) for r in ws if r.get('fixing') or r.get('queued')]
@@ -562,7 +575,7 @@ def state(reach=None):
     name = server_name()                  # once: now starts with exactly this, and now_name lets the page colour it (4.45.0)
     d = dict(updated=datetime.now().strftime('%I:%M %p').lstrip('0'), jobs=jobs,
                 title=THEME.get('title', 'Argus'), subtitle=THEME.get('subtitle', 'tasks'),
-                personas=[dict(key=k, name=n, domain=d) for k, n, d in PERSONAS],
+                personas=[dict(key=k, name=n, domain=d) for k, n, d in PERSONAS], renamed=RENAMED,   # old job prefixes: their agent now
                 soon=THEME.get('coming_soon', []), links=links(), media=media(), now=now_line(jobs, ws, name), now_name=name,
                 quiet=sorted(quiet.quiet_sections()),     # the sections that never count as needing him (quiet.py); a learner's state has none
                 plugins=[plugin_view(p, reach) for p in ps], watch=ws, watch_ready=not WATCH_ON or watch.ready(),   # until its first round: the saved rows
@@ -697,7 +710,7 @@ def loopback(h):
 
 PROTECT = {'X-Frame-Options': 'SAMEORIGIN', 'Content-Security-Policy': "frame-ancestors 'self'",   # on every answer that is
            'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'same-origin'}                # not a plugin file (those carry their own)
-# A server plugin's files run inside Elaia's own page, so they need no CORS header; only a static plugin's sandboxed frame
+# A server plugin's files run inside LeafyGrove's own page, so they need no CORS header; only a static plugin's sandboxed frame
 # (an opaque origin) does. Identity here rides on the network path, not on a cookie: any web site open in the owner's
 # browser can make it send a GET that carries his identity. What stops that site from READING the answer is the browser's
 # same-origin rule, and "Access-Control-Allow-Origin: *" would give that away.
@@ -708,7 +721,7 @@ class NoCookies:
     """The request's reader while its header lines are read: every Cookie line is left out, whatever its length. Cookies
     belong to a host name, not a port, so a page on another port of the same name (a game on its own address, or any other
     service there) can set up to about a megabyte of them that the browser then sends here too. Argus reads no cookie, and
-    the standard library refuses a header line over 64 KB (431), so without this one page could shut Elaia for that browser.
+    the standard library refuses a header line over 64 KB (431), so without this one page could shut LeafyGrove for that browser.
     Past CAP bytes of cookies the line comes back too long and the request is refused as before (431), so reading stays bounded."""
     CAP = 4 << 20
 
@@ -848,7 +861,7 @@ class H(BaseHTTPRequestHandler):
 
     def send_plugin_file(self, p, sub, own):
         # one file of plugin p by its path inside the folder (sub; '' is the entry page), with the headers own: the
-        # sandbox in Elaia (plugin_file), the plugin's own origin on its own address (OwnH). Nothing outside the folder.
+        # sandbox in LeafyGrove (plugin_file), the plugin's own origin on its own address (OwnH). Nothing outside the folder.
         root, f = plugin_target(p['dir'], sub or p.get('entry', ''))     # resolved after index.html is added (a link there leads out)
         hidden = not f or os.path.basename(f) == 'plugin.json' or (p['kind'] == 'server' and (f.endswith(('.py', '.pyc')) or '__pycache__' in f))
         if hidden: return self.out('not found', 'text/plain', 404, headers=own)
@@ -953,12 +966,12 @@ class H(BaseHTTPRequestHandler):
         if p.startswith('plugins/'): return self.plugin_file(p[8:])
         first = p.split('/')[0]
         live = plugins(); ids = {x['id'] for x in live}
-        moved = lambda old: MOVED.get(old) in ids and old not in ids       # the old id of a moved section, unless a plugin of yours has taken it
+        moved = lambda old: (MOVED.get(old) in ids or MOVED.get(old) in PKEYS or MOVED.get(old) in PAGES) and old not in ids and old not in PKEYS   # the old id of a moved section, unless a plugin or agent of yours has taken it
         if moved(first):                                                    # an old bookmark lands on the new address
             q = urlsplit(self.path).query                                   # relative, so it is right at /, at /argus/ and behind a proxy that strips the prefix
             self.send_response(302); self.send_header('Location', '../' * p.count('/') + MOVED[first] + ('?' + q if q else ''))
             self.send_header('Cache-Control', 'no-store'); self.send_header('Content-Length', '0'); self.end_headers(); return  # for now, and not remembered: the old id is free again later
-        if p.startswith('api/') and moved(pid):                             # a page left open since before the move still asks the old api:
+        if p.startswith('api/') and moved(pid) and MOVED[pid] in ids:       # a page left open since before the move still asks the old api:
             name = next(x['name'] for x in live if x['id'] == MOVED[pid])   # it shows "problem" in place of its list and "line" on Home, both true
             return self.out(json.dumps({'ok': False, 'moved': MOVED[pid], 'line': f'Now called {name}: reload this page',
                                         'problem': f'This section is now called {name}. Reload this page to open it.'}), 'application/json')
@@ -1055,7 +1068,7 @@ class H(BaseHTTPRequestHandler):
 
 class OwnH(H):
     """A static plugin on its own address (own-origin.json): that one plugin's files at the root, to GET and HEAD only.
-    The same host check, identity and role as opening plugins/<id>/ inside Elaia, the same caching, no API and no POST.
+    The same host check, identity and role as opening plugins/<id>/ inside LeafyGrove, the same caching, no API and no POST.
     No sandbox header: its own origin is the wall (OWN_HEADERS). start_own_origins() makes one subclass per plugin (pid)."""
     pid = ''
 
@@ -1070,7 +1083,7 @@ class OwnH(H):
         return True
 
     def end_headers(self):
-        # the own origin's headers on every answer (errors and refusals too), never Elaia's PROTECT or the sandbox
+        # the own origin's headers on every answer (errors and refusals too), never LeafyGrove's PROTECT or the sandbox
         for k, v in OWN_HEADERS.items():
             if k.lower() not in getattr(self, '_sent', set()): self.send_header(k, v)
         BaseHTTPRequestHandler.end_headers(self)
@@ -1093,7 +1106,7 @@ class OwnH(H):
             # only a plain path inside the folder: no .., no empty or backslash segment, no NUL, no drive (send_plugin_file checks again)
             if sub is None or sub.startswith('/') or '//' in sub or '\\' in sub or '\x00' in sub or '..' in sub.split('/') or os.path.splitdrive(sub)[0]:
                 return self.out('not found', 'text/plain', 404)
-            need = self.need('get', f'plugins/{self.pid}/{sub}')         # what Elaia asks for this plugin's files
+            need = self.need('get', f'plugins/{self.pid}/{sub}')         # what LeafyGrove asks for this plugin's files
             if not identity.allows(self.who['role'], need): return self.refuse('get', sub, need)
             plug = next((x for x in plugins() if x['id'] == self.pid and x['kind'] == 'static'), None)
             if not plug: return self.out('not found', 'text/plain', 404)
@@ -1107,7 +1120,7 @@ class OwnH(H):
     do_HEAD = do_GET
 
 def start_own_origins(path=None):
-    """One listener on 127.0.0.1 for each plugin in own-origin.json. One that cannot start is logged and skipped, and Elaia
+    """One listener on 127.0.0.1 for each plugin in own-origin.json. One that cannot start is logged and skipped, and LeafyGrove
     keeps the sandboxed frame for it. Returns {id: server} (the tests stop them)."""
     started, busy, left = {}, [], []
     for pid, c in load_own_origin(path, left).items():

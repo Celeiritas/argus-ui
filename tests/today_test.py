@@ -26,7 +26,7 @@ def set_aside(path):
     # tests keep their own files in TMP; one that must be gone is moved aside, never deleted
     if os.path.exists(path): shutil.move(path, f'{path}.set-aside-{os.urandom(4).hex()}')
 
-put(os.path.join(STATIC, 'theme.json'), {'title': 'Elaia', 'agents': [{'key': 'argus', 'name': 'Argus'}, {'key': 'hermes', 'name': 'Hermes'},
+put(os.path.join(STATIC, 'theme.json'), {'title': 'LeafyGrove', 'agents': [{'key': 'argus', 'name': 'Argus'}, {'key': 'hermes', 'name': 'Hermes'},
     {'key': 'mnemosyne', 'name': 'Mnemosyne'}, {'key': 'zeus', 'name': 'Zeus'}, {'key': 'medusa', 'name': 'Medusa'}]})
 put(os.path.join(REG, 'zeus-deploy.json'), {'transient': True, 'notes': 'one run per deploy'})
 shutil.copy(os.path.join(R, 'tests', 'fixtures', 'fake_systemctl.py'), FX)
@@ -126,11 +126,12 @@ class Media(Base):
     def test_no_file_no_rows(self):
         self.assertEqual(a.state()['media'], [])
 
-    def test_the_two_players_in_order_with_http_or_https(self):
-        put(MEDIA, {'Audiobookshelf': 'http://media.example:13378/', 'jellyfin': 'https://films.example/web/', 'qbittorrent': 'https://x.example/'})
+    def test_the_players_and_mealie_in_order_with_http_or_https(self):
+        put(MEDIA, {'Mealie': 'http://food.example:9925/', 'Audiobookshelf': 'http://media.example:13378/', 'jellyfin': 'https://films.example/web/', 'qbittorrent': 'https://x.example/', 'demeter': 'https://y.example/'})
         self.assertEqual(a.state()['media'], [
             {'id': 'jellyfin', 'name': 'Jellyfin', 'what': 'Films and shows', 'href': 'https://films.example/web/'},
-            {'id': 'audiobookshelf', 'name': 'Audiobookshelf', 'what': 'Audiobooks and podcasts', 'href': 'http://media.example:13378/'}])
+            {'id': 'audiobookshelf', 'name': 'Audiobookshelf', 'what': 'Audiobooks and podcasts', 'href': 'http://media.example:13378/'},
+            {'id': 'mealie', 'name': 'Mealie', 'what': 'Recipes', 'href': 'http://food.example:9925/'}])
 
     def test_anything_but_an_http_address_is_dropped(self):
         for href in ('javascript:alert(1)', '//films.example/', '/jellyfin/', 'ftp://films.example/', 'https://films example/', 'https://x.example/"onmouseover="x',

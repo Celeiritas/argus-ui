@@ -1,8 +1,8 @@
-// Elaia's service worker: lets a phone install the page as an app, and shows phone alerts (docs/phone-alerts.md).
+// LeafyGrove's service worker: lets a phone install the page as an app, and shows phone alerts (docs/phone-alerts.md).
 // Always fetches live data: the fetch listener does nothing, so every request goes to the network as usual.
 self.addEventListener('install',e=>self.skipWaiting());self.addEventListener('activate',e=>self.clients.claim());self.addEventListener('fetch',()=>{});
 
-// The place an alert opens: its url is a section id or a path under the page ('' = Today). Only places inside Elaia's own
+// The place an alert opens: its url is a section id or a path under the page ('' = Today). Only places inside LeafyGrove's own
 // address are opened; anything else opens Today.
 function alertPlace(u, scope) {
   const base = new URL(scope);
@@ -16,11 +16,11 @@ function alertPlace(u, scope) {
 function onPush(e) {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch (x) { d = {title: e.data ? e.data.text() : ''}; }
-  const title = String(d.title || 'Elaia').slice(0, 200), tag = String(d.tag || d.kind || 'elaia').slice(0, 64);
+  const title = String(d.title || 'LeafyGrove').slice(0, 200), tag = String(d.tag || d.kind || 'elaia').slice(0, 64);
   e.waitUntil(self.registration.showNotification(title, {body: String(d.body || '').slice(0, 1000), tag, renotify: true,
     icon: 'static/argus-192.png', data: {url: alertPlace(d.url, self.registration.scope), kind: String(d.kind || '')}}));
 }
-// A tap on an alert: an open Elaia window comes to the front and goes to the alert's place; with none open, one opens there.
+// A tap on an alert: an open LeafyGrove window comes to the front and goes to the alert's place; with none open, one opens there.
 function onTap(e) {
   e.notification.close();
   const place = (e.notification.data && e.notification.data.url) || self.registration.scope;
@@ -34,7 +34,7 @@ function onTap(e) {
 // ---- a new address (docs/phone-alerts.md "When the phone gets a new address") ----
 // The browser may give this install a new address, or drop the old one (notifications switched off and on, an update).
 // Then this signs up again with the same server key and tells the server which record the new address replaces, so the
-// old record does not stay behind receiving nothing. It runs while Elaia is closed. Not every browser fires the event;
+// old record does not stay behind receiving nothing. It runs while LeafyGrove is closed. Not every browser fires the event;
 // the page does the same on its next "Turn on", from the id kept below.
 // deviceStore: this browser's id and the server's key in IndexedDB "elaia", store "push", key "device", the one place
 // the page (web/js/alerts.js) and this worker can both reach. Keep in step with deviceStore there. Any failure answers {}.
@@ -84,7 +84,7 @@ async function resubscribe(old, fresh) {
   if (r.ok) await deviceStore('put', {id, key: key || was.key || ''});
 }
 function onChange(e) { e.waitUntil(resubscribe(e.oldSubscription || null, e.newSubscription || null).catch(() => {})); }
-// a new version of this worker: keep this browser's current id if nothing is kept yet (Elaia before 4.43 kept none), so
+// a new version of this worker: keep this browser's current id if nothing is kept yet (LeafyGrove before 4.43 kept none), so
 // a later new address can name it even if the page is not opened first
 async function keepCurrent() {
   try {

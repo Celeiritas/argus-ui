@@ -1604,7 +1604,7 @@ def stats(db, deck=None):
             'modules': modules(db, info), 'courses': courses(db, info), 'imports': imports, 'settings': settings(db),
             'inbox': INBOX.replace(os.path.expanduser('~'), '~', 1) if getattr(db, 'own_inbox', True) else ''}
 
-# ---------- Today (4.38): the first view, and Elaia's Today card ----------
+# ---------- Today (4.38): the first view, and LeafyGrove's Today card ----------
 SESSION_MIN = 10            # "Study 10 minutes"
 CARD_MS_CAP = 120_000       # a card counts at most 2 minutes toward the week's minutes (a page left open is not study)
 

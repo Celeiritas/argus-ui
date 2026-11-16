@@ -1,12 +1,12 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
-<!-- Relative URLs resolve from Elaia's mount, so a nested section path (/argus/ariad-node/bestiary) loads the same files
+<!-- Relative URLs resolve from LeafyGrove's mount, so a nested section path (/argus/ariad-node/bestiary) loads the same files
      as /argus/ariad-node. Set from the address bar (Tailscale may strip /argus before the server sees it), before any
      stylesheet or script below is fetched; the same rule core.js uses for MOUNT. -->
 <script>(function () { var b = document.createElement('base'); b.href = /^\/argus(\/|$)/.test(location.pathname) ? '/argus/' : '/'; document.head.appendChild(b); })();</script>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#1C2127">
-<title>Elaia</title>
+<title>LeafyGrove</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="static/argus-192.png">
 <link rel="apple-touch-icon" href="static/argus-192.png">
@@ -49,7 +49,7 @@
 <div class="realms" role="navigation" aria-label="Sections"><span id="realms" style="display:contents"></span><button class="realm more" id="realmMore" type="button" data-more aria-haspopup="dialog" aria-controls="moreSheet" aria-expanded="false" hidden></button><span class="wx" id="wxText"></span><button class="mute" id="mute" type="button">Mute sounds</button></div>
 <header>
  <img class="hero" id="hero" alt="">
- <div class="title"><h1>Elaia</h1><div class="sub" id="sub"></div>
+ <div class="title"><h1>LeafyGrove</h1><div class="sub" id="sub"></div>
   <!-- Desktop / Game mode, on every section, when the server's modes.json sets it up (state.modes; core.js drawModes(),
        docs/modes.md): the mode it is in, lit; the other one, press and hold to switch. Hidden for everyone else: no space. -->
   <div class="modes" id="modes" role="group" tabindex="-1" hidden><span class="mode-pill" id="modePill"></span><span class="mode-note" id="modeNote" role="status"></span></div></div>

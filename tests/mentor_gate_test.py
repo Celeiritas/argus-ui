@@ -22,7 +22,7 @@ for d in (os.path.join(STATIC, 'decks'), os.path.join(SHARE, 'decks'), os.path.j
 shutil.copytree(SRC, os.path.join(BUNDLED, 'mentor'), ignore=shutil.ignore_patterns('__pycache__'))
 shutil.copy(os.path.join(R, 'tests', 'deck-fixtures', 'good-lesson.json'), os.path.join(SHARE, 'decks-learner-two'))
 with open(os.path.join(STATIC, 'theme.json'), 'w') as f:
-    json.dump({'title': 'Elaia', 'agents': [{'key': 'argus', 'name': 'Argus'}, {'key': 'mentor', 'name': 'Mentor', 'domain': 'Teacher · lessons'}]}, f)
+    json.dump({'title': 'LeafyGrove', 'agents': [{'key': 'argus', 'name': 'Argus'}, {'key': 'mentor', 'name': 'Mentor', 'domain': 'Teacher · lessons'}]}, f)
 with open(os.path.join(STATIC, 'index.html'), 'w') as f: f.write('<!doctype html><script>const STATE = /*STATE*/null;</script>')
 with open(PEOPLE, 'w') as f:
     json.dump({'people': [{'id': 'owner-one', 'name': 'Owner One', 'role': 'owner', 'logins': ['owner@example.com']},

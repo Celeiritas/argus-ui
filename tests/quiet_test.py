@@ -29,7 +29,7 @@ def set_aside(path):
     # tests keep their own files in TMP; one that must be gone is moved aside, never deleted
     if os.path.exists(path): shutil.move(path, f'{path}.set-aside-{os.urandom(4).hex()}')
 
-put(os.path.join(STATIC, 'theme.json'), {'title': 'Elaia', 'agents': [{'key': 'argus', 'name': 'Argus'}, {'key': 'hermes', 'name': 'Hermes'},
+put(os.path.join(STATIC, 'theme.json'), {'title': 'LeafyGrove', 'agents': [{'key': 'argus', 'name': 'Argus'}, {'key': 'hermes', 'name': 'Hermes'},
     {'key': 'mnemosyne', 'name': 'Mnemosyne'}, {'key': 'zeus', 'name': 'Zeus'}]})
 shutil.copy(os.path.join(R, 'tests', 'fixtures', 'fake_systemctl.py'), FX)
 UNITS = os.path.join(FX, 'units.json')

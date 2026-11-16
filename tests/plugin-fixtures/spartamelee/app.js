@@ -9,12 +9,12 @@ try {
 } catch (e) { /* blocked by CORS: also fine */ }
 let state = 'blocked';
 try { await (await fetch('../../api/state')).json(); state = 'read'; } catch (e) { /* expected */ }
-let server = 'blocked';      // a server plugin's API is Elaia's, not a static plugin's
+let server = 'blocked';      // a server plugin's API is LeafyGrove's, not a static plugin's
 try { await (await fetch('../../api/demo-server/ping')).json(); server = 'read'; } catch (e) { /* expected */ }
 let storage = 'blocked';     // the sandbox's opaque origin throws here; its own address keeps notes (4.42.0)
 try { localStorage.setItem('argus-test', 'kept'); storage = localStorage.getItem('argus-test') === 'kept' ? 'ok' : 'blocked'; } catch (e) { /* sandboxed */ }
 Object.assign(out.dataset, { freeze, state, server, storage });
-// On its own address (tests/own-origin.test.js) ?argus=<Elaia's address> makes it try Elaia from another origin, as the game could.
+// On its own address (tests/own-origin.test.js) ?argus=<LeafyGrove's address> makes it try LeafyGrove from another origin, as the game could.
 const argus = new URLSearchParams(location.search).get('argus');
 if (argus) {
   const tries = {};
@@ -22,7 +22,7 @@ if (argus) {
     const r = await fetch(argus + 'api/freeze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ job: 'hermes-sort' }) });
     tries.cors = String(r.status);
   } catch (e) { tries.cors = 'blocked'; }
-  try {                       // a "simple" POST goes out without asking; Elaia must refuse it (json only, same-origin only)
+  try {                       // a "simple" POST goes out without asking; LeafyGrove must refuse it (json only, same-origin only)
     await fetch(argus + 'api/freeze', { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ job: 'hermes-sort' }) });
     tries.simple = 'sent';
   } catch (e) { tries.simple = 'blocked'; }

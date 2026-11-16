@@ -1,4 +1,4 @@
-# Elaia UI plan: every section, more to touch
+# LeafyGrove UI plan: every section, more to touch
 
 A plan for making each section reachable from Home more interactive, with the same kind of assets and small animations as the Olympus playground. It covers what each page is *for*, what it shows, what you can do there, what moves and why, and the art it needs. It is a plan, not a spec: each section becomes its own pull request (in its agent's repo when it is a server plugin), and every new piece of art waits for the owner's approval.
 
@@ -26,7 +26,7 @@ Each section below reuses these, so they come first and keep every page consiste
 | **`holdConfirm(button, onDone)`** (built in 4.18) | The 3-second hold with a ring that fills and the words "Hold… 3 · 2 · 1"; Space/Enter held works the same; reduced motion shows the countdown words only. | Throne's Approve and Roll back, Delivery's Release. One implementation, one test. |
 | **Status v2** | `GET api/<id>/status` may add `needs` (true when the owner should act), `action` (a verb-first label, 32 characters at most, e.g. "Approve argus-ui 4.15.0"; a longer one, or a `line` over 160, is cut after a whole word with "…" since 4.45.0) and `count`. Old plugins keep working: `{line}` alone still shows. | Home's "Needs you" list is built from it. |
 | **Events** | `GET api/<id>/events?since=<iso>` → `[{t, kind, text, link}]`, at most 50, newest last, read from the agent's own logs. | Home's "Today" strip and each page's history use it. |
-| **`ctx.jobs()`** (built in 4.30.0: `ctx.jobs(prefix)`, docs/leafy-plugin.md) | A server plugin can read the task information Elaia already collects (last run, next run, state) without its own subprocess. | Mnemosyne has no status file; her page needs the timer's last and next run. |
+| **`ctx.jobs()`** (built in 4.30.0: `ctx.jobs(prefix)`, docs/leafy-plugin.md) | A server plugin can read the task information LeafyGrove already collects (last run, next run, state) without its own subprocess. | Mnemosyne has no status file; her page needs the timer's last and next run. |
 
 ## 3. Home: the agora (`<base>/home`)
 **What it is for:** *"What needs me today, across the whole realm, and where do I go?"* Home is about **you**. Watch is about **the machines**: "is every task running?". Today they look alike (a grid of tiles next to a grid of cards), so Home changes shape.
@@ -115,7 +115,7 @@ Ten of the twelve-plus-two seats now have powers (4.15 added Hermes' sandal, Ath
 **Art (needs approval):** the jar, the shelf and the three vessels.
 
 ## 11. Spartamelee (`<base>/spartamelee`, static plugin)
-It stays a sandboxed frame. Home shows its version. If Spartamelee later writes a small `status.json` into its own folder (last played, current version), Home could show "Played yesterday". That would be read-only, and it still never runs code in Elaia's page.
+It stays a sandboxed frame. Home shows its version. If Spartamelee later writes a small `status.json` into its own folder (last played, current version), Home could show "Played yesterday". That would be read-only, and it still never runs code in LeafyGrove's page.
 
 ## 12. Order of work
 1. **Home v2 + status v2** (this repo). Home is the first page you see, and the change you asked for. Building it is half done (on a branch waiting for #17).

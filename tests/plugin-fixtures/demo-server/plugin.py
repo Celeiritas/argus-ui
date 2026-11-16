@@ -1,4 +1,4 @@
-# Test stand-in for a server plugin (docs/leafy-plugin.md): answers api/demo-server/... from Elaia's server.
+# Test stand-in for a server plugin (docs/leafy-plugin.md): answers api/demo-server/... from LeafyGrove's server.
 import os
 
 CTX = None
