@@ -111,7 +111,7 @@ class OnTheServer(unittest.TestCase):
         self.assertEqual([j['persona'] for j in self.state()['jobs'] if j['job'] == 'zeus-deploy'], ['zeus'])
 
     def test_old_addresses_land_where_the_work_went(self):
-        for path, want in (('heracles', 'chiron'), ('hephaestus', 'daedalus'), ('chronos', 'home'), ('poseidon', 'home'),
+        for path, want in (('heracles', 'chiron'), ('hephaestus', 'controllers'), ('chronos', 'home'), ('poseidon', 'home'),
                            ('argus/heracles', 'chiron'), ('heracles/', '../chiron'), ('poseidon?from=bookmark', 'home?from=bookmark')):
             code, headers, body = self.get(path)
             self.assertEqual((code, headers.get('location'), body), (302, want, b''), path)

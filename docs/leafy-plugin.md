@@ -187,7 +187,7 @@ A server plugin whose id is one of the theme's agent keys and whose manifest say
 Leaving a section loads a new page, so a plugin's timers and listeners end with it; there is no `hide()`.
 
 ## Checking a plugin
-`bash tests/run.sh bundled` installs `tests/bundled-fixtures/` as bundled plugins: `heracles` (`"agent": true`, checks the section, pill, icon, `ctx.theme_dir` and its Home tile) and a `demo-server` that the owner's copy must replace without importing it. A fixture `chronos` without `"agent": true` must be skipped.
+`bash tests/run.sh bundled` installs `tests/bundled-fixtures/` as bundled plugins: `chiron` (`"agent": true`, checks the section, pill, icon, `ctx.theme_dir` and its Home tile) and a `demo-server` that the owner's copy must replace without importing it. A fixture `janus` without `"agent": true` must be skipped.
 
 `bash tests/run.sh plugins` installs the fixtures from `tests/plugin-fixtures/` (static `spartamelee`, server `demo-server`, and `demo-broken`, whose `plugin.py` fails on purpose) into a throwaway HOME and checks the whole flow:
 - the pill appears and replaces a matching "coming later" pill

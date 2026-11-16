@@ -44,9 +44,9 @@ RENAMED = {str(k): v for k, v in (THEME.get('renamed_prefixes') or {}).items()
            if re.fullmatch(r'[a-z][a-z0-9]{0,31}', str(k)) and str(k) not in PKEYS and v in PKEYS}
 PAGES = ['olympus', 'home', 'phone']   # sections that are not agents: the Olympus playground, Home (docs/home.md), Phone alerts (docs/phone-alerts.md)
 # sections that changed their address: <base>/pads still lands on Controllers (4.33.0, for one release); the agents the
-# 4.48.0 naming retired land where their work went (Heracles' workouts: Chiron; Hephaestus' workshop: Daedalus), the two
+# 4.48.0 naming retired land where their work went (Heracles' workouts: Chiron; Hephaestus' workshop: Controllers, the section Daedalus names), the two
 # with no work on Today. A redirect only to a place that exists (an agent, a page or a plugin), and never over a plugin's id.
-MOVED = {'pads': 'controllers', 'heracles': 'chiron', 'hephaestus': 'daedalus', 'chronos': 'home', 'poseidon': 'home'}
+MOVED = {'pads': 'controllers', 'heracles': 'chiron', 'hephaestus': 'controllers', 'chronos': 'home', 'poseidon': 'home'}
 
 # ---------- LeafyPlugins (docs/leafy-plugin.md) ----------
 # A plugin is a folder ~/.config/argus-ui/plugins/<id>/ with a plugin.json manifest. "static" plugins

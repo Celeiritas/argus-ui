@@ -118,7 +118,7 @@ Ariad-Node**, any other plugin, then the links to other pages and anything "comi
 **A section that belongs to a god is called by the god's name, and only that, everywhere** (4.45.0; the owner: "I need it as
 the ONLY title"): the bar, the strip, the More sheet, its tile on Today, its page heading and the "who" line of a row. The
 name comes from the theme's agent (`WORDS` and `wordOf()` in `core.js`), so another theme's god names it there. Sections with
-no god keep their own name (Controllers, Spartamelee, Heracles, Ariad-Node, the links). Buttons stay verb-first ("Open
+no god keep their own name (Spartamelee, Ariad-Node, the links). Buttons stay verb-first ("Open
 Argus"). Addresses and ids do not change (`/watch`, `throne`, `memory`); the plain words of before (Watch, Study, Approvals,
 Backups, Playground) are kept in `WORDS` as `was`, for the search the next build adds.
 - **On a phone (under 600 px)**: a bar at the bottom edge, in thumb reach, with five slots: Today, Argus, Mentor, Zeus and
