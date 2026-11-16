@@ -97,7 +97,7 @@ const home = (() => {
     const keys = new Set(list.map(n => n.key)), links = role() === 'owner' ? opens() : '', places = cards(list);
     const now = role() === 'owner' && typeof S.now === 'string' ? S.now : '';   // what the server is doing (the server's own words)
     // the server's line stands above the list, on its own: inside the list's panel it read as one more thing to do
-    const html = `<section class="home" aria-label="Today">${now ? nowBand(now) : ''}
+    const html = `<section class="home" aria-label="Today">${now ? nowBand(now) : ''}${devices.line()}
       <section class="needs" aria-labelledby="needs-h"><h2 class="state${list.length ? ' bad' : ''}" id="needs-h">${state}</h2>
         ${now || list.length || asking ? '' : '<p class="quiet">The realm is quiet.</p>'}
         <ul class="needlist">${list.map(n => row(n, seen && !seen.has(n.key))).join('')}</ul></section>

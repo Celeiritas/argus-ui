@@ -1,0 +1,11 @@
+{
+ "Version": "1.0.0-fake",
+ "BackendState": "Running",
+ "Self": {"HostName": "this-server", "DNSName": "this-server.example.ts.net.", "OS": "linux", "Online": true, "LastSeen": "0001-01-01T00:00:00Z"},
+ "Peer": {
+  "nodekey:one": {"HostName": "PC-One", "DNSName": "pc-one.example.ts.net.", "OS": "windows", "Online": true, "LastSeen": "0001-01-01T00:00:00Z"},
+  "nodekey:two": {"HostName": "pc-two", "DNSName": "pc-two.example.ts.net.", "OS": "windows", "Online": false, "LastSeen": "2026-11-15T21:04:00Z"},
+  "nodekey:three": {"HostName": "Pixel", "DNSName": "phone-one.example.ts.net.", "OS": "android", "Online": true, "LastSeen": "0001-01-01T00:00:00Z"},
+  "nodekey:four": {"HostName": "tablet-one", "DNSName": "tablet-one.example.ts.net.", "OS": "android", "LastSeen": "2026-11-10T08:00:00Z"}
+ }
+}

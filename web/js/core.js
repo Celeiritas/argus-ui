@@ -446,7 +446,8 @@ function render() {
   const tn = items.reduce((t, it) => t + weight(it), 0);       // the programs folded under a drive count too, as on the bar
   const top = items.length ? `<section class="trouble" aria-labelledby="trouble-h"><h2 id="trouble-h">${tn === 1 ? 'One thing needs a look' : `${tn} things need a look`}</h2>${items.map(troubleBlock).join('')}</section>` : '';
   const end = only ? '' : `<section class="lately" aria-labelledby="lately-h"><h2 id="lately-h">What happened lately</h2><div id="lately">${lately.html || '<p class="quiet">Loading…</p>'}</div></section>`;
-  $('#main').innerHTML = top + (list.map(p => {
+  // Argus's device list (devices.js, docs/devices.md) after the trouble panel, on the All view and Argus's own
+  $('#main').innerHTML = top + (!only || only === 'argus' ? devices.panel() : '') + (list.map(p => {
     const js = (by[p.key] || []).map((j, i) => [j, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(x => x[0]), ls = lone[p.key] || [];
     const cr = (rows[p.key] || []).map((w, i) => [w, i]).sort((a, b) => (a[0].works === false ? 0 : 1) - (b[0].works === false ? 0 : 1) || a[1] - b[1]).map(x => x[0]);
     const c = s => js.filter(j => j.state === s && !(s === 'failed' && j.known)).length, kc = js.filter(j => j.known && failing(j)).length;

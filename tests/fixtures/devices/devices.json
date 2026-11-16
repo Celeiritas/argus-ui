@@ -1,0 +1,9 @@
+{"devices": [
+ {"name": "Shelf", "kind": "server", "probe": "self"},
+ {"name": "Desk PC", "kind": "pc", "probe": "tailscale", "host": "pc-one", "wake": {"mac": "aa:bb:cc:dd:ee:01"}},
+ {"name": "Spare PC", "kind": "pc", "probe": "tailscale", "host": "pc-two", "wake": {"mac": "aa-bb-cc-dd-ee-02"}},
+ {"name": "Phone", "kind": "phone", "probe": "tailscale", "host": "PHONE-ONE"},
+ {"name": "Tablet", "kind": "tablet", "probe": "tailscale", "host": "tablet-one"},
+ {"name": "Laptop", "kind": "laptop", "probe": "tailscale", "host": "laptop-gone"},
+ {"name": "Old console", "kind": "console", "probe": "none"}
+]}

@@ -27,6 +27,7 @@ ST="$T/state"; mkdir -p "$ST"; export ARGUS_EVENTS="$ST/events.jsonl"
 # Tailscale-User-Login itself is believed (no people file: everyone is the owner anyway; docs/people.md)
 HOME="$T/home" USERPROFILE="$T/home" ARGUS_SERVE_UID=$(id -u) ARGUS_WATCH_STATE="$ST/watch.json" ARGUS_DEV=1 ARGUS_WEATHER=40,-111 ARGUS_STATIC="$T/pkg/static" ARGUS_BUNDLED="$T/pkg/bundled" ARGUS_SYSTEMCTL="$T/fx/fake_systemctl.py" ARGUS_JOURNALCTL="$T/fx/fake_journal.sh" ARGUS_PORT=$PORT \
   ARGUS_SUMMARY=0 ARGUS_PUSH_TEST_ORIGIN="http://127.0.0.1:$PUSH_PORT" ARGUS_WATCH_INTERVAL=1 ARGUS_MOUNTINFO="$T/fx/watch/host-good.mountinfo" FAKE_PODMAN_DIR="$T/pod" ARGUS_CONTROLLERS_SYSROOT="$T/fx/controllers-sysfs/four" ARGUS_CONTROLLERS="$T/fx/controllers.json" ARGUS_MODES="$T/fx/modes.json" \
+  ARGUS_DEVICES="$T/fx/devices/active.json" ARGUS_TAILSCALE="$T/fx/fake_tailscale.py" ARGUS_DEVICES_CACHE=1 \
   $PYTHON "$T/pkg/argus_ui.py" > "$T/server.log" 2>&1 & PID=$!
 # a stand-in local model server for tests/mentor-ai.test.js (docs/mentor-ai.md); off for every other check
 MODEL_PORT=${MODEL_PORT:-8098}; $PYTHON "$T/fx/fake_model.py" $MODEL_PORT > "$T/model.log" 2>&1 & MPID=$!; export MODEL_PORT
@@ -88,6 +89,14 @@ fi
 if [ -z "$1" ] || [ "$1" = modes ]; then
   echo "== Desktop / Game mode"
   st=0; out=$($PYTHON -W ignore::ResourceWarning "$R/tests/modes_test.py" 2>&1) || st=$?
+  if [ $st = 0 ]; then grep -E "identity path|^Ran|^OK" <<<"$out" || true; else echo "$out"; fail=1; fi
+fi
+# the device list (4.51.0, server/devices.py, docs/devices.md): the file, the probe with a stand-in tailscale
+# (tests/fixtures/fake_tailscale.py), GET api/devices for the owner and a learner; no browser (tests/devices_test.py). The
+# shared server starts with no device file (devices/active.json is written by tests/devices.test.js and set aside after it).
+if [ -z "$1" ] || [ "$1" = devices ]; then
+  echo "== devices"
+  st=0; out=$($PYTHON -W ignore::ResourceWarning "$R/tests/devices_test.py" 2>&1) || st=$?
   if [ $st = 0 ]; then grep -E "identity path|^Ran|^OK" <<<"$out" || true; else echo "$out"; fail=1; fi
 fi
 if [ -z "$1" ] || [ "$1" = memory ]; then

@@ -16,6 +16,10 @@
    edge that stands out from the page (5.5:1, 6.4:1). To swap the colours, exchange the game pair (#6B46C1, #A383F0) with
    the desktop pair (#287043, #52B67A) on this one line: */
 :root{--mode-game:#6B46C1;--mode-game-edge:#A383F0;--mode-desktop:#287043;--mode-desktop-edge:#52B67A;--mode-ink:#FFFFFF}
+/* the device list's colours (docs/devices.md, devices.js): one per status, each the fill of its badge under white words (--mode-ink)
+   and of its dot on Today; the edge is the same colour lightened. Online and Desktop are the pill's green, Game its purple,
+   Offline a slate (7.0:1 under white), Can't tell no fill, only a dashed ring in this colour. Change one value to recolour one status: */
+:root{--dev-online:var(--mode-desktop);--dev-desktop:var(--mode-desktop);--dev-game:var(--mode-game);--dev-offline:#4F5A65;--dev-unknown:var(--frost)}
 *{box-sizing:border-box}html,body{margin:0;background:var(--night);color:var(--snow);font:400 var(--fs-sec)/1.5 Nunito,system-ui,sans-serif;overflow-x:hidden}
 body{background:transparent}   /* the page background is the scene (sky, Olympus, grass); html keeps the night colour behind it */
 a{color:inherit}
@@ -279,6 +283,27 @@ dialog .confirm{border-color:var(--danger);color:var(--danger)}
 .crow.ok .cdot{background:var(--ok)}.crow.bad .cdot{background:var(--bad)}.crow.busy .cdot{background:var(--run)}
 .cw{display:flex;flex-wrap:wrap;gap:0 var(--s2);align-items:baseline;min-width:0}.cw b{font-size:var(--fs-sec);font-weight:600}.cw span{font-size:var(--fs-sec);color:var(--powder)}
 .crow.bad .cw span{color:var(--snow)}
+/* Devices (devices.js, docs/devices.md): Argus's list on Watch, one row a device with its status as a word on a badge in that
+   status's colour (--dev-*); and Today's line of counts, one link to the list */
+.devices{position:relative;z-index:2;background:rgb(28 33 39 / .92);border-radius:12px;padding:var(--s2) var(--s4) var(--s3);margin-top:var(--s4)}
+.devices>h2{margin:var(--s2) 0;font-size:var(--fs-h2);font-weight:600;line-height:1.25}
+.devlist{list-style:none;margin:0;padding:var(--s1) var(--s3);background:var(--card);border:1px solid var(--line);border-radius:12px}
+.dev{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);min-height:var(--hit);padding:var(--s1) 0;border-top:1px solid var(--line)}.dev:first-child{border-top:0}
+.dw{display:flex;flex-direction:column;min-width:0}.dw b{font-size:var(--fs-body);font-weight:600;overflow-wrap:anywhere}.dw span{font-size:var(--fs-meta);color:var(--powder)}
+.dev,.dchip{--dc:var(--dev-unknown)}.s-online{--dc:var(--dev-online)}.s-offline{--dc:var(--dev-offline)}.s-desktop{--dc:var(--dev-desktop)}.s-game{--dc:var(--dev-game)}
+.dstat{flex:none;padding:2px var(--s3);border-radius:999px;font-size:var(--fs-meta);font-weight:600;line-height:1.5;white-space:nowrap;
+  background:var(--dc);color:var(--mode-ink);border:1px solid color-mix(in srgb,var(--dc) 55%,#fff)}
+.dev.s-unknown .dstat{background:transparent;color:var(--snow);border:1px dashed var(--dc)}
+.devmeta{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--s2);margin:var(--s2) 0 0;font-size:var(--fs-meta);color:var(--powder)}
+.devagain[aria-disabled=true]{opacity:.7;cursor:progress}
+.home>.devline{grid-column:1 / -1;display:flex;flex-wrap:wrap;align-items:center;gap:var(--s1) var(--s3);min-height:var(--hit);margin:0 0 var(--s4);
+  padding:var(--s1) var(--s4);border-radius:12px;background:rgb(28 33 39 / .86);color:var(--snow);text-decoration:none;font-size:var(--fs-meta)}
+.home>.devline>b{font-size:var(--fs-sec);font-weight:600}
+.home>.devline:hover{background:var(--card)}
+.dchips{display:flex;flex-wrap:wrap;gap:var(--s1) var(--s3)}.dchip{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;color:var(--snow)}
+.ddot{width:10px;height:10px;border-radius:50%;flex:none;background:var(--dc);box-shadow:0 0 0 2px color-mix(in srgb,var(--dc) 55%,#fff)}
+.dchip.s-unknown .ddot{background:transparent;box-shadow:none;border:2px dashed var(--dc)}
+@media (max-width:600px){.home>.devline{padding:var(--s1) var(--s3);margin-bottom:var(--s3)}}
 .worksline{margin:var(--s2) 0 0;font-size:var(--fs-sec);line-height:1.4;color:var(--powder)}.worksline b{color:var(--ok);font-weight:600}
 .events{list-style:none;margin:0;padding:0}
 .ev{padding:var(--s2) 0 var(--s2) var(--s3);border-top:1px solid var(--line);box-shadow:inset 3px 0 0 var(--ok)}.ev:first-child{border-top:0}

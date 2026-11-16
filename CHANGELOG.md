@@ -1,5 +1,15 @@
 # Changelog
 
+## 4.51.0 – 2026-11-16
+Argus lists the owner's devices and whether each is on, each status in its own colour (the owner: "Argus eventually should list all my devices and their status, each color coded like the purple/green" server pill, with Wake on LAN later for two PCs).
+- **A Devices panel on Watch** (docs/devices.md), after the trouble panel, on the All view and Argus's own: one row a device with its name, its kind, and its status as a word on a badge in that status's colour: *Online*, *Offline* (with *last seen …*), *Can't tell* (with why), and for the server itself *Desktop mode* or *Game mode* in the mode pill's green and purple. **Check again** asks again (Enter works too). No list yet: *No devices listed yet* and a link to how.
+- **One line on Today** under the server's band: *Devices* and the counts (*3 online · 1 offline · 2 can't tell*), each with a dot in its colour, the number and word kept together; it opens the list. Only when the host lists devices.
+- **The devices live on the host, never in git**: `~/.config/argus-ui/devices.json` (or `ARGUS_DEVICES`): name, kind, how to check it (`self`, `tailscale` by host name, `none`), checked strictly; a bad file says what is wrong on the panel and once in the log. `"wake": {"mac": …}` is the place for Wake on LAN later: nothing uses it, there is no Wake button, and the page never gets the address.
+- **The probe**: one `tailscale status --json` for every device (no shell, nothing from the file in the command), a 5 s timeout, cached 30 s. When Tailscale is missing, fails, hangs or is stopped, a device is *Can't tell*, never *Offline*.
+- **Colours**: one custom property per status in argus.css (`--dev-online`, `--dev-offline`, `--dev-unknown`, `--dev-desktop`, `--dev-game`), defaults from the pill's `--mode-desktop` / `--mode-game`, a slate for offline and a dashed ring for can't tell.
+- **The owner's only**: `GET api/devices` follows the role check (a learner gets 403); a learner's page never asks for it and shows no line.
+- Tests: `tests/devices_test.py` (the file, each status and each failure against a stand-in tailscale, the cache, the route for owner and learner) and `tests/devices.test.js` (the page at 375, 412 and 1920 px).
+
 ## 4.47.0 – 2026-11-15
 A server plugin may name one folder that is not sandboxed (the owner chose this route for Ariad-Node's workspace, which sat at *Opening your workspace* because its sandboxed files could not load their module script, keep storage or save).
 - **`"open_folder"` in a server plugin's manifest** (docs/leafy-plugin.md, *An open folder*): files in that folder go out on Elaia's origin with the own-address policy (`OPEN_FOLDER_HEADERS`, the same as `OWN_HEADERS`: no sandbox, `default-src 'self'`, framed only by Elaia, no wildcard CORS), so the page there has storage, a service worker scoped to its folder and same-origin calls to its own API. Static plugins cannot name one; every other plugin file keeps the sandbox.
