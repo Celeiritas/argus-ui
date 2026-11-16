@@ -41,7 +41,7 @@ def quiet_sections():
 
 def switchable(ids):
     """A "quiet" list as a save sends it, without the sections that are never quiet (the rest is checked by today.clean)."""
-    return [x for x in ids if x not in NEVER_QUIET] if isinstance(ids, list) else ids
+    return [x for x in ids if not (isinstance(x, str) and x in NEVER_QUIET)] if isinstance(ids, list) else ids
 
 
 def is_quiet(section): return isinstance(section, str) and section in quiet_sections()

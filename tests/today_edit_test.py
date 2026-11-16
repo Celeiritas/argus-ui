@@ -284,6 +284,9 @@ class Route(unittest.TestCase):
         self.assertEqual(self.save(None, raw=json.dumps({'quiet': []}) + ' ' * (T.BODY_MAX + 1))[0], 413)
         self.assertEqual(self.save(None, raw=json.dumps(GOOD) + ' ' * (8 * 1024))[0], 200, 'a body over 4 KB but under 16 KB is fine')
         self.assertEqual(self.save([1])[0], 400)
+        for odd in ([{}], [[1]], [1]):              # a quiet entry that is not text: refused with the reason, never a crash
+            code, d = self.save({'quiet': odd})
+            self.assertEqual((code, d['ok']), (400, False), odd); self.assertIn('not a section or link', d['msg'])
 
 
 if __name__ == '__main__':

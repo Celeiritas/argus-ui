@@ -8,9 +8,10 @@ Edit Today's Reminders, as the owner decided (2026-11-16: "Lock Zeus on, warn on
   page: `NEVER_QUIET = {'throne'}` in `server/quiet.py`, next to `DEFAULT_QUIET`. A `today.json` that lists `throne` in
   `quiet` (edited by hand, or saved by an older page) still works: Zeus stays on and the rest of the list counts. A save that
   sends it is not refused; it is kept without it (`quiet.switchable()`).
-- **Mnemosyne's switch says what off also does**: one line under it, *Off also leaves the backup line out of the 08:00 summary.*
+- **Mnemosyne's switch says what off also does**: one line under it, *Off also leaves the backup line out of the daily summary.*
   (`backups_line()` is empty while Memory is quiet). The line is tied to the switch (`aria-describedby`), so a screen reader
-  reads it too.
+  reads it too. **Zeus's locked switch says why** the same way: *Zeus asks for your yes before deploys and merges, so he always
+  reminds you.* A `quiet` entry that is not text is refused with the reason (400), as before.
 - Tests: `tests/today_edit_test.py` (throne in the file is ignored, a save drops it, Zeus's status still needs him, Memory off
   empties the backup line; the switchable stand-in is now `memory`), `tests/today-edit.test.js` (Zeus's switch on, locked, with
   its words and its name; Mnemosyne's line; a `today.json` with `throne` shows Zeus on and Done drops it). Docs: `docs/home.md`.

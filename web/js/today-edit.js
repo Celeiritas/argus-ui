@@ -22,7 +22,8 @@ const todayEdit = (() => {
   const QUIET_NEVER = ['throne'];          // server/quiet.py NEVER_QUIET: Zeus asks for his yes, so he always reminds (4.50.1)
   const quietable = id => !QUIET_ALWAYS.includes(id) && !QUIET_NEVER.includes(id);
   // a plain line under a switch whose "off" does more than Today and the phone (server/argus_ui.py backups_line())
-  const SWITCH_NOTE = {memory: 'Off also leaves the backup line out of the 08:00 summary.'};
+  const SWITCH_NOTE = {memory: 'Off also leaves the backup line out of the daily summary.',
+    throne: 'Zeus asks for your yes before deploys and merges, so he always reminds you.'};
   // the draft from a layout: `lay` is today.json's (S.today) or {} for Reset to default
   function draft(lay) {
     const was = S.today; S.today = lay;    // tileList / openList read the layout through myToday()

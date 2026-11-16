@@ -201,9 +201,10 @@ same as Cancel.
   for the owner's yes (deploys, merges, root changes), and off, those requests would leave Today and never buzz the phone, so
   work would wait without him knowing. The server keeps it so (`NEVER_QUIET = {'throne'}` in `server/quiet.py`): `throne` in
   `today.json`'s `quiet` (by hand, or from an older page) is ignored, and a save that sends it is kept without it, not refused.
-  A locked switch is disabled but keeps its name and state in words, so a screen reader still says what it is.
+  A locked switch is disabled but keeps its name and state in words, so a screen reader still says what it is; Zeus's has a
+  line under it, tied with `aria-describedby`: *Zeus asks for your yes before deploys and merges, so he always reminds you.*
   **Mnemosyne's** switch has one line under it, tied to it with `aria-describedby`: *Off also leaves the backup line out of
-  the 08:00 summary.* (`backups_line()` in `server/argus_ui.py` is empty while `memory` is quiet.)
+  the daily summary.* (`backups_line()` in `server/argus_ui.py` is empty while `memory` is quiet.)
   Argus has no switch: a failed task always counts (*Mark as known* is the way to set one aside).
 - **Reset to default** fills the lists with the default; Done keeps it (the file then holds only `{"v": 1}`).
 - **Keyboard**: every move is a button; after a move the keyboard stays on the same button of the same row (or on the other one

@@ -71,9 +71,12 @@ async function flow(b, w, h, n) {
   check(await t.evaluate(() => { const i = document.querySelector('#main .edit [data-q=throne]'); i.click(); return i.checked; }), `${tag}: a click on Zeus's locked switch leaves it on`);
   // Mnemosyne: one plain line under the switch, read with it (aria-describedby)
   const mem = t.locator('#main .edit [data-q=memory]'), note = await mem.getAttribute('aria-describedby');
-  check(!!note && /backup line out of the 08:00 summary/.test(await t.locator('#' + note).textContent()) && await t.locator('#' + note).isVisible(),
-    `${tag}: Mnemosyne's switch says off also leaves the backup line out of the 08:00 summary`);
-  check(await t.locator('#main .edit .ednote').count() === 1, `${tag}: only Mnemosyne has that line`);
+  check(!!note && /backup line out of the daily summary/.test(await t.locator('#' + note).textContent()) && await t.locator('#' + note).isVisible(),
+    `${tag}: Mnemosyne's switch says off also leaves the backup line out of the daily summary`);
+  const znote = await zeus.getAttribute('aria-describedby');
+  check(!!znote && /asks for your yes/.test(await t.locator('#' + znote).textContent()) && await t.locator('#' + znote).isVisible(),
+    `${tag}: Zeus's locked switch says why it stays on, read with it`);
+  check(await t.locator('#main .edit .ednote').count() === 2, `${tag}: only Mnemosyne and Zeus have a line`);
   await t.evaluate(() => scrollTo(0, 0)); await shot(t, `${n}02-edit-${tag}`);
 
   // rename a tile (with HTML in it), then move it up by keyboard: the keyboard stays on the button
