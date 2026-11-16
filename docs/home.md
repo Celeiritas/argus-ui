@@ -160,8 +160,8 @@ reach the server. The server's own check comes with sign-in.
 ## Quiet (4.45.0)
 What Today, the phone and the 08:00 summary keep still about, in **one place**: `server/quiet.py` (the owner, 2026-11-13: "the
 cognitive annoyance of the alert is taking up space, same with Mentor. I don't need Mentor notifications like EVER").
-- **Quiet sections**: `quiet_sections()`, for now the default set `DEFAULT_QUIET = {'mentor'}`; the next build turns it into the
-  owner's own setting per section, read in that same function. For the owner a quiet section never needs him: its tile keeps
+- **Quiet sections**: `quiet_sections()`: the default set `DEFAULT_QUIET = {'mentor'}` plus the sections the owner switched
+  off in Edit Today (4.50.0, `quiet` in `today.json`). For the owner a quiet section never needs him: its tile keeps
   its line ("6 cards due"), but the server answers its status with `needs: false`, no `action` and no `count` (so no row, no
   number under "N things need you", no "Study 10 minutes" button, no dot or count on the bar, the strip or More), an event about
   it never buzzes the phone, and it is never in the daily summary. The page gets the set as `quiet` in the owner's state and
@@ -181,6 +181,44 @@ cognitive annoyance of the alert is taking up space, same with Mentor. I don't n
 - **Stored server-side**, so it survives restarts and deploys: `~/.local/state/argus-ui/known.json` (or `ARGUS_KNOWN`),
   `{"<task>": {"fp": "<fingerprint>", "at": "<ISO time>"}}`, written atomically. `api/known` answers 400 for a bad request or
   an unknown task, 409 for a task that is not failing, 403 to a learner (the usual POST checks first).
+
+## Edit Today (4.50.0)
+The owner makes Today his own (`web/js/today-edit.js`, `server/today.py`). **Edit Today** sits in the Sections heading's row
+(the owner's only; it takes no height, so Today still ends above the phone's bar). It is a mode: Today's place becomes three
+lists, with **Done** and **Cancel** at the top and the bottom, and nothing is kept until Done. Going to another section is the
+same as Cancel.
+- **Sections**: every tile Today can show, each with **Show**, a name field and **Move up** / **Move down**. A god's section
+  (`godOwned()` in `core.js`: a `WORDS` god or one of the theme's agents) has no field: a god's name is the only title (4.45.0).
+  A new name shows wherever the section is named (`wordOf()`): its tile, the bar, the strip and More. A hidden tile keeps its
+  bar slot, its place in More and its row under "N things need you" when it needs him.
+- **Open**: every player and link, each with Show, a name, a **Group** (type a group's name to put it there, a new name to make
+  one, nothing to take it out; Enter applies at once) and Move up / down within its group. Each group has its name (rename it,
+  or empty it to let its links go) and Move up / down for the whole group. Open on Today keeps its compact look ("What it
+  shows", item 4): the links without a group first, then each group. A hidden entry stays in More.
+- **Reminders**: one switch per server section (the ones whose status can say "needs"). Off, it is quiet (see *Quiet* below):
+  its tile keeps its line, but it never asks for him on Today and never buzzes his phone. Mentor is always off and locked.
+  Argus has no switch: a failed task always counts (*Mark as known* is the way to set one aside).
+- **Reset to default** fills the lists with the default; Done keeps it (the file then holds only `{"v": 1}`).
+- **Keyboard**: every move is a button; after a move the keyboard stays on the same button of the same row (or on the other one
+  when it reached the end). Edit opens with the keyboard on its heading; Done and Cancel give it back to Edit Today.
+- **Stored server-side**, so every device shows the same Today and an update keeps it: `~/.config/argus-ui/today.json` (or
+  `ARGUS_TODAY`), next to `links.json`; an install never touches that folder. Only what differs from the default is kept:
+  ```json
+  {"v": 1, "tiles": {"order": ["memory", "argus"], "hidden": ["olympus"], "names": {"spartamelee": "Games"}},
+   "open": {"order": ["link:/notes/"], "hidden": ["media:audiobookshelf"], "names": {"link:/notes/": "Notes"},
+            "groups": {"link:/notes/": "Daily"}}, "quiet": ["memory"]}
+  ```
+  Open's keys are `link:<href>` and `media:<id>`. A section or link not in a saved order comes after the ones that are, in its
+  own order, so a new one shows up at the end. **No file**: the default layout. **A broken file** (not JSON, a wrong shape, over
+  64 KB): Today shows the default and a line above it says *Your Today settings (today.json) could not be used (…), so Today shows
+  the default layout. Save from Edit to replace them; the old file is kept beside it.* The next save moves it to
+  `today.set-aside-<date>-<time>.json` first; nothing is overwritten. Entries it no longer knows (a link removed from
+  `links.json`) are harmless and dropped on the next save.
+- **`POST api/today`** with the layout or `{"reset": true}`: the owner's (a learner gets 403 and has no button), after the usual
+  POST checks; a body up to 16 KB; checked strictly (names 1 to 40 characters, at most 64 entries in a list, keys up to 300
+  characters, no rename of Today; a name saved for a god's section is never shown), 400 with the reason and nothing saved; written atomically (a `.tmp`
+  file, then a rename). Answers `{ok, today, msg}`. Every name is drawn with `esc()`. `api/state` carries `today` (and
+  `today_problem` for a broken file) in the owner's state only.
 
 ## Links to other pages (4.25.0)
 Pages on the same machine that aren't LeafyGrove sections (a studio, a dashboard) can sit in More and on Today. List them in

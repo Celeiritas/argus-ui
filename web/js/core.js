@@ -118,8 +118,19 @@ const isRunning = c => c.dataset.state === 'running';
 const WORDS = {home: {name: 'Today'}, argus: {god: 'argus', name: 'Argus', was: 'Watch'}, mentor: {god: 'mentor', name: 'Mentor', was: 'Study'},
   throne: {god: 'zeus', name: 'Zeus', was: 'Approvals'}, memory: {god: 'mnemosyne', name: 'Mnemosyne', was: 'Backups'},
   controllers: {god: 'daedalus', name: 'Controllers', was: 'Controllers'}, olympus: {name: 'Olympus', was: 'Playground'}};
-// the name a section is called by: its god's name in this theme, else WORDS' name, else its own
-const wordOf = (id, own) => { const w = WORDS[id] || {}; return (S?.personas || []).find(p => p.key === w.god)?.name || w.name || own || id; };
+// The owner's own Today (4.50.0, server/today.py, docs/home.md "Edit Today"): which tiles show, their order and names, Open's
+// links (shown, order, names, groups) and the sections that may remind him. Only his state carries it; a learner's page and
+// an older server get {} (the default layout).
+const myToday = () => role() === 'owner' && S?.today && typeof S.today === 'object' ? S.today : {};
+// a section that belongs to a god (WORDS' god, or an agent of this theme) is called by the god's name and nothing else: the
+// owner cannot rename it (4.45.0: "the ONLY title"); Today itself keeps its name too
+const godOwned = id => id === 'home' || !!WORDS[id]?.god || (S?.personas || []).some(p => p.key === id);
+// the name a section is called by: its god's name in this theme, else the name the owner gave it, else WORDS' name, else its own
+const wordOf = (id, own) => { const w = WORDS[id] || {};
+  return (S?.personas || []).find(p => p.key === w.god)?.name || (!godOwned(id) && myToday().tiles?.names?.[id]) || w.name || own || id; };
+// an Open entry's key in today.json: "link:<href>" for links.json, "media:<id>" for media.json; and the name it is shown by
+const openKey = (x, media) => media ? `media:${x.id}` : `link:${x.href}`;
+const openName = (x, media) => myToday().open?.names?.[openKey(x, media)] || x.name;
 // Quiet sections (server/quiet.py; Mentor for now): their tile keeps its line, but they never count as needing the owner,
 // so no row, no number and no dot. The server sends the set in his state; a learner's has none (Mentor is what she studies).
 const isQuiet = id => role() === 'owner' && Array.isArray(S?.quiet) && S.quiet.includes(id);
@@ -320,7 +331,7 @@ function pluginMark(p) {
 // has one name (wordOf: its god's); only links and coming-later pills carry a second, smaller line (what they are).
 function sections() {
   const out = [], seen = new Set();
-  const add = (id, href, name, mark) => { if (seen.has(id)) return; seen.add(id); out.push({id, href, word: wordOf(id, name), realm: '', mark}); };
+  const add = (id, href, name, mark) => { if (seen.has(id)) return; seen.add(id); out.push({id, href, word: wordOf(id, name), own: name, realm: '', mark}); };
   const sec = id => { const p = PLUGINS.find(x => x.id === id), a = S.personas.find(x => x.key === id);
     if (p) add(id, url(id), p.name, pluginMark(p)); else if (a && SIDE.includes(id)) add(id, url(id), a.name, icon(id)); };
   add('home', url(''), 'Today', HOME_MARK);
@@ -330,7 +341,7 @@ function sections() {
   ['controllers', 'spartamelee', 'ariad-node'].forEach(sec);
   PLUGINS.forEach(p => sec(p.id));
   add('phone', url('phone'), 'Phone alerts', icon('argus'));   // the owner's (visible() leaves it out for a learner); More sheet only: alerts.js
-  (S.links || []).forEach((x, i) => out.push({id: `link-${i}`, kind: 'link', href: x.href, word: x.name, realm: x.what || 'Opens another page', mark: LINK_MARK}));
+  (S.links || []).forEach((x, i) => out.push({id: `link-${i}`, kind: 'link', href: x.href, word: openName(x), realm: x.what || 'Opens another page', mark: LINK_MARK}));
   (S.soon || []).filter(x => !PLUGINS.some(p => p.name === x.name)).forEach((x, i) => out.push({id: `soon-${i}`, kind: 'soon', word: x.name, realm: `${x.what} · coming later`, mark: BLADES}));
   return out.map(e => ({...e, on: e.id === 'argus' ? !side : e.id === here, count: e.kind ? 0 : needCount(e.id)}));
 }
