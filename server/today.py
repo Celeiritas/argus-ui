@@ -17,7 +17,7 @@ problem() says so in one plain line on the owner's Today; the next save from Edi
 it in (os.replace): a crash mid-write never leaves half a file.
 
 Only the owner's page reads or saves it (POST api/today is the owner's, like every POST; a learner's state has no `today`).
-Mentor never reminds him whatever the file says (quiet.py adds 'mentor' to quiet() every time)."""
+Mentor never reminds him and Zeus always does, whatever the file says (quiet.py: DEFAULT_QUIET and NEVER_QUIET)."""
 import json, os, re, threading
 from datetime import datetime
 
@@ -123,7 +123,7 @@ def problem(): return load()[1]
 
 
 def quiet():
-    """The sections he switched reminders off for (quiet.py adds Mentor)."""
+    """The sections he switched reminders off for, as the file says (quiet.py adds Mentor and leaves out Zeus)."""
     return set(load()[0].get('quiet', ()))
 
 
