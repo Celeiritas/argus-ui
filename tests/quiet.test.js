@@ -47,7 +47,7 @@ run(async b => {
   await mark.click();
   await p.waitForFunction(() => document.getElementById('needs-h')?.textContent === 'Nothing needs you' && /known/.test(document.querySelector('#main .place[data-id="argus"] .pl')?.textContent || ''), null, {timeout: 6000}).catch(() => {});
   check(await row().count() === 0 && await p.locator('#needs-h').textContent() === 'Nothing needs you', `marked known, it leaves Today: "${await p.locator('#needs-h').textContent()}"`);
-  check(/^All \d+\u00a0tasks well\u00a0· 1\u00a0known$/.test(await tile('argus').locator('.pl').textContent()), `Argus's tile: "${await tile('argus').locator('.pl').textContent()}", "· 1 known" wraps as one piece`);
+  check(/^All \d+\u00a0tasks well\u00a0· 1\u00a0known$/.test(await tile('argus').locator('.pl').textContent()), `Argus's tile: "${await tile('argus').locator('.pl').textContent()}", the dot stays with "well" and "1 known" wraps as one piece`);
   check(!!(await jobNow(p)).known, 'the server keeps the mark');
   check(await p.locator('#toastAct').isVisible() && await p.locator('#toastAct').textContent() === 'Undo' && await p.evaluate(() => document.activeElement?.id === 'toastAct'), 'a toast offers Undo, and focus is on it');
   await p.locator('#toastAct').click();
