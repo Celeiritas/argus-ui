@@ -150,7 +150,7 @@ def scan(sysroot, registry_path, old=()):
     hint = str(reg.get('wake_hint') or WAKE_HINT)[:200]
     if devs is None:
         return {'ok': False, 'controllers': [], 'connected': 0, 'virtual': 0, 'wake_hint': hint, 'notice': notice(old),
-                'problem': "Can't read /proc/bus/input/devices here: controllers are read on the machine Elaia runs on (Linux)."}
+                'problem': "Can't read /proc/bus/input/devices here: controllers are read on the machine LeafyGrove runs on (Linux)."}
     found = []
     for d in devs:
         if not is_controller(d): continue

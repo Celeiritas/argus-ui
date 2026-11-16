@@ -2,12 +2,12 @@
 // spaced repetition, typed answers, a hint ladder, calibration. See docs/mentor.md.
 // 4.38: Today is the first view (Who is studying?, one button "Study 10 minutes", pinned tracks, the week, the shelf);
 // questions come first and their teaching is the feedback; on a phone a card is thought, revealed and rated.
-// A bundled server plugin (docs/leafy-plugin.md): Elaia loads this script and page.css on the Mentor section only.
-// It is first-party code, so besides the plugin api it uses Elaia's page helpers ($, $$, esc, url, toast).
+// A bundled server plugin (docs/leafy-plugin.md): LeafyGrove loads this script and page.css on the Mentor section only.
+// It is first-party code, so besides the plugin api it uses LeafyGrove's page helpers ($, $$, esc, url, toast).
 (() => {
   let ROOT = null;                            // the section's content area, from show(el)
-  let FX = null;                              // Elaia's shared effects (api.fx); null on an Elaia older than 4.18
-  let ARGUS = null;                           // Argus's reactions (api.argus); null on an Elaia older than 4.20
+  let FX = null;                              // LeafyGrove's shared effects (api.fx); null on a LeafyGrove older than 4.18
+  let ARGUS = null;                           // Argus's reactions (api.argus); null on a LeafyGrove older than 4.20
   let API = null;                             // the plugin api from show(), kept for a redraw after "change" (who is studying)
   const M = {deck: null, view: 'today', card: null, t0: 0, result: null, shown: false, decks: [], modules: [], stats: null,
              hints: 0, reflections: [], idle: null, step: 0, notes: [], session: {answered: 0, right: 0, missed: []}, replay: [],

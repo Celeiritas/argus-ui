@@ -274,7 +274,8 @@ class OldNamesOnTheServer(unittest.TestCase):
     def test_old_address_lands_on_the_new_section(self):
         # relative on purpose: right at <base>/pads whether the server is mounted at /, at /argus/, or behind a proxy that strips the prefix
         for path, want in (('pads', 'controllers'), ('argus/pads', 'controllers'), ('pads/', '../controllers'),
-                           ('argus/pads/anything', '../controllers'), ('pads?from=bookmark', 'controllers?from=bookmark')):
+                           ('argus/pads/anything', '../controllers'), ('pads?from=bookmark', 'controllers?from=bookmark'),
+                           ('hephaestus', 'controllers'), ('argus/hephaestus', 'controllers')):   # 4.48.0: Hephaestus' workshop is Daedalus' section
             code, headers, body = self.get(path)
             self.assertEqual((code, headers.get('location'), body), (302, want, b''), path)
             self.assertEqual(headers.get('cache-control'), 'no-store', 'browsers must not remember the move: the id pads is free again after this release')

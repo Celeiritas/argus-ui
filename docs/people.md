@@ -1,6 +1,6 @@
 # People: who may use the page
 
-Elaia can be used by more than one person, each from their own phone or computer, each with their own Tailscale sign-in.
+LeafyGrove can be used by more than one person, each from their own phone or computer, each with their own Tailscale sign-in.
 The server finds out who is asking and refuses what is not theirs. This page is for the owner: what the people file is,
 how to check who the server thinks you are, what each role can do, and what to do when you are locked out.
 
@@ -54,7 +54,7 @@ When the people file cannot be used and the server keeps its last good copy, the
 the top of Today and of Watch.
 
 **Do this before you write the people file.** If `trusted` is `false` for your own phone, writing the file would lock you
-out; tell whoever set up the server (see *Locked out* below). Phones that already get Elaia's alerts keep getting them
+out; tell whoever set up the server (see *Locked out* below). Phones that already get LeafyGrove's alerts keep getting them
 afterwards: they count for the owners, and the owner sees them under Phone alerts (docs/phone-alerts.md). A people file
 that was never good closes the page to everyone **and stops phone alerts** until it is fixed.
 

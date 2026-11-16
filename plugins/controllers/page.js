@@ -39,7 +39,7 @@ leafy.register('controllers', (() => {
     const n = ++asked, {ok, data: d} = await api.get('list');
     if (n !== asked) return;
     const list = el.querySelector('.ctrlbody'), sum = el.querySelector('.ctrlsum');
-    if (!ok || !d) { list.innerHTML = `<div class="empty"><b>No answer from the server</b>The list comes back on its own when Elaia answers again.</div>`; sum.textContent = ''; return; }
+    if (!ok || !d) { list.innerHTML = `<div class="empty"><b>No answer from the server</b>The list comes back on its own when LeafyGrove answers again.</div>`; sum.textContent = ''; return; }
     sum.textContent = summary(d);
     let html = '';
     if (d.problem && d.ok) html += `<p class="ctrlnote" role="status">${api.esc(d.problem)}. Slots are not shown until it is fixed.</p>`;
@@ -58,7 +58,7 @@ leafy.register('controllers', (() => {
         <div class="ctrlhead"><div><h3>Controllers on this machine</h3><p class="ctrlsum" aria-live="polite"></p></div>
           <button type="button" class="ctrlcheck">Check again</button></div>
         <div class="ctrlbody"></div>
-        <p class="ctrlfoot">Read from the machine Elaia runs on, every 15 seconds.</p></div>`;
+        <p class="ctrlfoot">Read from the machine LeafyGrove runs on, every 15 seconds.</p></div>`;
       el.querySelector('.ctrlcheck').onclick = () => draw(el, api);
       await draw(el, api);
     },

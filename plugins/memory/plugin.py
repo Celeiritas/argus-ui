@@ -1,5 +1,5 @@
 # Memory: are Mnemosyne's backups fresh, and how many copies exist? A bundled server plugin (docs/ui-plan.md §10,
-# docs/memory.md). It only reads: the names and sizes of the snapshot files directly inside one folder, Elaia's task
+# docs/memory.md). It only reads: the names and sizes of the snapshot files directly inside one folder, LeafyGrove's task
 # info (ctx.jobs), the PC's marker file and Medusa's game-guard state. Its one action starts the brain job's own unit,
 # with fixed arguments that never come from the request. It never deletes, restores, or opens a snapshot (they hold
 # passwords and keys).
@@ -10,7 +10,7 @@ from datetime import datetime
 
 CONFIG = os.path.expanduser(os.environ.get('ARGUS_MEMORY_CONFIG', '~/.config/argus-ui/memory.json'))
 MNEMOSYNE = os.path.expanduser(os.environ.get('ARGUS_MNEMOSYNE', '~/.mnemosyne'))     # where <Server>-brain/ is looked for
-SYSTEMCTL = os.environ.get('ARGUS_SYSTEMCTL', 'systemctl')                            # the same one Elaia's powers use
+SYSTEMCTL = os.environ.get('ARGUS_SYSTEMCTL', 'systemctl')                            # the same one LeafyGrove's powers use
 GAMEGUARD = os.path.expanduser(os.environ.get('ARGUS_GAMEGUARD', '~/.local/state/medusa-gameguard/frozen-by-me.json'))
 ALERTS = os.path.expanduser(os.environ.get('ARGUS_ALERTS', '~/.local/state/argus-ui/alerts'))
 HOME = os.path.expanduser('~')
@@ -33,7 +33,7 @@ WATCH = 'look at its weekly job under Mnemosyne on the Argus page'
 
 def init(ctx):
     global ALERTS
-    if 'ARGUS_ALERTS' not in os.environ:      # the theme may move the alert folder (docs/alerts.md), as Elaia's server reads it
+    if 'ARGUS_ALERTS' not in os.environ:      # the theme may move the alert folder (docs/alerts.md), as LeafyGrove's server reads it
         try:
             with open(os.path.join(ctx.theme_dir, 'theme.json'), encoding='utf-8') as f: a = json.load(f).get('alerts')
             if isinstance(a, str) and a: ALERTS = os.path.expanduser(a)
@@ -133,13 +133,13 @@ def count(n):
     return n if isinstance(n, int) and not isinstance(n, bool) and 0 < n <= MAX_SETS else None
 
 def job_time(j):
-    """When a task last started, from Elaia's sortable 'started' ('2026-11-08 04:00:00'); None when it has none."""
+    """When a task last started, from LeafyGrove's sortable 'started' ('2026-11-08 04:00:00'); None when it has none."""
     try: return datetime.strptime(str(j.get('started') or ''), '%Y-%m-%d %H:%M:%S')
     except ValueError: return None
 
 def jobs(ctx):
     try: return [j for j in ctx.jobs('mnemosyne-') if isinstance(j, dict)]
-    except Exception: return []        # an older Elaia without ctx.jobs: the page still shows the snapshots
+    except Exception: return []        # an older LeafyGrove without ctx.jobs: the page still shows the snapshots
 
 def brain_job(c, js, host=''):
     """The brain job's task: memory.json's "unit" if it names a mnemosyne-<server>-brain unit that exists, else the one
@@ -312,7 +312,7 @@ def status(v):
 def summary_line(v):
     """The ONE line the daily summary (server/summary.py) adds when backups need a look: worries(), the two rules it
     shares with status(); '' otherwise. Not every Needs you gets a line: a stale snapshot, or a failed run that still
-    left older snapshots, sends Home to Needs you but adds nothing here. Elaia calls it with view() once a day."""
+    left older snapshots, sends Home to Needs you but adds nothing here. LeafyGrove calls it with view() once a day."""
     no_snap, pc_old = worries(v)
     pc = next((x for x in v['copies'] if x['key'] == 'pc'), {})
     if no_snap and pc_old: return f"Backups: the server has no snapshot yet, and your PC's last backup was {pc['age']}."

@@ -75,16 +75,16 @@ run(async b => {
   await s.locator('#demo-ping', {hasText: 'pong from demo-server'}).waitFor({timeout: 5000});
   check(true, 'server plugin: its page script runs inside the page and reads its own API');
   check(await s.locator('body.side').count() === 1 && await s.locator('.title h1').textContent() === 'Demo Server', 'server plugin: a side page titled with the plugin name');
-  check(await s.locator('iframe').count() === 0, 'server plugin: no frame, the page script runs in Elaia\'s page');
+  check(await s.locator('iframe').count() === 0, 'server plugin: no frame, the page script runs in LeafyGrove\'s page');
   check(await s.locator('#demo-ping').evaluate(e => getComputedStyle(e).letterSpacing) === '3px', 'server plugin: its style sheet loads');
   await s.locator('#demo-echo').click();
   await s.locator('#demo-out', {hasText: 'echo: hello'}).waitFor({timeout: 3000});
-  check(true, 'server plugin: a POST from its page passes Elaia\'s checks and reaches post()');
+  check(true, 'server plugin: a POST from its page passes LeafyGrove\'s checks and reaches post()');
   await s.evaluate(() => refresh()); await s.waitForTimeout(400);
   check(await body.getAttribute('data-shows') === '1' && await body.getAttribute('data-refreshes') === '1', 'server plugin: the 15 s refresh calls refresh(), not show() again');
   check(s.errors.length === 0, 'server plugin: no page errors ' + s.errors.join(' | '));
   // a nested path under a section (4.23.0): a direct load of <base>/demo-server/sub/page runs the same section, with
-  // Elaia's own styles (the page sets <base href> for its mount, so static/ does not resolve one level too deep)
+  // LeafyGrove's own styles (the page sets <base href> for its mount, so static/ does not resolve one level too deep)
   await s.goto(BASE + 'demo-server/sub/page');
   await s.locator('#demo-ping', {hasText: 'pong from demo-server'}).waitFor({timeout: 5000});
   check(await s.locator('#demo-ping').evaluate(e => getComputedStyle(e).letterSpacing) === '3px' && await s.locator('body.side').count() === 1,
@@ -100,13 +100,13 @@ run(async b => {
   check((await s.request.get(api + 'nope')).status() === 404, 'server plugin: its own 404 comes through');
   const boom = await s.request.get(api + 'boom');
   check(boom.status() === 500 && (await boom.json()).msg === 'plugin error', 'server plugin: an exception is a 500 "plugin error", not a crash');
-  check((await s.request.get(BASE + 'api/health')).status() === 200, 'and Elaia keeps answering after it');
+  check((await s.request.get(BASE + 'api/health')).status() === 200, 'and LeafyGrove keeps answering after it');
   const post = (headers, data) => s.request.post(api + 'echo', {headers: {'Content-Type': 'application/json', ...headers}, data});
   check((await post({Origin: 'http://evil.example', 'Sec-Fetch-Site': 'cross-site'}, {text: 'x'})).status() === 403, 'server plugin: a cross-site POST is refused');
   check((await post({'Content-Type': 'text/plain'}, '{"text":"x"}')).status() === 415, 'server plugin: a POST that is not JSON is refused');
   check((await post({}, {text: 'x'.repeat(5000)})).status() === 200, 'server plugin: "max_body": 8192 lets a 5 KB POST through (4.23.0)');
   check((await post({}, {text: 'x'.repeat(9000)})).status() === 413, 'server plugin: a POST over its max_body is refused');
-  check((await s.request.post(BASE + 'api/freeze', {headers: {'Content-Type': 'application/json'}, data: {job: 'x'.repeat(5000)}})).status() === 413, 'Elaia\'s own POSTs keep the 4 KB limit');
+  check((await s.request.post(BASE + 'api/freeze', {headers: {'Content-Type': 'application/json'}, data: {job: 'x'.repeat(5000)}})).status() === 413, 'LeafyGrove\'s own POSTs keep the 4 KB limit');
   check((await s.request.get(BASE + 'plugins/demo-server/plugin.py')).status() === 404, 'server plugin: plugin.py is never served');
   check((await s.request.get(BASE + 'plugins/demo-server/page.js')).status() === 200, 'server plugin: its page script is served');
   check((await s.request.get(BASE + 'api/demo-broken/ping')).status() === 404 && (await s.request.get(BASE + 'demo-broken')).status() === 404,

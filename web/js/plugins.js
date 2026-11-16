@@ -35,7 +35,7 @@ const leafy = (() => {
       </div></section>`;
   }
 
-  // What a server plugin's page gets: its own API (api/<id>/...), answers as {ok, status, data}, and Elaia's helpers:
+  // What a server plugin's page gets: its own API (api/<id>/...), answers as {ok, status, data}, and LeafyGrove's helpers:
   // the shared effects (fx.js) and hold-to-confirm (hold.js), so every page gives the same feedback.
   function api(p) {
     const call = async (path, init) => {

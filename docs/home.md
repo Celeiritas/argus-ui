@@ -1,11 +1,11 @@
 # Today (once called Home)
 
-Today answers **"does anything need me, and where do I go?"** in a few seconds, on a phone, with one thumb. It is what Elaia
+Today answers **"does anything need me, and where do I go?"** in a few seconds, on a phone, with one thumb. It is what LeafyGrove
 opens on: the bare address `<base>/`, and `<base>/home`, its old address, which keeps working. It is about *you*. Watch
 (Argus's section, `<base>/argus`) is about *the machines*: "is every task running?".
 
 ## What it shows, top to bottom
-1. **The header**: the page's name, Elaia, and under it a greeting by the viewer's clock, the date and the weather
+1. **The header**: the page's name, LeafyGrove, and under it a greeting by the viewer's clock, the date and the weather
    ("Good evening · Friday, October 23 · Light rain · 48°F"). On a narrow phone it wraps onto a second line rather than being
    cut off (4.44.0). This is Today's only weather: the strip's weather (on every other page) is hidden here (4.44.0).
    Above the list, for the owner, **the server's own line on what it is doing now** (4.44.0, below), a band across Today in
@@ -31,10 +31,10 @@ opens on: the bare address `<base>/`, and `<base>/home`, its old address, which 
 
    A row whose need is met **fades out** where it stood (200 ms, hidden from screen readers while it goes); a row that is new
    since the last draw slides in. Under reduced motion both just happen. Warnings stay on their cards on Argus's page.
-4. **Open** (the owner's): the media players (Jellyfin, Audiobookshelf; below), then the links to other pages on this machine
+4. **Open** (the owner's): the media players and recipes (Jellyfin, Audiobookshelf, Mealie; below), then the links to other pages on this machine
    (below), each a 44 px chip with its name, what it is and the "opens elsewhere" mark. Neither file, no row. **As compact as
    4.44.0** (the owner, 4.45.0 round 2): the chips flow in one list with no label, the players first, then every link that has
-   no `"group"`. Elaia makes up no labels. A **label** (12 px, 600, the quiet meta colour `--frost`) shows only for a group
+   no `"group"`. LeafyGrove makes up no labels. A **label** (12 px, 600, the quiet meta colour `--frost`) shows only for a group
    the links themselves name in links.json (below): its chips come after the unlabelled ones, as their own list named by
    the label for a screen reader. On a phone (600 px and narrower) the label sits inline at the start of its chips, in the
    same wrap, so grouped links add at most one line to Open (412 x 915: 146 px with no groups, 198 px with two). On wider
@@ -58,9 +58,9 @@ opens on: the bare address `<base>/`, and `<base>/home`, its old address, which 
    heading.
 
 ## Sections or Open (4.45.0)
-The rule that keeps the two apart: **Sections are parts of Elaia, each with a live line; Open jumps to another app or
+The rule that keeps the two apart: **Sections are parts of LeafyGrove, each with a live line; Open jumps to another app or
 site.** A Section is a tile with a word and a line that changes; an Open item is a small chip with the "opens elsewhere" mark
-(`LINK_MARK`). An **integration** (a recipe app, a music library, a workout log) becomes a Section tile when Elaia reads from
+(`LINK_MARK`). An **integration** (a recipe app, a music library, a workout log) becomes a Section tile when LeafyGrove reads from
 it, through status v2 (below), like any other section; its own site may also have a chip in Open, under a group of its own,
 to jump there. It never becomes a Section by being a link.
 
@@ -90,23 +90,24 @@ theme uses the server's own purple and green, background `#3a2a5e`, border `#5b4
 background), words `#cbb8ff` (7.08:1). A theme without colours gets the page's neutral panel colours (name 12.19:1, words
 7.00:1 on `--card`).
 
-## Films, shows and audiobooks (4.44.0)
-The media players' own pages (they are other sites, not Elaia sections) are the first chips in Today's Open row when the host
+## Films, shows, audiobooks and recipes (4.44.0; Mealie 4.48.0)
+The media players' own pages, and Mealie's recipes, (they are other sites, not LeafyGrove sections) are the first chips in Today's Open row when the host
 says where they are, in `~/.config/argus-ui/media.json` (or `ARGUS_MEDIA`), read on every refresh:
 ```json
-{"jellyfin": "http://<host>:<port>/", "audiobookshelf": "http://<host>:<port>/"}
+{"jellyfin": "http://<host>:<port>/", "audiobookshelf": "http://<host>:<port>/", "mealie": "http://<host>:<port>/"}
 ```
-Only these two keys count (any case); each must be an `http://` or `https://` address, at most 300 characters, with no
+Only these three keys count (any case); each must be an `http://` or `https://` address, at most 300 characters, with no
 spaces or quotes (a player on the tailnet or the home network is often plain http). Anything else, a broken file or no file:
-no chip. They show as **Jellyfin · Films and shows** and **Audiobookshelf · Audiobooks and podcasts**, plain links with
-`rel="noopener noreferrer"` (no referrer, no hold on Elaia's window), for the owner only. Keep the file on the host; never
+no chip. They show as **Jellyfin · Films and shows**, **Audiobookshelf · Audiobooks and podcasts** and **Mealie · Recipes**
+(a plain service: no agent's name on it), plain links with
+`rel="noopener noreferrer"` (no referrer, no hold on LeafyGrove's window), for the owner only. Keep the file on the host; never
 commit it. They are on Today only, not in the strip or More.
 
 ## A section's card: status v2
 `GET api/<id>/status` → `{"line": "…", "needs": true, "action": "Study 5 due cards"}`. `line` is required for anything to show;
 `needs` (only `true` counts) puts the plugin in the rows and gives it a mark in the bar; `action` is the button's label,
 verb-first, at most 32 characters, and defaults to "Open <name>"; the server cuts a longer `action` (32) or `line` (160)
-after the last whole word, with "…" (`clip()`, 4.45.0; before, it cut inside a word). Elaia passes on only these three fields and never errors
+after the last whole word, with "…" (`clip()`, 4.45.0; before, it cut inside a word). LeafyGrove passes on only these three fields and never errors
 (`{"line": null}` when a plugin has nothing or fails). A plugin that answers only `{"line"}` keeps working and simply never
 needs you. **A new section (workouts, meals, music) gets its tile on Today by answering this, nothing else.** Mentor answers
 `needs` when cards are due; Memory (docs/memory.md) when the newest snapshot is older than 8 days or the job failed. To the
@@ -120,7 +121,7 @@ Ariad-Node**, any other plugin, then the links to other pages and anything "comi
 **A section that belongs to a god is called by the god's name, and only that, everywhere** (4.45.0; the owner: "I need it as
 the ONLY title"): the bar, the strip, the More sheet, its tile on Today, its page heading and the "who" line of a row. The
 name comes from the theme's agent (`WORDS` and `wordOf()` in `core.js`), so another theme's god names it there. Sections with
-no god keep their own name (Controllers, Spartamelee, Heracles, Ariad-Node, the links). Buttons stay verb-first ("Open
+no god keep their own name (Spartamelee, Ariad-Node, the links). Buttons stay verb-first ("Open
 Argus"). Addresses and ids do not change (`/watch`, `throne`, `memory`); the plain words of before (Watch, Study, Approvals,
 Backups, Playground) are kept in `WORDS` as `was`, for the search the next build adds.
 - **On a phone (under 600 px)**: a bar at the bottom edge, in thumb reach, with five slots: Today, Argus, Mentor, Zeus and
@@ -184,7 +185,7 @@ cognitive annoyance of the alert is taking up space, same with Mentor. I don't n
   an unknown task, 409 for a task that is not failing, 403 to a learner (the usual POST checks first).
 
 ## Links to other pages (4.25.0)
-Pages on the same machine that aren't Elaia sections (a studio, a dashboard) can sit in More and on Today. List them in
+Pages on the same machine that aren't LeafyGrove sections (a studio, a dashboard) can sit in More and on Today. List them in
 `~/.config/argus-ui/links.json` (or `ARGUS_LINKS`), read on every refresh:
 ```json
 [{"name": "Sound Lab", "what": "Studio", "href": "/studio/", "group": "Studio"}]

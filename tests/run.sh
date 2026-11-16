@@ -18,7 +18,7 @@ cp -r "$R"/tests/fixtures/. "$T/fx/"; chmod +x "$T"/fx/*.py "$T"/fx/*.sh
 mkdir -p "$T/home/.mnemosyne"; cp -r "$R/tests/fixtures/memory/Server-brain" "$T/home/.mnemosyne/"
 # LeafyPlugins: the demo plugin(s) live where installs keep them, inside the throwaway HOME
 mkdir -p "$T/home/.config/argus-ui/plugins"; cp -r "$R"/tests/plugin-fixtures/. "$T/home/.config/argus-ui/plugins/"
-# and bundled ones, as an install puts them next to Elaia (an agent-claiming plugin, and a demo-server that yours replaces)
+# and bundled ones, as an install puts them next to LeafyGrove (an agent-claiming plugin, and a demo-server that yours replaces)
 cp -r "$R"/tests/bundled-fixtures/. "$T/pkg/bundled/"
 $PYTHON -c "import json,time,sys; json.dump({'sky':'rain','desc':'Light rain','is_day':True,'temp':48,'unit':'F','precip':.6,'clouds':90,'wind':14,'south':False,'at':int(time.time()),'source':'Open-Meteo'}, open(sys.argv[1],'w'))" "$T/home/.cache/argus-ui/sky.json"
 # the server's own state goes to explicit paths outside HOME (on Windows ~ follows USERPROFILE, so both point at the temp HOME)
@@ -103,6 +103,12 @@ if [ -z "$1" ] || [ "$1" = memory ]; then
   echo "== memory model"   # the Memory page's server side, no browser (tests/memory_test.py)
   $PYTHON "$R/tests/memory_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1
 fi
+# The 4.48.0 naming on a real server: LeafyGrove, the ten agents, old apollo- jobs shown as Calliope's, the retired agents'
+# addresses sent on; no browser (tests/naming_test.py)
+if [ -z "$1" ] || [ "$1" = naming ]; then
+  echo "== naming"
+  $PYTHON -W ignore::ResourceWarning "$R/tests/naming_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1
+fi
 # Leafy Controllers' probe over fixture sysfs trees, and the old names (pads.json, ARGUS_PADS, <base>/pads) on a real server:
 # tests/controllers_test.py; the browser side is tests/controllers.test.js
 if [ -z "$1" ] || [ "$1" = controllers ]; then
@@ -137,7 +143,7 @@ if [ -z "$1" ] || [ "$1" = plugins ]; then
   $PYTHON -W ignore::ResourceWarning "$R/tests/plugin_cache_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1
 fi
 # a plugin on its own address (own-origin.json, docs/leafy-plugin.md): the second listener, its paths, methods and roles, and
-# Elaia refusing the game's origin; no browser (tests/own_origin_test.py). The browser side is tests/own-origin.test.js.
+# LeafyGrove refusing the game's origin; no browser (tests/own_origin_test.py). The browser side is tests/own-origin.test.js.
 if [ -z "$1" ] || [ "$1" = plugins ] || [ "$1" = own-origin ]; then
   echo "== own origin"
   st=0; out=$($PYTHON -W ignore::ResourceWarning "$R/tests/own_origin_test.py" 2>&1) || st=$?

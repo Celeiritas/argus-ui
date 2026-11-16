@@ -1,11 +1,12 @@
 // Phone alerts (docs/phone-alerts.md): the page <base>/phone, owner only, and Today's one quiet line that leads to it.
-// The phone buzzes for three kinds only: something stopped working, something needs his yes, the daily summary. The words a
-// person reads never say "push", "subscription", "endpoint", "VAPID" or "service worker".
+// The phone buzzes for three kinds only: something stopped working (signed Argus), something needs his yes (signed Zeus),
+// the daily summary (unsigned; 4.48.0). The words a person reads never say "push", "subscription", "endpoint", "VAPID" or
+// "service worker".
 // The permission question comes only from a tap on "Turn on alerts on this phone", never on page load.
 const phoneAlerts = (() => {
-  const KINDS = [['broke', 'Something stopped working', 'A program on the server stopped doing its job.'],
-    ['needs-yes', 'Something needs my yes', 'Argus waits for you before it restarts something.'],
-    ['summary', 'Daily summary', 'One short message each morning about the day before.']];
+  const KINDS = [['broke', 'Something stopped working', 'From Argus: a program on the server stopped doing its job.'],
+    ['needs-yes', 'Something needs my yes', 'From Zeus: a restart waits for your yes. You answer it on Argus.'],
+    ['summary', 'Daily summary', 'One short message each morning about the day before, from LeafyGrove.']];
   // a computer shows an alert, it does not buzz: the words follow the device (the page's name stays "Phone alerts")
   const PHONE = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent), THING = PHONE ? 'phone' : 'computer', BUZZ = PHONE ? 'buzz' : 'show an alert';
   const HINT_KEY = 'elaia-phone-hint';
@@ -21,7 +22,7 @@ const phoneAlerts = (() => {
   const idOf = async endpoint => hex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode('argus-push:' + endpoint))).slice(0, 16);
   const keyBytes = k => { const s = atob(k.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - k.length % 4) % 4)); return Uint8Array.from(s, c => c.charCodeAt(0)); };
   // This browser's id and the server's key, kept where this page AND sw.js can read them (IndexedDB "elaia", store "push",
-  // key "device"), so a new address can name the record it replaces, also while Elaia is closed. Keep in step with
+  // key "device"), so a new address can name the record it replaces, also while LeafyGrove is closed. Keep in step with
   // deviceStore in sw.js. Any failure (no storage, a private window, blocked) answers {} within 3 s: alerts work without
   // it; only an old copy can then stay behind, and "Your other devices" points it out.
   function deviceStore(op, rec) {
@@ -51,15 +52,15 @@ const phoneAlerts = (() => {
     try {
       const r = await fetch(url('api/push/' + path), {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
       const j = await r.json().catch(() => ({})); return {ok: r.ok && j.ok !== false, ...j, msg: j.msg || j.error || ''};
-    } catch (e) { return {ok: false, msg: 'Elaia could not reach the server. Check that this ' + THING + ' is online, then try again.'}; }
+    } catch (e) { return {ok: false, msg: 'LeafyGrove could not reach the server. Check that this ' + THING + ' is online, then try again.'}; }
   }
   // what the server says (available, this person's devices) and what this browser has; one question at a time
   async function load() {
     const sub = await subscription(), id = sub ? await idOf(sub.endpoint) : '';
     try {
       const r = await fetch(url('api/push/status' + (id ? '?device=' + id : '')), {cache: 'no-store'});
-      st = r.ok ? await r.json() : {available: false, why: 'Elaia could not ask the server about alerts. Reload this page to try again.', devices: []};
-    } catch (e) { st = {available: false, why: 'Elaia could not reach the server. Check that this ' + THING + ' is online, then reload this page.', devices: []}; }
+      st = r.ok ? await r.json() : {available: false, why: 'LeafyGrove could not ask the server about alerts. Reload this page to try again.', devices: []};
+    } catch (e) { st = {available: false, why: 'LeafyGrove could not reach the server. Check that this ' + THING + ' is online, then reload this page.', devices: []}; }
     me = {sub, id, dev: (st.devices || []).find(d => d.this) || null}; asked = Date.now();
     if (me.dev && st.key) keep(id, st.key);           // the server knows this address: remember it as this browser's
     return st;
@@ -80,22 +81,22 @@ const phoneAlerts = (() => {
     return st.trusted ? 'off' : 'untrusted';
   }
   const steps = list => `<ol class="psteps">${list.map(s => `<li>${s}</li>`).join('')}</ol>`;
-  const INSTALL_STEPS = steps(['Open Elaia in Chrome on your phone.',
+  const INSTALL_STEPS = steps(['Open LeafyGrove in Chrome on your phone.',
     'Tap the three dots <b>⋮</b> at the top right, then <b>Add to home screen</b> (it may say <b>Install app</b>).',
-    'Open Elaia from its new icon on your home screen, come back to <b>Phone alerts</b> and tap <b>Turn on alerts on this phone</b>.']);
-  const ALLOW_STEPS = steps(['Tap the small icon to the left of the web address. In the installed Elaia: hold its icon on the home screen and tap <b>App info</b>.',
+    'Open LeafyGrove from its new icon on your home screen, come back to <b>Phone alerts</b> and tap <b>Turn on alerts on this phone</b>.']);
+  const ALLOW_STEPS = steps(['Tap the small icon to the left of the web address. In the installed LeafyGrove: hold its icon on the home screen and tap <b>App info</b>.',
     'Tap <b>Permissions</b> (or <b>Notifications</b>), then <b>Notifications</b>.',
     'Choose <b>Allow</b> (or turn on <b>Show notifications</b>), then come back here and tap <b>Turn on alerts on this phone</b>.']);
   function thisDevice(s, n) {
-    const install = installEv ? `<button type="button" class="pbtn" data-do="install"${dis()}>Install Elaia on this ${THING}</button>` : '';
+    const install = installEv ? `<button type="button" class="pbtn" data-do="install"${dis()}>Install LeafyGrove on this ${THING}</button>` : '';
     const on = `<button type="button" class="pbtn primary" data-do="on"${dis()}>Turn on alerts on this ${THING}</button>`;
     const say = {
       asking: ['Checking this ' + THING + '…', ''],
       unavailable: ['Phone alerts are not available', `<p>${esc(st?.why)}</p>`],
-      cannot: [`This browser cannot do it yet: add Elaia to your home screen first`, `<p>Three steps, in Chrome on Android:</p>${INSTALL_STEPS}${install}`],
-      blocked: ['Notifications are blocked for this page', `<p>This ${THING} said no to notifications for Elaia earlier. To allow them again, in Chrome on Android:</p>${ALLOW_STEPS}`],
+      cannot: [`This browser cannot do it yet: add LeafyGrove to your home screen first`, `<p>Three steps, in Chrome on Android:</p>${INSTALL_STEPS}${install}`],
+      blocked: ['Notifications are blocked for this page', `<p>This ${THING} said no to notifications for LeafyGrove earlier. To allow them again, in Chrome on Android:</p>${ALLOW_STEPS}`],
       untrusted: [`Alerts are off on this ${THING}`, `<p>${esc(st?.untrusted_why)}</p>${install}`],
-      off: [`Alerts are off on this ${THING}`, `<p>One tap, then your ${THING} asks whether Elaia may send notifications: say <b>Allow</b>.</p><div class="prow">${on}${install}</div>`],
+      off: [`Alerts are off on this ${THING}`, `<p>One tap, then your ${THING} asks whether LeafyGrove may send notifications: say <b>Allow</b>.</p><div class="prow">${on}${install}</div>`],
       on: [`Alerts are on for this ${THING}`, `<p>On since ${esc(ago(me?.dev?.made))}.</p>${install}`],
     }[s];
     return `<section class="ppanel" aria-labelledby="pstate-h"><h2 class="pstate ${s}" id="pstate-h" tabindex="-1">${say[0]}</h2>${n}${say[1]}</section>`;
@@ -107,7 +108,7 @@ const phoneAlerts = (() => {
   }
   function test(n) {
     const d = me.dev, res = d.last_error ? `<p class="pres bad">Last try failed: ${esc(d.last_error)}</p>` : d.last_ok ? `<p class="pres">Last message delivered to your ${THING}'s message service: ${esc(ago(d.last_ok))}.</p>` : '';
-    return `<section class="ppanel" aria-labelledby="ptest-h"><h2 id="ptest-h">Try it</h2><p>It should arrive within a few seconds, also when Elaia is closed.</p>
+    return `<section class="ppanel" aria-labelledby="ptest-h"><h2 id="ptest-h">Try it</h2><p>It should arrive within a few seconds, also when LeafyGrove is closed.</p>
       <div class="prow"><button type="button" class="pbtn" data-do="test"${dis()}>${PHONE ? 'Send a test buzz' : 'Send a test alert'}</button><button type="button" class="pbtn" data-do="off"${dis()}>Turn off on this ${THING}</button></div>${n}${res}</section>`;
   }
   // One device row: when it was set up and when its message service last took a message (a failed last try has its own
@@ -147,12 +148,12 @@ const phoneAlerts = (() => {
   function draw() {
     if (here !== 'phone') return;
     // the line under the title follows the device too (render() writes the phone's words just before it calls show())
-    const sub = $('#sub'); if (sub) sub.textContent = `Argus · what makes your ${THING} ${BUZZ}`;
+    const sub = $('#sub'); if (sub) sub.textContent = `What makes your ${THING} ${BUZZ}`;
     const s = state(), others = st && st.available;
     // where the sentence shows: its own panel, or the state panel when that panel is gone (turned off)
     const at = (msg.at === 'kinds' || msg.at === 'test') && s !== 'on' ? 'state' : msg.at === 'others' && !others ? 'state' : msg.at;
     const html = `<section class="phone" aria-label="Phone alerts">
-      <p class="plead">Your ${THING} can ${BUZZ} when Elaia needs you: when something stops working, when something waits for your yes, and once a day with a short summary. It does not ${PHONE ? 'buzz' : 'show one'} when Argus fixed something by itself; that stays on the page and goes into the summary.</p>
+      <p class="plead">Your ${THING} can ${BUZZ} when LeafyGrove needs you: when something stops working, when something waits for your yes, and once a day with a short summary. It does not ${PHONE ? 'buzz' : 'show one'} when Argus fixed something by itself; that stays on the page and goes into the summary.</p>
       ${thisDevice(s, note('state', at))}${s === 'on' ? kinds(note('kinds', at)) + test(note('test', at)) : ''}${others ? othersPanel(note('others', at)) : ''}</section>`;
     if (html === last) return;
     const f = document.activeElement, inPage = !!f?.closest?.('#main .phone');
@@ -231,7 +232,7 @@ const phoneAlerts = (() => {
   document.addEventListener('click', async e => {
     const b = e.target.closest('#main .phone button'); if (!b) return;
     if (b.dataset.kind) return toggle(b);
-    if (busy) return say('One moment: Elaia is still busy with your last tap.', panelOf(b));   // never a silent tap
+    if (busy) return say('One moment: LeafyGrove is still busy with your last tap.', panelOf(b));   // never a silent tap
     busy = true; $$('#main .phone .pbtn').forEach(x => x.setAttribute('aria-disabled', 'true'));
     try {
       if (b.dataset.do === 'on') await turnOn();

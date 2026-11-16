@@ -1,12 +1,12 @@
 # Phone alerts
 
-Elaia can make your phone buzz, also when Elaia is closed. It buzzes for exactly three kinds of thing, and you choose which
+LeafyGrove can make your phone buzz, also when LeafyGrove is closed. It buzzes for exactly three kinds of thing, and you choose which
 of them each phone gets:
 
 | On the page | When | How urgent |
 |---|---|---|
 | **Something stopped working** | a program on the server stops doing its job and there is nothing Argus may do about it (`broke` events, `docs/checks.md`) | high: it may wake the phone; it waits up to 6 hours if the phone is off |
-| **Something needs my yes** | Argus waits for you before it restarts something (`needs-yes`) | high, 6 hours |
+| **Something needs my yes** | a restart waits for your yes (`needs-yes`); you answer it on Argus's card | high, 6 hours |
 | **Daily summary** | once a day, at 08:00 unless you set another time | normal; it waits up to 12 hours |
 
 It never buzzes when Argus fixed something by itself, or when something came back on its own (`fixed`, `recovered`): that
@@ -21,7 +21,7 @@ So that the phone never becomes noise:
   time grows to 1 hour, 2 hours, then 4 hours, and it is back to 30 minutes once that thing has been quiet for 12 hours;
   nothing is lost: every event stays in the events file and in the daily summary;
 - at most **6 buzzes per person in any hour**. What comes after that is not lost: it is folded into **one** later message,
-  *"3 more things happened. Open Elaia."*, sent as soon as the hour has room again;
+  *"3 more things happened. Open LeafyGrove."*, sent as soon as the hour has room again;
 - a newer message about the same thing replaces one the phone has not shown yet, and on the phone a newer notification
   about the same thing replaces the older one instead of stacking;
 - **one unplugged drive buzzes once**: the drive's own message names the programs that went with it (*The media drive is not
@@ -35,30 +35,33 @@ people file keeps getting its alerts after one is written: it counts for the own
 them), every owner sees it in his list and can remove it, and it becomes his own when that phone turns alerts on again.
 A learner never sees or gets it.
 
-On the lock screen a message that waits for you starts with **Needs your yes:** and the name of the thing (*Needs your
-yes: Media player*); its first line then says what is wrong. A message that something stopped working keeps Argus's own
-words. On a computer the same alerts show as notifications, and the page says *show an alert* instead of *buzz*.
+Only two names sign a buzz (4.48.0): **Argus** means *something broke, go look*, and **Zeus** means *this needs your yes*.
+On the lock screen a message that waits for you starts with **Zeus needs your yes:** and the name of the thing (*Zeus needs
+your yes: Media player*); its first line then says what is wrong. A message that something stopped working starts with
+**Argus:** and keeps Argus's own words (*Argus: Media player is not running*). The daily summary, the *N more things*
+message and a test buzz are signed by no one. One problem is one buzz: the drive folding and the quiet times below hold
+for both signers. On a computer the same alerts show as notifications, and the page says *show an alert* instead of *buzz*.
 
 ## Turning it on (the owner, on the phone)
 
 These are the steps as you will read them; nothing here needs a terminal.
 
-1. On the phone, open Elaia **at its usual secure address** (the one that starts with `https`, through your home network's
-   sign-in). In Chrome: tap the three dots **⋮**, then **Add to home screen** (it may say **Install app**). Open Elaia from
+1. On the phone, open LeafyGrove **at its usual secure address** (the one that starts with `https`, through your home network's
+   sign-in). In Chrome: tap the three dots **⋮**, then **Add to home screen** (it may say **Install app**). Open LeafyGrove from
    the new icon.
 2. Tap **More**, then **Phone alerts**. (On Today there is also one quiet line, *Your phone can buzz when something needs
    you*, with **Set up phone alerts**; **Not now** hides it for good on that phone.)
-3. Tap **Turn on alerts on this phone**. The phone asks whether Elaia may send notifications: tap **Allow**.
-4. Tap **Send a test buzz**. It should arrive within a few seconds, also when Elaia is closed. Below the button the page
+3. Tap **Turn on alerts on this phone**. The phone asks whether LeafyGrove may send notifications: tap **Allow**.
+4. Tap **Send a test buzz**. It should arrive within a few seconds, also when LeafyGrove is closed. Below the button the page
    says when the last message was handed to the phone's message service, or what went wrong.
 5. Choose with the three switches what this phone gets. Each switch changes at once.
 
 On the same page: **Turn off on this phone**, and **Your other devices** with **Remove** for each. At most 8 devices per
-person. Each device in the list says when it was set up and when Elaia last handed it a message, in words that claim no
+person. Each device in the list says when it was set up and when LeafyGrove last handed it a message, in words that claim no
 more than the server knows: *Set up November 11. Last message delivered to its message service: yesterday, 8:00 AM.*, or
 *… No message delivered to its message service yet.* When the last try failed, the row has one more line right under
 the name, in the warning colour: *Last try failed:* and what went wrong (*The browser's message service did not answer
-in time. Elaia tried twice.*); the line below it still gives the last success. It never says a message reached the
+in time. LeafyGrove tried twice.*); the line below it still gives the last success. It never says a message reached the
 phone: the message service (the browser's: Google's for Chrome, Mozilla's for Firefox) can keep accepting messages for
 an address no phone listens to any more. A reason saved before 4.43.0 keeps its old words (*The phone maker's …*) until
 that device's next failed try.
@@ -76,17 +79,17 @@ no message yet is never called a copy, and two live devices that took the same m
 goes to one device only, so right after one, a same-named device whose last message was the morning summary can get the
 hint until the next summary; its set-up date helps tell which is which.
 
-On a computer the page is not in the strip of sections at the top (it would crowd it); open Elaia's address with
+On a computer the page is not in the strip of sections at the top (it would crowd it); open LeafyGrove's address with
 `phone` at the end (`<base>/phone`).
 
 If the page says *Notifications are blocked for this page*, the phone said no earlier; the page lists the three taps that
-allow them again. If it says *This browser cannot do it yet*, add Elaia to the home screen first (the page shows how).
-If it says *Alerts can be turned on and tested only when Elaia is opened through its secure address*, the page was
+allow them again. If it says *This browser cannot do it yet*, add LeafyGrove to the home screen first (the page shows how).
+If it says *Alerts can be turned on and tested only when LeafyGrove is opened through its secure address*, the page was
 opened another way (for example by the server's plain address): open it through the secure one.
 
 ## When the phone gets a new address
 
-The phone's browser can give Elaia a new address for its messages: after notifications were switched off and on, site data
+The phone's browser can give LeafyGrove a new address for its messages: after notifications were switched off and on, site data
 was cleared, or the browser decided so itself. Before 4.43 the server then kept the old record, which went on taking
 messages for an address that leads nowhere, and Turn on made a second one. Since 4.43.0:
 
@@ -98,7 +101,7 @@ messages for an address that leads nowhere, and Turn on made a second one. Since
   `replaces`. The server retires that record only when it is the same person's (or from before the people file, as
   above). An unknown id or another person's is ignored, and the answer is the same either way, so it tells nobody whether
   such an id exists. The new record keeps the old one's switches (what it buzzes for).
-- **The service worker does the same while Elaia is closed.** It listens for `pushsubscriptionchange`. It signs up again
+- **The service worker does the same while LeafyGrove is closed.** It listens for `pushsubscriptionchange`. It signs up again
   with the same server key (the one it kept, or the server's) and tells the server, naming the old record. That name
   comes from the event's old address, or from the kept id when the event brings none. The record keeps its name and
   switches. If the server cannot be reached, the kept id stays, so the next Turn on still names it.
@@ -137,7 +140,7 @@ guess what the message is about; a newer message with the same topic replaces on
 
 Sending runs on its own thread with a small queue, so neither Argus's checks nor the page ever wait on the network (10
 seconds per try). When the push service says the phone is gone (404 or 410), that device is removed. When it is busy or
-does not answer (429, 5xx, no answer), Elaia tries once more a minute later and then shows the reason in plain words next
+does not answer (429, 5xx, no answer), LeafyGrove tries once more a minute later and then shows the reason in plain words next
 to the device.
 
 ## The daily summary
@@ -160,7 +163,7 @@ yet.* (only when its weekly brain job exists; also when that job's first try fai
 was 9 days ago.* (more than 8 days), or both in one sentence. Other reasons for Needs you (an old snapshot, a failed
 run that left older ones) add no line. It is the same summary message: no extra buzz and no new kind. When backups are fine there is no line. Without
 the Memory plugin, or when it fails, the summary goes out without the line and the server's log says so once (until
-Elaia restarts).
+LeafyGrove restarts).
 
 The date of the last summary is saved before the message is made, so a restart never sends a second one. If the server
 was off at the set time, the summary goes out when it is back only within 4 hours after that time; later, that day has
@@ -196,7 +199,7 @@ request: one that came through the secure front door with a sign-in, and not fro
 
 - One phone: **Turn off on this phone** on the page, or **Remove** it from another device.
 - Everything: remove every device on the page. With no devices nothing is ever sent.
-- The daily summary only: `ARGUS_SUMMARY=0` in the service's settings, then restart Elaia.
+- The daily summary only: `ARGUS_SUMMARY=0` in the service's settings, then restart LeafyGrove.
 
 ## Starting over (throw the key away)
 
@@ -206,7 +209,7 @@ help:
 1. On the server, move both files aside to dated names (never delete them right away):
    `mv ~/.config/argus-ui/push-key.pem ~/.config/argus-ui/push-key.pem.set-aside-$(date +%Y%m%d-%H%M)` and the same for
    `~/.local/state/argus-ui/push-devices.json`.
-2. Restart Elaia. A new key is made the next time the page asks.
+2. Restart LeafyGrove. A new key is made the next time the page asks.
 3. On each phone: open **Phone alerts**, tap **Turn off on this phone** if it still says on, then **Turn on alerts on this
    phone** again. Phones signed up with the old key get nothing more.
 
@@ -215,7 +218,7 @@ help:
 `server/push.py` (encryption RFC 8291 `aes128gcm`, VAPID RFC 8292 ES256, the host rule, the devices file, the sender
 thread, the sink registered with `notify.register()`, the routes' logic), `server/summary.py`, `web/sw.js` (`push`: always
 shows a notification, `tag` = what it is about, the existing `static/argus-192.png` as its icon, no badge;
-`notificationclick`: focuses an open Elaia window and sends it to the place, or opens one; `pushsubscriptionchange`: signs
+`notificationclick`: focuses an open LeafyGrove window and sends it to the place, or opens one; `pushsubscriptionchange`: signs
 up again and names the record it replaces; `activate`: keeps the current id when none is kept), `web/js/alerts.js` and
 `web/css/alerts.css` (the page and Today's line).
 

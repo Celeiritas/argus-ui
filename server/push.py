@@ -292,13 +292,15 @@ hushed = lambda event: False   # an event that keeps still: a quiet section or a
 def message(event, kind=None):
     """The JSON a phone gets: {id, kind, title, body, url, at, tag}, at most MAX_MESSAGE bytes (the body is trimmed)."""
     kind = kind or event.get('kind', '')
-    title, body = str(event.get('title') or 'Elaia'), str(event.get('body') or '')
+    title, body = str(event.get('title') or 'LeafyGrove'), str(event.get('body') or '')
     if kind == 'needs-yes':          # on a lock screen he must see at once that he is asked: the ask first, then what it is about
         try: name = str(name_of(str(event.get('subject') or '')) or '').strip()
         except Exception: name = ''
         said = title.rstrip('. ')
         body = f'{said}. {body}'.strip() if said and not body.startswith(said) else body
-        title = f'Needs your yes: {name or said}'
+        title = f'Zeus needs your yes: {name or said}'
+    elif kind == 'broke' and not title.startswith('Argus'):   # two signers only (4.48.0): Argus = something broke, go look;
+        title = f'Argus: {title}'                              # Zeus = needs your yes. The daily summary, "more" and a test are unsigned
     m = {'id': str(event.get('id') or ''), 'kind': kind, 'title': title[:200],
          'body': body, 'url': str(event.get('url') or ''), 'at': str(event.get('at') or ''),
          'tag': str(event.get('subject') or event.get('kind') or 'elaia')[:64]}
@@ -342,14 +344,14 @@ def post(endpoint, body, headers):
 def say_failure(why):
     # The message service belongs to the device's browser (Google's for Chrome, Mozilla's for Firefox, ...), never to the
     # maker of the phone, and the same words show on a computer's row. Records keep the words they were saved with.
-    return {'timeout': 'The browser\'s message service did not answer in time. Elaia tried twice.',
-            'busy': 'The browser\'s message service asked Elaia to wait. Elaia tried twice.',
-            'down': 'The browser\'s message service had a problem. Elaia tried twice.',
-            'moved': 'The browser\'s message service answered with a different address, which Elaia never follows.',
+    return {'timeout': 'The browser\'s message service did not answer in time. LeafyGrove tried twice.',
+            'busy': 'The browser\'s message service asked LeafyGrove to wait. LeafyGrove tried twice.',
+            'down': 'The browser\'s message service had a problem. LeafyGrove tried twice.',
+            'moved': 'The browser\'s message service answered with a different address, which LeafyGrove never follows.',
             'refused': 'The browser\'s message service refused the message. Turning alerts off and on again on that device usually helps.',
-            'unknown': 'This device asked for a message service Elaia does not know, so nothing was sent.',
+            'unknown': 'This device asked for a message service LeafyGrove does not know, so nothing was sent.',
             'nokey': 'The message could not be locked for this device. Turning alerts off and on again on it usually helps.',
-            'sign': 'Elaia could not sign the message. Check the alert settings on the server (docs/phone-alerts.md, "Files and settings").'}[why]
+            'sign': 'LeafyGrove could not sign the message. Check the alert settings on the server (docs/phone-alerts.md, "Files and settings").'}[why]
 
 
 class Sender:
@@ -470,8 +472,8 @@ class Gate:
         for person, f in out:
             n = f['n']
             ev = {'id': f'more-{int(time.time())}', 'kind': 'more', 'subject': 'elaia-more', 'at': now_iso(), 'url': '',
-                  'title': f'{n} more thing{"s" if n != 1 else ""} happened. Open Elaia.',
-                  'body': 'Elaia held these back so your phone would not buzz too often. Everything is on the page.'}
+                  'title': f'{n} more thing{"s" if n != 1 else ""} happened. Open LeafyGrove.',
+                  'body': 'LeafyGrove held these back so your phone would not buzz too often. Everything is on the page.'}
             to_devices(person, f['kinds'], ev, 'more')
         return out
 
@@ -522,7 +524,7 @@ def sink(event):
 
 
 # ---------- the routes (server/argus_ui.py hands these the request's who and trusted) ----------
-UNTRUSTED = ('Alerts can be turned on and tested only when Elaia is opened through its secure address, signed in '
+UNTRUSTED = ('Alerts can be turned on and tested only when LeafyGrove is opened through its secure address, signed in '
              '(the address that starts with https). This page was opened another way.')
 _tests = {}
 
@@ -579,9 +581,9 @@ def route(name, body, who, trusted):
         return 429, {'ok': False, 'msg': 'One test buzz every 10 seconds. Wait a moment, then try again.'}
     _tests[person] = now
     ev = {'id': f'test-{int(time.time())}', 'subject': 'elaia-test', 'at': now_iso(), 'url': 'phone',
-          'title': 'Test buzz from Elaia', 'body': 'Alerts reach this device. Nothing else happened.'}
+          'title': 'Test buzz from LeafyGrove', 'body': 'Alerts reach this device. Nothing else happened.'}
     sender.put({'device': dev['id'], 'raw': message(ev, 'test'), 'kind': 'test', 'subject': 'elaia-test'})
-    return 200, {'ok': True, 'msg': 'Sent. It should arrive within a few seconds, also when Elaia is closed.'}
+    return 200, {'ok': True, 'msg': 'Sent. It should arrive within a few seconds, also when LeafyGrove is closed.'}
 
 
 def subscribe(person, body, trusted, who=None):
@@ -596,14 +598,14 @@ def subscribe(person, body, trusted, who=None):
     if not isinstance(sub, dict): return 400, {'ok': False, 'msg': 'This browser did not say where to send alerts. Try again.'}
     endpoint, keys = sub.get('endpoint'), sub.get('keys') if isinstance(sub.get('keys'), dict) else {}
     if not endpoint_ok(endpoint):
-        return 400, {'ok': False, 'msg': 'This browser uses a message service Elaia does not know, so alerts stay off here. '
+        return 400, {'ok': False, 'msg': 'This browser uses a message service LeafyGrove does not know, so alerts stay off here. '
                                          'Chrome or Samsung Internet on the phone work.'}
     try:
         p256dh, auth = unb64(keys.get('p256dh')), unb64(keys.get('auth'))
         if len(p256dh) != 65 or p256dh[0] != 4 or len(auth) != 16: raise ValueError('wrong length')
         crypto()['ec'].EllipticCurvePublicKey.from_encoded_point(crypto()['ec'].SECP256R1(), p256dh)
     except Exception:
-        return 400, {'ok': False, 'msg': 'This browser sent a lock Elaia cannot use, so alerts stay off here. Try again.'}
+        return 400, {'ok': False, 'msg': 'This browser sent a lock LeafyGrove cannot use, so alerts stay off here. Try again.'}
     if not trusted: return 403, {'ok': False, 'msg': UNTRUSTED, 'error': UNTRUSTED}
     label = re.sub(r'[\x00-\x1f\x7f<>]', '', str(body.get('label') or '')).strip()[:40]
     did = device_id(endpoint)
@@ -623,7 +625,7 @@ def subscribe(person, body, trusted, who=None):
         label = label or str(was.get('label') or '') or 'This device'
         kinds = _clean_kinds(body.get('kinds')) if 'kinds' in body else _clean_kinds(was['kinds']) if 'kinds' in was else list(KINDS)
         if not old and sum(1 for d in devs if d.get('person') == person) >= MAX_DEVICES:
-            return 409, {'ok': False, 'msg': f'Elaia already sends alerts to {MAX_DEVICES} of your devices. Remove one below, then try again.'}
+            return 409, {'ok': False, 'msg': f'LeafyGrove already sends alerts to {MAX_DEVICES} of your devices. Remove one below, then try again.'}
         dev = old or {'id': did, 'person': person, 'made': now_iso(), 'last_ok': '', 'last_error': ''}
         if not old: devs.append(dev)
         dev.update(label=label, endpoint=endpoint, keys={'p256dh': b64(p256dh), 'auth': b64(auth)}, kinds=kinds)

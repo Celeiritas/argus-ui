@@ -22,7 +22,7 @@ async function quiet(p, own = false) {
   else {
     await p.route('**/api/*/status', r => r.fulfill({json: {line: 'All quiet', needs: false, action: ''}}));
     await p.route('**/api/demo-server/status', r => r.fulfill({json: {line: LONG, needs: false, action: ''}}));
-    await p.route('**/api/heracles/status', r => r.fulfill({json: {line: WORD, needs: false, action: ''}}));
+    await p.route('**/api/chiron/status', r => r.fulfill({json: {line: WORD, needs: false, action: ''}}));
   }
   await p.route('**/api/state', settle(async r => { const res = await r.fetch(), j = await res.json();
     (j.jobs || []).forEach(x => { if (x.state === 'failed') x.state = 'running'; delete x.works; }); (j.watch || []).forEach(w => { if (w.works === false) w.works = true; });

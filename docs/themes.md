@@ -21,7 +21,7 @@ This needs Pillow (`pip install pillow`). Each `--agent` is `key:Name:What it do
 
 | File | What it is | Replace with |
 |---|---|---|
-| `theme.json` | Title, subtitle, agents in page order, `never_freeze` (tasks the freeze tool may not touch; keep `argus-ui`), optional `registry` (folder of per-task notes) and `coming_soon` (sections shown as "coming later"), optional `colors` (below) | Edit by hand |
+| `theme.json` | Title, subtitle, agents in page order, `never_freeze` (tasks the freeze tool may not touch; keep `argus-ui`), optional `registry` (folder of per-task notes) and `coming_soon` (sections shown as "coming later"), optional `colors` (below), optional `renamed_prefixes` (below) | Edit by hand |
 | `icons/<key>.png` | One round medallion per agent, plus `mentor.png` and `olympus.png` for the section bar | Any square PNG, 256×256, transparent corners |
 | `icons/argus.png` | The header figure. The page draws Argus's moving eyes on top at fixed spots (a 234×234 grid, eyes around x 104–141, y 45–90; see `web/index.html`), so keep a face there | 234×234 PNG |
 | `gods/medusa.svg` | The freeze/thaw medallion. The page adds the classes `awake`, `freezing` and `thawing` while it's in use, so the SVG can change colour | SVG with `viewBox="0 0 234 234"` and `class="medusa"` on the root |
@@ -46,6 +46,16 @@ A theme may set a few of the page's colours in `theme.json`. Only the server's b
 | `server-words` | The rest of the line (400) |
 
 `scripts/build.sh` writes them into the page as CSS custom properties (`--server-bg` …). It stops with a message when `colors` holds another key or a value that is not `#rgb` or `#rrggbb`. Any key left out keeps the page's own neutral colour (the panel's background and line, white for the name, the soft text colour for the words; `:root` in `web/css/argus.css`), so a theme without `colors`, like `starter`, still gets a readable band. Pick text colours with a contrast of 4.5:1 or more on `server-bg` (the Leafy Realm values: name 7.21:1, words 7.08:1).
+
+## Renamed prefixes (4.48.0)
+
+When an agent is retired or renamed, its jobs on the host keep their old first word until each is renamed there. The theme can show them under their new agent meanwhile, in display only:
+
+```json
+"renamed_prefixes": {"apollo": "calliope"}
+```
+
+A unit `apollo-studio` is then watched and shown as Calliope's task `studio`; nothing on the host changes. An entry is ignored when its old word is not a plain lower-case word, is itself an agent of this theme, or points at an agent the theme does not have. Drop the entry once the host's units carry the new name.
 
 ## Sounds
 

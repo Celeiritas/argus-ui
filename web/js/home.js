@@ -1,4 +1,4 @@
-// Today (docs/home.md): what needs *you* across the realm, and where to go. It is what Elaia opens on (the bare address,
+// Today (docs/home.md): what needs *you* across the realm, and where to go. It is what LeafyGrove opens on (the bare address,
 // and <base>/home, its old name). Watch is about the machines; Today is about you. In this order:
 //   0. for the owner, the server's own line on what it is doing now, a band across the top in the server's colours ("<name>: calm",
 //      "<name>: busy with …", "<name>: a game is running, …": now_line() in the server; its name, now_name, drawn in the name colour),
@@ -7,7 +7,7 @@
 //   3. "Open": jumps to another app or site, as compact as 4.44.0: the media players (~/.config/argus-ui/media.json), then the
 //      links to other pages (~/.config/argus-ui/links.json), one row of chips that wraps, no labels. A link with a "group" gets
 //      that group's small label in front of its chips (opens()),
-//   4. "Sections": the parts of Elaia, one compact tile each, called by its god's name (wordOf in core.js), with its live line
+//   4. "Sections": the parts of LeafyGrove, one compact tile each, called by its god's name (wordOf in core.js), with its live line
 //      from status v2 (api/<id>/status: line, needs, action), cut at a word to two lines (fitLines). A new section (workouts,
 //      meals, music) only has to answer that to get its tile. A section with a row above has no tile; no tiles, no heading.
 //      A quiet section (server/quiet.py: Mentor) keeps its tile and its line, and never has a row.

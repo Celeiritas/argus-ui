@@ -459,7 +459,7 @@ class PhoneSeams(Base):
         self.assertEqual([(x['kind'], x['subject']) for x in self.events], [('broke', 'media-drive')], 'one event for the drive, none per program')
         self.assertEqual(self.events[0]['title'], 'The media drive is not connected; Jellyfin, Audiobookshelf and 1 more cannot read it')
         self.assertEqual([(b['kind'], b['title']) for b in self.buzzes()],
-                         [('broke', 'The media drive is not connected; Jellyfin, Audiobookshelf and 1 more cannot read it')], 'one buzz')
+                         [('broke', 'Argus: The media drive is not connected; Jellyfin, Audiobookshelf and 1 more cannot read it')], 'one buzz, signed by Argus (4.48.0)')
         for id_ in ('jellyfin', 'audiobookshelf', 'qbittorrent'):
             r = self.result(id_); self.assertIs(r['works'], False, id_); self.assertEqual(r['code'], 'drive-missing', id_)   # the rows still say why
         for _ in range(3): watch.step(e)

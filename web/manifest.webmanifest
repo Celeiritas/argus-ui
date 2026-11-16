@@ -1,12 +1,12 @@
 {
- "name": "Elaia",
- "short_name": "Elaia",
+ "name": "LeafyGrove",
+ "short_name": "LeafyGrove",
  "start_url": "./",
  "scope": "./",
  "display": "standalone",
  "background_color": "#1C2127",
  "theme_color": "#1C2127",
- "description": "Elaia: what needs you today, with Argus watching the machines",
+ "description": "LeafyGrove: what needs you today, with Argus watching the machines",
  "icons": [
   {
    "src": "static/argus-192.png",

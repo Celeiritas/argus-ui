@@ -1,10 +1,10 @@
 """A static plugin on its own address (4.42.0, docs/leafy-plugin.md "Its own address"), without a browser: the host file,
-the second listener (GET and HEAD only, that plugin's files only, the same people and roles as inside Elaia, the same
-caching, no sandbox) and the walls that keep a game on its own origin away from Elaia's powers.
+the second listener (GET and HEAD only, that plugin's files only, the same people and roles as inside LeafyGrove, the same
+caching, no sandbox) and the walls that keep a game on its own origin away from LeafyGrove's powers.
 
     python3 tests/own_origin_test.py -v        (tests/run.sh runs it under "== own origin"; runs on Windows too)
 
-Elaia and the plugin's own listener run in this process on free ports, with a temporary HOME, fake units, fixture plugins
+LeafyGrove and the plugin's own listener run in this process on free ports, with a temporary HOME, fake units, fixture plugins
 and an own-origin.json written here; no port number or host name is fixed in this file. Who is asking comes from the real
 check, as in tests/gate_test.py: on Linux the real /proc lookup runs, elsewhere the test stands in for it ("simulated")."""
 import http.client, importlib.util, io, json, os, re, shutil, socket, sys, tempfile, threading, time, types, unittest
@@ -34,7 +34,7 @@ def ports(n):
         if p not in out: out.append(p)
     return out
 
-put(os.path.join(STATIC, 'theme.json'), {'title': 'Elaia', 'agents': [{'key': 'argus', 'name': 'Argus', 'domain': 'Watchman'},
+put(os.path.join(STATIC, 'theme.json'), {'title': 'LeafyGrove', 'agents': [{'key': 'argus', 'name': 'Argus', 'domain': 'Watchman'},
     {'key': 'hermes', 'name': 'Hermes', 'domain': 'Delivery'}]})
 put(os.path.join(STATIC, 'index.html'), '<!doctype html><title>the page</title><script>const STATE = /*STATE*/null;</script>')
 put(os.path.join(STATIC, 'VERSION'), '9.9.9')
@@ -94,7 +94,7 @@ def no_people():
     if os.path.exists(PEOPLE): shutil.move(PEOPLE, os.path.join(TMP, f'people-set-aside-{time.time_ns()}.json'))
     a.PEOPLE = a.identity.People(PEOPLE)
 
-TS = 'host.tailnet.ts.net'                           # a placeholder Tailscale name: the browser's Host for Elaia (443)
+TS = 'host.tailnet.ts.net'                           # a placeholder Tailscale name: the browser's Host for LeafyGrove (443)
 GAME_ORIGIN = f'https://{TS}:{PUBLIC}'               # where the game runs, as the browser names it
 YEAR, FRESH = 'public, max-age=31536000, immutable', 'no-cache'
 MAIN = OWNS = None
@@ -215,7 +215,7 @@ class Config(unittest.TestCase):
         self.assertNotIn('own', a.plugin_view(p)); self.assertNotIn('own', a.plugin_view(p, None))
 
     def test_a_busy_port_is_skipped(self):
-        # the port is taken: Elaia keeps the frame and says so loudly, with an alert file Watch shows (docs/alerts.md), until
+        # the port is taken: LeafyGrove keeps the frame and says so loudly, with an alert file Watch shows (docs/alerts.md), until
         # a start that reads own-origin.json cleanly (or finds none) and starts every own listener
         f = os.path.join(a.ALERTS, a.OWN_ALERT)
         def message():
@@ -231,7 +231,7 @@ class Config(unittest.TestCase):
         before = dict(a.OWN)
         try:
             self.assertEqual(a.start_own_origins(self.conf({'busy-game': {'port': busy, 'public': q}})), {})
-            self.assertEqual(a.OWN, before, 'Elaia keeps the sandboxed frame for it')
+            self.assertEqual(a.OWN, before, 'LeafyGrove keeps the sandboxed frame for it')
             with open(f, encoding='utf-8') as fh: doc = json.load(fh)
             self.assertEqual((doc['job'], doc['level'], doc['link']), ('argus-own-origin', 'alert', 'busy-game'))
             self.assertIn(f'port {busy} was taken', doc['message']); self.assertIn(f'sudo tailscale serve --https={q} off', doc['message'])
@@ -277,7 +277,7 @@ class Config(unittest.TestCase):
 
 class Cookies(unittest.TestCase):
     """Cookies belong to a host name, not a port: the game on its own address can set up to about a megabyte of them, and
-    the browser then sends them to Elaia too. Argus reads none, so a Cookie header of any size a browser sends changes
+    the browser then sends them to LeafyGrove too. Argus reads none, so a Cookie header of any size a browser sends changes
     nothing on either listener (the standard library alone answers 431 past 64 KB)."""
     BIG = 'a=' + 'x' * 900_000                           # 900 KB in one Cookie line, as Serve passes the browser's on
     def setUp(self): no_people()
@@ -285,13 +285,13 @@ class Cookies(unittest.TestCase):
 
     def test_a_huge_cookie_changes_nothing(self):
         for what, (code, h, b) in (('the own address', own('/', Cookie=self.BIG)), ('a file there', own('/app.js', Cookie=self.BIG)),
-                                   ('Elaia api/state', main('api/state', host=TS, Cookie=self.BIG)),
-                                   ('Elaia page', main('spartamelee', host=TS, Cookie=self.BIG)),
-                                   ("Elaia's framed copy", main('plugins/spartamelee/', Cookie=self.BIG))):
+                                   ('LeafyGrove api/state', main('api/state', host=TS, Cookie=self.BIG)),
+                                   ('LeafyGrove page', main('spartamelee', host=TS, Cookie=self.BIG)),
+                                   ("LeafyGrove's framed copy", main('plugins/spartamelee/', Cookie=self.BIG))):
             self.assertEqual(code, 200, what)
         code, h, b = main('api/thaw', 'POST', body=json.dumps({'job': 'hermes-sort'}).encode(), Content_Type='application/json',
                           host=TS, Origin=f'https://{TS}', Sec_Fetch_Site='same-origin', Cookie=self.BIG, login=OWNER)
-        self.assertEqual(code, 200, 'a POST from Elaia itself'); self.assertTrue(json.loads(b)['ok'])
+        self.assertEqual(code, 200, 'a POST from LeafyGrove itself'); self.assertTrue(json.loads(b)['ok'])
         # the lines after the cookie still count: the login (sent after it) names the owner, a cross-site POST is still refused
         write_people(GOOD)
         who = json.loads(main('api/whoami', host=TS, Cookie=self.BIG, login=OWNER)[2])
@@ -315,7 +315,7 @@ class Cookies(unittest.TestCase):
         self.assertEqual(a.NoCookies(io.BytesIO(b'Cookie: a=1')).readline(65537), b'', 'the connection ended inside a cookie')
 
 class Listener(unittest.TestCase):
-    """The game's files at the root of its own address, with Elaia's caching and its own origin's headers."""
+    """The game's files at the root of its own address, with LeafyGrove's caching and its own origin's headers."""
     def setUp(self): no_people()
 
     def own_headers(self, h, what):
@@ -345,7 +345,7 @@ class Listener(unittest.TestCase):
         lm = own('/index.html')[1]['last-modified']
         self.assertEqual(own('/index.html', If_Modified_Since=lm)[0], 304)
         same = main('plugins/spartamelee/models/ares.1a2b3c4d.glb')[1]
-        self.assertEqual((same['etag'], same['cache-control']), (h['etag'], YEAR), 'the same validators as inside Elaia')
+        self.assertEqual((same['etag'], same['cache-control']), (h['etag'], YEAR), 'the same validators as inside LeafyGrove')
 
     def test_head(self):
         g, h = own('/'), own('/', 'HEAD')
@@ -426,7 +426,7 @@ class Paths(unittest.TestCase):
 
     def test_an_index_that_is_a_link(self):
         # a real folder of the game whose index.html links out of it, or to the plugin's own manifest: the folder's address
-        # serves nothing, on the own address and inside Elaia, and no link of the page points there
+        # serves nothing, on the own address and inside LeafyGrove, and no link of the page points there
         if not INDEX_LINKS: self.skipTest('symbolic links cannot be made here')
         for path in ('/inner/', '/inner/index.html', '/inner-manifest/', '/inner-manifest/index.html', '/inner/?v=1'):
             with self.subTest(path=path):
@@ -455,7 +455,7 @@ class Methods(unittest.TestCase):
         for path in ('/api/state', '/api/whoami', '/api/health', '/argus/api/state', '/argus/', '/static/theme.json',
                      '/plugins/spartamelee/index.html', '/plugins/other/index.html', '/api/srv/ping', '/sw.js'):
             code, h, b = own(path)
-            self.assertEqual(code, 404, path); self.assertNotIn(b'hermes', b, path); self.assertNotIn(b'Elaia', b, path)
+            self.assertEqual(code, 404, path); self.assertNotIn(b'hermes', b, path); self.assertNotIn(b'LeafyGrove', b, path)
 
     def test_a_server_plugin_listener_serves_nothing(self):
         no_people()
@@ -463,12 +463,12 @@ class Methods(unittest.TestCase):
             self.assertEqual(send(SRV_LOCAL, 'GET', path)[0], 404, path)
 
 class Roles(unittest.TestCase):
-    """The same people and roles as opening plugins/<id>/ inside Elaia: each case answers the same on both addresses."""
+    """The same people and roles as opening plugins/<id>/ inside LeafyGrove: each case answers the same on both addresses."""
     def tearDown(self): no_people(); a.SERVE_UID = ME
 
     def both(self, what, **k):
         mine, theirs = own('/', **k), main('plugins/spartamelee/', **k)
-        self.assertEqual(mine[0], theirs[0], f'{what}: the own address and Elaia agree')
+        self.assertEqual(mine[0], theirs[0], f'{what}: the own address and LeafyGrove agree')
         return mine
 
     def private(self, r, what):
@@ -507,8 +507,8 @@ class Roles(unittest.TestCase):
         self.private(self.both('faked owner login', login=OWNER), 'faked')
 
 class ElaiaStaysShut(unittest.TestCase):
-    """What a page on the game's origin could try against Elaia (a different port of the same name: same site, not same
-    origin): every POST is refused before it runs, and no answer of Elaia lets it read anything."""
+    """What a page on the game's origin could try against LeafyGrove (a different port of the same name: same site, not same
+    origin): every POST is refused before it runs, and no answer of LeafyGrove lets it read anything."""
     POSTS = ('api/freeze', 'api/thaw', 'api/bolt', 'api/run', 'api/watch/fix', 'api/push/subscribe', 'api/push/kinds',
              'api/push/forget', 'api/push/test', 'api/srv/echo', 'api/nothing')
     def setUp(self): no_people()                       # everyone is the owner: only the cross-site checks stand in the way
@@ -522,7 +522,7 @@ class ElaiaStaysShut(unittest.TestCase):
         cases = (('origin and fetch metadata', dict(host=TS, Origin=GAME_ORIGIN, Sec_Fetch_Site='same-site')),
                  ('origin only (no fetch metadata)', dict(host=TS, Origin=GAME_ORIGIN)),
                  ('fetch metadata only', dict(host=TS, Sec_Fetch_Site='same-site')),
-                 ('Elaia on a port of its own too', dict(host=f'{TS}:{PUBLIC + 1}', Origin=GAME_ORIGIN)),
+                 ('LeafyGrove on a port of its own too', dict(host=f'{TS}:{PUBLIC + 1}', Origin=GAME_ORIGIN)),
                  ('plain http on this machine', dict(host=f'127.0.0.1:{MAIN.server_address[1]}', Origin=local_game, Sec_Fetch_Site='same-site')),
                  ('plain http, origin only', dict(host=f'127.0.0.1:{MAIN.server_address[1]}', Origin=local_game)))
         for path in self.POSTS:
@@ -536,13 +536,13 @@ class ElaiaStaysShut(unittest.TestCase):
         self.assertNotIn('hermes-sort', a.frozen(), 'the task the game tried to freeze is untouched')
 
     def test_the_same_checks_let_elaia_itself_through(self):
-        # the control: Elaia's own page (same origin) passes the very checks the game fails
+        # the control: LeafyGrove's own page (same origin) passes the very checks the game fails
         for h in (dict(host=TS, Origin=f'https://{TS}', Sec_Fetch_Site='same-origin'), dict(host=TS)):
             code, hh, b = self.post('api/thaw', **h)
             self.assertEqual(code, 200, h); self.assertTrue(json.loads(b)['ok'])
 
     def test_no_question_first_gets_a_yes(self):
-        # the browser asks first (OPTIONS) before a JSON POST from another origin; Elaia answers no such method
+        # the browser asks first (OPTIONS) before a JSON POST from another origin; LeafyGrove answers no such method
         for path in self.POSTS + ('api/state', ''):
             code, h, b = main(path, 'OPTIONS', host=TS, Origin=GAME_ORIGIN, Access_Control_Request_Method='POST',
                               Access_Control_Request_Headers='content-type')
@@ -572,7 +572,7 @@ class ElaiaStaysShut(unittest.TestCase):
         self.assertEqual(main('plugins/spartamelee/index.html')[1].get('access-control-allow-origin'), '*', 'the sandboxed frame keeps its own')
 
     def test_the_sandbox_stays_as_it_was(self):
-        # Elaia's copy of the game is still sandboxed, and no page code gives a frame allow-same-origin
+        # LeafyGrove's copy of the game is still sandboxed, and no page code gives a frame allow-same-origin
         code, h, b = main('plugins/spartamelee/index.html')
         self.assertEqual(h['content-security-policy'], a.PLUGIN_HEADERS['Content-Security-Policy'])
         self.assertIn('sandbox allow-scripts allow-pointer-lock allow-popups;', h['content-security-policy'])

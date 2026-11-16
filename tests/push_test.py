@@ -247,7 +247,7 @@ class Sending(unittest.TestCase):
         self.assertRegex(h['topic'], r'^[A-Za-z0-9_-]+$')
         self.assertTrue(h['authorization'].startswith('vapid t=') and ', k=' + push.public_key() in h['authorization'])
         m = json.loads(decrypt(g['body'], k, auth))
-        self.assertEqual(m, {'id': ev['id'], 'kind': 'broke', 'title': ev['title'], 'body': ev['body'], 'url': 'argus', 'at': ev['at'], 'tag': 'media'})
+        self.assertEqual(m, {'id': ev['id'], 'kind': 'broke', 'title': 'Argus: ' + ev['title'], 'body': ev['body'], 'url': 'argus', 'at': ev['at'], 'tag': 'media'})
         self.assertEqual(devices()[0]['last_error'], '')
 
     def test_410_removes_the_device(self):
@@ -268,7 +268,7 @@ class Sending(unittest.TestCase):
         wait_for(lambda: devices()[0]['last_error'], what='last_error')
         time.sleep(push.RETRY_AFTER + 0.3)
         self.assertEqual(len(FAKE.got), 2, 'one more try, not a third')
-        self.assertIn('asked Elaia to wait', devices()[0]['last_error'])
+        self.assertIn('asked LeafyGrove to wait', devices()[0]['last_error'])
 
     def test_a_timeout_twice(self):
         did = add_device()[0]; FAKE.reset('hang', 'hang'); self.send(did)
@@ -293,7 +293,7 @@ class Sending(unittest.TestCase):
         for body in ('x' * 5000, 'é✓' * 3000, '"' * 3000):
             raw = push.message({'id': 'a', 'kind': 'broke', 'subject': 's', 'title': 'T', 'body': body, 'url': '', 'at': ''})
             self.assertLessEqual(len(raw), push.MAX_MESSAGE)
-            m = json.loads(raw); self.assertTrue(m['body'].endswith('…')); self.assertEqual(m['title'], 'T')
+            m = json.loads(raw); self.assertTrue(m['body'].endswith('…')); self.assertEqual(m['title'], 'Argus: T')
 
 
 # ---------- the sink: what buzzes ----------
@@ -355,7 +355,7 @@ class Sink(unittest.TestCase):
         out = push.gate.flush()
         self.assertEqual(len(out), 1); self.assertEqual(len(push.sender.jobs), 7)
         m = json.loads(push.sender.jobs[-1]['raw'])
-        self.assertEqual((m['kind'], m['title']), ('more', '3 more things happened. Open Elaia.'))
+        self.assertEqual((m['kind'], m['title']), ('more', '3 more things happened. Open LeafyGrove.'))
         self.assertEqual(push.gate.flush(), [], 'folded once, sent once')
         self.t[0] += 10; push.sink(self.ev('broke', 'thing-new'))
         self.assertEqual(len(push.sender.jobs), 7, 'the folded message counts too: the hour is full again, so this one waits')
@@ -364,7 +364,7 @@ class Sink(unittest.TestCase):
         add_device()
         for i in range(7): push.sink(self.ev('broke', f't{i}'))
         self.t[0] += 3601; push.gate.flush()
-        self.assertEqual(json.loads(push.sender.jobs[-1]['raw'])['title'], '1 more thing happened. Open Elaia.')
+        self.assertEqual(json.loads(push.sender.jobs[-1]['raw'])['title'], '1 more thing happened. Open LeafyGrove.')
 
     def test_his_own_press_does_not_buzz_for_two_minutes(self):
         did = add_device()[0]
@@ -550,7 +550,7 @@ class SummaryBackups(unittest.TestCase):
 
 # ---------- the routes on a real server ----------
 STATIC = os.path.join(TMP, 'static'); os.makedirs(STATIC, exist_ok=True)
-with open(os.path.join(STATIC, 'theme.json'), 'w') as f: json.dump({'title': 'Elaia', 'agents': [{'key': 'argus', 'name': 'Argus', 'domain': 'Watchman'}]}, f)
+with open(os.path.join(STATIC, 'theme.json'), 'w') as f: json.dump({'title': 'LeafyGrove', 'agents': [{'key': 'argus', 'name': 'Argus', 'domain': 'Watchman'}]}, f)
 with open(os.path.join(STATIC, 'index.html'), 'w') as f: f.write('<!doctype html><script>const INIT = /*STATE*/null;</script>')
 PEOPLE = os.path.join(CONF, 'people.json')
 OWNER, LEARNER = 'owner@example.com', 'learner@example.com'
@@ -628,7 +628,7 @@ class Routes(RouteBase):
         wait_for(lambda: len(FAKE.got) == 1 and devices()[0]['last_ok'], what='the test buzz')
         self.assertEqual(self.req('POST', 'api/push/test', {'id': did})[0], 429, 'one per 10 seconds')
         m = json.loads(decrypt(FAKE.got[0]['body'], *self.keys))
-        self.assertEqual((m['kind'], m['title'], m['url'], m['tag']), ('test', 'Test buzz from Elaia', 'phone', 'elaia-test'))
+        self.assertEqual((m['kind'], m['title'], m['url'], m['tag']), ('test', 'Test buzz from LeafyGrove', 'phone', 'elaia-test'))
         self.assertEqual(FAKE.got[0]['headers']['urgency'], 'high')
         code, raw, d = self.req('POST', 'api/push/forget', {'id': did})
         self.assertEqual(code, 200); self.assertEqual(devices(), [])
@@ -737,14 +737,19 @@ class LockScreenWords(unittest.TestCase):
                 yes = json.loads(push.message(notify.make('needs-yes', 'media', title, f'{why} Waiting for your yes.')))
                 broke = json.loads(push.message(notify.make('broke', 'media', title, f'{why} This one has no automatic fix.')))
                 self.assertNotEqual(yes['title'][:40], broke['title'][:40], code)
-                self.assertEqual(yes['title'], 'Needs your yes: Media player', code)
+                self.assertEqual(yes['title'], 'Zeus needs your yes: Media player', code)
+                self.assertEqual(broke['title'], 'Argus: ' + title, 'broke is signed by Argus')
                 self.assertIn('Media player', broke['title'], code)
                 self.assertTrue(yes['body'].startswith(title.rstrip('.') + '. '), (code, yes['body']))
                 self.assertLessEqual(len(yes['title']), 40)
                 self.assertEqual(broke['body'], f'{why} This one has no automatic fix.', 'broke: the words as they are')
             push.name_of = lambda s: ''
             m = json.loads(push.message(notify.make('needs-yes', 'x', 'Backups is not running', 'Restarting it should fix it.')))
-            self.assertEqual(m['title'], 'Needs your yes: Backups is not running', 'no name known: the watch title, never cut')
+            self.assertEqual(m['title'], 'Zeus needs your yes: Backups is not running', 'no name known: the watch title, never cut')
+            s = json.loads(push.message(notify.make('summary', 'daily-summary', 'Yesterday: everything worked', '', '', 'info')))
+            self.assertEqual(s['title'], 'Yesterday: everything worked', 'the daily summary is unsigned')
+            a = json.loads(push.message(notify.make('broke', 'x', 'Argus cannot read the drive', '')))
+            self.assertEqual(a['title'], 'Argus cannot read the drive', 'never signed twice')
         finally: push.name_of = lambda s: ''
 
 
@@ -858,7 +863,7 @@ class RecheckFixes(unittest.TestCase):
         self.assertEqual(json.loads(push.sender.jobs[-1]['raw'])['kind'], 'summary')
         self.assertFalse(self.at(2, 'broke', 'thing-7'), 'the hour is still full of the six (the summary did not count)')
         self.t[0] = 3601; out = push.gate.flush()
-        self.assertEqual(json.loads(push.sender.jobs[-1]['raw'])['title'], '1 more thing happened. Open Elaia.', 'only thing-7 was folded')
+        self.assertEqual(json.loads(push.sender.jobs[-1]['raw'])['title'], '1 more thing happened. Open LeafyGrove.', 'only thing-7 was folded')
 
     def test_owns_needs_the_owner_role_on_its_own_rows_too(self):
         row = {'person': 'learner-two'}
