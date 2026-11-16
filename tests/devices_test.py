@@ -281,10 +281,25 @@ class Match(unittest.TestCase):
         self.both_orders([one, two], 'desk-1', ('offline', None))
 
     def test_reinstalled_machine_with_dash_one(self):
-        # the old entry keeps "pc" (offline), the reinstalled one is "pc-1" with HostName "pc": "pc" is the DNS name's
+        # the old entry keeps "pc" (offline), the reinstalled one is "pc-1" with HostName "pc" and online: "pc" is the DNS
+        # name's, but its Offline would be a guess about a PC that may be on, so Can't tell and why (the owner, 2026-11-16)
         old, new = node('pc', 'pc', False), node('pc-1', 'pc', True)
-        self.both_orders([old, new], 'pc', ('offline', None))
+        self.both_orders([old, new], 'pc', ('unknown', D.TWIN))
         self.both_orders([old, new], 'pc-1', ('online', None))
+
+    def test_reinstalled_machine_both_off_is_offline(self):
+        # both entries offline: the device is off whichever it is, so Offline stays
+        self.both_orders([node('pc', 'pc', False), node('pc-1', 'pc', False)], 'pc', ('offline', None))
+
+    def test_a_twin_that_is_this_machine(self):
+        # the server itself carries the HostName: it is online, so the offline DNS match is Can't tell
+        self.both_orders([node('box', 'box', False)], 'box', ('unknown', D.TWIN), self_node=node('box-1', 'box'))
+
+    def test_offline_with_no_twin_keeps_last_seen(self):
+        doc = {'BackendState': 'Running', 'Self': node('this-server', 'this-server'),
+               'Peer': {'a': node('pc', 'pc', False, LastSeen='2026-11-15T21:04:00Z'), 'b': node('laptop', 'laptop', True)}}
+        r = D.one({'name': 'X', 'kind': 'pc', 'probe': 'tailscale', 'host': 'pc', 'wake': False}, doc, None, None)
+        self.assertEqual((r['status'], r['last_seen']), ('offline', '2026-11-15T21:04:00+00:00'))
 
     def test_two_phones_both_named_localhost(self):
         a1, a2 = node('phone-a', 'localhost', True), node('phone-b', 'localhost', False)
