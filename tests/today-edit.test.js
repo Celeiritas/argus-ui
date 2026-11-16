@@ -1,6 +1,7 @@
 // Edit Today (4.50.0, web/js/today-edit.js, server/today.py, docs/home.md "Edit Today"): the owner shows, hides, orders and
 // renames Today's tiles and Open's links, makes groups in Open, and switches each section's reminders off or on. A mode with a
-// clear Done and Cancel; Move up / down buttons are the keyboard path; a god's tile keeps its god's name; Mentor never reminds.
+// clear Done and Cancel; Move up / down buttons are the keyboard path; a god's tile keeps its god's name; Mentor never reminds,
+// Zeus always does (4.50.1: on and locked, even when today.json says otherwise); Mnemosyne's switch says what off drops.
 // Saved on the server (one Today on every device), so the checks read it back after a reload. A learner has no Edit button
 // (the server's 403 is in tests/today_edit_test.py and tests/gate_test.py). Every check here leaves today.json at the default.
 // Pictures (numbered, at 412 and 1920 px): SHOTS, or EDIT_SHOTS when set (a folder of their own).
@@ -61,6 +62,21 @@ async function flow(b, w, h, n) {
   check(await row(t, 'argus').locator('input[data-f=name]').count() === 0 && /A god's name/.test(await row(t, 'argus').textContent()), `${tag}: a god's tile (Argus) has no name field`);
   check(await t.locator('#main .edit [data-q=mentor]').isDisabled() && !(await t.locator('#main .edit [data-q=mentor]').isChecked()), `${tag}: Mentor's reminders are off and locked`);
   check(await t.locator('#main .edit [data-q=argus]').count() === 0, `${tag}: Argus has no reminders switch (its failures always count)`);
+  // Zeus asks for his yes: on and locked, and a screen reader hears why (the owner, 2026-11-16: "Lock Zeus on")
+  const zeus = t.locator('#main .edit [data-q=throne]');
+  check(await zeus.isChecked() && await zeus.isDisabled() && /^Always reminds you$/.test(await zeus.locator('xpath=..').locator('.edstate').textContent()),
+    `${tag}: Zeus's reminders are on and locked, with "Always reminds you"`);
+  const zname = await t.evaluate(() => { const i = document.querySelector('#main .edit [data-q=throne]'); return [i.getAttribute('role'), i.labels[0].textContent.replace(/\s+/g, ' ').trim()]; });
+  check(zname[0] === 'switch' && /Zeus/.test(zname[1]) && /Always reminds you/.test(zname[1]), `${tag}: Zeus's locked switch keeps its name and state in words (${zname.join(' / ')})`);
+  check(await t.evaluate(() => { const i = document.querySelector('#main .edit [data-q=throne]'); i.click(); return i.checked; }), `${tag}: a click on Zeus's locked switch leaves it on`);
+  // Mnemosyne: one plain line under the switch, read with it (aria-describedby)
+  const mem = t.locator('#main .edit [data-q=memory]'), note = await mem.getAttribute('aria-describedby');
+  check(!!note && /backup line out of the daily summary/.test(await t.locator('#' + note).textContent()) && await t.locator('#' + note).isVisible(),
+    `${tag}: Mnemosyne's switch says off also leaves the backup line out of the daily summary`);
+  const znote = await zeus.getAttribute('aria-describedby');
+  check(!!znote && /asks for your yes/.test(await t.locator('#' + znote).textContent()) && await t.locator('#' + znote).isVisible(),
+    `${tag}: Zeus's locked switch says why it stays on, read with it`);
+  check(await t.locator('#main .edit .ednote').count() === 2, `${tag}: only Mnemosyne and Zeus have a line`);
   await t.evaluate(() => scrollTo(0, 0)); await shot(t, `${n}02-edit-${tag}`);
 
   // rename a tile (with HTML in it), then move it up by keyboard: the keyboard stays on the button
@@ -166,6 +182,19 @@ run(async b => {
       `a group typed, then Done pressed once: saved with the new group (${closed ? JSON.stringify(kept.open) : 'still in Edit'})`);
     check(!f.errors.length, `first press after a group: no page errors (${f.errors.join(' | ')})`);
     await f.close();
+    check((await save(q, {reset: true})).ok(), 'back to the default layout');
+
+    // a today.json that switches Zeus off by hand (or an older page): Zeus stays on, in the state and in Edit; Done drops it
+    fs.writeFileSync(TD, JSON.stringify({v: 1, quiet: ['throne', 'demo-server']}));
+    const z = await today(b, 412, 915);
+    check(await z.evaluate(() => !S.quiet.includes('throne') && S.quiet.includes('demo-server')), 'throne in today.json: Zeus is not quiet, the rest of the list is');
+    await z.locator('#editToday').click(); await z.locator('#main .home.edit').waitFor();
+    check(await z.locator('#main .edit [data-q=throne]').isChecked() && !(await z.locator('#main .edit [data-q="demo-server"]').isChecked()), 'throne in today.json: Edit shows Zeus on (and the other switch off)');
+    await z.locator('#main .edit .edtop [data-ed=done]').click(); await z.locator('#editToday').waitFor({timeout: 5000}).catch(() => {});
+    const zf = JSON.parse(fs.readFileSync(TD, 'utf8'));
+    check(JSON.stringify(zf.quiet) === '["demo-server"]' && await z.evaluate(() => !S.quiet.includes('throne')), `Done saves without throne (${JSON.stringify(zf)})`);
+    check(!z.errors.length, `Zeus locked: no page errors (${z.errors.join(' | ')})`);
+    await z.close();
     check((await save(q, {reset: true})).ok(), 'back to the default layout');
 
     // the narrowest phone: Edit fits at 375 px

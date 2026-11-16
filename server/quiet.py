@@ -4,8 +4,8 @@
    ("6 due"), but its status answers needs false with no action and no count (no row under "N things need you", no number in
    it, no button on Today, no dot or count on the bar or the strip), and an event about it never buzzes and never goes into
    the daily summary. DEFAULT_QUIET is {'mentor'} (the owner, 2026-11-13: no Mentor notifications, ever); since 4.50.0 the
-   owner adds sections to it himself (Edit on Today, the reminders switches: today.py). A learner's page is not quiet:
-   Mentor is what she studies.
+   owner adds sections to it himself (Edit on Today, the reminders switches: today.py). NEVER_QUIET ({'throne'}, Zeus, 4.50.1)
+   can never be added. A learner's page is not quiet: Mentor is what she studies.
 
 2. Known marks ("Known, low priority"). A failed task the owner already knows about, marked from its card or its row on
    Today (POST api/known). It stays on Watch in grey, but leaves "N things need you", never buzzes and is not in the summary.
@@ -22,15 +22,26 @@ from datetime import datetime
 import today        # the owner's own Today (today.py, 4.50.0): the sections he switched reminders off for
 
 DEFAULT_QUIET = frozenset({'mentor'})
+# Never quiet, whatever today.json says (the owner, 2026-11-16: "Lock Zeus on"): Zeus's section ('throne') asks for his yes
+# (deploys, merges, root changes). Switched off, those would leave Today and never buzz his phone, so work would wait without
+# him knowing. Edit on Today shows its switch on and locked (web/js/today-edit.js QUIET_NEVER); a save drops it from "quiet".
+NEVER_QUIET = frozenset({'throne'})
 _lock = threading.Lock()
 
 
 def quiet_sections():
     """The sections that never count as needing the owner: Mentor always, and each section he switched reminders off for in
-    Edit on Today (today.json "quiet"). One place: everything quiet reads goes through here."""
+    Edit on Today (today.json "quiet"), except NEVER_QUIET (a hand-edited file or an older page cannot switch Zeus off).
+    One place: everything quiet reads goes through here."""
     try: own = today.quiet()
     except Exception: own = None                    # a settings file that cannot be read never stops an alert's path
+    own = (own or set()) - NEVER_QUIET
     return DEFAULT_QUIET | own if own else DEFAULT_QUIET
+
+
+def switchable(ids):
+    """A "quiet" list as a save sends it, without the sections that are never quiet (the rest is checked by today.clean)."""
+    return [x for x in ids if not (isinstance(x, str) and x in NEVER_QUIET)] if isinstance(ids, list) else ids
 
 
 def is_quiet(section): return isinstance(section, str) and section in quiet_sections()
