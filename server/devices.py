@@ -292,6 +292,8 @@ def failed_view(exc):
     the real error with its traceback in the log, once for each different error, so it never hides behind the message."""
     sig = (type(exc).__name__, str(exc)[:200])
     if sig not in _logged:
+        if len(_logged) >= 100:      # an error text with a changing time or path must not grow the set without end
+            _logged.clear()
         _logged.add(sig)
         print('argus-ui: the device list failed:\n' + ''.join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
               file=sys.stderr, flush=True)

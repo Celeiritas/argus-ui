@@ -19,7 +19,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const rows = p => p.$$eval('#devices .dev', ls => ls.map(l => {
   const st = l.querySelector('.dstat'), cs = getComputedStyle(st), r = l.getBoundingClientRect();
   return {name: l.querySelector('b').textContent, meta: l.querySelector('.dw span')?.textContent || '', status: [...l.classList].find(c => c.startsWith('s-')).slice(2),
-          label: st.textContent, bg: cs.backgroundColor, ink: cs.color, border: cs.borderStyle, h: r.height};
+          label: st.textContent, bg: cs.backgroundColor, ink: cs.color, border: cs.borderStyle, h: r.height,
+          q: st.querySelector('.dq') ? getComputedStyle(st.querySelector('.dq'), '::before').content : ''};
 }));
 const token = (p, name) => p.evaluate(n => { const d = document.createElement('i'); d.style.color = `var(${n})`; document.body.append(d); const c = getComputedStyle(d).color; d.remove(); return c; }, name);
 const lum = c => { const [r, g, b] = c.match(/[\d.]+/g).slice(0, 3).map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
@@ -76,7 +77,9 @@ run(async b => {
     check(tok.desktop === await token(p, '--mode-desktop') && tok.game === await token(p, '--mode-game') && tok.online === await token(p, '--mode-desktop'),
       `the colours come from the mode pill's tokens (desktop ${tok.desktop}, game ${tok.game})`);
     check(by.Shelf.bg === tok.desktop && by['Desk PC'].bg === tok.online && by['Spare PC'].bg === tok.offline, `each badge is filled with its status's token (${by['Spare PC'].bg})`);
-    check(by.Tablet.bg === 'rgba(0, 0, 0, 0)' && by.Tablet.border === 'dashed', "can't tell: no fill, a dashed ring");
+    check(by.Tablet.bg === 'rgba(0, 0, 0, 0)' && by.Tablet.border === 'solid' && by.Tablet.q === '"?"', `can't tell: no fill, a solid ring and a small solid "?" (${by.Tablet.border}, ${by.Tablet.q})`);
+    check(r.filter(x => x.status !== 'unknown').every(x => x.q === ''), 'only "can\'t tell" has the "?"');
+    check(await p.locator('#devices .dq[aria-hidden=true]').count() === 3, 'the "?" is hidden from a screen reader (the words say it)');
     check(r.filter(x => x.status !== 'unknown').every(x => ratio(x.bg, x.ink) >= 4.5), `the words on every filled badge are readable (${r.filter(x => x.status !== 'unknown').map(x => ratio(x.bg, x.ink).toFixed(1)).join(', ')} : 1)`);
     check(r.every(x => x.h >= 44), `44 px rows (${Math.min(...r.map(x => Math.round(x.h)))} px the least)`);
     const again = p.locator('#devices .devagain'), bb = await again.boundingBox();
@@ -103,6 +106,19 @@ run(async b => {
     const n0 = reqs; await p.evaluate(() => devices.ask()); await p.waitForTimeout(500);
     check(hung === 1 && stuck === 'Check again' && /Could not ask/.test(after), `a request that hangs is given up after 12 s ("${stuck}", "${after}", ${hung} asked)`);
     check(reqs === n0, `and the next is not started at once: 10 s from the answer, not the question (${reqs - n0} more)`);
+    // Check again pressed while the page's own background ask runs: kept, run when that ask ends, and said (review R2, finding 3)
+    let fresh = 0; const order = [];
+    await p.route('**/api/devices*', async q => { const f = /fresh=1/.test(q.request().url()); order.push(f ? 'fresh' : 'bg'); if (f) fresh++; else await sleep(2000); await q.continue(); });
+    await p.evaluate(() => { document.querySelector('#devsay').textContent = ''; });
+    // a background ask, slowed to 2 s: asked every 0.5 s until one starts (the 10 s gate, or the page's own 15 s refresh, may refuse
+    // an ask; waiting a fixed time could land just after a refresh and make the press run at once)
+    for (let i = 0; i < 30 && !order.length; i++) { await p.evaluate(() => { devices.ask(); }); await p.waitForTimeout(500); }
+    await again.focus(); await p.keyboard.press('Enter'); await p.waitForTimeout(150);
+    const waiting = await again.textContent(), kept = await p.evaluate(() => document.activeElement?.matches('#devices .devagain'));
+    await p.waitForTimeout(3500);
+    const later = await p.locator('#devsay').textContent(); await p.unroute('**/api/devices*');
+    check(waiting === 'Checking…' && kept, `the waiting press shows at once and keeps the focus ("${waiting}", focus ${kept})`);
+    check(order.join() === 'bg,fresh' && fresh === 1 && /^Checked\. /.test(later), `Check again during a background ask runs after it and is said (${order.join(' then ')}, "${later}")`);
     await p.close();
     p = await page(b, 375, 812); await p.goto(WATCH); await p.waitForSelector('#devices .dev', {timeout: 8000}).catch(() => {});
     check(await noOverflow(p), '375 px: no sideways scroll'); await p.close();
@@ -114,6 +130,10 @@ run(async b => {
     check(await line.count() === 1, 'Today has the device line');
     const c = await chips(p);
     check(c.join() === "3 online,1 offline,3 can't tell", `the counts, Desktop counted as online (${c.join(' / ')})`);
+    const fs14 = await p.$$eval('.home .devline .dchip', cs => cs.map(e => getComputedStyle(e).fontSize));
+    check(fs14.every(f => f === '14px'), `the line is 14 px like Today's other lines (${fs14.join(', ')})`);
+    const marks = await p.$$eval('.home .devline .dchip', cs => cs.map(e => e.querySelector('.dq') ? 'q' : e.querySelector('.ddot') ? 'dot' : '-'));
+    check(marks.join() === 'dot,dot,q', `a dot for online and offline, the solid "?" for can't tell (${marks.join(', ')})`);
     const al = await line.getAttribute('aria-label');
     check(al === "Devices: 3 online, 1 offline, 3 can't tell. Open the list", `the link's spoken name, with pauses and what it does ("${al}")`);
     const lb = await line.boundingBox();
@@ -173,7 +193,12 @@ run(async b => {
     const why = await p.locator('#devices .devprobe').textContent().catch(() => '');
     check(await p.locator('#devices .devprobe').count() === 1 && /^Tailscale gave an error, so Argus can't tell/.test(why), `the reason is said once, above the list ("${why}")`);
     check(!r.some(x => x.status === 'offline'), 'never "offline" when Argus cannot tell');
-    await p.locator('#devices').scrollIntoViewIfNeeded(); await shot(p, 'devices-cant-tell-412'); await p.close();
+    const stamp = await p.locator('#devices .devmeta span').textContent();
+    check(/^Tried \d/.test(stamp), `Tailscale failing: the time says Tried, not Checked ("${stamp}")`);
+    await p.locator('#devices').scrollIntoViewIfNeeded(); await shot(p, 'devices-cant-tell-412');
+    await p.locator('#devices .devagain').click(); await p.waitForTimeout(1500);
+    const triedSaid = await p.locator('#devsay').textContent();
+    check(/^Tried\. Tailscale gave an error\. 1 online, 6 can't tell\.$/.test(triedSaid), `Tailscale failing: Check again says Tried, not Checked ("${triedSaid}")`); await p.close();
     p = await today(b, 412, 915);
     check((await chips(p)).join() === "1 online,6 can't tell", `Today: ${(await chips(p)).join(' / ')}`); await p.close();
     answer('ok');

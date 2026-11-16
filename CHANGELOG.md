@@ -1,5 +1,13 @@
 # Changelog
 
+## 4.51.1 – 2026-11-16
+The device list's look, as the owner chose from the pictures (colours kept).
+- **Can't tell** has a small solid *?* in its colour, on Today's line and on the list's badge, in place of the dashed ring; the words stay.
+- **Today's devices line** is 14 px, like Today's other lines.
+- **Tried, not Checked**: when Tailscale could not be asked, the time under the list says *Tried 8:28 AM* (and Check again says *Tried.*), since nothing was learned then.
+- **Check again during a background check** is no longer lost: the button says *Checking…* at once, waits for that check, then asks again and says the result (review R2, finding 3).
+- Small: the no-break space in the counts is written as ` ` again; the server's once-per-error log memory is capped at 100; docs/devices.md says plainly which reasons are said above the list.
+
 ## 4.51.0 – 2026-11-16
 Argus lists the owner's devices and whether each is on, each status in its own colour (the owner: "Argus eventually should list all my devices and their status, each color coded like the purple/green" server pill, with Wake on LAN later for two PCs).
 - **A Devices panel on Watch** (docs/devices.md), after the task groups (the tasks stay first), on the All view and Argus's own: one row a device with its name, its kind, and its status as a word on a badge in that status's colour: *Online*, *Offline* (with *last seen …*), *Can't tell* (with why), and for the server itself *Desktop mode* or *Game mode* in the mode pill's green and purple. **Check again** asks again (Enter works too). No list yet: *No devices listed yet* and a link to how.

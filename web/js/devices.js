@@ -4,13 +4,13 @@
 // tokens in argus.css), never colour alone: online, offline, can't tell, and for the server itself its Desktop / Game mode.
 // A learner never sees any of it (Watch is not hers, and the line is the owner's only).
 const devices = (() => {
-  let data = null, failed = false, at = 0, busy = false, scrolled = false;
+  let data = null, failed = false, at = 0, busy = false, freshRun = false, pending = false, scrolled = false;
   const KIND = {pc: 'PC', laptop: 'Laptop', server: 'Server', phone: 'Phone', tablet: 'Tablet', console: 'Console', other: 'Device'};
   const STATUS = ['online', 'offline', 'unknown', 'desktop', 'game'];
   const WORD = {online: 'online', offline: 'offline', unknown: "can't tell"};
   const HELP = 'https://github.com/Celeiritas/argus-ui/blob/main/docs/devices.md';
   const cls = s => STATUS.includes(s) ? s : 'unknown';
-  const nb = s => String(s).replace(/ /g, ' ');          // a count and its word stay on one line
+  const nb = s => String(s).replace(/ /g, '\u00a0');          // a count and its word stay on one line
   // the result of Check again, said once by a screen reader: one polite live region that is never redrawn (render() rebuilds
   // #main every 15 s, and a region made anew is often not read)
   const live = document.createElement('p'); live.className = 'sr'; live.id = 'devsay'; live.setAttribute('aria-live', 'polite'); document.body.append(live);
@@ -21,21 +21,30 @@ const devices = (() => {
     return ['online', 'offline', 'unknown'].filter(s => n[s]).map(s => [s, n[s]]);
   }
   const spoken = () => counts().map(([s, k]) => `${k} ${WORD[s]}`).join(', ');
+  // "can't tell" has a small solid "?" (Today's dot and the list's badge), never colour alone; the words say it for a screen reader
+  // (the "?" is drawn by argus.css .dq, so the badge's and the chip's text stay the words alone)
+  const mark = s => `<span class="${s === 'unknown' ? 'dq' : 'ddot'}" aria-hidden="true"></span>`;
+  // "Tried", not "Checked", when Tailscale could not be asked: nothing was learned at that time
+  const verb = () => data?.probe_problem ? 'Tried' : 'Checked';
   // ask the server again, at most every 10 s after the last answer (the page refreshes every 15 s; the server caches
   // Tailscale's answer for 30 s). fresh: Check again (the server asks Tailscale again if its answer is over 5 s old).
   // A request that takes over 12 s is given up, so Check again never stays stuck on a stalled connection.
+  // Check again pressed while a background ask runs is kept (pending) and run, then said, when that ask ends.
   async function ask(fresh) {
-    if (role() !== 'owner' || busy || (!fresh && Date.now() - at < 10000)) return;
-    busy = true; at = Date.now(); if (fresh) drawPanel();
+    if (role() !== 'owner') return;
+    if (busy) { if (fresh && !freshRun) { pending = true; drawPanel(); } return; }   // the press shows "Checking…" at once
+    if (!fresh && Date.now() - at < 10000) return;
+    busy = true; freshRun = !!fresh; at = Date.now(); if (fresh) drawPanel();
     try {
       const opt = {cache: 'no-store'}; if (AbortSignal.timeout) opt.signal = AbortSignal.timeout(12000);
       const r = await fetch(url('api/devices' + (fresh ? '?fresh=1' : '')), opt); if (!r.ok) throw new Error(r.status); data = await r.json(); failed = false;
     }
     catch (e) { failed = true; }                                  // tried again on the next refresh (10 s on), never in a loop
-    finally { busy = false; at = Date.now(); }                    // counted from the answer: a slow one never starts the next at once
+    finally { busy = false; freshRun = false; at = Date.now(); }  // counted from the answer: a slow one never starts the next at once
+    if (pending) { pending = false; return ask(true); }           // the owner pressed Check again meanwhile: ask fresh, say that one
     drawPanel(); if (here === 'home') home.draw();
     if (fresh) say(failed ? 'Could not ask the server about your devices.' : data.problem ? 'The device list could not be read.'
-      : data.devices?.length ? `Checked. ${data.probe_problem ? `${data.probe_problem}. ` : ''}${spoken()}.` : 'Checked. No devices listed.');
+      : data.devices?.length ? `${verb()}. ${data.probe_problem ? `${data.probe_problem}. ` : ''}${spoken()}.` : 'Checked. No devices listed.');
   }
   function drawPanel() {
     const box = $('#devbody'); if (!box) return;
@@ -53,7 +62,7 @@ const devices = (() => {
     if (s === 'offline' && d.last_seen) parts.push(`<time datetime="${esc(d.last_seen)}">last seen ${esc(ago(d.last_seen))} (${esc(exact(d.last_seen))})</time>`);
     if (s === 'unknown' && d.why) parts.push(esc(d.why));
     const meta = parts.length ? `<span>${parts.join(' · ')}</span>` : '';
-    return `<li class="dev s-${s}"><span class="dw"><b>${esc(d.name)}</b>${meta}</span><span class="dstat">${esc(d.label || s)}</span></li>`;
+    return `<li class="dev s-${s}"><span class="dw"><b>${esc(d.name)}</b>${meta}</span><span class="dstat">${s === 'unknown' ? mark(s) : ''}${esc(d.label || s)}</span></li>`;
   }
   function body() {
     if (!data) return failed ? '<p class="quiet">Could not ask the server about your devices. It tries again with the next refresh.</p>' : '<p class="quiet">Checking your devices…</p>';
@@ -66,7 +75,7 @@ const devices = (() => {
     const t = when(data.checked);
     // Tailscale could not be asked: said once, above the list; its rows say only "Can't tell"
     const probe = data.probe_problem ? `<p class="devprobe">${esc(data.probe_problem)}, so Argus can't tell which devices are on right now.</p>` : '';
-    return `${probe}<ul class="devlist">${data.devices.map(row).join('')}</ul><p class="devmeta">${t ? `<span>Checked ${esc(t)}${failed ? ' · could not ask again' : ''}</span>` : ''}<button type="button" class="devagain"${busy ? ' aria-disabled="true"' : ''}>${busy ? 'Checking…' : 'Check again'}</button></p>`;
+    return `${probe}<ul class="devlist">${data.devices.map(row).join('')}</ul><p class="devmeta">${t ? `<span>${verb()} ${esc(t)}${failed ? ' · could not ask again' : ''}</span>` : ''}<button type="button" class="devagain"${busy ? ' aria-disabled="true"' : ''}>${busy ? 'Checking…' : 'Check again'}</button></p>`;
   }
   // Watch: the panel, after the task groups (core.js render())
   function panel() {
@@ -81,7 +90,7 @@ const devices = (() => {
     if (!data || data.problem || !data.devices?.length) return '';
     const go = `${WATCH}#devices`;
     if (failed) return `<a class="devline" href="${go}" aria-label="Devices: could not reach the server. Open the list"><b>Devices</b><span class="dchips"><span class="dchip">Could not reach the server</span></span></a>`;
-    const chips = counts().map(([s, k]) => `<span class="dchip s-${s}"><span class="ddot" aria-hidden="true"></span>${esc(nb(`${k} ${WORD[s]}`))}</span>`).join('');
+    const chips = counts().map(([s, k]) => `<span class="dchip s-${s}">${mark(s)}${esc(nb(`${k} ${WORD[s]}`))}</span>`).join('');
     return `<a class="devline" href="${go}" aria-label="${esc(`Devices: ${spoken()}. Open the list`)}"><b>Devices</b><span class="dchips">${chips}</span></a>`;
   }
   document.addEventListener('click', e => { if (e.target.closest('#devices .devagain')) ask(true); });
