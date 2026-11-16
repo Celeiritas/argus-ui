@@ -968,7 +968,7 @@ class H(BaseHTTPRequestHandler):
         if p == 'api/devices':                              # the owner's (the role gate: every api/ route not listed); docs/devices.md
             fresh = parse_qs(urlsplit(self.path).query).get('fresh', [''])[0] == '1'
             try: v = devices.view(lambda: modes.probe(sc, server_name()), fresh=fresh)
-            except Exception: v = {'set_up': True, 'problem': 'Argus could not read the device list. It tries again in a moment.', 'checked': None, 'devices': []}
+            except Exception as e: v = devices.failed_view(e)          # a plain problem for the page; the real error in the log, once
             return self.out(json.dumps(v), 'application/json', cache='no-store')
         if p == 'api/events': return self.events(parse_qs(urlsplit(self.path).query, keep_blank_values=True))   # the owner's (the role gate: every api/ route not listed)
         if p.startswith('api/log/'):

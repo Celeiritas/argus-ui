@@ -82,6 +82,7 @@ def reset(devices=FIXTURE):
     answer('ok'); CALLS.clear()
 
 def by_name(v): return {d['name']: d for d in v['devices']}
+EMPTY = {'set_up': False, 'problem': None, 'file': None, 'device': None, 'probe_problem': None, 'checked': None, 'devices': []}
 DESKTOP = lambda: {'current': 'desktop', 'modes': [{'id': 'desktop', 'label': 'Desktop'}, {'id': 'game', 'label': 'Game'}]}
 GAME = lambda: {'current': 'game', 'modes': [{'id': 'desktop', 'label': 'Desktop'}, {'id': 'game', 'label': 'Game'}]}
 
@@ -99,7 +100,7 @@ class Config(unittest.TestCase):
     def test_no_file_is_an_empty_list_and_silent(self):
         reset(None); err = io.StringIO()
         with contextlib.redirect_stderr(err): v = D.view()
-        self.assertEqual(v, {'set_up': False, 'problem': None, 'checked': None, 'devices': []})
+        self.assertEqual(v, EMPTY)
         self.assertEqual(err.getvalue(), ''); self.assertEqual(CALLS, [], 'no file: Tailscale is not asked')
 
     def test_bad_json_says_so_once(self):
@@ -138,6 +139,18 @@ class Config(unittest.TestCase):
             self.bad([dict(ok, wake=w)], '"wake" must be')
         self.bad([dict(ok, name=f'D{i}') for i in range(D.MAX_DEVICES + 1)], f'the most is {D.MAX_DEVICES}')
         self.bad('{"devices": []}' + ' ' * D.MAX_FILE, 'too large')
+
+    def test_the_problem_says_where(self):
+        # the page names the file the server read and the device that is wrong, never a "line" it was not given
+        ok = {'name': 'A', 'kind': 'pc', 'probe': 'tailscale', 'host': 'pc-a'}
+        write(DEVICES, {'devices': [ok, dict(ok, name='B', host='pc b')]})
+        with contextlib.redirect_stderr(io.StringIO()): v = D.view()
+        self.assertEqual((v['file'], v['device']), (os.path.basename(DEVICES), 2), v)
+        write(DEVICES, '{"devices": [')
+        with contextlib.redirect_stderr(io.StringIO()): v = D.view()
+        self.assertEqual((v['file'], v['device']), (os.path.basename(DEVICES), None), 'a file that is not JSON: no device number')
+        reset(); v = D.view()
+        self.assertEqual((v['problem'], v['file'], v['device']), (None, None, None))
 
     def test_kind_is_optional_and_names_are_trimmed(self):
         write(DEVICES, {'devices': [{'name': '  Box  ', 'probe': 'none'}]})
@@ -190,8 +203,10 @@ class Probe(unittest.TestCase):
 
     def cant_tell(self, why):
         v = D.view(DESKTOP); d = by_name(v)
+        self.assertEqual(v['probe_problem'], why, 'the reason is said once, for the whole list')
         for n in ('Desk PC', 'Spare PC', 'Phone', 'Tablet', 'Laptop'):
-            self.assertEqual((d[n]['status'], d[n]['label'], d[n]['why']), ('unknown', "Can't tell", why), n)
+            self.assertEqual((d[n]['status'], d[n]['label'], d[n]['why']), ('unknown', "Can't tell", None), f'{n}: no reason repeated on the row')
+        self.assertEqual(d['Old console']['why'], 'Argus does not check this one', 'a device Argus never checks keeps its own reason')
         self.assertEqual(d['Shelf']['status'], 'desktop', 'this machine still knows itself')
         self.assertNotIn('offline', [x['status'] for x in v['devices']], 'never "offline" when the probe went wrong')
 
@@ -211,6 +226,18 @@ class Probe(unittest.TestCase):
             self.assertLess(time.monotonic() - t, 10, 'the timeout holds')
         finally: D.TIMEOUT_S = old
 
+    def test_a_runaway_answer_is_cut_while_reading(self):
+        # the fake writes without end: the limit stops it as soon as it is passed, not at the timeout and not after reading it all
+        answer('flood'); old = D.MAX_OUT, D.TIMEOUT_S; D.MAX_OUT, D.TIMEOUT_S = 256 * 1024, 20
+        try:
+            t = time.monotonic(); self.cant_tell('Tailscale gave an answer too large to read')
+            self.assertLess(time.monotonic() - t, 10, 'stopped at the limit, long before the timeout')
+        finally: D.MAX_OUT, D.TIMEOUT_S = old
+
+    def test_an_answer_ok_is_ok_after_the_cap_code(self):
+        self.assertEqual(by_name(D.view())['Desk PC']['status'], 'online')
+        self.assertIsNone(D.view()['probe_problem'])
+
     def test_no_tailscale(self):
         D.command = lambda: [os.path.join(TMP, 'no-such-tailscale'), 'status', '--json']
         try: self.cant_tell('Tailscale is not installed on this machine')
@@ -228,6 +255,88 @@ class Probe(unittest.TestCase):
         for v, want in (('45', 45.0), ('-3', 0.0), ('9999', 300.0), ('soon', 30.0)):
             os.environ['ARGUS_DEVICES_CACHE'] = v; self.assertEqual(D.cache_s(), want)
         os.environ['ARGUS_DEVICES_CACHE'] = '30'
+
+
+def node(dns, host, online=True, **kw): return dict({'DNSName': f'{dns}.example.ts.net.', 'HostName': host, 'Online': online}, **kw)
+
+def status_of(peer_list, host, self_node=None):
+    """The status one device with this host gets from a Tailscale answer listing these peers in this order."""
+    doc = {'BackendState': 'Running', 'Self': self_node or node('this-server', 'this-server'),
+           'Peer': {f'nodekey:{i}': n for i, n in enumerate(peer_list)}}
+    r = D.one({'name': 'X', 'kind': 'pc', 'probe': 'tailscale', 'host': host, 'wake': False}, doc, None, None)
+    return r['status'], r['why']
+
+
+class Match(unittest.TestCase):
+    """Which Tailscale machine a device is (review finding 1): DNS names first for every node, then host names; a name two
+    nodes claim is "can't tell"; the answer never depends on the order Tailscale lists its peers."""
+    def both_orders(self, peer_list, host, want, self_node=None):
+        for order in (peer_list, peer_list[::-1]):
+            self.assertEqual(status_of(order, host, self_node), want, f'{host} with peers in order {[n["HostName"] for n in order]}')
+
+    def test_a_dns_name_wins_over_another_machines_host_name(self):
+        # machine 1 is called "desk" by its DNS name; machine 2's HostName is also "desk" (its DNS name became "desk-1")
+        one, two = node('desk', 'old-name', True), node('desk-1', 'desk', False)
+        self.both_orders([one, two], 'desk', ('online', None))
+        self.both_orders([one, two], 'desk-1', ('offline', None))
+
+    def test_reinstalled_machine_with_dash_one(self):
+        # the old entry keeps "pc" (offline), the reinstalled one is "pc-1" with HostName "pc": "pc" is the DNS name's
+        old, new = node('pc', 'pc', False), node('pc-1', 'pc', True)
+        self.both_orders([old, new], 'pc', ('offline', None))
+        self.both_orders([old, new], 'pc-1', ('online', None))
+
+    def test_two_phones_both_named_localhost(self):
+        a1, a2 = node('phone-a', 'localhost', True), node('phone-b', 'localhost', False)
+        self.both_orders([a1, a2], 'localhost', ('unknown', D.TWO))
+        self.both_orders([a1, a2], 'phone-a', ('online', None))
+        self.both_orders([a1, a2], 'phone-b', ('offline', None))
+
+    def test_two_dns_names_alike_cant_tell(self):
+        # Tailscale keeps DNS names unique; if an answer ever repeats one, neither machine is guessed
+        self.both_orders([node('twin', 'a', True), node('twin', 'b', False)], 'twin', ('unknown', D.TWO))
+
+    def test_a_peer_with_this_machines_name(self):
+        # a peer whose HostName is this machine's DNS name: the DNS name (this machine) wins, in either order
+        self.both_orders([node('other', 'this-server', False)], 'this-server', ('online', 'This machine'))
+
+    def test_host_name_still_matches_when_no_dns_name_takes_it(self):
+        self.both_orders([node('pixel', 'phone-one', True)], 'phone-one', ('online', None))
+
+
+class Modes(unittest.TestCase):
+    """This machine's row coloured and named as the mode pill does it (core.js modeHues())."""
+    def row(self, mode):
+        d = {'name': 'Me', 'kind': 'server', 'probe': 'self', 'host': None, 'wake': False}
+        r = D.one(d, None, None, mode); return r['status'], r['label']
+
+    def test_other_ids_and_labels(self):
+        two = lambda cur, a, b: {'current': cur, 'modes': [a, b]}
+        kde, steam = {'id': 'kde', 'label': 'KDE'}, {'id': 'steam', 'label': 'Steam'}
+        self.assertEqual(self.row(two('kde', kde, steam)), ('desktop', 'KDE mode'), 'two other ids: the first is green')
+        self.assertEqual(self.row(two('steam', kde, steam)), ('game', 'Steam mode'), 'the second is purple')
+        g = {'id': 'game', 'label': 'Game Mode'}
+        self.assertEqual(self.row(two('game', kde, g)), ('game', 'Game Mode'), 'never "Game Mode mode"')
+        self.assertEqual(self.row(two('kde', kde, g)), ('desktop', 'KDE mode'), 'one other id gets the colour left over')
+        self.assertEqual(self.row(two('kde', g, kde)), ('desktop', 'KDE mode'))
+        d = {'id': 'desktop', 'label': 'Desktop'}
+        self.assertEqual(self.row(two('steam', d, steam)), ('game', 'Steam mode'))
+        self.assertEqual(self.row(two('desktop', d, steam)), ('desktop', 'Desktop mode'))
+        self.assertEqual(self.row(two('x', kde, steam))[0], 'online', 'a current mode not in the list: Online')
+
+
+class Fallback(unittest.TestCase):
+    """When view() itself breaks: a plain message for the page and the real error in the log, once (finding 15a)."""
+    def test_logged_once(self):
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            for _ in range(3):
+                try: raise KeyError('a bug in view')
+                except KeyError as e: v = D.failed_view(e)
+        self.assertEqual(err.getvalue().count('the device list failed'), 1, err.getvalue())
+        self.assertIn('Traceback', err.getvalue()); self.assertIn("KeyError: 'a bug in view'", err.getvalue())
+        self.assertEqual((v['set_up'], v['devices'], v['probe_problem']), (True, [], None))
+        self.assertIn('could not read the device list', v['problem'])
 
 
 class Route(unittest.TestCase):
@@ -256,7 +365,17 @@ class Route(unittest.TestCase):
 
     def test_no_file(self):
         reset(None); code, _, b = self.get('api/devices')
-        self.assertEqual((code, json.loads(b)), (200, {'set_up': False, 'problem': None, 'checked': None, 'devices': []}))
+        self.assertEqual((code, json.loads(b)), (200, EMPTY))
+
+    def test_a_bug_is_logged_not_hidden(self):
+        real = D.view
+        def broken(*a, **k): raise ZeroDivisionError('route test bug')
+        D.view = broken; err = io.StringIO()
+        try:
+            with contextlib.redirect_stderr(err): code, _, b = self.get('api/devices')
+        finally: D.view = real
+        self.assertEqual(code, 200); self.assertIn('could not read the device list', json.loads(b)['problem'])
+        self.assertIn('ZeroDivisionError: route test bug', err.getvalue())
 
     def test_learner(self):
         code, _, b = self.get('api/devices', LEARNER)
