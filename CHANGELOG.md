@@ -1,5 +1,23 @@
 # Changelog
 
+## 4.51.0 – 2026-11-16
+Argus lists the owner's devices and whether each is on, each status in its own colour (the owner: "Argus eventually should list all my devices and their status, each color coded like the purple/green" server pill, with Wake on LAN later for two PCs).
+- **A Devices panel on Watch** (docs/devices.md), after the task groups (the tasks stay first), on the All view and Argus's own: one row a device with its name, its kind, and its status as a word on a badge in that status's colour: *Online*, *Offline* (with *last seen …*), *Can't tell* (with why), and for the server itself *Desktop mode* or *Game mode* in the mode pill's green and purple. **Check again** asks again (Enter works too). No list yet: *No devices listed yet* and a link to how.
+- **One line on Today** under the server's band: *Devices* and the counts (*3 online · 1 offline · 2 can't tell*), each with a dot in its colour, the number and word kept together; it opens the list. Only when the host lists devices.
+- **The devices live on the host, never in git**: `~/.config/argus-ui/devices.json` (or `ARGUS_DEVICES`): name, kind, how to check it (`self`, `tailscale` by host name, `none`), checked strictly; a bad file says what is wrong on the panel and once in the log. `"wake": {"mac": …}` is the place for Wake on LAN later: nothing uses it, there is no Wake button, and the page never gets the address.
+- **The probe**: one `tailscale status --json` for every device (no shell, nothing from the file in the command), a 5 s timeout, cached 30 s. When Tailscale is missing, fails, hangs or is stopped, a device is *Can't tell*, never *Offline*.
+- **Colours**: one custom property per status in argus.css (`--dev-online`, `--dev-offline`, `--dev-unknown`, `--dev-desktop`, `--dev-game`), defaults from the pill's `--mode-desktop` / `--mode-game`, a slate for offline and a dashed ring for can't tell.
+- **A broken file** reads as a problem (the trouble panel's red edge) with a next step and a 44 px help link; on a wide screen the list stops at 760 px so a name stays near its badge.
+- **The owner's only**: `GET api/devices` follows the role check (a learner gets 403); a learner's page never asks for it and shows no line.
+- Tests: `tests/devices_test.py` (the file, each status and each failure against a stand-in tailscale, the cache, the route for owner and learner) and `tests/devices.test.js` (the page at 375, 412 and 1920 px).
+- **After review** (R-devices, before merge):
+  - **The right machine**: a device's host is matched by every machine's DNS name first (the server's own too), then by host names no DNS name took, so Tailscale's peer order never changes the answer; a name two machines claim (two phones called `localhost`) is *Can't tell*, never either one's status.
+  - **Tailscale down is said once**, above the list, and the rows say only *Can't tell*. A bad file names the file and the device number the server read (*Fix device 1 in active.json*), not "that line in devices.json".
+  - **This machine's mode** is coloured as the mode pill colours it for any mode ids, and never reads *Game Mode mode*.
+  - **The page**: a 12 s limit on each ask and 10 s counted from the answer (no back-to-back asks on a slow link); Today says *Could not reach the server* instead of old counts; the keyboard stays on Check again through the 15 s refresh; Check again's result is said in a polite live region; the Today link is named *Devices: 3 online, 1 offline, 3 can't tell. Open the list*; *last seen* shows the exact time in the row (no hover needed); the kind word is left out when the name already says it.
+  - **The server**: the 4 MB limit on Tailscale's answer holds while reading (a runaway answer is stopped at once); a bug behind *could not read the device list* is logged once with its traceback.
+  - Tests: two-pass matching in both peer orders, a re-added `-1` machine, two `localhost` phones, mode ids `kde` / `steam` and a *Game Mode* label, the file and device fields, the read cap, the logged fallback; on the page, Edit Today opened over the line (11 s), Cancel, focus back on Edit Today, every tile hidden at 375 px, the stalled ask, the unreachable server, the live region and the link's name.
+
 ## 4.50.1 – 2026-11-16
 Edit Today's Reminders, as the owner decided (2026-11-16: "Lock Zeus on, warn on Mnemosyne").
 - **Zeus always reminds you.** His switch shows on and locked, with *Always reminds you* (as Mentor's is off and locked, with

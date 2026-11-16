@@ -10,6 +10,9 @@ opens on: the bare address `<base>/`, and `<base>/home`, its old address, which 
    cut off (4.44.0). This is Today's only weather: the strip's weather (on every other page) is hidden here (4.44.0).
    Above the list, for the owner, **the server's own line on what it is doing now** (4.44.0, below), a band across Today in
    the server's own colours (4.45.0).
+   Under it, for the owner and only when the host lists devices, **one line with the devices' counts** (*Devices · 3 online
+   · 1 offline · 2 can't tell*, 4.51.0), each count with a dot in its status's colour; the line opens Argus's Devices panel on
+   Watch ([devices.md](devices.md)).
 2. **One line that says the state in words**: *Nothing needs you*, *1 thing needs you*, *3 things need you*, or *Asking every
    section…* while the sections are still answering. It counts what the bar counts: every task in trouble, every alert, and
    each section that needs you (its `count`, else one), never a quiet section or a task marked known ("Quiet", below). A

@@ -459,6 +459,9 @@ function render() {
   const tn = items.reduce((t, it) => t + weight(it), 0);       // the programs folded under a drive count too, as on the bar
   const top = items.length ? `<section class="trouble" aria-labelledby="trouble-h"><h2 id="trouble-h">${tn === 1 ? 'One thing needs a look' : `${tn} things need a look`}</h2>${items.map(troubleBlock).join('')}</section>` : '';
   const end = only ? '' : `<section class="lately" aria-labelledby="lately-h"><h2 id="lately-h">What happened lately</h2><div id="lately">${lately.html || '<p class="quiet">Loading…</p>'}</div></section>`;
+  // Argus's device list (devices.js, docs/devices.md) after the task groups, on the All view and Argus's own: the tasks stay first.
+  // Focus on its Check again survives this 15 s redraw (the keyboard stays where it was)
+  const devFocus = !!document.activeElement?.matches?.('#devices .devagain');
   $('#main').innerHTML = top + (list.map(p => {
     const js = (by[p.key] || []).map((j, i) => [j, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(x => x[0]), ls = lone[p.key] || [];
     const cr = (rows[p.key] || []).map((w, i) => [w, i]).sort((a, b) => (a[0].works === false ? 0 : 1) - (b[0].works === false ? 0 : 1) || a[1] - b[1]).map(x => x[0]);
@@ -469,7 +472,8 @@ function render() {
     return `<section class="persona" aria-labelledby="h-${p.key}"><a class="ph" href="${p.key === 'argus' ? WATCH + '/argus' : url(p.key)}"><img src="static/icons/${p.key}.png" alt=""><div><h2 id="h-${p.key}">${esc(p.name)}</h2><div class="dom">${esc(p.domain)}</div></div><div class="counts">${counts}</div></a>
       ${cr.length ? `<ul class="crows" aria-label="${esc(p.name)}: checks">${cr.map(checkRow).join('')}</ul>` : ''}
       ${js.length || ls.length ? `<div class="grid">${ls.map(alertCard).join('')}${js.map(card).join('')}</div>` : cr.length ? '' : `<div class="empty"><b>No ${esc(p.name)} tasks yet</b>Background jobs named <code>${esc(p.key)}-…</code> appear here on their own, so you can watch and run them. <a href="https://github.com/Celeiritas/argus-ui#which-jobs-show-up">Learn how to add a task</a></div>`}</section>`;
-  }).join('') || `<div class="empty"><b>No tasks found</b>Argus shows systemd --user jobs whose names start with an agent's key. <a href="https://github.com/Celeiritas/argus-ui#which-jobs-show-up">Learn how to add a task</a></div>`) + end;
+  }).join('') || `<div class="empty"><b>No tasks found</b>Argus shows systemd --user jobs whose names start with an agent's key. <a href="https://github.com/Celeiritas/argus-ui#which-jobs-show-up">Learn how to add a task</a></div>`) + (!only || only === 'argus' ? devices.panel() : '') + end;
+  if (devFocus) $('#devices .devagain')?.focus({preventScroll: true});
   if (!only) askLately();
   wireFixes();
   $$('.card.frozen').forEach(addStone);

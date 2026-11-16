@@ -124,7 +124,7 @@ const home = (() => {
     const edit = owner ? '<button type="button" class="editbtn" id="editToday">Edit Today</button>' : '';
     const placesBody = places ? `<ul class="placelist">${places}</ul>` : owner && tileList().length && tileList().every(e => !e.shown) ? '<p class="quiet">Every section is hidden from Today. Edit Today to show them again.</p>' : '';
     // the server's line stands above the list, on its own: inside the list's panel it read as one more thing to do
-    const html = `<section class="home" aria-label="Today">${now ? nowBand(now) : ''}${why ? `<p class="people-problem today-problem" role="status">${esc(why)}</p>` : ''}
+    const html = `<section class="home" aria-label="Today">${now ? nowBand(now) : ''}${why ? `<p class="people-problem today-problem" role="status">${esc(why)}</p>` : ''}${devices.line()}
       <section class="needs" aria-labelledby="needs-h"><h2 class="state${list.length ? ' bad' : ''}" id="needs-h">${state}</h2>
         ${now || list.length || asking ? '' : '<p class="quiet">The realm is quiet.</p>'}
         <ul class="needlist">${list.map(n => row(n, seen && !seen.has(n.key))).join('')}</ul></section>

@@ -28,6 +28,7 @@ import notify       # the events file those changes go to (notify.py); api/event
 import quiet        # what keeps still: quiet sections (Mentor) and tasks marked "Known, low priority" (quiet.py, docs/home.md)
 import modes        # Desktop / Game mode: the pill at the top and POST api/mode, set up in modes.json on the host (modes.py, docs/modes.md)
 import today        # the owner's own Today: tiles, Open's links, reminders per section; POST api/today (today.py, docs/home.md)
+import devices      # the device list on Watch and its line on Today, set up in devices.json on the host (devices.py, docs/devices.md)
 SHARE = os.path.expanduser('~/.local/share/argus-ui')
 
 def load_theme():
@@ -63,7 +64,7 @@ LINKS = os.path.expanduser(os.environ.get('ARGUS_LINKS', '~/.config/argus-ui/lin
 BUNDLED = os.path.expanduser(os.environ.get('ARGUS_BUNDLED', '~/.local/share/argus-ui/bundled'))
 PLUGIN_ID = re.compile(r'^[a-z][a-z0-9-]{0,31}$')
 RESERVED = {'api', 'static', 'plugins', 'play', 'all', 'argus', 'sw.js', 'manifest.webmanifest',   # 'play' means Olympus in the page
-            'state', 'sky', 'health', 'log', 'freeze', 'thaw', 'bolt', 'run', 'whoami', 'push', 'events', 'watch', 'known', 'mode', 'today'}   # built-in api/<name> routes
+            'state', 'sky', 'health', 'log', 'freeze', 'thaw', 'bolt', 'run', 'whoami', 'push', 'events', 'watch', 'known', 'mode', 'today', 'devices'}   # built-in api/<name> routes
 mimetypes.add_type('text/javascript', '.js'); mimetypes.add_type('text/javascript', '.mjs')
 mimetypes.add_type('model/gltf-binary', '.glb'); mimetypes.add_type('application/json', '.json')
 mimetypes.add_type('application/wasm', '.wasm'); mimetypes.add_type('font/woff2', '.woff2')
@@ -964,6 +965,11 @@ class H(BaseHTTPRequestHandler):
         if p == 'api/sky': return self.out(json.dumps(sky.current()), 'application/json')
         if p == 'api/push/status':                          # the owner's (need()); never an endpoint or a key of a device
             return self.out(json.dumps(push.status(self.who, self.trusted, parse_qs(urlsplit(self.path).query).get('device', [''])[0])), 'application/json')
+        if p == 'api/devices':                              # the owner's (the role gate: every api/ route not listed); docs/devices.md
+            fresh = parse_qs(urlsplit(self.path).query).get('fresh', [''])[0] == '1'
+            try: v = devices.view(lambda: modes.probe(sc, server_name()), fresh=fresh)
+            except Exception as e: v = devices.failed_view(e)          # a plain problem for the page; the real error in the log, once
+            return self.out(json.dumps(v), 'application/json', cache='no-store')
         if p == 'api/events': return self.events(parse_qs(urlsplit(self.path).query, keep_blank_values=True))   # the owner's (the role gate: every api/ route not listed)
         if p.startswith('api/log/'):
             u = p[8:]
