@@ -35,7 +35,7 @@ const devices = (() => {
   }
   function body() {
     if (!data) return failed ? '<p class="quiet">Could not ask the server about your devices. It tries again with the next refresh.</p>' : '<p class="quiet">Checking your devices…</p>';
-    if (data.problem) return `<div class="empty"><b>The device list could not be read</b>${esc(data.problem)}</div>`;
+    if (data.problem) return `<div class="empty devbad"><b>The device list could not be read</b><span class="devwhy">${esc(data.problem)}</span> Fix that line in devices.json on the server: Argus reads the file again as soon as it changes. <a href="https://github.com/Celeiritas/argus-ui/blob/main/docs/devices.md">See how to write the list</a></div>`;
     if (!data.devices?.length) return `<div class="empty"><b>No devices listed yet</b>Argus shows each of your devices here, and whether it is on, once the server has a list of them. <a href="https://github.com/Celeiritas/argus-ui/blob/main/docs/devices.md">Learn how to list your devices</a></div>`;
     const t = when(data.checked);
     return `<ul class="devlist">${data.devices.map(row).join('')}</ul><p class="devmeta">${t ? `<span>Checked ${esc(t)}${failed ? ' · could not ask again' : ''}</span>` : ''}<button type="button" class="devagain"${busy ? ' aria-disabled="true"' : ''}>${busy ? 'Checking…' : 'Check again'}</button></p>`;

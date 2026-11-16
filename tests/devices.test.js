@@ -49,6 +49,7 @@ run(async b => {
     const empty = await p.locator('#devbody').textContent();
     check(/No devices listed yet/.test(empty) && await p.locator('#devbody a', {hasText: 'Learn how to list your devices'}).count() === 1,
       `no file: the empty state says so and links to how ("${empty.slice(0, 60)}…")`);
+    check((await p.locator('#devbody a').boundingBox()).height >= 44, 'no file: the help link is a 44 px target');
     check(await noOverflow(p), 'no file, 412 px: no sideways scroll');
     await shot(p, 'devices-empty-412'); await p.close();
     p = await watch(b, 1920, 1080); await shot(p, 'devices-empty-1920'); await p.close();
@@ -136,6 +137,7 @@ run(async b => {
     put(ACTIVE, '{"devices": [{"name": "Desk PC", "probe": "tailscale", "host": "pc one"}]}'); await sleep(300);
     p = await watch(b, 412, 915);
     const bad = await p.locator('#devbody').textContent();
+    check(/Fix that line/.test(bad) && (await p.locator('#devbody .devbad a').boundingBox()).height >= 44, 'a broken file says what to do, with a 44 px help link');
     check(/could not be read/.test(bad) && /Tailscale host name/.test(bad), `a broken file says why ("${bad.slice(0, 90)}…")`);
     await shot(p, 'devices-broken-412'); await p.close();
     p = await page(b, 412, 915); await p.goto(BASE); await p.waitForTimeout(1500);
@@ -151,8 +153,8 @@ run(async b => {
     await lp.goto(BASE); await lp.waitForTimeout(1500);
     check(await lp.evaluate(() => role()) === 'learner' && await lp.locator('.devline').count() === 0 && tried === 0, `learner: no device line, the list is never asked for (${tried})`);
     check((await lp.request.get(BASE + 'api/devices')).status() === 403, 'learner: api/devices is refused (403)');
-    await ctx.close(); aside(PEOPLE);
+    await ctx.close();
   } finally {
-    aside(ACTIVE); answer('ok'); units(u => Object.assign(u, JSON.parse(saved)));   // later checks see the page without devices
+    aside(ACTIVE); aside(PEOPLE); answer('ok'); units(u => Object.assign(u, JSON.parse(saved)));   // later checks see the page without devices
   }
 });

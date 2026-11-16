@@ -296,6 +296,11 @@ dialog .confirm{border-color:var(--danger);color:var(--danger)}
 .dev.s-unknown .dstat{background:transparent;color:var(--snow);border:1px dashed var(--dc)}
 .devmeta{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--s2);margin:var(--s2) 0 0;font-size:var(--fs-meta);color:var(--powder)}
 .devagain[aria-disabled=true]{opacity:.7;cursor:progress}
+/* a broken file reads as a problem (the trouble panel's edge); the help link is a full 44 px target; on a wide screen the
+   list stops at a readable width so a name and its badge stay close */
+.devices .devbad{border:1px solid var(--bad)}.devwhy{display:block;color:var(--snow);margin-bottom:var(--s1);overflow-wrap:anywhere}
+.devices .empty a{display:inline-flex;align-items:center;min-height:var(--hit)}
+.devlist,.devmeta,.devices .empty{max-width:760px}
 .home>.devline{grid-column:1 / -1;display:flex;flex-wrap:wrap;align-items:center;gap:var(--s1) var(--s3);min-height:var(--hit);margin:0 0 var(--s4);
   padding:var(--s1) var(--s4);border-radius:12px;background:rgb(28 33 39 / .86);color:var(--snow);text-decoration:none;font-size:var(--fs-meta)}
 .home>.devline>b{font-size:var(--fs-sec);font-weight:600}

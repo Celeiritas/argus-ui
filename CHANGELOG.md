@@ -7,6 +7,7 @@ Argus lists the owner's devices and whether each is on, each status in its own c
 - **The devices live on the host, never in git**: `~/.config/argus-ui/devices.json` (or `ARGUS_DEVICES`): name, kind, how to check it (`self`, `tailscale` by host name, `none`), checked strictly; a bad file says what is wrong on the panel and once in the log. `"wake": {"mac": …}` is the place for Wake on LAN later: nothing uses it, there is no Wake button, and the page never gets the address.
 - **The probe**: one `tailscale status --json` for every device (no shell, nothing from the file in the command), a 5 s timeout, cached 30 s. When Tailscale is missing, fails, hangs or is stopped, a device is *Can't tell*, never *Offline*.
 - **Colours**: one custom property per status in argus.css (`--dev-online`, `--dev-offline`, `--dev-unknown`, `--dev-desktop`, `--dev-game`), defaults from the pill's `--mode-desktop` / `--mode-game`, a slate for offline and a dashed ring for can't tell.
+- **A broken file** reads as a problem (the trouble panel's red edge) with a next step and a 44 px help link; on a wide screen the list stops at 760 px so a name stays near its badge.
 - **The owner's only**: `GET api/devices` follows the role check (a learner gets 403); a learner's page never asks for it and shows no line.
 - Tests: `tests/devices_test.py` (the file, each status and each failure against a stand-in tailscale, the cache, the route for owner and learner) and `tests/devices.test.js` (the page at 375, 412 and 1920 px).
 
