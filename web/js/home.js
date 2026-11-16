@@ -31,6 +31,9 @@ const home = (() => {
   const knownBtn = it => { const j = it?.known && (S.jobs || []).find(x => x.job === it.known);
     return j && role() === 'owner' ? `<button type="button" class="knownbtn" data-known="${esc(j.job)}" data-on="1" aria-label="Mark ${esc(j.name)} as known, low priority">Mark as known</button>` : ''; };
   const row = (n, fresh) => `<li class="need ${n.level}${fresh ? ' fresh' : ''}" data-key="${esc(n.key)}"><span class="nmark">${n.mark}</span><div class="nb"><p><small>${esc(n.who)}${n.item?.when ? ` · ${esc(n.item.when)}` : ''}</small>${esc(n.text)}</p>${n.item ? troubleLines(n.item) : ''}</div><div class="nacts">${n.item ? fixButton(n.item) : ''}<a class="go" href="${esc(n.href)}">${esc(n.label)}</a>${knownBtn(n.item)}</div></li>`;
+  // a tile's line wraps only where a reader would expect it (no-break spaces): a " · " keeps its dot on the line before, so a
+  // wrapped line never starts with "·", and a count keeps its word ("1 Steam virtual", never "1" at a line's end, 4.49.0)
+  const keep = s => s.replace(/ · /g, '\u00a0· ').replace(/\b(\d+) (?=\p{L})/gu, '$1\u00a0');
   // one card per section, in the bar's order: Watch, then each plugin with its status line (a static one with its version).
   // One place for each fact (4.44.0): a section with a row in the list above has no card until that row is gone.
   function cards(list) {
@@ -40,12 +43,11 @@ const home = (() => {
     return sections().filter(e => !e.kind && e.id !== 'home' && e.id !== 'phone' && !listed.has(e.id) && visible([e]).length).map(e => {
       const p = PLUGINS.find(x => x.id === e.id);
       // a task marked known is told apart, never in red: "All 12 tasks well · 1 known"
-      const line = e.id === 'argus' ? (!fails ? `All ${plural(S.jobs.length, 'task')} well${kn ? ` · ${kn} known` : ''}` : allFailed ? `${plural(fails, 'task')} failed` : `${plural(fails, 'thing')} need${fails === 1 ? 's' : ''} a look`)
+      const line = e.id === 'argus' ? (!fails ? `All ${plural(S.jobs.length, 'task')} well${kn ? ` · ${kn} known` : ''}` : allFailed ? `${plural(fails, 'task')} failed` : `${plural(fails, 'thing')} need${fails === 1 ? 's' : ''} a look`)
         : e.id === 'olympus' ? 'Powers, weather, seasons'
         : !p ? '' : p.kind === 'server' ? st(STATUS[p.id]) : p.version ? `Version ${p.version}` : 'Open it';
       const mood = e.id === 'argus' ? (fails ? ' bad' : '') : STATUS[e.id]?.needs && !isQuiet(e.id) ? ' needs' : '';   // red: something failed; gold: waits for you
-      // a " · " keeps its dot on the line before (a no-break space), so a wrapped line never starts with "·"
-      return `<li><a class="place${mood}" href="${esc(e.href)}" data-id="${esc(e.id)}">${e.mark}<span class="pw">${words(e)}</span><span class="pl">${esc(line).replace(/ · /g, '\u00a0· ')}</span></a></li>`;
+      return `<li><a class="place${mood}" href="${esc(e.href)}" data-id="${esc(e.id)}">${e.mark}<span class="pw">${words(e)}</span><span class="pl">${esc(keep(line))}</span></a></li>`;
     }).join('');
   }
   // Open: the media players first (~/.config/argus-ui/media.json; another site, so a plain link that sends no referrer),
@@ -71,7 +73,7 @@ const home = (() => {
       if (!full || !over(pl)) return;
       pl.classList.add('cut');
       const fits = h => { pl.textContent = h; return !over(pl); };
-      const tok = full.split(/(\s+)/), headOf = k => tok.slice(0, 2 * k - 1).join('').replace(/[\s,;:·.\-–—]+$/, '');
+      const tok = full.split(/([^\S\u00a0]+)/), headOf = k => tok.slice(0, 2 * k - 1).join('').replace(/[\s,;:·.\-–—]+$/, '');
       let lo = 0, hi = Math.ceil(tok.length / 2) - 1;           // the most words that fit before "…"
       while (lo < hi) { const m = (lo + hi + 1) >> 1; if (fits(headOf(m))) lo = m; else hi = m - 1; }
       let head = lo ? headOf(lo) : '';

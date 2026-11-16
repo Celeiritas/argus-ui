@@ -82,10 +82,19 @@ run(async b => {
   await p.goto(BASE + 'home');
   const place = p.locator('.place[data-id="controllers"]');
   await place.filter({hasText: 'connected'}).waitFor({timeout: 5000}).catch(() => {});       /* the line comes with a second request: wait for it, the check below says what is wrong */
-  check(await place.count() === 1 && /3 connected\s· 1 Steam virtual/.test(await place.textContent()), 'Home: the Controllers place (called Daedalus since 4.48.0) with its line');
+  check(await place.count() === 1 && /3\u00a0connected\s· 1\u00a0Steam virtual/.test(await place.textContent()), 'Home: the Controllers place (called Daedalus since 4.48.0) with its line');
   check(await place.getAttribute('href') === new URL(BASE).pathname + 'controllers' && await p.locator('.place', {hasText: /\bPads\b/}).count() === 0,
     'Home: the place opens <base>/controllers and none is called Pads');
   check(p.errors.length === 0, 'no page errors ' + p.errors.join(' | '));
+
+  // 375 px, Today: a count keeps its word. Before 4.49.0 the tile read "3 connected · 1" and then "Steam virtual" on the next line
+  await ph.goto(BASE + 'home'); const tl = ph.locator('.place[data-id="controllers"] .pl');
+  await tl.filter({hasText: 'Steam'}).waitFor({timeout: 5000}).catch(() => {});
+  const apart = await tl.evaluate(el => { const n = el.firstChild, i = n.data.indexOf('1\u00a0Steam'); if (i < 0) return `no "1 Steam" in ${JSON.stringify(n.data)}`;
+    const r = document.createRange(), top = k => { r.setStart(n, k); r.setEnd(n, k + 1); return r.getClientRects()[0].top; };
+    return Math.abs(top(i) - top(i + 2)) > 2 ? '"1" ends a line, "Steam" starts the next' : ''; });
+  check(!apart && await noOverflow(ph), `phone, Today: the Controllers tile keeps "1" with "Steam" (${apart || 'on one line'}), no sideways scrolling`);
+  await shot(ph, 'controllers-phone-today');
 
   await ph.goto(BASE + 'controllers'); await ph.locator('.controllers .controller').first().waitFor({timeout: 5000});
   check(await noOverflow(ph), 'phone: no sideways scrolling');
