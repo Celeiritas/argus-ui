@@ -15,13 +15,13 @@ Argus watches more than tasks: the **Devices** panel on Watch (after the task gr
 |---|---|
 | `devices` | At most 24, in the order the list shows them. |
 | `name` | What the list calls it, 1 to 40 characters. No two the same (case does not count). |
-| `kind` | `pc`, `laptop`, `server`, `phone`, `tablet`, `console` or `other` (the default). Only the small word under the name. |
+| `kind` | `pc`, `laptop`, `server`, `phone`, `tablet`, `console` or `other` (the default). Only the small word under the name, and left out when the name already says it (*{{PHONE}} Phone* is just *{{PHONE}}*). |
 | `probe` | How Argus tells whether it is on: `self` (this machine, the server Argus runs on; at most one), `tailscale` (the peer called `host` in `tailscale status --json`) or `none` (Argus does not check it; it always shows *Can't tell*). |
 | `host` | For `tailscale`: the device's host name as `tailscale status` shows it (the first part of its MagicDNS name, or its machine name), letters, digits and `-` only, at most 63. Case does not count. Not a full `*.ts.net` name. |
 | `wake` | Optional. **The place for Wake on LAN later**: `{"mac": "<six pairs of hex digits, split by : or ->"}`. Nothing uses it yet and there is no Wake button. The page only learns that a device has it (`"wake": true`), never the address. |
 
 - **No file**: the Devices panel on Watch says *No devices listed yet* with a link here, and Today has no line. Nothing is asked of Tailscale.
-- **A bad file** (not JSON, a rule above broken, larger than 64 KB): the panel says *The device list could not be read* and what is wrong, Today has no line, and the server log (`journalctl --user -u argus-ui`) gets one line, once each time the file changes. Argus keeps running.
+- **A bad file** (not JSON, a rule above broken, larger than 64 KB): the panel says *The device list could not be read*, what is wrong and where (*Fix device 2 in devices.json on the server*: the file's own name, as `ARGUS_DEVICES` may name another, and the device's number when one device is wrong), Today has no line, and the server log (`journalctl --user -u argus-ui`) gets one line, once each time the file changes. Argus keeps running.
 - The file is read again when it changes (its modification time or size), so an edit needs no restart.
 
 ## The statuses
@@ -30,19 +30,21 @@ A small fixed set. Each status is a **word on a badge** in its own colour, never
 | Status | Word on the badge | When |
 |---|---|---|
 | online | Online | Tailscale says the peer is online; or `self` when Desktop / Game mode is off or does not know. |
-| offline | Offline | Tailscale says the peer is offline. The row adds *last seen 3 hours ago* (the exact time on hover) when Tailscale knows it. |
-| unknown | Can't tell | Argus cannot tell, and the row says why: *Tailscale is not installed on this machine*, *Tailscale gave an error*, *Tailscale did not answer in time*, *Tailscale gave an answer Argus could not read*, *Tailscale is not running here*, *Not on the Tailscale list*, *Tailscale did not say*, *Argus does not check this one*. |
+| offline | Offline | Tailscale says the peer is offline. The row adds *last seen 3 hours ago (Sun, Nov 15, 9:04 PM)* when Tailscale knows it: the exact time is in the row's text, for a phone and the keyboard too. |
+| unknown | Can't tell | Argus cannot tell, and the row says why: *Not on the Tailscale list*, *Two machines on the Tailscale list have this name*, *Tailscale did not say*, *Argus does not check this one*. When Tailscale itself cannot be asked, the reason is said once, above the list (*Tailscale gave an error, so Argus can't tell which devices are on right now*), and the rows say only *Can't tell*: *Tailscale is not installed on this machine*, *Tailscale gave an error*, *Tailscale did not answer in time*, *Tailscale gave an answer too large to read*, *Tailscale gave an answer Argus could not read*, *Tailscale is not running here*. |
 | desktop | Desktop mode | `self`, while the server is in its Desktop mode ([modes.md](modes.md)). |
-| game | Game mode | `self`, while the server is in its Game mode. The label is the mode's own label from `modes.json` plus "mode". |
+| game | Game mode | `self`, while the server is in its Game mode. The label is the mode's own label from `modes.json` plus "mode" (not added when the label already ends with it). The colour is the one the mode pill gives that mode (`modeHues()` in `core.js`): an id `desktop` or `game` keeps its own, one other id gets the colour left over, two other ids are green then purple. |
 
 **Never "offline" by guess.** When Tailscale is missing, fails, hangs or is stopped, every `tailscale` device is *Can't tell*, not *Offline*: a device is offline only when Tailscale itself says so.
 
-Today's line counts three of them: *online* (Desktop and Game count as online), *offline* and *can't tell*, each with a dot in its colour and the number and word kept together; a count of nought is left out. The whole line is one link to `Watch#devices`.
+Today's line counts three of them: *online* (Desktop and Game count as online), *offline* and *can't tell*, each with a dot in its colour and the number and word kept together; a count of nought is left out. The whole line is one link to `Watch#devices`, named for a screen reader as *Devices: 3 online, 1 offline, 3 can't tell. Open the list*. When the page could not reach the server, the line says *Could not reach the server* instead of counts that may be old. Edit Today leaves the line alone, and it still shows when every tile is hidden.
 
 ## The probe
 - **One call for every device**: `tailscale status --json` (or the binary in `ARGUS_TAILSCALE`), run as a fixed argument list without a shell. Nothing from the file goes into the command; host names are only compared with Tailscale's answer.
-- A 5-second timeout. The answer is cached for 30 seconds (`ARGUS_DEVICES_CACHE`, 0 to 300). **Check again** in the panel asks Tailscale again when its last answer is more than 5 seconds old, so holding the key cannot run it many times a second.
-- A peer is found by the first part of its `DNSName`, then by its `HostName`, case folded. A device whose host is the server's own Tailscale name counts as this machine (*Online*).
+- A 5-second timeout. The answer is cached for 30 seconds (`ARGUS_DEVICES_CACHE`, 0 to 300). **Check again** in the panel asks Tailscale again when its last answer is more than 5 seconds old, so holding the key cannot run it many times a second. Its result is said by a screen reader (a polite live region), and the keyboard stays on it through the page's 15-second refresh. The page asks the server at most every 10 seconds after its last answer, and gives up a request after 12 seconds.
+- A device's `host` is matched in two passes, so the answer never depends on the order Tailscale lists its peers: first the first part of every machine's `DNSName` (the server's own included; Tailscale keeps these unique, adding `-1` to a machine added again), then the `HostName` of each machine that no DNS name took, case folded. A name two machines claim in the same pass (two phones both called `localhost`) is *Can't tell* (*Two machines on the Tailscale list have this name*), never either one's status: give that device its DNS name instead. A device whose host is the server's own Tailscale name counts as this machine (*Online*).
+- At most 4 MB of Tailscale's answer is read, held to while reading: a larger answer stops the command at once and is *Can't tell*.
+- When the list itself cannot be made (a bug, not the file), the panel says *Argus could not read the device list* and the server log gets the real error with its traceback, once for each different error.
 - The page asks `GET api/devices` at most every 10 seconds while Watch or Today is open.
 
 ## Who sees it
