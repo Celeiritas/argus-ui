@@ -14,6 +14,7 @@
 The page side is tests/today-edit.test.js. Who is asking comes from the real check on Linux; without /proc (Windows, macOS)
 the lookup is stood in for, as in tests/gate_test.py."""
 import glob, http.client, importlib.util, json, os, shutil, sys, tempfile, textwrap, threading, unittest
+from unittest import mock
 
 R = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HAS_PROC = os.path.isfile('/proc/net/tcp')
@@ -112,7 +113,7 @@ class File(unittest.TestCase):
                  'bad key': {'open': {'hidden': ['file:/etc/passwd']}}, 'other version': {'v': 2},
                  'too big': ' ' * (T.FILE_MAX + 1) + '{}', 'Today renamed': {'tiles': {'names': {'home': 'Mine'}}},
                  'quiet broken': {'quiet': 'throne'}, 'not text': {'tiles': {'names': {'olympus': 7}}},
-                 'nested too deeply': '[' * 5000}
+                 'nested too deeply': '[' * 60000}
         for what, data in cases.items():
             with self.subTest(what):
                 write(TODAY, data)
@@ -121,6 +122,15 @@ class File(unittest.TestCase):
                 self.assertTrue(why and why.startswith('Your Today settings (today.json) could not be used (') and 'default layout' in why, why)
                 self.assertNotIn(HOME, why, 'no home path in the line')
                 self.assertEqual(a.quiet.quiet_sections(), {'mentor'}, 'a broken file: only Mentor is quiet')
+
+    def test_too_deep_for_the_parser_says_so(self):
+        # How deep json.load can go depends on the Python build (Windows gives up sooner than Linux), so the
+        # RecursionError is made here rather than hoped for from a file
+        write(TODAY, '[[[]]]')
+        with mock.patch.object(T.json, 'load', side_effect=RecursionError):
+            lay, why = T.load()
+        self.assertEqual(lay, {})
+        self.assertIn('could not be used (it is nested too deeply)', why or '')
 
     def test_save_is_checked_whole_and_atomic(self):
         self.assertEqual(T.save(GOOD), TIDY)
@@ -210,11 +220,13 @@ class Route(unittest.TestCase):
         self.assertEqual(s['today'], {}); self.assertIn('could not be used (it is not valid JSON)', s['today_problem'])
 
     def test_a_deeply_nested_file_still_opens_the_page(self):
-        # json.load raises RecursionError on thousands of "[": the page and api/state must still answer, so Edit can repair it
-        write(TODAY, '[' * 5000)
+        # tens of thousands of "[" (under the 64 KB cap): json.load gives up (RecursionError, or on a build that goes that deep,
+        # not valid JSON at the end); either way the page and api/state must still answer, so Edit can repair it
+        write(TODAY, '[' * 60000)
         code, s = self.req('GET', 'api/state')
         self.assertEqual(code, 200)
-        self.assertEqual(s['today'], {}); self.assertIn('could not be used (it is nested too deeply)', s['today_problem'])
+        self.assertEqual(s['today'], {})
+        self.assertRegex(s['today_problem'] or '', r'could not be used \(it is (nested too deeply|not valid JSON)\)')
         self.assertEqual(self.save({'quiet': ['throne']})[0], 200, 'Edit can save over it')
         self.assertEqual(len(asides()), 1, 'the nested file is kept beside the new one')
         self.assertEqual(self.state()['today_problem'], None)
