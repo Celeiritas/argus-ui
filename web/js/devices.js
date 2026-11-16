@@ -40,7 +40,7 @@ const devices = (() => {
     const t = when(data.checked);
     return `<ul class="devlist">${data.devices.map(row).join('')}</ul><p class="devmeta">${t ? `<span>Checked ${esc(t)}${failed ? ' · could not ask again' : ''}</span>` : ''}<button type="button" class="devagain"${busy ? ' aria-disabled="true"' : ''}>${busy ? 'Checking…' : 'Check again'}</button></p>`;
   }
-  // Watch: the panel, after the trouble panel (core.js render())
+  // Watch: the panel, after the task groups (core.js render())
   function panel() {
     ask();
     return `<section class="devices" id="devices" aria-labelledby="devices-h"><h2 id="devices-h">Devices</h2><div id="devbody">${body()}</div></section>`;

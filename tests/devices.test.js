@@ -51,8 +51,8 @@ run(async b => {
       `no file: the empty state says so and links to how ("${empty.slice(0, 60)}…")`);
     check((await p.locator('#devbody a').boundingBox()).height >= 44, 'no file: the help link is a 44 px target');
     check(await noOverflow(p), 'no file, 412 px: no sideways scroll');
-    await shot(p, 'devices-empty-412'); await p.close();
-    p = await watch(b, 1920, 1080); await shot(p, 'devices-empty-1920'); await p.close();
+    await p.locator('#devices').scrollIntoViewIfNeeded(); await shot(p, 'devices-empty-412'); await p.close();
+    p = await watch(b, 1920, 1080); await p.locator('#devices').scrollIntoViewIfNeeded(); await shot(p, 'devices-empty-1920'); await p.close();
     p = await page(b, 412, 915); await p.goto(BASE); await p.waitForTimeout(1500);
     check(await p.locator('.home .devline').count() === 0, 'no file: Today has no device line');
     check(p.errors.length === 0, 'no page errors ' + p.errors.join(' | ')); await p.close();
@@ -139,7 +139,7 @@ run(async b => {
     const bad = await p.locator('#devbody').textContent();
     check(/Fix that line/.test(bad) && (await p.locator('#devbody .devbad a').boundingBox()).height >= 44, 'a broken file says what to do, with a 44 px help link');
     check(/could not be read/.test(bad) && /Tailscale host name/.test(bad), `a broken file says why ("${bad.slice(0, 90)}…")`);
-    await shot(p, 'devices-broken-412'); await p.close();
+    await p.locator('#devices').scrollIntoViewIfNeeded(); await shot(p, 'devices-broken-412'); await p.close();
     p = await page(b, 412, 915); await p.goto(BASE); await p.waitForTimeout(1500);
     check(await p.locator('.home .devline').count() === 0, 'a broken file: no line on Today (Watch says why)'); await p.close();
     put(ACTIVE, fs.readFileSync(path.join(DIR, 'devices.json')));

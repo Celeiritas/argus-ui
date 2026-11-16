@@ -1,6 +1,6 @@
 # Devices
 
-Argus watches more than tasks: the **Devices** panel on Watch lists the owner's own devices (`{{SERVER}}`, `{{PC}}`, `{{PHONE}}` and the rest) and says whether each one is on. Today has one short line with the counts that opens the list. Both are the owner's only, and both show only what the host's `devices.json` lists.
+Argus watches more than tasks: the **Devices** panel on Watch (after the task groups, before *What happened lately*) lists the owner's own devices (`{{SERVER}}`, `{{PC}}`, `{{PHONE}}` and the rest) and says whether each one is on. Today has one short line with the counts that opens the list. Both are the owner's only, and both show only what the host's `devices.json` lists.
 
 ## The file
 `~/.config/argus-ui/devices.json` on the host (or the path in `ARGUS_DEVICES`). It names your devices, so it lives on the host and never in git.
