@@ -83,6 +83,15 @@ run(async b => {
     const wp = await page(b, 1920, 1080), shape = {};
     await wp.route('**/api/sky', r => r.fulfill({json: {sky: 'rain', desc: 'Light rain', is_day: true, temp: 48, unit: 'F', precip: 1, clouds: 90, wind: 10,
       south: false, at: Math.floor(Date.now() / 1000), source: 'Open-Meteo'}}));
+    // the sections a real install has: without the two test-only plugins (demo-server, chiron), which no host runs. With them
+    // and Mealie (4.53.0) the strip holds 12 and drops the weather, as fitRealms() should; the shape check is about the rest
+    // (the page's sections come from the state inlined in its HTML, server/argus_ui.py: `const INIT = {...};`)
+    const real = j => { if (Array.isArray(j.plugins)) j.plugins = j.plugins.filter(p => !['demo-server', 'chiron'].includes(p.id)); return j; };
+    await wp.route(u => /\/(home|argus|phone)$/.test(new URL(u).pathname), async r => { const res = await r.fetch();
+      const body = (await res.text()).replace(/(const INIT = )(\{.*?\})(;<\/script>)/s, (m, a, j, z) => a + JSON.stringify(real(JSON.parse(j))).replace(/<\//g, '<\\/') + z);
+      const headers = {...res.headers()}; delete headers['content-length'];
+      await r.fulfill({status: res.status(), headers, body}); });
+    await wp.route('**/api/state', async r => { const res = await r.fetch(); await r.fulfill({response: res, json: real(await res.json())}); });
     for (const where of ['home', 'argus', 'phone']) {
       await wp.goto(BASE + where); if (where === 'home') await settled(wp);
       await wp.waitForFunction(() => document.getElementById('wxText').textContent.trim(), null, {timeout: 5000}).catch(() => {});
