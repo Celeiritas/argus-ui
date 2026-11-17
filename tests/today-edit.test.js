@@ -1,65 +1,80 @@
 // Edit Today (4.50.0, web/js/today-edit.js, server/today.py, docs/home.md "Edit Today"): the owner shows, hides, orders and
-// renames Today's tiles and Open's links, makes groups in Open, and switches each section's reminders off or on. A mode with a
-// clear Done and Cancel; Move up / down buttons are the keyboard path; a god's tile keeps its god's name; Mentor never reminds,
-// Zeus always does (4.50.1: on and locked, even when today.json says otherwise); Mnemosyne's switch says what off drops.
-// Saved on the server (one Today on every device), so the checks read it back after a reload. A learner has no Edit button
+// renames Today's sections and More's links, and switches each section's reminders off or on. A mode with a clear Done and
+// Cancel; Move up / down buttons are the keyboard path; a god's section keeps its god's name; Mentor never reminds, Zeus always
+// does (4.50.1: on and locked, even when today.json says otherwise); Mnemosyne's switch says what off drops.
+// Since 4.54.0 its button is in More's Settings (docs/home.md "One way to each place"), at every width; pressed on another page
+// it opens Today with the lists. Only a section that can have a line on Today has Show; links have no groups and no Show.
+// Saved on the server (one Today on every device), so the checks read it back after a reload. A learner has no Edit Today
 // (the server's 403 is in tests/today_edit_test.py and tests/gate_test.py). Every check here leaves today.json at the default.
-// A phone has no Sections tiles since 4.52.0 (docs/home.md "On a phone"): the whole flow runs at 600 px (the narrowest width
-// with tiles, and Edit's narrow rows) and 1920 px; a 412 px phone gets its own checks (Edit Today beside Open, Edit and Done).
+// The whole flow runs at 600 px (Edit's narrow rows) and 1920 px; a 412 px phone gets its own checks.
 // Pictures (numbered, at 600 and 1920 px): SHOTS, or EDIT_SHOTS when set (a folder of their own).
 const {BASE, check, page, noOverflow, run} = require('./lib');
 const fs = require('fs'), path = require('path');
 const HOME = path.join(path.dirname(process.env.FIXTURES), 'home'), CFG = path.join(HOME, '.config/argus-ui');
 const MD = path.join(CFG, 'media.json'), LK = path.join(CFG, 'links.json'), TD = path.join(CFG, 'today.json');
-const LINKS = [{name: 'Notes', what: 'Pages', href: '/notes-test/', group: 'Tools'}, {name: 'Sound Lab', what: 'Studio', href: '/studio-test/', group: 'Studio'},
-  {name: 'Files', what: 'Shared files', href: '/files-test/', group: 'Tools'}];
+// placeholders only: a section that opens elsewhere, and two plain links (the host's real links.json is never in the repo)
+const LINKS = [{name: 'Studio Test', what: 'Studio', href: '/studio-test/', section: true}, {name: 'Notes', what: 'Pages', href: '/notes-test/'},
+  {name: 'Files', what: 'Shared files', href: '/files-test/'}];
 const NAME = '<b>Lab</b> & co';                      // typed by the owner: drawn as words, never as HTML
 const settle = fn => async r => { try { await fn(r); } catch (e) { if (!/closed|disposed/i.test(String(e && e.message))) throw e; } };
 const settled = p => p.waitForFunction(() => { const h = document.querySelector('#main .home'); return h && !/Checking…|Asking every section/.test(h.textContent); }, null, {timeout: 8000}).catch(() => {});
 const OUT = process.env.EDIT_SHOTS || process.env.SHOTS;
 const shot = (p, name) => OUT && p.screenshot({path: path.join(OUT, name + '.png'), fullPage: false});
 const save = (p, body) => p.request.post(BASE + 'api/today', {data: body});
-async function today(b, w, h) {
+async function today(b, w, h, where = '') {
   const p = await page(b, w, h);
   // the realm quiet: every section's own line, needing nothing; no alerts, no failed checks (Today as on a calm morning)
   await p.route('**/api/*/status*', settle(async r => { const res = await r.fetch(); let j = {}; try { j = await res.json(); } catch (e) {} await r.fulfill({json: {...j, needs: false, action: ''}}); }));
   await p.route('**/api/state*', settle(async r => { const res = await r.fetch(), j = await res.json();
     (j.jobs || []).forEach(x => { if (x.state === 'failed') x.state = 'running'; delete x.works; }); (j.watch || []).forEach(w => { if (w.works === false) w.works = true; });
     j.alerts = []; await r.fulfill({response: res, json: j}); }));
-  await p.goto(BASE); await p.waitForLoadState('load');
+  await p.goto(BASE + where); await p.waitForLoadState('load');
   if (p.errors.length) throw new Error('the page failed to load: ' + p.errors.join(' | '));
-  await p.evaluate(() => refresh()); await settled(p);
+  await p.evaluate(() => refresh()); if (!where) await settled(p);
   await p.evaluate(() => document.fonts.ready); await p.waitForTimeout(300);
   return p;
 }
-const tiles = p => p.locator('#main .placelist .place').evaluateAll(as => as.map(a => a.dataset.id));
+// Today's lines (one per section with news), and More: the More button that is showing (the strip's or the bottom bar's)
+const tiles = p => p.locator('#main .newslist .qline').evaluateAll(as => as.map(a => a.dataset.id));
+const moreBtn = p => p.locator('[data-more]:visible').first();
+async function openMore(p) { await moreBtn(p).click(); await p.locator('#moreSheet[open]').waitFor({timeout: 3000}); }
+async function closeMore(p) { if (await p.locator('#moreSheet[open]').count()) { await p.keyboard.press('Escape'); await p.waitForTimeout(150); } }
+async function edit(p) { await openMore(p); await p.locator('#editToday').click(); await p.locator('#main .home.edit').waitFor(); }
+const onMore = p => p.evaluate(() => !!document.activeElement?.matches('[data-more]') && !document.getElementById('moreSheet').open);
 const row = (p, id) => p.locator(`#main .edit .edrow[data-id="${id}"]`);
 const lrow = (p, href) => p.locator(`#main .edit .edrow[data-key="link:${href}"]`);
 const small = p => p.locator('#main .edit').evaluate(ed => [...ed.querySelectorAll('button, input:not([type=checkbox]), label.check, label.edswitch')]
   .filter(e => e.offsetParent).map(e => { const r = e.getBoundingClientRect(); return [e.textContent.trim().slice(0, 20) || e.getAttribute('aria-label') || e.className, Math.round(r.width), Math.round(r.height)]; })
   .filter(([, w, h]) => w < 44 || h < 44));
 
-// the whole of it at one width: Today, Edit, a rename, a group, the switches, Done
+// the whole of it at one width: Today, Edit from More, a rename, a hidden line, More's links, the switches, Done
 async function flow(b, w, h, n) {
   const t = await today(b, w, h), tag = `${w}`;
   const before = await tiles(t);
-  check(before.includes('demo-server') && before.includes('spartamelee') && before.includes('argus'), `${tag}: the fixture's tiles (${before.join(', ')})`);
-  check(await t.locator('#editToday').count() === 1 && (await t.locator('#editToday').boundingBox()).height >= 44, `${tag}: the owner has Edit Today in the Sections heading, 44 px tall`);
+  check(before.includes('demo-server') && before.includes('memory') && !before.includes('spartamelee') && !before.includes('argus'), `${tag}: the fixture's lines: server plugins only (${before.join(', ')})`);
+  check(await t.locator('#main #editToday, #main .places, #main .open').count() === 0, `${tag}: no Edit Today, tiles or Open on Today itself`);
+  await openMore(t);
+  check(await t.locator('#editToday').isVisible() && (await t.locator('#editToday').boundingBox()).height >= 44 && !!(await t.locator('#editToday').evaluate(e => e.closest('#moreSet'))),
+    `${tag}: the owner has Edit Today in More's Settings, 44 px tall`);
+  await closeMore(t);
   if (w === 600) {
-    await t.evaluate(() => { S.role = 'learner'; render(); });
-    check(await t.locator('#editToday').count() === 0, `${tag}: a learner has no Edit Today`);
-    await t.evaluate(() => { S.role = 'owner'; render(); }); await t.waitForTimeout(200);
+    await t.evaluate(() => { S.role = 'learner'; render(); }); await openMore(t);
+    check(!(await t.locator('#editToday').isVisible()), `${tag}: a learner has no Edit Today`);
+    await closeMore(t); await t.evaluate(() => { S.role = 'owner'; render(); }); await t.waitForTimeout(200);
   }
   await shot(t, `${n}01-today-${tag}`);
 
   // ---- Edit mode ----
-  await t.locator('#editToday').click();
-  await t.locator('#main .home.edit').waitFor();
-  check(await t.evaluate(() => document.activeElement.id) === 'edit-h', `${tag}: Edit opens with the keyboard on its heading`);
+  await edit(t);
+  check(await t.evaluate(() => document.activeElement.id) === 'edit-h' && !(await t.locator('#moreSheet[open]').count()), `${tag}: More closes and Edit opens with the keyboard on its heading`);
+  await t.waitForTimeout(400);
+  check(await t.evaluate(() => document.activeElement.id) === 'edit-h', `${tag}: and the keyboard stays there once More has closed`);
   check(await noOverflow(t), `${tag}: Edit has no sideways scroll`);
   const tiny = await small(t);
   check(!tiny.length, `${tag}: every button, field and switch in Edit is at least 44 by 44 px (${JSON.stringify(tiny.slice(0, 6))})`);
-  check(await row(t, 'argus').locator('input[data-f=name]').count() === 0 && /A god's name/.test(await row(t, 'argus').textContent()), `${tag}: a god's tile (Argus) has no name field`);
+  check(await row(t, 'argus').locator('input[data-f=name]').count() === 0 && /A god's name/.test(await row(t, 'argus').textContent()), `${tag}: a god's section (Argus) has no name field`);
+  check(await row(t, 'spartamelee').locator('input[data-f=shown]').count() === 0 && await row(t, 'argus').locator('input[data-f=shown]').count() === 0 && await row(t, 'demo-server').locator('input[data-f=shown]').count() === 1,
+    `${tag}: Show only where a line can be on Today (a server plugin), not on Argus or a static plugin`);
   check(await t.locator('#main .edit [data-q=mentor]').isDisabled() && !(await t.locator('#main .edit [data-q=mentor]').isChecked()), `${tag}: Mentor's reminders are off and locked`);
   check(await t.locator('#main .edit [data-q=argus]').count() === 0, `${tag}: Argus has no reminders switch (its failures always count)`);
   // Zeus asks for his yes: on and locked, and a screen reader hears why (the owner, 2026-11-16: "Lock Zeus on")
@@ -78,31 +93,27 @@ async function flow(b, w, h, n) {
     `${tag}: Zeus's locked switch says why it stays on, read with it`);
   check(await t.locator('#main .edit .ednote').count() === 2, `${tag}: only Mnemosyne and Zeus have a line`);
   await t.evaluate(() => scrollTo(0, 0)); await shot(t, `${n}02-edit-${tag}`);
-
-  // rename a tile (with HTML in it), then move it up by keyboard: the keyboard stays on the button
+  // rename a section (with HTML in it), then move it up by keyboard: the keyboard stays on the button
   await row(t, 'demo-server').locator('input[data-f=name]').fill(NAME);
   await row(t, 'demo-server').scrollIntoViewIfNeeded(); await shot(t, `${n}03-rename-${tag}`);
   const i0 = +(await row(t, 'demo-server').getAttribute('data-i'));
   await row(t, 'demo-server').locator('[data-mv="-1"]').focus(); await t.keyboard.press('Enter');
   const after = await t.evaluate(() => [document.activeElement.closest('.edrow')?.dataset.id, +document.activeElement.closest('.edrow')?.dataset.i, document.activeElement.dataset.mv]);
-  check(after[0] === 'demo-server' && after[1] === i0 - 1 && after[2] === '-1', `${tag}: Move up by keyboard moves the tile one up and keeps the keyboard on it (${JSON.stringify(after)}, was ${i0})`);
+  check(after[0] === 'demo-server' && after[1] === i0 - 1 && after[2] === '-1', `${tag}: Move up by keyboard moves the section one up and keeps the keyboard on it (${JSON.stringify(after)}, was ${i0})`);
   check(await row(t, 'demo-server').locator('input[data-f=name]').inputValue() === NAME, `${tag}: a typed name survives a move`);
-  // hide a tile by keyboard (Space on Show)
-  await row(t, 'spartamelee').locator('input[data-f=shown]').focus(); await t.keyboard.press('Space');
-  check(await row(t, 'spartamelee').evaluate(r => r.classList.contains('off')), `${tag}: Space on Show hides a tile (greyed, still listed)`);
+  // hide a line by keyboard (Space on Show)
+  await row(t, 'memory').locator('input[data-f=shown]').focus(); await t.keyboard.press('Space');
+  check(await row(t, 'memory').evaluate(r => r.classList.contains('off')), `${tag}: Space on Show hides a line (greyed, still listed)`);
 
-  // ---- Open: a new group, a group moved, a link renamed and one hidden ----
-  const g = lrow(t, '/files-test/').locator('input[data-f=group]');
-  await g.fill('Daily'); await g.press('Enter');
-  check(await t.locator('#main .edit .edgname[data-g="Daily"]').count() === 1, `${tag}: typing a new group name on a link makes the group`);
-  check(await t.evaluate(() => document.activeElement.dataset.f) === 'group', `${tag}: Enter keeps the keyboard on the link's group field after it moves`);
-  await t.locator('#main .edit .edghead [data-g="Daily"][data-mv="-1"]').click();
-  const gs = await t.locator('#main .edit .edgname').evaluateAll(es => es.map(e => e.value));
-  check(gs[0] === 'Daily', `${tag}: Move up moves the whole group (${gs.join(', ')})`);
+  // ---- Links in More: renamed and moved; no groups, no Show ----
+  check(await t.locator('#ed-open').textContent() === 'Links in More' && await t.locator('#main .edit .edlink input[data-f=group], #main .edit .edlink input[data-f=shown]').count() === 0,
+    `${tag}: "Links in More", with no group field and no Show`);
   await lrow(t, '/notes-test/').locator('input[data-f=name]').fill('Shared');
-  await lrow(t, '/studio-test/').locator('input[data-f=shown]').uncheck();
-  await t.locator('#ed-open').scrollIntoViewIfNeeded(); await t.waitForTimeout(100); await shot(t, `${n}04-open-group-${tag}`);
-  check(await noOverflow(t), `${tag}: Open's edit rows have no sideways scroll`);
+  await lrow(t, '/studio-test/').locator('input[data-f=name]').fill('Studio Renamed');
+  await lrow(t, '/files-test/').locator('[data-mv="-1"]').click();
+  check(await t.evaluate(() => document.activeElement.closest('.edrow')?.dataset.key) === 'link:/files-test/', `${tag}: Move up keeps the keyboard on the moved link`);
+  await t.locator('#ed-open').scrollIntoViewIfNeeded(); await t.waitForTimeout(100); await shot(t, `${n}04-links-${tag}`);
+  check(await noOverflow(t), `${tag}: the link rows have no sideways scroll`);
 
   // ---- Reminders ----
   const sw = t.locator('#main .edit [data-q="demo-server"]');
@@ -113,40 +124,41 @@ async function flow(b, w, h, n) {
 
   // ---- Done ----
   await t.locator('#main .edit .edend [data-ed=done]').click();
-  await t.locator('#editToday').waitFor(); await settled(t); await t.waitForTimeout(300);
-  check(await t.evaluate(() => document.activeElement.id) === 'editToday', `${tag}: after Done the keyboard is back on Edit Today`);
-  const now = await tiles(t);
-  check(!now.includes('spartamelee') && now.indexOf('demo-server') >= 0, `${tag}: the hidden tile is gone from Today (${now.join(', ')})`);
-  const want = before.filter(x => x !== 'spartamelee'), at = before.indexOf('demo-server'), prev = before[at - 1];
-  check(prev === 'spartamelee' ? now.indexOf('demo-server') === want.indexOf('demo-server') : now.indexOf('demo-server') === now.indexOf(prev) - 1, `${tag}: the moved tile stands one higher`);
-  const tile = t.locator('#main .place[data-id="demo-server"] .pw b');
-  check(await tile.textContent() === NAME && await tile.locator('b').count() === 0, `${tag}: the new name shows as typed, as words (${await tile.innerHTML()})`);
+  await t.locator('#main .home:not(.edit)').waitFor(); await settled(t); await t.waitForTimeout(300);
+  check(await onMore(t), `${tag}: after Done the keyboard is back on More, where Edit Today was`);
+  const now = await tiles(t), file = JSON.parse(fs.readFileSync(TD, 'utf8'));
+  check(!now.includes('memory') && now.includes('demo-server'), `${tag}: the hidden line is gone from Today (${now.join(', ')})`);
+  const ord = file.tiles?.order || [];
+  check(ord.indexOf('demo-server') === i0 - 1 && now.every((x, i) => !i || ord.indexOf(now[i - 1]) < ord.indexOf(x)), `${tag}: the moved section stands one higher, and Today's lines follow his order (${now.join(', ')})`);
+  const qb = t.locator('#main .qline[data-id="demo-server"] b');
+  check(await qb.first().textContent() === NAME && await qb.locator('b').count() === 0, `${tag}: the new name shows as typed, as words (${await qb.first().innerHTML()})`);
   check(await t.evaluate(nm => sections().find(e => e.id === 'demo-server').word === nm, NAME), `${tag}: the bar, the strip and More use the same name (sections())`);
-  const open = await t.locator('#main .open').evaluate(o => [[...o.querySelectorAll('.opengroup')].map(h => h.textContent), [...o.querySelectorAll('.openlink b')].map(b => b.textContent)]);
-  check(open[0][0] === 'Daily' && open[0].includes('Tools') && !open[0].includes('Studio'), `${tag}: Open shows the new group first, and no empty group (${open[0].join(', ')})`);
-  check(open[1].includes('Shared') && !open[1].includes('Sound Lab') && !open[1].includes('Notes') && open[1].includes('Files'), `${tag}: Open shows the renamed link and not the hidden one (${open[1].join(', ')})`);
+  check(await t.evaluate(() => sections().find(e => e.section)?.word) === 'Studio Renamed' && await t.locator('#realms a.realm.link b').textContent() === 'Studio Renamed',
+    `${tag}: the section that opens elsewhere carries his name on the strip`);
+  const away = await t.locator('#moreAway a.srow b').allTextContents();
+  check(JSON.stringify(away) === '["Files","Shared"]', `${tag}: More's other pages: his names, his order, not the section (${away.join(', ')})`);
   check(await t.evaluate(() => S.quiet.includes('demo-server') && S.quiet.includes('mentor')), `${tag}: the switched-off section is quiet now, Mentor still is`);
   check(await noOverflow(t), `${tag}: Today after Done has no sideways scroll`);
   await t.evaluate(() => scrollTo(0, 0)); await shot(t, `${n}06-done-${tag}`);
-  const file = JSON.parse(fs.readFileSync(TD, 'utf8'));
-  check(file.tiles.names['demo-server'] === NAME && file.tiles.hidden.includes('spartamelee') && file.open.groups['link:/files-test/'] === 'Daily' && file.quiet.includes('demo-server'),
-    `${tag}: today.json holds what he changed (${JSON.stringify(file).slice(0, 200)})`);
+  const o = file.open || {};
+  check(file.tiles.names['demo-server'] === NAME && file.tiles.hidden.includes('memory') && o.names?.['link:/notes-test/'] === 'Shared' && o.order?.indexOf('link:/files-test/') < o.order?.indexOf('link:/notes-test/')
+    && !('groups' in o) && !('hidden' in o) && file.quiet.includes('demo-server'), `${tag}: today.json holds what he changed (${JSON.stringify(file).slice(0, 260)})`);
 
   // kept: another page load (another device) shows the same Today
   await t.reload(); await t.evaluate(() => refresh()); await settled(t); await t.waitForTimeout(300);
-  check(await t.locator('#main .place[data-id="demo-server"] .pw b').textContent() === NAME && !(await tiles(t)).includes('spartamelee'), `${tag}: a reload shows his Today`);
+  check(await t.locator('#main .qline[data-id="demo-server"] b').first().textContent() === NAME && !(await tiles(t)).includes('memory'), `${tag}: a reload shows his Today`);
 
-  // Cancel keeps Today as it was
-  await t.locator('#editToday').click(); await t.locator('#main .home.edit').waitFor();
+  // Cancel keeps Today as it was, and gives the keyboard back to More
+  await edit(t);
   await row(t, 'demo-server').locator('input[data-f=name]').fill('Something else');
-  await t.locator('#main .edit .edtop [data-ed=cancel]').click(); await t.locator('#editToday').waitFor();
-  check(await t.locator('#main .place[data-id="demo-server"] .pw b').textContent() === NAME, `${tag}: Cancel leaves Today as it was`);
+  await t.locator('#main .edit .edtop [data-ed=cancel]').click(); await t.locator('#main .home:not(.edit)').waitFor(); await t.waitForTimeout(200);
+  check(await t.locator('#main .qline[data-id="demo-server"] b').first().textContent() === NAME && await onMore(t), `${tag}: Cancel leaves Today as it was, the keyboard on More`);
 
   // Reset to default, then Done: the default again, and the file says so
-  await t.locator('#editToday').click(); await t.locator('#main .home.edit').waitFor();
+  await edit(t);
   await t.locator('#main .edit [data-ed=reset]').click();
-  check(await row(t, 'spartamelee').evaluate(r => !r.classList.contains('off')) && await t.locator('#main .edit [data-q="demo-server"]').isChecked(), `${tag}: Reset to default fills Edit with the default`);
-  await t.locator('#main .edit .edtop [data-ed=done]').click(); await t.locator('#editToday').waitFor(); await settled(t); await t.waitForTimeout(300);
+  check(await row(t, 'memory').evaluate(r => !r.classList.contains('off')) && await t.locator('#main .edit [data-q="demo-server"]').isChecked(), `${tag}: Reset to default fills Edit with the default`);
+  await t.locator('#main .edit .edtop [data-ed=done]').click(); await t.locator('#main .home:not(.edit)').waitFor(); await settled(t); await t.waitForTimeout(300);
   const back = await tiles(t);
   check(JSON.stringify(back) === JSON.stringify(before), `${tag}: after Reset and Done, Today is the default again (${back.join(', ')}; ${await t.locator('#main .needs').textContent().then(x => x.replace(/\s+/g, ' ').slice(0, 200))})`);
   check(await t.evaluate(() => !Object.keys(S.today || {}).length && !S.quiet.includes('demo-server')), `${tag}: and nothing of his is left in the state`);
@@ -164,80 +176,75 @@ run(async b => {
     await flow(b, 600, 915, '');
     await flow(b, 1920, 1080, '');
 
-    // a phone (4.52.0): no tiles; Edit Today beside Open's heading, 44 px tall, Today with it above the bottom bar; Edit and Done work
+    // a phone: Edit Today is in More's Settings, 44 px tall; Edit and Done work, and the keyboard goes back to More
     const ph = await today(b, 412, 915);
-    const pf = await ph.evaluate(() => { scrollTo(0, 0); const e = document.getElementById('editToday'), k = [...document.querySelectorAll('#main .home > *')].filter(x => x.offsetHeight);
-      return {open: !!(e && e.closest('.open .placeshead')), h: e ? Math.round(e.getBoundingClientRect().height) : 0, tiles: document.querySelectorAll('#main .placelist').length,
-        end: k.length ? Math.round(k[k.length - 1].getBoundingClientRect().bottom) : 0, bar: Math.round(document.querySelector('.tabbar').getBoundingClientRect().top)}; });
-    check(pf.open && pf.h >= 44 && !pf.tiles, `412: no tiles, the owner has Edit Today in Open's heading, ${pf.h} px tall`);
-    check(pf.end <= pf.bar, `412 x 915: Today with its Edit button still ends above the bottom bar (ends ${pf.end}, bar ${pf.bar})`);
-    await ph.evaluate(() => { S.role = 'learner'; render(); });
-    check(await ph.locator('#editToday').count() === 0, '412: a learner has no Edit Today');
-    await ph.evaluate(() => { S.role = 'owner'; render(); }); await ph.waitForTimeout(200);
+    await openMore(ph);
+    const eh = await ph.locator('#editToday').boundingBox();
+    check(!!eh && eh.height >= 44 && await ph.locator('#main #editToday').count() === 0, `412: Edit Today in More's Settings, ${eh && Math.round(eh.height)} px tall, not on Today`);
+    await closeMore(ph);
+    await ph.evaluate(() => { S.role = 'learner'; render(); }); await openMore(ph);
+    check(!(await ph.locator('#editToday').isVisible()), '412: a learner has no Edit Today');
+    await closeMore(ph); await ph.evaluate(() => { S.role = 'owner'; render(); }); await ph.waitForTimeout(200);
     await shot(ph, '01-today-412');
-    await ph.locator('#editToday').click(); await ph.locator('#main .home.edit').waitFor();
+    await edit(ph); await ph.waitForTimeout(400);
     check(await ph.evaluate(() => document.activeElement.id) === 'edit-h' && await noOverflow(ph) && !(await small(ph)).length, '412: Edit opens with the keyboard on its heading, fits, every control 44 px or more');
     await ph.evaluate(() => scrollTo(0, 0)); await shot(ph, '02-edit-412');
-    await ph.locator('#main .edit .edend [data-ed=done]').click(); await ph.locator('#editToday').waitFor({timeout: 5000}).catch(() => {});
-    check(await ph.evaluate(() => document.activeElement.id) === 'editToday' && await ph.locator('#main .home.phone').count() === 1, '412: after Done the phone Today is back, the keyboard on Edit Today');
+    await ph.locator('#main .edit .edend [data-ed=done]').click(); await ph.locator('#main .home:not(.edit)').waitFor({timeout: 5000}).catch(() => {});
+    check(await onMore(ph) && await ph.locator('#main .home.phone').count() === 1, '412: after Done the phone Today is back, the keyboard on More');
     check(!ph.errors.length, `412: no page errors (${ph.errors.join(' | ')})`);
     await ph.close();
 
-    // a group typed and then a button pressed at once (no Enter, no Tab): leaving the field regroups, and the first press
-    // still counts (a Move acts on the same link in its new group; Done saves the new group)
-    const f = await today(b, 412, 915);
-    await f.locator('#editToday').click(); await f.locator('#main .home.edit').waitFor();
-    const order = () => f.locator('#main .edit .edlink').evaluateAll(rs => rs.map(r => r.dataset.key));
-    await lrow(f, '/notes-test/').locator('input[data-f=group]').fill('Studio');
-    await lrow(f, '/notes-test/').locator('[data-mv="1"]').click();
-    const o1 = await order(), focus = await f.evaluate(() => document.activeElement.closest('.edrow')?.dataset.key);
-    check(await lrow(f, '/notes-test/').locator('input[data-f=group]').inputValue() === 'Studio' && o1.indexOf('link:/studio-test/') < o1.indexOf('link:/notes-test/') && focus === 'link:/notes-test/',
-      `a group typed, then Move down pressed once: the link joins the group and moves down in it, the keyboard on it (${o1.join(', ')}; focus ${focus})`);
-    await lrow(f, '/files-test/').locator('input[data-f=group]').fill('Later');
-    await f.locator('#main .edit .edtop [data-ed=done]').click();
-    const closed = await f.locator('#editToday').waitFor({timeout: 5000}).then(() => true, () => false);
-    const kept = closed && JSON.parse(fs.readFileSync(TD, 'utf8'));
-    check(closed && kept.open?.groups?.['link:/files-test/'] === 'Later' && kept.open?.groups?.['link:/notes-test/'] === 'Studio',
-      `a group typed, then Done pressed once: saved with the new group (${closed ? JSON.stringify(kept.open) : 'still in Edit'})`);
-    check(!f.errors.length, `first press after a group: no page errors (${f.errors.join(' | ')})`);
-    await f.close();
-    check((await save(q, {reset: true})).ok(), 'back to the default layout');
+    // Edit Today pressed on another page: Today opens with the lists, the keyboard on their heading, the address plain again
+    for (const [w, h] of [[412, 915], [1440, 900]]) {
+      const x = await today(b, w, h, 'olympus');
+      await openMore(x); await x.locator('#editToday').click();
+      const went = await x.locator('#main .home.edit').waitFor({timeout: 6000}).then(() => true, () => false);
+      await x.waitForTimeout(300);
+      check(went && await x.evaluate(() => document.activeElement.id) === 'edit-h' && !/#edit/.test(x.url()) && new URL(x.url()).pathname === new URL(BASE).pathname,
+        `${w}: Edit Today from Olympus opens Today with the lists, the keyboard on their heading (${x.url()})`);
+      await x.locator('#main .edit .edtop [data-ed=cancel]').click(); await x.locator('#main .home:not(.edit)').waitFor({timeout: 5000}).catch(() => {});
+      check(!x.errors.length, `${w}: from another page, no page errors (${x.errors.join(' | ')})`);
+      await x.close();
+    }
 
-    // a today.json that switches Zeus off by hand (or an older page): Zeus stays on, in the state and in Edit; Done drops it
-    fs.writeFileSync(TD, JSON.stringify({v: 1, quiet: ['throne', 'demo-server']}));
+    // a today.json that switches Zeus off by hand (or an older page): Zeus stays on, in the state and in Edit; Done drops it.
+    // An older file's Open groups and hidden links are not kept either (4.54.0)
+    fs.writeFileSync(TD, JSON.stringify({v: 1, quiet: ['throne', 'demo-server'], open: {groups: {'link:/notes-test/': 'Tools'}, hidden: ['link:/files-test/']}}));
     const z = await today(b, 412, 915);
     check(await z.evaluate(() => !S.quiet.includes('throne') && S.quiet.includes('demo-server')), 'throne in today.json: Zeus is not quiet, the rest of the list is');
-    await z.locator('#editToday').click(); await z.locator('#main .home.edit').waitFor();
+    await openMore(z);
+    check(JSON.stringify(await z.locator('#moreAway a.srow b').allTextContents()) === '["Notes","Files"]', 'an older file\'s hidden link is in More all the same: More lists every link');
+    await closeMore(z);
+    await edit(z);
     check(await z.locator('#main .edit [data-q=throne]').isChecked() && !(await z.locator('#main .edit [data-q="demo-server"]').isChecked()), 'throne in today.json: Edit shows Zeus on (and the other switch off)');
-    await z.locator('#main .edit .edtop [data-ed=done]').click(); await z.locator('#editToday').waitFor({timeout: 5000}).catch(() => {});
+    await z.locator('#main .edit .edtop [data-ed=done]').click(); await z.locator('#main .home:not(.edit)').waitFor({timeout: 5000}).catch(() => {});
     const zf = JSON.parse(fs.readFileSync(TD, 'utf8'));
-    check(JSON.stringify(zf.quiet) === '["demo-server"]' && await z.evaluate(() => !S.quiet.includes('throne')), `Done saves without throne (${JSON.stringify(zf)})`);
+    check(JSON.stringify(zf.quiet) === '["demo-server"]' && !zf.open && await z.evaluate(() => !S.quiet.includes('throne')), `Done saves without throne, groups or hidden links (${JSON.stringify(zf)})`);
     check(!z.errors.length, `Zeus locked: no page errors (${z.errors.join(' | ')})`);
     await z.close();
     check((await save(q, {reset: true})).ok(), 'back to the default layout');
 
     // the narrowest phone: Edit fits at 375 px
     const s = await today(b, 375, 812);
-    await s.locator('#editToday').click(); await s.locator('#main .home.edit').waitFor();
+    await edit(s);
     check(await noOverflow(s), '375: Edit has no sideways scroll');
     await s.close();
 
-    // every tile hidden: Today says so and Edit Today stays, so he can bring them back
+    // every line hidden: Today has no Sections part, and Edit Today is still in More, so he can bring them back
     const ids = await (async () => { const x = await today(b, 412, 915); const v = await x.evaluate(() => home.tileList().map(e => e.id)); await x.close(); return v; })();
-    check((await save(q, {tiles: {hidden: ids}})).ok(), 'save a layout with every tile hidden');
-    const e = await today(b, 600, 915);      // a computer's Today says it in the Sections panel; a phone has none (4.52.0), so Edit Today is enough there
-    check(await e.locator('#main .places .quiet').textContent().then(s => /Every section is hidden/.test(s)).catch(() => false) && await e.locator('#editToday').count() === 1,
-      'every tile hidden: Today says so and still has Edit Today');
-    await e.close();
-    const e4 = await today(b, 412, 915);
-    check(await e4.locator('#editToday').count() === 1, 'every tile hidden, a phone: Edit Today is still there');
-    await e4.close();
+    check((await save(q, {tiles: {hidden: ids}})).ok(), 'save a layout with every line hidden');
+    for (const w of [600, 412]) {
+      const e = await today(b, w, 915);
+      await openMore(e);
+      check(await e.locator('#main .news').count() === 0 && await e.locator('#editToday').isVisible(), `${w}: every line hidden: no Sections part on Today, Edit Today still in More`);
+      await e.close();
+    }
 
     // a broken today.json: Today shows the default and says so in plain words; saving sets the old file aside
     fs.writeFileSync(TD, '{"v":1,"tiles":');
     const k = await today(b, 412, 915);
     const why = await k.locator('#main .today-problem').textContent().catch(() => '');
-    const dflt = await k.evaluate(() => home.tileList().some(e => e.id === 'spartamelee' && e.shown));   /* a phone draws no tiles (4.52.0): the layout the page uses */
+    const dflt = await k.evaluate(() => home.tileList().some(e => e.id === 'memory' && e.shown));
     check(/could not be used/.test(why) && /default layout/.test(why) && dflt, `a broken today.json: the default layout, and a line that says so ("${why}")`);
     await shot(k, '07-broken-file-412');
     await k.close();

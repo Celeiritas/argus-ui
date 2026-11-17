@@ -42,7 +42,7 @@ run(async b => {
   const need = p.locator('.need', {hasText: 'Chiron'});
   check(await need.count() === 1 && /2 workouts this week/.test(await need.textContent()) && (await need.locator('a.go').textContent()) === 'Log a workout and more words…',
     'Home: a plugin that needs you gets a row in "Needs you" with its action as the button');
-  check(await p.locator('.place', {hasText: 'Chiron'}).count() === 0, 'Home: and no card under Sections while it has that row (one place for each fact)');
+  check(await p.locator('.news a.qline[data-id="chiron"]').count() === 0, 'Home: and no line under Sections while it has that row (one place for each fact)');
   check(p.errors.length === 0, 'no page errors ' + p.errors.join(' | '));
 
   const ph = await page(b, 375, 760); await ph.goto(BASE + 'chiron'); await ph.locator('#her-where').waitFor({timeout: 5000});

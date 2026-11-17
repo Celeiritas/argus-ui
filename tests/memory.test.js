@@ -89,21 +89,23 @@ run(async b => {
     check(p.errors.length === 0, 'no page errors ' + p.errors.join(' | '));
 
     // The fixture's newest snapshot is from Nov 8, 2026. Up to 8 calendar days later Memory's tile says its line; after that the
-    // snapshot is stale (plugins/memory/plugin.py STALE_DAYS), Memory needs you, and its row says the line in place of the tile
+    // snapshot is stale (plugins/memory/plugin.py STALE_DAYS), Memory needs you, and its row says the line in place of her line under Sections
     // (one place for each fact, docs/home.md). Before 4.52.0 only the tile was read, so the check broke on Nov 17, 2026.
     const d = new Date(), old = Math.round((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(2026, 10, 8)) / 864e5);
     const tail = "; no word from your PC's backup yet. The server has no copy outside your home yet.";
     const h = await page(b);
     await h.goto(BASE);
     if (old <= 8) {
-      await h.locator('.place[data-id="memory"]').locator('.pl', {hasText: 'Backing up'}).waitFor({timeout: 5000}).catch(() => {});
-      check(await h.locator('.place[data-id="memory"]').locator('.pl').textContent() === "Backing up the server now" + tail,
-        "Today: Mnemosyne's card shows Memory's line, the running backup first");
+      const ml = h.locator('.news a.qline[data-id="memory"] .qt');
+      await ml.filter({hasText: 'Backing up'}).waitFor({timeout: 5000}).catch(() => {});
+      check((await ml.textContent()).replace(/\u00a0/g, ' ') === "Backing up the server now" + tail,
+        "Today: Mnemosyne's line under Sections shows Memory's line, the running backup first");
     } else {
+      // the row's first sentence at reading size, the rest in a smaller line under it (4.54.0): read together, a space between
       const want = `Backing up the server now (last one: ${old} days ago)` + tail, mrow = h.locator('.need[data-key="needs-memory"] .nb p');
-      await mrow.filter({hasText: 'Backing up'}).waitFor({timeout: 5000}).catch(() => {});
-      const said = await mrow.textContent({timeout: 3000}).catch(() => '');
-      check(said.endsWith(want) && await h.locator('.place[data-id="memory"]').count() === 0,
+      await mrow.first().filter({hasText: 'Backing up'}).waitFor({timeout: 5000}).catch(() => {});
+      const said = (await mrow.allTextContents().catch(() => [])).join(' ');
+      check(said.endsWith(want) && await h.locator('.news a.qline[data-id="memory"]').count() === 0,
         `Today: the snapshot is ${old} days old, so Mnemosyne's row (no card) shows Memory's line, the running backup first ("${said}")`);
     }
     await p.close(); await h.close();              // their 15-second refreshes would only slow the checks below
@@ -164,23 +166,23 @@ run(async b => {
         check(await noOverflow(n) && fits, `${s.name}, ${w} px: no sideways scrolling, every sentence wraps inside its row`);
         await n.close();
       }
-      const t = await page(b, 1024, 768);      // a computer: a phone has no Sections tiles since 4.52.0 (the needs row is read at 360 and 412 below)
-      // Today: the line is in one place (4.44.0): the row in Needs you when it needs you, else Mnemosyne's card
-      await t.goto(BASE); const card = t.locator('.place[data-id="memory"]').locator('.pl'), row = t.locator('.need', {hasText: s.today});
+      const t = await page(b, 1024, 768);
+      // Today: the line is in one place (4.44.0): the row in Needs you when it needs you, else Mnemosyne's line under Sections
+      await t.goto(BASE); const card = t.locator('.news a.qline[data-id="memory"]').locator('.qt'), row = t.locator('.need', {hasText: s.today});
       await (s.needs ? row : card.filter({hasText: s.today})).waitFor({timeout: 5000}).catch(() => {});
       await t.waitForFunction(() => !/Checking…|Asking every section/.test(document.querySelector('#main .home').textContent), null, {timeout: 5000}).catch(() => {});
-      if (!s.needs) check((await card.textContent()).replace(/\u00a0/g, ' ') === s.today,   /* a count keeps its word on a tile (a no-break space, 4.49.0) */
+      if (!s.needs) check((await card.textContent()).replace(/\u00a0/g, ' ') === s.today,   /* a count keeps its word (a no-break space, 4.49.0) */
       `${s.name}: Today's line: ${await card.textContent()}`);
       check(s.needs ? await row.count() === 1 && await row.locator('a.go').textContent() === (s.action || 'Check backups') && await card.count() === 0 : await row.count() === 0,
-        `${s.name}: ${s.needs ? 'Needs you shows the line with ' + (s.action || 'Check backups') + ', and no Mnemosyne card' : 'nothing in Needs you'}`);
+        `${s.name}: ${s.needs ? 'Needs you shows the line with ' + (s.action || 'Check backups') + ', and no Mnemosyne line under Sections' : 'nothing in Needs you'}`);
       await t.close();
-      if (s.verdict) for (const [w, h] of [[360, 800], [412, 915], [1440, 900]]) {        // a card shows only the start of the line, a row all of it: the verdict must be in what shows
+      if (s.verdict) for (const [w, h] of [[360, 800], [412, 915], [1440, 900]]) {        // the verdict leads: in the row's first sentence, or at the start of her line
         const v = await page(b, w, h); await v.goto(BASE);
-        const pl = s.needs ? v.locator('.need', {hasText: s.verdict}).locator('.nb p') : v.locator('.place[data-id="memory"]').locator('.pl');
+        const pl = s.needs ? v.locator('.need', {hasText: s.verdict}).locator('.nb p:not(.ndetail)') : v.locator('.news a.qline[data-id="memory"]').locator('.qt');
         await pl.filter({hasText: s.verdict}).waitFor({timeout: 5000}).catch(() => {});
         const shown = await pl.evaluate(el => { const n = el.lastChild, r = document.createRange(), box = el.getBoundingClientRect(); let i = 0;
           for (; i < n.length; i++) { r.setStart(n, i); r.setEnd(n, i + 1); if (r.getBoundingClientRect().right > box.right + 0.5) break; } return i; });
-        check(shown >= s.verdict.length, `${s.name}, ${w} px: Today's ${s.needs ? 'row' : 'card'} shows the verdict first (${shown} of ${s.verdict.length} characters visible)`);
+        check(shown >= s.verdict.length, `${s.name}, ${w} px: Today's ${s.needs ? 'row' : 'line'} shows the verdict first (${shown} of ${s.verdict.length} characters visible)`);
         await v.close();
       }
     }

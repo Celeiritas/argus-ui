@@ -12,13 +12,16 @@ const boxes = (p, ...ss) => p.evaluate(`[${ss.map(s => `(${rect})(${JSON.stringi
 const settled = p => p.waitForFunction(() => { const h = document.querySelector('#main .home'); return h && !/Checking…|Asking every section/.test(h.textContent); });
 run(async b => {
   for (const [w, h, tag] of [[3440, 1440, 'ultrawide 3440'], [2560, 1080, 'ultrawide 2560']]) {
-    const p = await page(b, w, h); await p.goto(BASE + 'home'); await p.locator('.home .places').waitFor(); await p.waitForTimeout(500);
+    const p = await page(b, w, h); await p.goto(BASE + 'home'); await settled(p); await p.waitForTimeout(500);
     const rail = await box(p, '.realms'), main = await box(p, 'main');
     check(rail.x === 0 && rail.y === 0 && rail.h >= h - 1 && rail.w <= 220 && main.x >= rail.w, `${tag}: the sections bar is a rail down the left edge, beside the page`);
     const pills = await p.locator('#realms .realm').evaluateAll(es => es.map(e => e.getBoundingClientRect().x));
     check(pills.every(x => Math.abs(x - pills[0]) < 2), `${tag}: the sections stack in one column`);
-    const needs = await box(p, '.home .needs'), places = await box(p, '.home .places');
-    check(needs.w >= 500 && places.w >= 1000 && places.y > needs.y, `${tag}: Today uses the width: the rows at least 500 px wide, the section cards across the page under them`);
+    // one reading column at every width since 4.54.0 (docs/home.md "One way to each place"): the rows at a reading width, the
+    // sections' lines under them, never tiles across the page
+    const needs = await box(p, '.home .needs'), news = await box(p, '.home .news');
+    check(needs.w >= 500 && needs.w <= 900 && news && news.y > needs.y && Math.abs(news.x - needs.x) < 2 && await p.locator('.home .places, .home .place').count() === 0,
+      `${tag}: Today is one reading column: the rows ${Math.round(needs.w)} px wide, the sections' lines under them, no tiles`);
     check(await noOverflow(p), `${tag}: no sideways scrolling`);
     await shot(p, 'layout-' + w + '-home');
     await p.goto(BASE + 'argus'); await p.locator('.card').first().waitFor(); await p.waitForTimeout(300);
@@ -30,10 +33,10 @@ run(async b => {
     check((await box(p, '.plugin-body')).w >= 1000, `${tag}: a server plugin's page gets the full content width`);
     check(p.errors.length === 0, `${tag}: no page errors ` + p.errors.join(' | '));
   }
-  const d = await page(b, 1920, 1080); await d.goto(BASE + 'home'); await d.locator('.home .places').waitFor(); await d.waitForTimeout(300);
-  const dbar = await box(d, '.realms'), dn = await box(d, '.home .needs'), dp = await box(d, '.home .places'), dm = await box(d, 'main');
+  const d = await page(b, 1920, 1080); await d.goto(BASE + 'home'); await settled(d); await d.waitForTimeout(300);
+  const dbar = await box(d, '.realms'), dn = await box(d, '.home .needs'), dp = await box(d, '.home .news'), dm = await box(d, 'main');
   check(dbar.y === 0 && dbar.w >= 1900, '16:9: the sections bar stays across the top');
-  check(dp.y > dn.y && Math.abs(dn.x - dm.x - 16) < 2, '16:9: Today lines up with the page edge (no second gutter), the section cards under the rows');
+  check(dp.y > dn.y && Math.abs(dn.x - dm.x - 16) < 2, '16:9: Today lines up with the page edge (no second gutter), the sections\' lines under the rows');
   await d.goto(BASE + 'argus'); await d.locator('.card').first().waitFor();
   check((await box(d, '.argus')).w <= 1080 * 0.22 + 1, '16:9: Argus is at most about a fifth of the height');
   await shot(d, 'layout-1920-home');
@@ -139,7 +142,7 @@ run(async b => {
     const opener = q.locator('[data-more]:visible').first();
     check(await opener.count() === 1, `${w} x ${h}: a More button is showing`);
     await opener.click(); await q.locator('#moreSheet[open]').waitFor();
-    const row = q.locator('#moreList .srow', {hasText: 'Phone alerts'});
+    const row = q.locator('#morePhone .srow', {hasText: 'Phone alerts'});      // under Settings since 4.54.0
     check(await row.isVisible(), `${w} x ${h}: More has Phone alerts`);
     await q.keyboard.press('Escape');   // the dialog's close event comes a moment after the key: wait for it, not for a fixed time
     check(await q.waitForFunction(() => !document.getElementById('moreSheet').open && document.activeElement?.matches('[data-more]') && document.activeElement.getAttribute('aria-expanded') === 'false', null, {timeout: 3000}).then(() => true, () => false),
@@ -164,9 +167,9 @@ run(async b => {
   check(tb.y + tb.h >= 759 && tb.w >= 374 && await ph.locator('.realms').isHidden(), 'phone: the sections sit in a bar at the bottom instead of the strip');
   check(await more.evaluate(e => e.classList.contains('on')) && /Olympus/.test(await more.textContent()), 'phone: on a place inside More, the More slot is the current one and names it');
   await ph.goto(BASE + 'home'); await settled(ph);
-  // a phone's Today (4.52.0): no Sections tiles; what needs you first, the rest below it in one full-width column
+  // a phone's Today (4.52.0; every width since 4.54.0): no tiles; what needs you first, the rest below it in one full-width column
   const [pn, pl] = await boxes(ph, '.home .needs', '.home > :last-child');
-  check(pn && pl && pl.y > pn.y && pn.w >= 340 && pl.w >= 340 && await ph.locator('.home .places').count() === 0,
+  check(pn && pl && pl.y > pn.y && pn.w >= 340 && pl.w >= 340 && await ph.locator('.home .places, .home .place').count() === 0,
     `phone: Home is one column, full width, with no tiles (rows ${pn && pn.w} px wide, the last block ${pl && pl.w} px)`);
   check(await noOverflow(ph), 'phone: no sideways scrolling');
   await ph.goto(BASE + 'argus'); await ph.locator('.card').first().waitFor();

@@ -4,7 +4,7 @@
 const {BASE, check, page, noOverflow, shot, run} = require('./lib');
 const settled = p => p.waitForFunction(() => { const h = document.querySelector('#main .home'); return h && !/Checking…|Asking every section/.test(h.textContent); });
 const settle = fn => async r => { try { await fn(r); } catch (e) { if (!/closed|disposed/i.test(String(e && e.message))) throw e; } };
-// Open needs something to open: a player and a link when the server has none (no media.json or links.json in the fixture)
+// a player and a link when the server has none (no media.json or links.json in the fixture): since 4.54.0 they are in More, not on Today
 const OPEN = {media: [{id: 'jellyfin', name: 'Jellyfin', what: 'Films', href: 'https://films.example/web/'}], links: [{name: 'Notes', what: 'Pages', href: '/notes-test/'}]};
 // calm: a calm morning, as in tests/today-layout.test.js: nothing failed, no alerts, every section's own line needing nothing
 async function fixture(p, calm) {
@@ -23,11 +23,10 @@ run(async b => {
   const order = await t.evaluate(() => [...document.querySelector('#main .home').children].map(e => e.className.split(' ')[0] + (e.classList.contains('first') ? '.first' : '')));
   check(await t.locator('.home.phone').count() === 1, 'a phone draws Today in its own order (.home.phone)');
   check(order.filter(c => c !== 'people-problem')[0] === 'needs.first', `what needs you comes first (${order.join(', ')})`);
-  check(await t.locator('.home .places').count() === 0, 'no Sections tiles on a phone (the bottom bar reaches every section)');
-  check(order[order.length - 1] === 'open', `Open is last (${order.join(', ')})`);
-  check(await t.locator('.home .open #editToday').count() === 1, 'Edit Today sits beside Open\'s heading');
-  check(await t.locator('.home .open .openlink small').evaluateAll(s => s.length > 0 && s.every(e => getComputedStyle(e).display === 'none')), "Open's chips without their small words");
-  const ql = t.locator('.home > a.qline[data-id="mentor"]');
+  // 4.54.0 (docs/home.md "One way to each place"): no tiles, no Open list and no Edit Today on Today; the sections' lines are last
+  check(await t.locator('.home .places, .home .place, .home .open, #main #editToday').count() === 0, 'no tiles, no Open list and no Edit Today on Today (they are in More)');
+  check(order[order.length - 1] === 'news', `the sections' lines are last (${order.join(', ')})`);
+  const ql = t.locator('.home .news a.qline[data-id="mentor"]');
   check(await ql.count() === 1 && /Mentor/.test(await ql.textContent()) && /\/mentor$/.test(await ql.getAttribute('href')), `a quiet section with something to say is one line: "${(await ql.count()) ? (await ql.textContent()).replace(/\s+/g, ' ').trim() : 'none'}"`);
   const qh = await ql.evaluate(e => Math.round(e.getBoundingClientRect().height)).catch(() => 0);
   check(qh >= 44, `and a 44 px target (${qh} px)`);
@@ -56,7 +55,8 @@ run(async b => {
   check(await noOverflow(t), '375: no sideways scrolling');
   // turning wider draws the computer layout again, and back
   await t.setViewportSize({width: 1024, height: 768}); await t.waitForTimeout(400);
-  check(await t.locator('.home.phone').count() === 0 && await t.locator('.home .places').count() === 1, 'wider than a phone: the Sections tiles are back');
+  check(await t.locator('.home.phone').count() === 0 && await t.locator('.home .places, .home .place').count() === 0 && await t.locator('.home .news a.qline').count() > 0,
+    'wider than a phone: the same lines, still no tiles (4.54.0)');
   await t.setViewportSize({width: 412, height: 915}); await t.waitForTimeout(400);
   check(await t.locator('.home.phone').count() === 1, 'narrow again: the phone order again');
   check(t.errors.length === 0, `no page errors (${t.errors.join(' | ')})`);

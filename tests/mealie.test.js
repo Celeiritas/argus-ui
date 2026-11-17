@@ -22,13 +22,13 @@ run(async b => {
     const pl = st.plugins.find(x => x.id === 'mealie');
     check(pl && pl.kind === 'server' && pl.name === 'Mealie' && !pl.agent, 'Mealie is a bundled server plugin with its own section, no god\'s name');
 
-    // 1. no token file: Today's tile says so, and the section says how
+    // 1. no token file: Today's line says so, and the section says how
     const line = async () => (await (await p.request.get(BASE + 'api/mealie/status')).json());
     check(JSON.stringify(await line()) === JSON.stringify({line: 'Not set up yet: make an API token in Mealie', needs: false, action: ''}), 'no token: "Not set up yet", never "needs you"');
     await p.goto(BASE + 'home');
-    const tile = p.locator('.place[data-id="mealie"]');
+    const tile = p.locator('.news a.qline[data-id="mealie"]');           // its line on Today (4.54.0: no tiles)
     await tile.filter({hasText: 'Not set up'}).waitFor({timeout: 5000}).catch(() => {});
-    check(await tile.count() === 1 && /Not set up yet/.test(await tile.locator('.pl').textContent()) && await tile.locator('.pw b').textContent() === 'Mealie', 'Today: a Mealie tile with its line');
+    check(await tile.count() === 1 && /Not set up yet/.test(await tile.locator('.qt').textContent()) && await tile.locator('.qw b').textContent() === 'Mealie', 'Today: a Mealie line under Sections');
     check(await p.locator('.need', {hasText: 'Mealie'}).count() === 0, 'and no row in "Needs you"');
     await p.goto(BASE + 'mealie'); await p.locator('.mealie .empty').waitFor({timeout: 5000});
     check(/Not set up yet/.test(await p.locator('.mealie .empty b').textContent()) && /API Tokens/.test(await p.locator('.mealie .empty').textContent()), 'the section: Not set up yet, and where to make the token');
@@ -37,7 +37,7 @@ run(async b => {
     fs.writeFileSync(TOKEN, SECRET + '\n');
     check((await line()).line === 'Tonight: Lentil soup', `with a token: "${(await line()).line}"`);
     await p.goto(BASE + 'home'); await tile.filter({hasText: 'Tonight'}).waitFor({timeout: 5000}).catch(() => {});
-    check(/Tonight: Lentil soup/.test((await tile.locator('.pl').textContent()).replace(/ /g, ' ')), 'Today: the tile says tonight\'s meal');
+    check(/Tonight: Lentil soup/.test((await tile.locator('.qt').textContent()).replace(/ /g, ' ')), 'Today: the line says tonight\'s meal');
     await p.goto(BASE + 'mealie'); await p.locator('.mealie .day').first().waitFor({timeout: 5000});
     const days = await p.locator('.mealie .day').evaluateAll(ds => ds.map(d => [d.querySelector('h4').textContent, [...d.querySelectorAll('.meal')].map(m => m.querySelector('.kind').textContent + ': ' + m.lastElementChild.textContent.trim())]));
     check(days.length === 2 && days[0][0] === 'Today' && JSON.stringify(days[0][1]) === '["Breakfast: Porridge","Dinner: Lentil soup"]',
@@ -75,7 +75,7 @@ run(async b => {
     scenario({mode: 'ok', plan: [{...dinner, recipe: {name: odd, slug: 'b-x'}}]}); await sleep(5200);
     await ph.locator('.mealie .mealcheck').click(); await ph.locator('.mealie .mealsum', {hasText: 'Tonight: <b>'}).waitFor({timeout: 5000}).catch(() => {});
     await p.goto(BASE + 'home'); await tile.filter({hasText: 'Tonight: <b>'}).waitFor({timeout: 5000}).catch(() => {});
-    check((await tile.locator('.pl').textContent()).replace(/\u00a0/g, ' ').includes('Tonight: ' + odd) && await tile.locator('.pl b').count() === 0, 'and on Today\'s tile');
+    check((await tile.locator('.qt').textContent()).replace(/\u00a0/g, ' ').includes('Tonight: ' + odd) && await tile.locator('.qt b').count() === 0, 'and on Today\'s line');
     check(p.errors.length === 0 && ph.errors.length === 0, 'no page errors ' + p.errors.concat(ph.errors).join(' | '));
   } finally {
     aside(TOKEN); scenario({mode: 'ok', plan: []});                      // later checks see "Not set up yet"

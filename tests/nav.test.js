@@ -103,8 +103,8 @@ run(async b => {
   await p.goto(BASE); await p.waitForTimeout(500);
   await p.evaluate(() => { S.role = 'learner'; render(); }); await p.waitForTimeout(400);   // the rows a learner does not see fade out first
   check(JSON.stringify((await slots(p)).map(x => x[0])) === '["Today","Mentor"]' && await p.locator('#tabbar [data-more]').count() === 0, 'a learner: the bar shows Today and Mentor, and no More');
-  const lr = await p.locator('#main .need:not(.leaving), #main .place').evaluateAll(es => es.map(e => e.querySelector('[data-id]')?.dataset.id || e.dataset.id || e.textContent.trim().slice(0, 20)));
-  check(await p.locator('#main .need:not(.leaving) a.go', {hasText: /failed|Review/}).count() === 0 && await p.locator('#main .place[data-id="argus"]').count() === 0, `a learner: no failed tasks, deploys or Argus on Today (${lr.join(' | ')})`);
+  const lr = await p.locator('#main .need:not(.leaving), #main .news a.qline').evaluateAll(es => es.map(e => e.querySelector('[data-id]')?.dataset.id || e.dataset.id || e.textContent.trim().slice(0, 20)));
+  check(await p.locator('#main .need:not(.leaving) a.go', {hasText: /failed|Review/}).count() === 0 && await p.locator('#main .news a.qline[data-id="argus"]').count() === 0, `a learner: no failed tasks, deploys or Argus on Today (${lr.join(' | ')})`);
   await p.setViewportSize({width: 1440, height: 900}); await p.evaluate(() => render());
   check(JSON.stringify(await p.locator('#realms a.realm b').allTextContents()) === '["Today","Mentor"]', 'a learner on a wide screen: the strip shows the same two');
   await p.evaluate(() => { window.chimed = 0; alarmChime = () => { window.chimed++; }; S.jobs.forEach((j, i) => { if (i < 2) j.state = 'failed'; }); look.retarget(); });

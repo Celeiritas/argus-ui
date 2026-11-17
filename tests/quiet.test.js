@@ -26,21 +26,21 @@ run(async b => {
   await p.goto(BASE); await settled(p); await p.waitForTimeout(400);
   const name = await p.evaluate(j => S.jobs.find(x => x.job === j).name, JOB);
   const row = () => p.locator('#main .need:not(.leaving)', {hasText: name});    // a row that leaves fades out first
-  const tile = id => p.locator(`#main .place[data-id="${id}"]`);
+  const qline = id => p.locator(`#main .news a.qline[data-id="${id}"]`);   // a section's line on Today (4.54.0: no tiles)
 
   // ---- 3. Mentor quiet ----
   check(await p.locator('#main .need', {hasText: 'Mentor'}).count() === 0 && await p.locator('#main .need a.go', {hasText: 'Study'}).count() === 0,
     'Mentor with 6 cards due is not in "things need you": no row, no Study button');
   check(await p.locator('#needs-h').textContent() === '1 thing needs you', `the count is the failed task alone (${await p.locator('#needs-h').textContent()})`);
   check(await p.locator('#tabbar .tab[data-id=mentor] .tabcount').count() === 0 && await p.locator('#tabbar .tab[data-id=mentor] .sr').count() === 0, 'no count or dot on Mentor in the bar');
-  // a phone has no Sections tiles (4.52.0, docs/home.md "On a phone"): a quiet section keeps its line as one line of its own
-  const ql = p.locator('#main .home > a.qline[data-id="mentor"]');
+  // a quiet section keeps its line under Sections (docs/home.md "One way to each place")
+  const ql = qline('mentor');
   check(await ql.count() === 1 && /6\scards due/.test(await ql.textContent()), `Mentor's line still says it on a phone: "${await ql.textContent().catch(() => '')}"`);
   const real = await (await p.request.get(BASE + 'api/mentor/status')).json();
   check(real.needs === false && real.action === '' && !('count' in real), `the server says the same to the owner: never needs him, no button, no count (${JSON.stringify(real)})`);
   await p.setViewportSize({width: 1440, height: 900}); await p.evaluate(() => render()); await p.waitForTimeout(300);
   check(await p.locator('#realms a.realm[data-id=mentor] .dot').count() === 0, 'no dot on Mentor in the wide strip');
-  check(await tile('mentor').count() === 1 && /6\u00a0cards due/.test(await tile('mentor').locator('.pl').textContent()), `on a computer Mentor's tile still says it: "${await tile('mentor').locator('.pl').textContent().catch(() => '')}"`);
+  check(await qline('mentor').count() === 1 && /6\u00a0cards due/.test(await qline('mentor').locator('.qt').textContent()), `on a computer Mentor's line still says it: "${await qline('mentor').locator('.qt').textContent().catch(() => '')}"`);
   await p.setViewportSize({width: 412, height: 915}); await p.evaluate(() => render()); await p.waitForTimeout(300);
 
   // ---- 4. Known, low priority: from Today's row ----
@@ -93,10 +93,11 @@ run(async b => {
 
   // ---- it comes back when it works again and then fails, or when it fails another way ----
   check((await known(p, true)).status() === 200 && !!(await jobNow(p)).known, 'marked again');
-  // Argus's tile counts it as known (a computer: a phone has no tiles, 4.52.0; before, this was read at 412 px right after the mark)
+  // Argus's live line (its More row, core.js placeLine; it had a tile on Today until 4.54.0) counts it as known
   await p.setViewportSize({width: 1024, height: 768}); await p.evaluate(() => refresh());
-  await p.waitForFunction(() => /known/.test(document.querySelector('#main .place[data-id="argus"] .pl')?.textContent || ''), null, {timeout: 6000}).catch(() => {});
-  check(/^All \d+\u00a0tasks well\u00a0· 1\u00a0known$/.test(await tile('argus').locator('.pl').textContent().catch(() => '')), `Argus's tile: "${await tile('argus').locator('.pl').textContent().catch(() => '')}", the dot stays with "well" and "1 known" wraps as one piece`);
+  await p.waitForFunction(() => /known/.test(placeLine({id: 'argus'})), null, {timeout: 6000}).catch(() => {});
+  const al = await p.evaluate(() => placeLine({id: 'argus'}));
+  check(/^All \d+ tasks well · 1 known$/.test(al), `Argus's line: "${al}"`);
   await p.setViewportSize({width: 412, height: 915}); await p.evaluate(() => render()); await p.waitForTimeout(300);
   units(u => Object.assign(u[JOB], {Result: 'success', ActiveState: 'inactive', ExecMainStatus: '0'}));
   check(!(await jobNow(p)).known, 'it ran well: the mark is gone');

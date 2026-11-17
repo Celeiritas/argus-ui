@@ -160,13 +160,13 @@ run(async b => {
 
     // ---- Edit Today with the line on Today (review finding 3) ----
     p = await today(b, 412, 915);
-    await p.locator('#editToday').click(); await p.locator('#main .home.edit').waitFor();
+    await p.locator('[data-more]:visible').first().click(); await p.locator('#editToday').click(); await p.locator('#main .home.edit').waitFor();   // Edit Today is in More (4.54.0)
     await p.waitForTimeout(11000);                 // past one device ask (10 s) and a page refresh (15 s from load)
     check(await p.locator('#main .home.edit').count() === 1 && await p.locator('#main .edit .edtop [data-ed=cancel]').count() === 1,
       'Edit Today stays open while the device list is asked for again');
-    await p.locator('#main .edit .edtop [data-ed=cancel]').click(); await p.locator('#editToday').waitFor(); await p.waitForTimeout(300);
+    await p.locator('#main .edit .edtop [data-ed=cancel]').click(); await p.locator('#main .home:not(.edit)').waitFor(); await p.waitForTimeout(300);
     check(await p.locator('.home .devline').count() === 1 && (await chips(p)).join() === "3 online,1 offline,3 can't tell", 'after Cancel the device line is back');
-    check(await p.evaluate(() => document.activeElement?.id) === 'editToday', 'and the keyboard is back on Edit Today');
+    check(await p.evaluate(() => !!document.activeElement?.matches('[data-more]')), 'and the keyboard is back on More, where Edit Today was');
     const tl = await p.evaluate(() => home.tileList().map(e => e.id));
     check((await p.request.post(BASE + 'api/today', {data: {tiles: {hidden: tl}}})).ok(), 'save a Today with every tile hidden');
     await p.close();
