@@ -183,6 +183,13 @@ class LinkGroup(Base):
                                         {'name': 'Num', 'href': '/num/', 'group': 7}])
         self.assertEqual([(x['name'], x['group']) for x in a.state()['links']], [('Recipes', 'Kitchen'), ('Lab', ''), ('Odd', 'g' * 40), ('Num', '7')])
 
+    def test_a_link_is_a_section_only_when_it_says_true(self):
+        # 4.54.0: "section": true puts a link in the sections (the computer's top bar, More's sections on a phone); a string, a
+        # number or nothing leaves it a plain link in More's Other pages
+        put(os.environ['ARGUS_LINKS'], [{'name': 'Studio', 'href': '/studio-test/', 'section': True}, {'name': 'S', 'href': '/s/', 'section': 'true'},
+                                        {'name': 'N', 'href': '/n/', 'section': 1}, {'name': 'Plain', 'href': '/p/'}])
+        self.assertEqual([(x['name'], x['section']) for x in a.state()['links']], [('Studio', True), ('S', False), ('N', False), ('Plain', False)])
+
 
 class Clip(unittest.TestCase):
     # 4.45.0: status v2's line (160) and action (32) are cut at a word with "…", never in the middle of one

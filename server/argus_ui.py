@@ -445,7 +445,8 @@ def links():
         name, what, href = str(x.get('name') or '').strip()[:40], str(x.get('what') or '').strip()[:40], str(x.get('href') or '').strip()
         group = str(x.get('group') or '').strip()[:40]     # optional: Today's Open puts entries with the same group under one label (4.45.0)
         if name and (re.fullmatch(r'/[\w./~%+-]*', href) and not href.startswith('//') or re.fullmatch(r'https://[^\s"\'<>]+', href)):
-            out.append(dict(name=name, what=what, href=href, group=group))
+            # "section": true (JSON true only) makes it a section: the computer's top bar, More's sections on a phone (4.54.0)
+            out.append(dict(name=name, what=what, href=href, group=group, section=x.get('section') is True))
     return out[:8]
 
 def clip(s, n):
