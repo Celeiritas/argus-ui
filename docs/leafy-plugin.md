@@ -184,6 +184,8 @@ A server plugin whose id is one of the theme's agent keys and whose manifest say
 
 **Controllers** is a small bundled plugin that is not an agent (`plugins/controllers/`, docs/controllers.md): its own section and a Home place, read-only, with a Python test that runs without a browser (`tests/controllers_test.py`). It was called Pads until 4.33.0; a section that changes its id keeps its old address through `MOVED` in `server/argus_ui.py` (a redirect from `<base>/<old id>`, off when a plugin of yours has the old id).
 
+**Mealie** (`plugins/mealie/`, docs/mealie.md, 4.53.0) is the first integration: a bundled server plugin that reads another app (the owner's Mealie meal plan) on the server with a token from a file under `~/.config/argus-ui/`, and gives the page only what it shows, never the token. It is the worked example of an outside service: timeouts, a line for every failure, no redirects followed, nothing logged, and a stand-in server for its tests (`tests/fixtures/fake_mealie.py`).
+
 Leaving a section loads a new page, so a plugin's timers and listeners end with it; there is no `hide()`.
 
 ## Checking a plugin

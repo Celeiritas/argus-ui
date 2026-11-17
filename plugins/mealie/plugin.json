@@ -1,0 +1,10 @@
+{
+  "id": "mealie",
+  "name": "Mealie",
+  "subtitle": "Meals this week",
+  "kind": "server",
+  "server": "plugin.py",
+  "page": "page.js",
+  "style": "page.css",
+  "version": "1.0.0"
+}
