@@ -1,5 +1,16 @@
 # Changelog
 
+## 4.52.1 – 2026-11-16
+Small fixes from the open list (after 4.52.0, the phone-first layout; nothing here changes the page's layout).
+- **Devices: your own tailnet first.** A machine shared into your tailnet from someone else's with the same first name (their `desk`) no longer makes your own device *Can't tell*: names in your own tailnet (Tailscale's `MagicDNSSuffix`, else the server's own DNS name) are matched first, then shared ones, then host names. A shared machine is never taken for your machine added again (review R2, finding 2).
+- **Devices: the names are worked out once per list**, not once per device (review R2, finding 4).
+- **People, before any people file is installed** (re-review R5b, notes a1, a2, b1):
+  - A request through Serve from the server itself is recognised when `X-Forwarded-For` carries a port (`127.0.0.1:443`, `[::1]:443`).
+  - The memory of which addresses are the server's own starts over past 1024 entries, and a header longer than 16 entries is looked at only at its first 8 and last 8.
+  - The last good copy of the people file is written through a temp file of its own (mode 600, never an existing file or link), not the fixed name `people.last-good.json.tmp`, and none is left behind.
+- **Phone alerts on Windows**: reading the devices file takes the same lock as every write, so a write no longer fails with *PermissionError* while another thread reads (review R8c). Linux behaves as before.
+- Tests: `tests/devices_test.py` (shared machines, the suffix, built once), `tests/identity_test.py` (ports, the limits, the temp file), `tests/push_test.py` (a read waits for a write; reads and writes at once). docs/devices.md and docs/people.md say the new rules.
+
 ## 4.52.0 – 2026-11-16
 On a phone, Today fits one screen and Watch is much shorter, in the owner's order of what matters (2026-11-16: "less scrolling", "visual hierarchy", and the media players are low on a phone because they have apps). Wider screens are unchanged.
 - **Today on a phone:** the name and the Desktop/Game switch share one line, the short date and weather the next. Something that needs you comes first, framed when it is broken; when nothing does, one band says *Nothing needs you* and the server's line together. Then the devices line, then one line for each quiet section with something to say (*Mentor · 6 cards due*) in place of the Sections tiles (the bottom bar reaches every section). *Open* comes last, its chips without their small words, with *Edit Today* beside its heading.

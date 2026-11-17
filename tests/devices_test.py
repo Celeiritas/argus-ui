@@ -318,6 +318,60 @@ class Match(unittest.TestCase):
     def test_host_name_still_matches_when_no_dns_name_takes_it(self):
         self.both_orders([node('pixel', 'phone-one', True)], 'phone-one', ('online', None))
 
+    # review R2, finding 2: a machine shared in from another tailnet never hides your own machine of the same name
+    def shared(self, dns, host, online=True, **kw):
+        return dict({'DNSName': f'{dns}.tailnet.ts.net.', 'HostName': host, 'Online': online}, **kw)
+
+    def test_a_shared_machine_does_not_hide_your_own(self):
+        for mine_on, want in ((True, ('online', None)), (False, ('offline', None))):
+            self.both_orders([node('desk', 'desk', mine_on), self.shared('desk', 'desk', not mine_on)], 'desk', want)
+
+    def test_a_shared_machine_alone_still_matches(self):
+        # nothing of yours is called "ink": the shared machine's own DNS name still answers (a device you listed on purpose)
+        self.both_orders([self.shared('ink', 'ink', True)], 'ink', ('online', None))
+
+    def test_two_shared_machines_alike_cant_tell(self):
+        other = {'DNSName': 'ink.tailnet-name.ts.net.', 'HostName': 'ink', 'Online': False}
+        self.both_orders([self.shared('ink', 'ink', True), other], 'ink', ('unknown', D.TWO))
+
+    def test_the_suffix_from_magicdnssuffix_or_from_self(self):
+        doc = lambda **kw: dict({'Self': node('this-server', 'this-server')}, **kw)
+        self.assertEqual(D.own_suffix(doc()), 'example.ts.net', 'from Self\'s DNSName')
+        self.assertEqual(D.own_suffix(doc(MagicDNSSuffix='Example.TS.net')), 'example.ts.net', 'MagicDNSSuffix first, case folded')
+        self.assertIsNone(D.own_suffix({'Self': {'HostName': 'x'}}), 'neither: None')
+        self.assertIsNone(D.own_suffix({'Self': 'junk', 'MagicDNSSuffix': 5}))
+        # MagicDNSSuffix names the shared tailnet (an odd answer): that one is "yours", the other is shared; still one answer
+        d = {'BackendState': 'Running', 'MagicDNSSuffix': 'tailnet.ts.net', 'Self': {'HostName': 'me'},
+             'Peer': {'a': node('desk', 'desk', False), 'b': self.shared('desk', 'desk', True)}}
+        self.assertIs(D.peers(d)['desk'], d['Peer']['b'])
+
+    def test_no_suffix_known_keeps_the_old_rule(self):
+        # Self without a DNS name and no MagicDNSSuffix: every DNS name in one pass, so two "desk"s are Can't tell
+        me = {'HostName': 'this-server', 'Online': True}
+        self.both_orders([node('desk', 'desk', True), self.shared('desk', 'desk', False)], 'desk', ('unknown', D.TWO), self_node=me)
+
+    def test_a_shared_machine_is_never_the_reinstalled_twin(self):
+        # your old "pc" is off; a shared machine with HostName "pc" is online: that is not your PC added again, so Offline
+        self.both_orders([node('pc', 'pc', False), self.shared('pc-laptop', 'pc', True)], 'pc', ('offline', None))
+        # your own re-added "pc-1" still makes it Can't tell, with a shared one around
+        self.both_orders([node('pc', 'pc', False), node('pc-1', 'pc', True), self.shared('pc', 'pc', False)], 'pc', ('unknown', D.TWIN))
+
+    def test_the_names_are_built_once_per_list(self):
+        # review R2, finding 4: peers() once for the whole list, not once a device
+        doc = {'BackendState': 'Running', 'Self': node('this-server', 'this-server'),
+               'Peer': {str(i): node(f'pc{i}', f'pc{i}', i % 2 == 0) for i in range(6)}}
+        devs = [{'name': f'P{i}', 'kind': 'pc', 'probe': 'tailscale', 'host': f'pc{i}', 'wake': False} for i in range(6)]
+        n, real = [0], D.peers
+        def counted(d): n[0] += 1; return real(d)
+        saved = D.config, D.status_doc, D.peers
+        D.config = lambda where=False: (devs, None, None)
+        D.status_doc = lambda now=None, fresh=False: (doc, None, '2026-11-16T12:00:00+00:00')
+        D.peers = counted
+        try: v = D.view()
+        finally: D.config, D.status_doc, D.peers = saved
+        self.assertEqual(n[0], 1)
+        self.assertEqual([x['status'] for x in v['devices']], ['online', 'offline'] * 3)
+
 
 class Modes(unittest.TestCase):
     """This machine's row coloured and named as the mode pill does it (core.js modeHues())."""

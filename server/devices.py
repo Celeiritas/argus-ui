@@ -196,22 +196,39 @@ def label(h):
     return h.split('.')[0].casefold() if isinstance(h, str) else ''
 
 
+def suffix(h):
+    """The tailnet part of a DNS name, case folded: "desk.example.ts.net." -> "example.ts.net"; '' for none."""
+    return h.strip().strip('.').casefold().partition('.')[2] if isinstance(h, str) else ''
+
+
+def own_suffix(doc):
+    """This tailnet's DNS suffix: Tailscale's MagicDNSSuffix, else this machine's own DNSName minus its first part; None
+    when the answer says neither (then every DNS name counts as this tailnet's, as before 4.52.1)."""
+    s = doc.get('MagicDNSSuffix')
+    if isinstance(s, str) and s.strip('. '): return s.strip().strip('.').casefold()
+    me = doc.get('Self')
+    return (suffix(me.get('DNSName')) or None) if isinstance(me, dict) else None
+
+
 AMBIGUOUS = {'_two': True}             # two nodes answer to one name: Argus can't tell which one the device is
 
 
 def peers(doc):
-    """{host name, case folded: node}: every peer and this machine itself. Two passes, so the answer never depends on the
-    order Tailscale lists its peers: first the first part of each node's DNSName (Self too; Tailscale keeps these unique,
-    adding "-1" to a re-added machine), then each HostName that no DNS name took. A name two nodes claim in the same pass
-    (two phones both called "localhost") is AMBIGUOUS, never either one's status."""
+    """{host name, case folded: node}: every peer and this machine itself. Passes, so the answer never depends on the order
+    Tailscale lists its peers: first the first part of the DNSName of each node in this tailnet (Self too; Tailscale keeps
+    these unique, adding "-1" to a re-added machine), then that of each node shared in from another tailnet (review R2,
+    finding 2: someone's shared "desk" must not hide your own "desk"), then each HostName that no DNS name took. A name
+    two nodes claim in the same pass (two phones both called "localhost") is AMBIGUOUS, never either one's status."""
     nodes = list((doc.get('Peer') or {}).values()) if isinstance(doc.get('Peer'), dict) else []
     if isinstance(doc.get('Self'), dict): nodes.append(dict(doc['Self'], _self=True))
     nodes = [n for n in nodes if isinstance(n, dict)]
+    own = own_suffix(doc)
+    mine = lambda n: own is None or suffix(n.get('DNSName')) == own
     out = {}
-    for field in ('DNSName', 'HostName'):
+    for field, keep in (('DNSName', mine), ('DNSName', lambda n: not mine(n)), ('HostName', lambda n: True)):
         claims = {}
         for n in nodes:
-            k = label(n.get(field))
+            k = label(n.get(field)) if keep(n) else ''
             if k and k not in out: claims.setdefault(k, []).append(n)
         out.update({k: ns[0] if len(ns) == 1 else AMBIGUOUS for k, ns in claims.items()})
     return out
@@ -220,10 +237,13 @@ def peers(doc):
 def twin_online(doc, n, host):
     """True when a machine other than n, online now, has the HostName host. That is a reinstalled or re-added machine:
     Tailscale keeps the old node (offline) under the DNS name "host" and calls the new one "host-1". The old node's Offline
-    would be a guess about a device that may well be on, so its row says Can't tell and why (review R2, finding 1)."""
+    would be a guess about a device that may well be on, so its row says Can't tell and why (review R2, finding 1). A machine
+    shared in from another tailnet is never that twin: a re-added machine stays in its own tailnet."""
     nodes = list((doc.get('Peer') or {}).values()) if isinstance(doc.get('Peer'), dict) else []
     if isinstance(doc.get('Self'), dict): nodes.append(doc['Self'])
-    return any(isinstance(m, dict) and m is not n and label(m.get('HostName')) == host
+    tn = suffix(n.get('DNSName'))
+    other_tailnet = lambda m: bool(tn) and bool(suffix(m.get('DNSName'))) and suffix(m.get('DNSName')) != tn
+    return any(isinstance(m, dict) and m is not n and label(m.get('HostName')) == host and not other_tailnet(m)
                and (m is doc.get('Self') or m.get('Online') is True) for m in nodes)   # n is one of these dicts (peers())
 
 
@@ -259,9 +279,10 @@ def mode_row(mode):
     return hues(ids)[ids.index(cur)], lab if lab.casefold().endswith('mode') else f'{lab} mode'
 
 
-def one(d, doc, why, mode):
+def one(d, doc, why, mode, by_name=None):
     """One device's row for the page. When Tailscale could not be asked (doc None), a Tailscale device's row is "can't
-    tell" with no reason of its own: view() says that reason once, for the whole list."""
+    tell" with no reason of its own: view() says that reason once, for the whole list. by_name is peers(doc), which view()
+    builds once for the whole list (review R2, finding 4); without it, it is built here."""
     row = {'name': d['name'], 'kind': d['kind'], 'self': d['probe'] == 'self', 'last_seen': None, 'why': None, 'wake': d['wake']}
     if d['probe'] == 'self':
         m = mode_row(mode)
@@ -269,7 +290,7 @@ def one(d, doc, why, mode):
         return dict(row, status='online', label='Online', why='This machine')
     if d['probe'] == 'none': return dict(row, status='unknown', label=LABEL['unknown'], why='Argus does not check this one')
     if doc is None: return dict(row, status='unknown', label=LABEL['unknown'])
-    n = peers(doc).get(d['host'].casefold())
+    n = (by_name if by_name is not None else peers(doc)).get(d['host'].casefold())
     if n is None: return dict(row, status='unknown', label=LABEL['unknown'], why='Not on the Tailscale list')
     if n is AMBIGUOUS: return dict(row, status='unknown', label=LABEL['unknown'], why=TWO)
     if n.get('_self'): return dict(row, status='online', label='Online', why='This machine')
@@ -292,7 +313,8 @@ def view(mode_probe=None, now=None, fresh=False):
     if any(d['probe'] == 'self' for d in devices) and mode_probe:
         try: mode = mode_probe()
         except Exception: mode = None
-    rows = [one(d, doc, why, mode) for d in devices]
+    by_name = peers(doc) if doc is not None else None          # once for the whole list, not once a device
+    rows = [one(d, doc, why, mode, by_name) for d in devices]
     return {'set_up': True, 'problem': None, 'file': None, 'device': None, 'probe_problem': why if doc is None else None,
             'checked': checked or datetime.now(timezone.utc).isoformat(timespec='seconds'), 'devices': rows}
 
