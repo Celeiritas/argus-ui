@@ -1,10 +1,13 @@
 // One way to each place (4.54.0, docs/home.md): the bars do the navigating, Today says what needs you. Checked at a phone
 // (412), a laptop (1024), a computer (1440) and 16:9 (1920):
 //   Today: no tiles, no Open list, no Edit Today; what needs you sorted by what it costs to leave it (a backup with no
-//     off-site copy above a skipped workout); one line per section with news, each ending in the chevron, 44 px or more;
+//     off-site copy above a skipped workout); one strong button: only the top need's main button is filled gold, every
+//     other need's buttons outlined, 44 px or more, readable, with a visible focus ring; one line per section with news,
+//     each ending in the chevron, 44 px or more;
 //   the phone's bottom bar: Today, Argus, Mentor, Zeus, More;
-//   the computer's top bar: the sections, then the one that opens elsewhere (links.json "section": true, here a placeholder
-//     "Studio Test") last, with the opens-elsewhere mark; never a media player or a plain link;
+//   the computer's top bar: the sections, the one that opens elsewhere (links.json "section": true, here a placeholder
+//     "Studio Test") right after Zeus and on the bar itself, with the opens-elsewhere mark; never a media player or a plain
+//     link;
 //   More, top to bottom: the sections the bar leaves out (each with its live line, and its count when it needs you), Media,
 //     Other pages, then Settings: Phone alerts, Mute sounds (a phone; the strip has its own), Edit Today.
 // The fixture: two players and two links (placeholders, written to the test HOME and removed after), Mnemosyne and Chiron
@@ -51,6 +54,28 @@ run(async b => {
       check(lines.length > 0 && lines.every(l => l.chev && l.h >= 44), `${w}: every section line ends in the chevron and is 44 px or more (${lines.map(l => `${l.id} ${l.h}${l.chev ? '>' : ''}`).join(', ')})`);
       check(lines.some(l => l.id === 'mentor' && l.chev), `${w}: Mentor's line has its chevron`);
       check(!lines.some(l => l.id === 'memory' || l.id === 'chiron'), `${w}: a section with a row above has no line under Sections`);
+      // one strong button (the owner's call of 2026-11-17): the top need's main button (its fix, else its way there) is the
+      // only filled one; every other need's buttons are outlined, the same 44 px, words readable on the card, an edge that reads
+      const acts = await p.locator('#main .needlist .need:not(.leaving)').evaluateAll(es => {
+        const lum = c => { const v = (c.match(/[\d.]+/g) || []).slice(0, 3).map(Number).map(x => { x /= 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; });
+          return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; };
+        const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+        const card = getComputedStyle(document.querySelector('#main .needs')).backgroundColor;
+        return es.map(li => [...li.querySelectorAll('.nacts .fixbtn, .nacts .go')].map(b => { const s = getComputedStyle(b);
+          const filled = s.backgroundColor === 'rgb(255, 226, 122)', bg = filled ? s.backgroundColor : card;
+          return {filled, h: Math.round(b.getBoundingClientRect().height), text: Math.round(ratio(s.color, bg) * 10) / 10,
+            edge: filled ? 99 : Math.round(ratio(s.borderTopColor, card) * 10) / 10, border: parseFloat(s.borderTopWidth) >= 1 && s.borderTopStyle === 'solid'}; })); });
+      const say = acts.map((r, i) => `${i}: ${r.map(x => `${x.filled ? 'filled' : 'outlined'} ${x.h}px text ${x.text} edge ${x.edge}`).join(' + ')}`).join(' | ');
+      check(acts.length >= 2 && acts[0][0]?.filled && acts[0].filter(x => x.filled).length === 1 && acts.slice(1).every(r => r.length && r.every(x => !x.filled)),
+        `${w}: only the top need's main button is filled; every other need's buttons are outlined (${say})`);
+      check(acts.flat().every(x => x.h >= 44 && x.text >= 4.5 && (x.filled || (x.border && x.edge >= 3))),
+        `${w}: every need button is 44 px or taller with readable words, and an outlined one has an edge that reads (${say})`);
+      await p.keyboard.press('Shift');   // a key first, so the browser shows the ring as it does for a keyboard user
+      const second = p.locator('#main .needlist .need:not(.leaving)').nth(1).locator('.nacts .fixbtn, .nacts .go').first();
+      await second.focus();
+      const ring = await second.evaluate(e => { const s = getComputedStyle(e); return {fv: e.matches(':focus-visible'), style: s.outlineStyle, width: parseFloat(s.outlineWidth), color: s.outlineColor}; });
+      check(ring.fv && ring.style !== 'none' && ring.width >= 2, `${w}: an outlined need button shows the focus ring (${JSON.stringify(ring)})`);
+      await second.evaluate(e => e.blur()); await p.evaluate(() => scrollTo(0, 0));
       check(await noOverflow(p), `${w}: Today does not scroll sideways`);
       if (phone) await shot(p, 'nav-phone-today-needs');
       if (w === 1440) await shot(p, 'nav-1440-today');
@@ -63,8 +88,9 @@ run(async b => {
       } else {
         const pills = await p.locator('#realms a.realm').evaluateAll(es => es.map(e => ({id: e.dataset.id, word: e.querySelector('b')?.textContent, link: e.classList.contains('link'),
           sr: e.querySelector('.sr')?.textContent || '', over: e.classList.contains('over'), shown: !!e.offsetWidth})));
-        const last = pills[pills.length - 1] || {};
-        check(last.word === 'Studio Test' && last.link && /opens another page/.test(last.sr), `${w}: the section that opens elsewhere is the top bar's last pill, with the opens-elsewhere mark (${pills.map(x => x.word + (x.over ? ' (in More)' : '')).join(', ')})`);
+        const zi = pills.findIndex(x => x.id === 'throne'), st = pills[zi + 1] || {};
+        check(zi >= 0 && st.word === 'Studio Test' && st.link && /opens another page/.test(st.sr) && !st.over && st.shown,
+          `${w}: the section that opens elsewhere sits right after Zeus, on the top bar itself (not folded into More), with the opens-elsewhere mark (${pills.map(x => x.word + (x.over ? ' (in More)' : '')).join(', ')})`);
         check(!pills.some(x => /Jellyfin|Audiobookshelf|Notes/.test(x.word)), `${w}: no media player and no plain link on the top bar`);
       }
 
@@ -118,11 +144,12 @@ run(async b => {
       const pills = async () => { await wp.goto(BASE + 'home'); await settled(wp); await wp.evaluate(() => document.fonts.ready); await wp.waitForTimeout(300);
         return wp.locator('#realms .realm').count(); };
       for (drop = 0; await pills() > REAL + 1 && drop < 40; drop++);
-      const bar = await wp.evaluate(() => { const ps = [...document.querySelectorAll('#realms .realm')], s = ps[ps.length - 1], r = document.querySelector('.realms');
+      const bar = await wp.evaluate(() => { const ps = [...document.querySelectorAll('#realms .realm')], s = document.querySelector('#realms .realm.link'), r = document.querySelector('.realms');
         return {n: ps.length, word: s?.querySelector('b')?.textContent, over: s?.classList.contains('over'), shown: !!s?.offsetWidth, bare: r.classList.contains('bare'), compact: r.classList.contains('compact'),
+          afterZeus: !!s && s.previousElementSibling?.dataset.id === 'throne',
           folded: ps.filter(e => e.classList.contains('over')).map(e => e.querySelector('b')?.textContent)}; });
-      check(bar.n === REAL + 1 && bar.word === 'Studio Test' && bar.shown && !bar.over,
-        `1920, ${bar.n} pills (${REAL} sections and the studio): Studio Test is on the top bar itself, not folded into More (weather ${bar.bare ? 'off the strip' : 'on the strip'}, second lines ${bar.compact ? 'hidden' : 'shown'}${bar.folded.length ? ', in More: ' + bar.folded.join(', ') : ''})`);
+      check(bar.n === REAL + 1 && bar.word === 'Studio Test' && bar.afterZeus && bar.shown && !bar.over,
+        `1920, ${bar.n} pills (${REAL} sections and the studio): Studio Test is on the top bar itself right after Zeus${bar.afterZeus ? '' : ' (NOT after Zeus)'}, not folded into More (weather ${bar.bare ? 'off the strip' : 'on the strip'}, second lines ${bar.compact ? 'hidden' : 'shown'}${bar.folded.length ? ', in More: ' + bar.folded.join(', ') : ''})`);
       await shot(wp, 'nav-1920-bar');
       check(wp.errors.length === 0, `1920 trimmed: no page errors ${wp.errors.join(' | ')}`);
       await wp.close();

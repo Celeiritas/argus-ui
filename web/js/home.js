@@ -53,8 +53,10 @@ const home = (() => {
   // a row's words: the first sentence at reading size, the rest under it a size smaller (visual review 2026-11-17: a four-line
   // backup row pushed its button down a phone's screen); a row of one sentence stays as it is
   const lead = t => { const s = String(t || ''), m = s.match(/^(.+?[.!?])\s+(\S[\s\S]*)$/); return m ? [m[1], m[2]] : [s, '']; };
-  const row = (n, fresh) => { const [first, rest] = n.item ? [n.text, ''] : lead(n.text);
-    return `<li class="need ${n.level}${fresh ? ' fresh' : ''}" data-key="${esc(n.key)}"><span class="nmark">${n.mark}</span><div class="nb"><p><small>${esc(n.who)}${n.item?.when ? ` · ${esc(n.item.when)}` : ''}</small>${esc(first)}</p>${rest ? `<p class="ndetail">${esc(rest)}</p>` : ''}${n.item ? troubleLines(n.item) : ''}</div><div class="nacts">${n.item ? fixButton(n.item) : ''}<a class="go" href="${esc(n.href)}">${esc(n.label)}</a>${knownBtn(n.item)}</div></li>`; };
+  // one strong button on the page: the top row's main button is filled gold (its fix when it has one, else its way there);
+  // every other row's buttons are outlined, the same size (argus.css ".need:not(.top)", the owner's call of 2026-11-17)
+  const row = (n, fresh, top) => { const [first, rest] = n.item ? [n.text, ''] : lead(n.text);
+    return `<li class="need ${n.level}${top ? ' top' : ''}${fresh ? ' fresh' : ''}" data-key="${esc(n.key)}"><span class="nmark">${n.mark}</span><div class="nb"><p><small>${esc(n.who)}${n.item?.when ? ` · ${esc(n.item.when)}` : ''}</small>${esc(first)}</p>${rest ? `<p class="ndetail">${esc(rest)}</p>` : ''}${n.item ? troubleLines(n.item) : ''}</div><div class="nacts">${n.item ? fixButton(n.item) : ''}<a class="go" href="${esc(n.href)}">${esc(n.label)}</a>${knownBtn(n.item)}</div></li>`; };
   // a line wraps only where a reader would expect it (no-break spaces): a " · " keeps its dot on the line before, so a wrapped
   // line never starts with "·", and a count keeps its word ("1 Steam virtual", never "1" at a line's end, 4.49.0)
   const keep = s => s.replace(/ · /g, '\u00a0· ').replace(/\b(\d+) (?=\p{L})/gu, '$1\u00a0');
@@ -84,7 +86,7 @@ const home = (() => {
     const now = role() === 'owner' && typeof S.now === 'string' ? S.now : '';   // what the server is doing (the server's own words)
     const why = role() === 'owner' && typeof S.today_problem === 'string' ? S.today_problem : '';   // today.json cannot be used
     const problem = why ? `<p class="people-problem today-problem" role="status">${esc(why)}</p>` : '';
-    const rows = `<ul class="needlist">${list.map(n => row(n, seen && !seen.has(n.key))).join('')}</ul>`;
+    const rows = `<ul class="needlist">${list.map((n, i) => row(n, seen && !seen.has(n.key), i === 0)).join('')}</ul>`;
     // what needs you first, in a solid card, the server's line under it; else one band for "Nothing needs you" and that line
     const needsPart = now && !list.length ? `<section class="needs calm" aria-labelledby="needs-h"><h2 class="state" id="needs-h">${state}</h2>${nowBand(now)}${rows}</section>`
       : `<section class="needs${list.length ? ' first' : ''}" aria-labelledby="needs-h"><h2 class="state${list.length ? ' bad' : ''}" id="needs-h">${state}</h2>

@@ -50,7 +50,7 @@ run(async b => {
   check(hits === 0, 'every link on Today is at least 44 by 44 px');
 
   // links (~/.config/argus-ui/links.json on the host): a plain one sits in More under Other pages; one that says "section": true
-  // is a section that opens elsewhere, the last pill on the strip with the opens-elsewhere mark (4.54.0). Unsafe hrefs dropped
+  // is a section that opens elsewhere, a pill right after Zeus with the opens-elsewhere mark (4.54.0). Unsafe hrefs dropped
   const LK = path.join(path.dirname(process.env.FIXTURES), 'home/.config/argus-ui/links.json');
   fs.mkdirSync(path.dirname(LK), {recursive: true});
   fs.writeFileSync(LK, JSON.stringify([{name: 'Studio Test', what: 'Studio', href: '/studio-test/', section: true}, {name: 'Notes Test', what: 'Notes', href: '/notes-test/'}, {name: 'Bad', what: 'x', href: 'javascript:alert(1)'}]));
@@ -59,7 +59,7 @@ run(async b => {
   check(await lk.count() === 1 && await lk.getAttribute('href') === '/notes-test/' && /Notes Test/.test(await lk.textContent()) && await p.locator('#realmMore').isVisible(),
     'a plain link sits in More under Other pages; an unsafe href is dropped');
   check(await sec.count() === 1 && await sec.getAttribute('href') === '/studio-test/' && /Studio Test/.test(await sec.textContent()) && /opens another page/.test(await sec.textContent())
-    && await p.locator('#realms a.realm').last().getAttribute('href') === '/studio-test/', 'a link that says "section": true is a pill of its own, the last one, read out as opening another page');
+    && await p.evaluate(() => document.querySelector('#realms a.realm.link')?.previousElementSibling?.dataset.id) === 'throne', 'a link that says "section": true is a pill of its own, right after Zeus, read out as opening another page');
   check(await p.locator('.home a[href="/studio-test/"], .home a[href="/notes-test/"]').count() === 0, 'neither is on Today');
   fs.unlinkSync(LK); await p.evaluate(() => refresh()); await p.waitForTimeout(700);
   check(await p.locator('#moreAway .srow').count() === 0 && await sec.count() === 0, 'no links file, no links');

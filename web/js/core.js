@@ -339,14 +339,16 @@ function sections() {
     if (p) add(id, url(id), p.name, pluginMark(p)); else if (a && SIDE.includes(id)) add(id, url(id), a.name, icon(id)); };
   add('home', url(''), 'Today', HOME_MARK);
   add('argus', WATCH, 'Argus', icon('argus'));
-  ['mentor', 'throne', 'memory'].forEach(sec);
+  ['mentor', 'throne'].forEach(sec);
+  // a link that says "section": true (links.json on the host, 4.54.0: Tactylos Studio) is a section that opens another page: a
+  // pill on the strip with the opens-elsewhere mark, right after Zeus, so on a narrow strip it stays on the bar while the later
+  // sections fold into More (the owner's call, 2026-11-17); on a phone, the last row of More's sections (drawMore). Its name:
+  // links.json's, or the owner's from Edit Today.
+  (S.links || []).forEach((x, i) => { if (x.section === true) out.push({id: `link-${i}`, kind: 'link', section: true, href: x.href, word: openName(x), own: x.name, what: x.what || '', realm: '', mark: LINK_MARK}); });
+  sec('memory');
   add('olympus', url('olympus'), 'Olympus', icon('olympus'));
   ['controllers', 'spartamelee', 'ariad-node'].forEach(sec);
   PLUGINS.forEach(p => sec(p.id));
-  // a link that says "section": true (links.json on the host, 4.54.0: Tactylos Studio) is a section that opens another page: a
-  // pill on the strip with the opens-elsewhere mark, a row in More's sections on a phone. Last of the sections, so on a narrow
-  // strip it is the first to fold into More. Its name: links.json's, or the owner's from Edit Today.
-  (S.links || []).forEach((x, i) => { if (x.section === true) out.push({id: `link-${i}`, kind: 'link', section: true, href: x.href, word: openName(x), own: x.name, what: x.what || '', realm: '', mark: LINK_MARK}); });
   add('phone', url('phone'), 'Phone alerts', icon('argus'));   // the owner's (visible() leaves it out for a learner); More's Settings: alerts.js
   (S.links || []).forEach((x, i) => { if (x.section !== true) out.push({id: `link-${i}`, kind: 'link', href: x.href, word: openName(x), realm: x.what || 'Opens another page', mark: LINK_MARK}); });
   (S.soon || []).filter(x => !PLUGINS.some(p => p.name === x.name)).forEach((x, i) => out.push({id: `soon-${i}`, kind: 'soon', word: x.name, realm: `${x.what} · coming later`, mark: BLADES}));
@@ -402,8 +404,9 @@ function drawNav() {
 // a section: a place of LeafyGrove or a section that opens elsewhere (Tactylos Studio); not Phone alerts, a media player or a link
 const isPlace = e => (!e.kind || e.section) && e.id !== 'phone';
 // The More sheet (4.54.0, docs/home.md "One way to each place"), top to bottom:
-//   the sections the bar that is showing leaves out (a phone: every one after Today, Argus, Mentor and Zeus; a wider screen:
-//   the pills folded off the strip), each with its live line and its count;
+//   the sections the bar that is showing leaves out (a phone: every one after Today, Argus, Mentor and Zeus, a section that
+//   opens elsewhere last; a wider screen: the pills folded off the strip, in the strip's order), each with its live line and
+//   its count;
 //   Media: the players (media.json; Mealie has its own section), another site each, so a plain link that sends no referrer;
 //   Other pages: the links (links.json) that are not sections, and sections still to come;
 //   Settings: Phone alerts, Mute sounds (a phone; the strip has its own) and Edit Today (the owner's).
@@ -412,6 +415,7 @@ const isPlace = e => (!e.kind || e.section) && e.id !== 'phone';
 function drawMore(strip) {
   const all = visible(sections()), folded = new Set($$('#realms .realm.over').map(a => a.dataset.id)), owner = role() === 'owner';
   const secs = all.filter(e => isPlace(e) && (strip ? folded.has(e.id) : !PRIMARY.includes(e.id)));
+  if (!strip) secs.sort((a, b) => !!a.section - !!b.section);   // a phone: a section that opens elsewhere is More's last section row
   put($('#moreList'), secs.map(e => row({...e, realm: placeLine(e)})).join('')); $('#moreList').hidden = !secs.length;
   const opens = owner && typeof home !== 'undefined' ? home.openList() : [];   // home.js: media then links, his order and names
   const media = opens.filter(x => x.media && !PLUGINS.some(p => p.id === x.id));

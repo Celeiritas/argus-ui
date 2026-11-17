@@ -26,8 +26,8 @@ three lists; its "Open" list becomes "Links in More".
 ## Decisions settled here
 1. **A section that opens elsewhere** is configured in links.json, never in the repo: `{"name": "...", "what": "...", "href": "...", "section": true}`.
    The server's `links()` passes `section` through (true only for JSON `true`). Its name is links.json's `name`, or the owner's
-   rename in Edit Today (`open.names`, as for any link). Its place: after the plugin sections, so on a narrow strip it is the
-   first to fold into More. On the strip it is a pill with class `realm link` and the opens-elsewhere mark (`LINK_MARK`), read
+   rename in Edit Today (`open.names`, as for any link). Its place (changed 2026-11-17 on the owner's word): right after Zeus,
+   so on a narrow strip it stays on the bar while the later sections fold into More; on a phone, More's last section row. On the strip it is a pill with class `realm link` and the opens-elsewhere mark (`LINK_MARK`), read
    out as "…, opens another page". On a phone it is a row in More's sections list.
    **Host step (needs the owner's yes):** in the host's `~/.config/argus-ui/links.json`, rename the Sound Lab entry
    to `"name": "Tactylos Studio"` and add `"section": true`, keeping its `href` as it is.

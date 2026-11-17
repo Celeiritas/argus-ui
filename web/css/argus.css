@@ -345,7 +345,13 @@ dialog .confirm{border-color:var(--danger);color:var(--danger)}
 .satedge svg{width:20px;height:20px;color:var(--bad)}
 .satedge[hidden]{display:none}
 @media (prefers-reduced-motion:reduce){.sat.glaring svg{animation:none}}
-.need .nacts .fixbtn+.go{background:transparent;color:var(--snow);border:1px solid var(--line)}   /* with a fix beside it, the link to Watch is the quieter of the two */
+/* one strong button (4.54.0, the owner's call of 2026-11-17): only the top need's main button is filled gold (with a fix beside
+   it, the link to Watch is the quieter of the two); every other button on a need is outlined, the same 44 px, snow
+   words (12:1 on the card) and a frost border (5:1, so the button's edge reads), the plain focus ring. A fix keeps its hold ring, in the gold it fills with elsewhere. */
+.need .nacts .fixbtn+.go,.need:not(.top) .nacts .go,.need:not(.top) .nacts .fixbtn{background:transparent;color:var(--snow);border:1px solid var(--frost)}
+.need .nacts .fixbtn+.go:hover,.need:not(.top) .nacts .go:hover,.need:not(.top) .nacts .fixbtn:hover{border-color:var(--snow)}
+.need:not(.top) .nacts .fixbtn.hold .hold-ring{background:conic-gradient(var(--bolt) calc(var(--p,0) * 360deg),rgba(167,182,196,.35) 0)}
+.need:not(.top) .nacts .fixbtn.holding{border-color:var(--bolt)}
 .satedge.small{width:var(--hit);padding:0;justify-content:center}.satedge.small span{display:none}   /* after 5 s: an arrow-only round button, same name (W2) */
 .tl.unsure{color:var(--run)}   /* Argus could not look again: said, so a stale page never reads as all well */
 .satedge.nospot{display:none}   /* no spot free of controls on the right edge right now: it waits (core.js spot) */

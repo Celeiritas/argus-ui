@@ -83,9 +83,9 @@ The owner's decisions (2026-11-16) replace *Sections or Open* (4.45.0): **the ba
 - **Sections** are on the bars: the phone's bottom bar has Today, Argus, Mentor, Zeus and More; the computer's top bar has
   every section that fits. A section's news is one line on Today (above); there are no tiles.
 - **A section that opens elsewhere** (a studio on the same machine, served by its own program) is a section like the others,
-  set in `links.json` with `"section": true` ("Links to other pages", below). On the computer it is a pill on the top bar, the
-  last one, with the opens-elsewhere mark (`LINK_MARK`) and read out as "…, opens another page"; on a narrow strip it is the
-  first to fold into More. On a phone it is a row in More's sections. It never takes the bar's "you are here" (it leaves
+  set in `links.json` with `"section": true` ("Links to other pages", below). On the computer it is a pill on the top bar,
+  right after Zeus, with the opens-elsewhere mark (`LINK_MARK`) and read out as "…, opens another page"; on a narrow strip it
+  stays on the bar while the later sections fold into More. On a phone it is the last row of More's sections. It never takes the bar's "you are here" (it leaves
   LeafyGrove). Its name is `links.json`'s `name` (or the owner's name for it in Edit Today); the repository never holds it.
 - **More**, top to bottom (`#moreSheet`, `drawMore()` in `web/js/core.js`):
   1. the sections the bar leaves out (a phone: every one but Today, Argus, Mentor and Zeus; a computer: the pills folded off
@@ -287,6 +287,9 @@ no longer used.
 - The page refreshes every 15 seconds like the others: it draws at once from what it knows, then asks the server plugins
   again. A card still waiting for its answer says "Checking…". An unchanged page is not redrawn, so focus and a running
   fade stay put; when it is redrawn, keyboard focus stays on the link you were on.
+- **One strong button**: only the top row's main button (its fix when it has one, else its way there) is filled in the
+  bolt's gold; every other row's buttons are outlined, the same size: snow words and a 1 px frost border on the card, the
+  plain focus ring. The eye goes to one thing first.
 - Every row button and line is a plain link at least 44 px tall. On a phone the buttons go full width under their
   sentence, with no sideways scrolling at 360 px.
 - The last thing on every page scrolls clear of the phone's bottom bar (checked at 360 x 800 on every section and Phone
@@ -317,7 +320,7 @@ that drive (and a second check of the same drive) are one line under it, *Also w
 on Today (they still count, one each, on the bar and in the panel's heading).
 
 When checks.json declares a `fix` for the check (and the problem is not the drive itself), the block has **one press-and-hold
-button**, *Restart Jellyfin* (`"say"` of the fix, else its units), in the bolt's gold look, made with `holdConfirm`, for the owner
+button**, *Restart Jellyfin* (`"say"` of the fix, else its units), in the bolt's gold look on the top row (outlined on a lower one, "One strong button" above), made with `holdConfirm`, for the owner
 only. Holding it 3 seconds sends `POST api/watch/fix` once (docs/checks.md "Your yes from the page"); the toast says what the
 server answered, and the block says *Restarting it now, as you asked* until Argus knows. It then ends on *Works again* (the row)
 or *You restarted Jellyfin at 4:52 AM, and it did not help.* (the block). A refresh never redraws a button that is being held, or one that is armed (the click-twice path of a screen reader).
