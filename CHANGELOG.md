@@ -12,7 +12,7 @@ Mealie becomes a section: Today says tonight's meal from the owner's Mealie meal
   - **3 seconds in all**: one deadline covers the plan and the group together, and a trickling answer stops at it (it used to be 3 s for each step of each ask). A failed group ask is remembered 30 s like other failures; the plan it came with is kept, without links.
   - **An answer cut short or not HTTP** reads *Mealie answered something unexpected* and is remembered like other failures (it used to escape the plugin's checks).
   - **No `.` or `..`** as a recipe or group in a link.
-  - Tests: the proxy in the environment is still not used, a learner gets 403 and no tile, a recipe named `<b>x</b>` is text on the section and Today. The layout check at 1920 px counts sections instead of leaving test plugins out by name: 10 (a real host today) and 11 keep the weather on the strip; the test's full set (12) hides it on Watch and Phone alerts, which the run notes.
+  - Tests: the proxy in the environment is still not used, a learner gets 403 and no tile, a recipe named `<b>x</b>` is text on the section and Today. The layout check at 1920 px counts sections instead of leaving test plugins out by name: at 10 (a real host today) the weather stays on the strip; at 11 (one more section, such as Chiron) it leaves the strip on Watch and Phone alerts, which the run notes and the owner is asked about.
 
 ## 4.52.1 – 2026-11-16
 Small fixes from the open list (after 4.52.0, the phone-first layout; nothing here changes the page's layout).
