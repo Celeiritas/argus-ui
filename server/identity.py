@@ -12,7 +12,7 @@
    No file: everyone is the one person {"person": "owner", "name": "You", "role": "owner"}, as before people existed.
    With a file: a trusted login that is listed is that person; anything else is role "none".
 """
-import email.header, ipaddress, json, os, re, socket, sys, threading, time
+import email.header, ipaddress, json, os, re, socket, sys, tempfile, threading, time
 
 ROLES = ('none', 'learner', 'owner')                 # each may do what the ones before it may
 RANK = {r: i for i, r in enumerate(ROLES)}
@@ -92,12 +92,22 @@ def serve_uid(env=os.environ, own=None, log=None):
     return uid
 
 _own = {}                                            # address -> (is it this machine's, when we asked)
+OWN_CACHE_MAX = 1024                                 # more different addresses than that: start the memory over (R5b, a2)
+XFF_LOOK = 8                                         # entries looked at from each end of X-Forwarded-For (R5b, a2)
+
+def bare(ip):
+    """The address without one port: "[v6]:port" -> "v6", "a.b.c.d:port" -> "a.b.c.d" (exactly one ":" with a dot before
+    it); anything else as it is, without brackets (R5b, a1: a port must not hide this machine's own address)."""
+    s = str(ip).strip()
+    if s.startswith('[') and ']' in s: return s[1:s.index(']')]
+    if s.count(':') == 1 and '.' in s.split(':')[0]: return s.split(':')[0]
+    return s.strip('[]')
 
 def is_own_address(ip, ttl=60):
     """True when ip is an address of this machine: loopback, unspecified, or one this machine can bind a socket to (the
-    kernel only lets a program bind to its own addresses, the tailnet one included). Something that is not an address
-    is not this machine's: a wrong guess must never lock out a phone."""
-    try: ip = norm(str(ip).strip().strip('[]'))
+    kernel only lets a program bind to its own addresses, the tailnet one included). A port after it is left out.
+    Something that is not an address is not this machine's: a wrong guess must never lock out a phone."""
+    try: ip = norm(bare(ip))
     except ValueError: return False
     if ip.is_loopback or ip.is_unspecified: return True
     hit = _own.get(ip)
@@ -106,14 +116,18 @@ def is_own_address(ip, ttl=60):
         with socket.socket(socket.AF_INET6 if ip.version == 6 else socket.AF_INET, socket.SOCK_STREAM) as sk:
             sk.bind((str(ip), 0)); mine = True
     except OSError: mine = False
+    if len(_own) >= OWN_CACHE_MAX: _own.clear()      # an appended header full of made-up addresses must not grow it without end
     _own[ip] = (mine, time.monotonic())
     return mine
 
 def from_this_machine(xff):
     """Serve sets X-Forwarded-For to the address that sent the request. When ANY address in it is this machine's own, a
     program here went in through Serve's front door and Serve stamped it with this machine's own login: it proves
-    nobody's identity. No header, or entries that are not addresses, change nothing."""
-    return any(is_own_address(x) for x in str(xff or '').split(',') if x.strip())
+    nobody's identity. No header, or entries that are not addresses, change nothing. A very long header is looked at only
+    at its two ends (XFF_LOOK entries each): where the sender's address is, whether Serve sets the header or appends to it."""
+    xs = [x for x in str(xff or '').split(',') if x.strip()]
+    if len(xs) > 2 * XFF_LOOK: xs = xs[:XFF_LOOK] + xs[-XFF_LOOK:]
+    return any(is_own_address(x) for x in xs)
 
 def header_value(v):
     """A Tailscale header as text: Serve sends non-ASCII values MIME-encoded (=?utf-8?q?...?=)."""
@@ -197,11 +211,17 @@ class People:
                 with open(self.last_good, 'rb') as f:
                     if f.read() == raw: return
             except OSError: pass
-            os.makedirs(os.path.dirname(self.last_good) or '.', exist_ok=True)
-            tmp = self.last_good + '.tmp'
-            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-            with os.fdopen(fd, 'wb') as f: f.write(raw)
-            os.replace(tmp, self.last_good)
+            d = os.path.dirname(self.last_good) or '.'
+            os.makedirs(d, exist_ok=True)
+            # a temp file of its own (mkstemp: mode 600, never an existing file or link; R5b, b1), then renamed into place
+            fd, tmp = tempfile.mkstemp(dir=d, prefix='.' + os.path.basename(self.last_good) + '.', suffix='.tmp')
+            try:
+                with os.fdopen(fd, 'wb') as f: f.write(raw)
+                os.replace(tmp, self.last_good)
+            except BaseException:
+                try: os.unlink(tmp)
+                except OSError: pass
+                raise
         except OSError as e:
             self.log(f'could not save the last good people file to {self.last_good}: {_why(e)}')
 

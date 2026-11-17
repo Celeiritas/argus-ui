@@ -103,6 +103,25 @@ class Tables(unittest.TestCase):
         host = socket.gethostbyname(socket.gethostname())
         self.assertTrue(idn.is_own_address(host), f"this machine's own address {host} (found by binding to it)")
 
+    def test_a_port_does_not_hide_this_machine(self):
+        # R5b, a1: X-Forwarded-For written as ip:port or [v6]:port is still this machine's own address
+        for ip in ('127.0.0.1:443', '[::1]:443', '[::1]', ' 127.0.0.1:8095 ', '[::ffff:127.0.0.1]:1'):
+            self.assertTrue(idn.is_own_address(ip), ip)
+        for ip in ('192.0.2.10:443', '[2001:db8::7]:443', ':443', '[]:443', '127.0.0.1:'):
+            self.assertEqual(idn.is_own_address(ip), ip == '127.0.0.1:', ip)
+        self.assertTrue(idn.from_this_machine('192.0.2.10:5000, 127.0.0.1:443'))
+        self.assertEqual(idn.bare('2001:db8::7'), '2001:db8::7', 'a bare IPv6 address keeps every part')
+
+    def test_a_long_header_is_bounded(self):
+        # R5b, a2: the memory of addresses has a limit, and a very long header is looked at only at its two ends
+        many = [f'2001:db8::{i:x}' for i in range(idn.OWN_CACHE_MAX + 50)]
+        for ip in many: idn.is_own_address(ip)
+        self.assertLessEqual(len(idn._own), idn.OWN_CACHE_MAX)
+        others = [f'192.0.2.{i}' for i in range(1, 41)]
+        self.assertTrue(idn.from_this_machine(', '.join(others + ['127.0.0.1'])), 'appended at the end: seen')
+        self.assertTrue(idn.from_this_machine(', '.join(['127.0.0.1'] + others)), 'set at the start: seen')
+        self.assertFalse(idn.from_this_machine(', '.join(others[:20] + ['127.0.0.1'] + others[20:])), 'buried in the middle: not looked at')
+
     def test_header_value(self):
         self.assertEqual(idn.header_value(' owner@example.com '), 'owner@example.com')
         self.assertEqual(idn.header_value('=?utf-8?q?J=C3=BCrgen?='), 'Jürgen')
@@ -223,6 +242,19 @@ class PeopleFile(unittest.TestCase):
         self.assertEqual(st[0], 'stale', 'the saved copy decides, nobody becomes the owner')
         self.assertEqual(idn.resolve(st, 'learner@example.com', True)['role'], 'learner')
         self.assertEqual(idn.resolve(st, 'stranger@example.com', True)['role'], 'none')
+
+    def test_last_good_copy_uses_a_temp_file_of_its_own(self):
+        # R5b, b1: never the fixed name people.last-good.json.tmp (a link or a file planted there is left alone), and no
+        # temp file is left behind
+        folder = os.path.join(self.tmp, 'state2'); os.makedirs(folder)
+        saved = os.path.join(folder, 'people.last-good.json')
+        with open(saved + '.tmp', 'w') as fh: fh.write('planted')
+        ppl = idn.People(self.f, log=self.logged.append, last_good=saved); self.write(self.GOOD)
+        self.assertEqual(ppl.current()[0], 'ok')
+        with open(saved + '.tmp') as fh: self.assertEqual(fh.read(), 'planted', 'the old fixed name is not touched')
+        with open(saved) as fh: self.assertEqual(json.load(fh), json.loads(self.GOOD) if isinstance(self.GOOD, str) else self.GOOD)
+        self.assertEqual(sorted(os.listdir(folder)), ['people.last-good.json', 'people.last-good.json.tmp'], 'no temp file left')
+        if os.name == 'posix': self.assertEqual(os.stat(saved).st_mode & 0o777, 0o600)
 
     def test_good_then_gone_then_broken_keeps_the_good_copy(self):
         ppl = self.people(); self.write(self.GOOD); self.assertEqual(ppl.current()[0], 'ok')

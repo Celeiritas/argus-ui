@@ -20,8 +20,9 @@ A program on the server could also go in through Serve's front door, its own `ht
 stamps the request with the login that owns the server itself, which is usually the owner's. So a request that came
 through Serve **from the server itself** carries no identity either: Serve writes the sender's address into
 `X-Forwarded-For`, and when that is one of the server's own addresses the login does not count (`api/whoami` says
-`"from_this_server": true`, and `note` says it in a sentence). Any of the server's own addresses anywhere in that list
-counts, loopback included. An address of another device, a missing `X-Forwarded-For`, or a value that is not an address
+`"from_this_server": true`, and `note` says it in a sentence). Any of the server's own addresses in that list counts,
+loopback included, also written with a port (`127.0.0.1:443`, `[::1]:443`); a list longer than 16 entries is looked at
+only at its first 8 and last 8, where the sender's address is whether Serve sets the header or adds to it. An address of another device, a missing `X-Forwarded-For`, or a value that is not an address
 changes nothing, so this rule can never lock out a phone; what Serve really sends is checked on the live server
 (`api/whoami` from the phone: `from_this_server` must be `false`). Use the page from your phone or computer, not from a
 browser on the server.
