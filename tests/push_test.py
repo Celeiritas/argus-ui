@@ -192,6 +192,41 @@ class Encryption(unittest.TestCase):
         self.assertEqual([n for n in os.listdir(os.path.dirname(p)) if n.endswith('.tmp')], [], 'no temp file left behind')
 
 
+class DevicesFile(unittest.TestCase):
+    """Review R8c: a read takes the same lock as every write, so on Windows a replace never meets a file another thread has open."""
+    def setUp(self): clean()
+    tearDown = setUp
+
+    def test_a_read_waits_for_a_write_in_progress(self):
+        push.save_devices([{'id': 'a', 'endpoint': 'https://x.example/1'}])
+        got = []
+        with push._dev_lock:                       # a writer in the middle of load, change, save
+            t = threading.Thread(target=lambda: got.append(push.load_devices())); t.start()
+            t.join(0.3); self.assertTrue(t.is_alive(), 'the read waits for the lock'); self.assertEqual(got, [])
+        t.join(5); self.assertFalse(t.is_alive())
+        self.assertEqual([d['id'] for d in got[0]], ['a'])
+        with push._dev_lock: self.assertEqual(len(push.load_devices()), 1, 'the same thread may read while it holds the lock')
+
+    def test_reads_and_writes_at_once_never_fail(self):
+        push.save_devices([{'id': 'a', 'endpoint': 'https://x.example/1', 'n': 0}])
+        errors, stop = [], time.monotonic() + 1.5
+        def reader():
+            while time.monotonic() < stop:
+                try: push.load_devices()
+                except Exception as e: errors.append(e); return
+        def writer():
+            n = 0
+            while time.monotonic() < stop:
+                n += 1
+                try: push.update_device('a', n=n)
+                except Exception as e: errors.append(e); return
+        ts = [threading.Thread(target=f) for f in (reader, reader, writer, writer)]
+        for t in ts: t.start()
+        for t in ts: t.join(10)
+        self.assertEqual(errors, [], 'no PermissionError (Windows) or half-read file')
+        self.assertEqual([d['id'] for d in push.load_devices()], ['a'])
+
+
 class Hosts(unittest.TestCase):
     def test_known_push_services(self):
         for e in ('https://fcm.googleapis.com/fcm/send/abc', 'https://fcm.googleapis.com/wp/abc',

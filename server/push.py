@@ -226,8 +226,10 @@ def device_id(endpoint):
 
 
 def load_devices():
+    # read under the same lock as every write: on Windows a file another thread has open cannot be replaced
+    # (PermissionError in os.replace, review R8c); _dev_lock is re-entrant, so callers that hold it already are fine
     try:
-        with open(devices_path(), encoding='utf-8') as f: d = json.load(f)
+        with _dev_lock, open(devices_path(), encoding='utf-8') as f: d = json.load(f)
     except FileNotFoundError: return []
     except (OSError, ValueError) as e:
         log(f'the devices file cannot be read ({type(e).__name__}); no phone gets alerts until it is fixed or moved aside')
