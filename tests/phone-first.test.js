@@ -19,7 +19,7 @@ const EVENTS = {since: new Date(Date.now() - 864e5).toISOString(), events: Array
 const top = (p, s) => p.evaluate(s => { const e = document.querySelector(s); return e ? Math.round(e.getBoundingClientRect().top) : null; }, s);
 run(async b => {
   // 1. Today on a 412 px phone, with something that needs you
-  const t = await page(b, 412, 915); await fixture(t, false); await t.goto(BASE); await settled(t); await t.locator('.needs .need').first().waitFor({timeout: 5000});
+  const t = await page(b, 412, 915); await fixture(t, false); await t.goto(BASE); await t.evaluate(() => refresh()); await settled(t);   // the first state is inlined in the page: the route counts from the first refresh await t.locator('.needs .need').first().waitFor({timeout: 5000});
   const order = await t.evaluate(() => [...document.querySelector('#main .home').children].map(e => e.className.split(' ')[0] + (e.classList.contains('first') ? '.first' : '')));
   check(await t.locator('.home.phone').count() === 1, 'a phone draws Today in its own order (.home.phone)');
   check(order.filter(c => c !== 'people-problem')[0] === 'needs.first', `what needs you comes first (${order.join(', ')})`);
