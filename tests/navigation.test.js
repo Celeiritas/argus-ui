@@ -2,7 +2,7 @@
 // (412), a laptop (1024), a computer (1440) and 16:9 (1920):
 //   Today: no tiles, no Open list, no Edit Today; what needs you sorted by what it costs to leave it (a backup with no
 //     off-site copy above a skipped workout); one strong button: only the top need's main button is filled gold, every
-//     other need's buttons outlined, 44 px or more, readable, with a visible focus ring; one line per section with news,
+//     other need's buttons (and Mark as known) outlined with the frost edge, 44 px or more, readable, with a visible focus ring; one line per section with news,
 //     each ending in the chevron, 44 px or more;
 //   the phone's bottom bar: Today, Argus, Mentor, Zeus, More;
 //   the computer's top bar: the sections, the one that opens elsewhere (links.json "section": true, here a placeholder
@@ -61,21 +61,28 @@ run(async b => {
           return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; };
         const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
         const card = getComputedStyle(document.querySelector('#main .needs')).backgroundColor;
-        return es.map(li => [...li.querySelectorAll('.nacts .fixbtn, .nacts .go')].map(b => { const s = getComputedStyle(b);
+        return es.map(li => [...li.querySelectorAll('.nacts .fixbtn, .nacts .go, .nacts .knownbtn')].map(b => { const s = getComputedStyle(b);
           const filled = s.backgroundColor === 'rgb(255, 226, 122)', bg = filled ? s.backgroundColor : card;
-          return {filled, h: Math.round(b.getBoundingClientRect().height), text: Math.round(ratio(s.color, bg) * 10) / 10,
+          return {filled, known: b.matches('.knownbtn'), h: Math.round(b.getBoundingClientRect().height), text: Math.round(ratio(s.color, bg) * 10) / 10,
             edge: filled ? 99 : Math.round(ratio(s.borderTopColor, card) * 10) / 10, border: parseFloat(s.borderTopWidth) >= 1 && s.borderTopStyle === 'solid'}; })); });
-      const say = acts.map((r, i) => `${i}: ${r.map(x => `${x.filled ? 'filled' : 'outlined'} ${x.h}px text ${x.text} edge ${x.edge}`).join(' + ')}`).join(' | ');
+      const say = acts.map((r, i) => `${i}: ${r.map(x => `${x.known ? 'known ' : ''}${x.filled ? 'filled' : 'outlined'} ${x.h}px text ${x.text} edge ${x.edge}`).join(' + ')}`).join(' | ');
       check(acts.length >= 2 && acts[0][0]?.filled && acts[0].filter(x => x.filled).length === 1 && acts.slice(1).every(r => r.length && r.every(x => !x.filled)),
         `${w}: only the top need's main button is filled; every other need's buttons are outlined (${say})`);
       check(acts.flat().every(x => x.h >= 44 && x.text >= 4.5 && (x.filled || (x.border && x.edge >= 3))),
         `${w}: every need button is 44 px or taller with readable words, and an outlined one has an edge that reads (${say})`);
+      // Mark as known has the same outline as the other outlined buttons: the frost edge, 5:1 or better (the owner's call)
+      const known = acts.flat().filter(x => x.known);
+      check(known.length > 0 && known.every(x => !x.filled && x.border && x.edge >= 5 && x.h >= 44),
+        `${w}: Mark as known is outlined with the frost edge, 5:1 or better, 44 px or taller (${known.map(x => `${x.h}px edge ${x.edge}`).join(', ')})`);
       await p.keyboard.press('Shift');   // a key first, so the browser shows the ring as it does for a keyboard user
       const second = p.locator('#main .needlist .need:not(.leaving)').nth(1).locator('.nacts .fixbtn, .nacts .go').first();
-      await second.focus();
-      const ring = await second.evaluate(e => { const s = getComputedStyle(e); return {fv: e.matches(':focus-visible'), style: s.outlineStyle, width: parseFloat(s.outlineWidth), color: s.outlineColor}; });
+      const ringOf = async l => { await l.focus(); const r = await l.evaluate(e => { const s = getComputedStyle(e); return {fv: e.matches(':focus-visible'), style: s.outlineStyle, width: parseFloat(s.outlineWidth), color: s.outlineColor}; });
+        await l.evaluate(e => e.blur()); return r; };
+      const ring = await ringOf(second);
       check(ring.fv && ring.style !== 'none' && ring.width >= 2, `${w}: an outlined need button shows the focus ring (${JSON.stringify(ring)})`);
-      await second.evaluate(e => e.blur()); await p.evaluate(() => scrollTo(0, 0));
+      const kr = await ringOf(p.locator('#main .needlist .need:not(.leaving) .nacts .knownbtn').first());
+      check(kr.fv && kr.style !== 'none' && kr.width >= 2, `${w}: Mark as known shows the focus ring (${JSON.stringify(kr)})`);
+      await p.evaluate(() => scrollTo(0, 0));
       check(await noOverflow(p), `${w}: Today does not scroll sideways`);
       if (phone) await shot(p, 'nav-phone-today-needs');
       if (w === 1440) await shot(p, 'nav-1440-today');

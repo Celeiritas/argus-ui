@@ -288,7 +288,7 @@ no longer used.
   again. A card still waiting for its answer says "Checking…". An unchanged page is not redrawn, so focus and a running
   fade stay put; when it is redrawn, keyboard focus stays on the link you were on.
 - **One strong button**: only the top row's main button (its fix when it has one, else its way there) is filled in the
-  bolt's gold; every other row's buttons are outlined, the same size: snow words and a 1 px frost border on the card, the
+  bolt's gold; every other row's buttons, and **Mark as known** on any row, are outlined, the same size: snow words and a 1 px frost border on the card, the
   plain focus ring. The eye goes to one thing first.
 - Every row button and line is a plain link at least 44 px tall. On a phone the buttons go full width under their
   sentence, with no sideways scrolling at 360 px.
