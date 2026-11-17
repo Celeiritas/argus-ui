@@ -27,8 +27,12 @@ When the plan can't be read, the line says why, and the section says what to do:
 | `mealie.json` broken or its address not `http(s)://` | *mealie.json could not be read* |
 | Mealie answers 401 or 403 | *Mealie refused the token: make a new one* |
 | nothing listens, or the connection fails | *Mealie is not answering* |
-| no answer within 3 seconds | *Mealie took too long to answer* |
-| not JSON, not the expected shape, over 1 MB, or a redirect | *Mealie answered something unexpected* |
+| no whole answer within 3 seconds (the plan and, the first time for a token, the group together; a slow trickle counts) | *Mealie took too long to answer* |
+| not JSON, not the expected shape, over 1 MB, a redirect, an answer cut short or not HTTP | *Mealie answered something unexpected* |
+
+Today never waits longer than those 3 seconds for a meal. Each failure is remembered for 30 s (the next look in that
+time gives the same line without asking). If the plan came but the group did not, the plan is shown without recipe links,
+and the group is asked again after 30 s. A group or recipe name of `.` or `..` gives no link.
 
 "Today" is the server's own date. LeafyGrove and Mealie run on the same machine, so they agree on it; Mealie's own
 `/api/households/mealplans/today` is not used, so a container set to another time zone can't move the day.
@@ -61,7 +65,9 @@ nothing else.
 - Never into an answer, the page, a log line or an error: the plugin prints nothing, keeps no text from a failed request, and
   answers a bug with *Mealie answered something unexpected* instead of a traceback (the server would log one).
 - Redirects are not followed, so the header can't reach another address; the system's proxy settings are not used.
-- Only the owner can call `api/mealie/...` (no `roles` in the manifest, docs/people.md).
+- Only the owner can call `api/mealie/...` and load its page script (no `roles` in the manifest, docs/people.md): a
+  learner gets 403, her Today has no Mealie tile, and Mealie is not asked.
+- Recipe names and titles are drawn as text, never as markup (`<b>x</b>` shows as those characters).
 
 ## Mealie's API (verified at v3.30.0)
 The version the owner runs. Checked against the source at the tag, not the demo site (which runs a nightly build):
@@ -84,8 +90,10 @@ owner's Mealie, and the click path in Mealie's menus to the profile page (the ad
 ## Tests
 - `python3 tests/mealie_test.py -v` (no browser, any OS; `tests/run.sh mealie` runs it as "mealie model") against
   `tests/fixtures/fake_mealie.py`, a stand-in Mealie: where the files are, every line above, the week and its links, each
-  failure (a closed port for *not answering*, a 0.4 s limit for *too long*), a redirect not followed, the cache (one ask a
+  failure (a closed port for *not answering*, a 0.4 s limit for *too long*, an answer that trickles, one cut short, one not
+  HTTP), the 3 s total over both asks, a redirect not followed, the system proxy not used (a dead one set in the
+  environment), `.` and `..` slugs and groups, a learner's 403 on a real server, the cache (one ask a
   minute, failures 30 s, a new token at once, Check again), the token in no answer and no output, and the bundled plugin on a
   real server (the token not in its log).
 - `bash tests/run.sh mealie` (browser): Today's tile without a token and with one, the section's week, Check again by keyboard
-  with focus kept, the token on no page, 375 px. `run.sh` starts the fake on `MEALIE_PORT` and points the server at it.
+  with focus kept, the token on no page, 375 px, a recipe named `<b>x</b>` drawn as text in the section and on Today. `run.sh` starts the fake on `MEALIE_PORT` and points the server at it.

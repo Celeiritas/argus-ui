@@ -4,10 +4,12 @@
 
 Every check asks tests/fixtures/fake_mealie.py, a stand-in that answers in the shape of Mealie v3.30.0, never a real Mealie.
 Settings: the token file and mealie.json are found where docs/mealie.md says. Plan: Today's line and the week for each
-plan. Failures: no token, an empty or broken token file, a refused token, Mealie down, slow, answering garbage, too much,
-or a redirect (not followed: the token never goes to another address). Cache: one ask a minute, a new token counts at
-once, Check again. Secret: the token is in no answer and no log line. OnTheServer: the bundled plugin on a real server."""
-import contextlib, datetime, http.client, importlib.util, io, json, os, shutil, socket, subprocess, sys, tempfile, time, unittest
+plan, and links that cannot point anywhere else ("." and ".."). Failures: no token, an empty or broken token file, a refused
+token, Mealie down, slow, trickling, cut short, not HTTP, answering garbage, too much, or a redirect (not followed: the token
+never goes to another address), and the system's proxy settings (not used). Cache: one ask a minute, a new token counts at
+once, Check again, a failed group ask kept 30 s without losing the plan. Secret: the token is in no answer and no log line.
+OnTheServer: the bundled plugin on a real server. Roles: a learner (docs/people.md) gets 403 and Mealie is not asked."""
+import contextlib, datetime, http.client, importlib.util, io, json, os, shutil, socket, subprocess, sys, tempfile, threading, time, unittest
 from unittest import mock
 
 R = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -132,6 +134,14 @@ class Plan(Base):
         self.assertEqual(p['days'][0]['meals'][2]['href'], 'https://food.example:9925/g/kitchen/r/lentil-soup')
         self.assertNotIn('href', p['days'][0]['meals'][1], 'a note with no recipe has no link')
 
+    def test_a_dot_group_gives_no_links(self):
+        # /g/../r/... would open Mealie's home page, not the recipe (review M2)
+        self.write(self.media, '{"mealie": "https://food.example:9925/"}')
+        for g in ('.', '..'):
+            self.scenario(mode='ok', group=g, plan=[dish('Lentil soup', 'lentil-soup'), dish('Up', '..', kind='side')]); ml._cache.clear(); ml._slug.clear()
+            p = ml.plan(self.fetch(), TODAY, ml.open_address(self.media))
+            self.assertEqual([m.get('href') for m in p['days'][0]['meals']], [None, None], g)
+
     def test_no_links_without_the_browser_address(self):
         self.scenario(mode='ok', plan=[dish('Lentil soup', 'lentil-soup')])
         p = ml.plan(self.fetch(), TODAY, ml.open_address(self.media))
@@ -176,6 +186,46 @@ class Failures(Base):
         with self.assertRaises(ml.Failed): ml.entries({'items': 'no'})
         self.assertEqual(ml.entries({'items': [None, {'date': 'soon'}, {'date': TODAY.isoformat(), 'entryType': 'brunch', 'recipe': {'name': 'X', 'slug': '../x'}}]}),
                          [{'date': TODAY.isoformat(), 'type': 'other', 'name': 'X', 'slug': ''}], 'bad entries skipped, a strange slug dropped')
+        es = ml.entries({'items': [{'date': TODAY.isoformat(), 'recipe': {'name': n, 'slug': v}} for n, v in (('a', '.'), ('b', '..'), ('c', '.c.'), ('d', '...'))]})
+        self.assertEqual([e['slug'] for e in es], ['', '', '.c.', '...'], '"." and ".." are not slugs (review M2); dots inside a name are')
+
+    def test_cut_short_or_not_http_is_unexpected_and_kept(self):
+        # http.client raises IncompleteRead / BadStatusLine for these (review M3): a state like any other failure, kept 30 s
+        for mode in ('cut', 'nothttp'):
+            self.scenario(mode=mode); ml._cache.clear(); self.srv.seen.clear(); now = time.time()
+            self.assertEqual(ml.line(ml.fetch(TODAY, env=self.env, now=now), TODAY), 'Mealie answered something unexpected', mode)
+            ml.fetch(TODAY, env=self.env, now=now + 20)
+            self.assertEqual(len(self.asks()), 1, f'{mode}: the failure is kept, not asked again at once')
+
+    def test_trickling_answer_ends_on_time(self):
+        # one byte every 0.3 s never trips a per-step timeout; the deadline for the whole look still holds (review M4)
+        self.scenario(mode='drip', delay=.3)
+        with mock.patch.object(ml, 'TIMEOUT', 1):
+            t = time.time(); self.assertEqual(self.line(), 'Mealie took too long to answer')
+            self.assertLess(time.time() - t, 1.6, 'the deadline holds')
+
+    def test_both_asks_together_stay_within_the_deadline(self):
+        # the first look for a token asks twice (the plan, then the group): TIMEOUT is for both together (review M4)
+        self.scenario(mode='ok', self_mode='slow', delay=2, plan=[dish('Lentil soup', 'lentil-soup')])
+        with mock.patch.object(ml, 'TIMEOUT', 1):
+            t = time.time(); res = self.fetch()
+            self.assertLess(time.time() - t, 1.6, 'one deadline for both asks')
+        self.assertEqual((res['state'], [e['name'] for e in res['entries']], res['group']), ('', ['Lentil soup'], ''), 'the plan is kept, without links')
+
+    def test_the_system_proxy_is_not_used(self):
+        # HTTP_PROXY and friends name a proxy that is not there: the plugin still reaches Mealie directly (review M5)
+        dead = f'http://127.0.0.1:{free_port()}'
+        self.scenario(mode='ok', plan=[dish('Lentil soup', 'lentil-soup')])
+        with mock.patch.dict(os.environ, {k: dead for k in ('HTTP_PROXY', 'http_proxy', 'HTTPS_PROXY', 'https_proxy', 'ALL_PROXY', 'all_proxy')}):
+            for k in ('NO_PROXY', 'no_proxy'): os.environ.pop(k, None)
+            fresh = load('leafy_mealie_proxy', os.path.join(R, 'plugins', 'mealie', 'plugin.py'))   # loaded as the server would, settings already set
+            self.assertEqual(fresh.line(fresh.fetch(TODAY, env=self.env), TODAY), 'Tonight: Lentil soup')
+            self.assertEqual(len(self.asks()), 1, 'the fake was asked directly')
+            # and the check can see a difference: an opener with the default proxy handling goes to the dead proxy
+            fresh._cache.clear(); fresh._slug.clear()
+            with mock.patch.object(fresh, '_OPENER', fresh.urllib.request.build_opener(fresh._NoRedirect)):
+                self.assertEqual(fresh.line(fresh.fetch(TODAY, env=self.env), TODAY), 'Mealie is not answering')
+            self.assertEqual(len(self.asks()), 1)
 
     def test_redirect_is_not_followed(self):
         self.scenario(mode='redirect')
@@ -204,12 +254,26 @@ class Cache(Base):
         ml.fetch(TODAY, env=self.env, now=now + 22, max_age=ml.AGAIN)
         self.assertEqual(len(self.asks()), 2, 'but not twice within 5 s')
 
+    def test_a_failed_group_ask_is_kept_30_s_and_keeps_the_plan(self):
+        # review M3 + M4: users/self cut short after a good plan: the plan shows (no links), and users/self is not asked again
+        # on every refresh, only after 30 s
+        self.scenario(mode='ok', self_mode='cut', plan=[dish('Lentil soup', 'lentil-soup')]); now = time.time()
+        res = ml.fetch(TODAY, env=self.env, now=now)
+        self.assertEqual((res['state'], [e['name'] for e in res['entries']], res['group']), ('', ['Lentil soup'], ''))
+        ml.fetch(TODAY, env=self.env, now=now + 10, max_age=0)
+        self.assertEqual((len(self.asks()), len(self.asks('/api/users/self'))), (2, 1), 'the plan again, the group not yet')
+        self.scenario(mode='ok', plan=[dish('Lentil soup', 'lentil-soup')])
+        res = ml.fetch(TODAY, env=self.env, now=now + 31, max_age=0)
+        self.assertEqual((len(self.asks('/api/users/self')), res['group']), (2, 'kitchen'), 'after 30 s the group is asked again')
+        ml.fetch(TODAY, env=self.env, now=now + 100)
+        self.assertEqual(len(self.asks('/api/users/self')), 2, 'and once known, kept')
+
 class Secret(Base):
     def test_the_token_is_in_no_answer_and_no_output(self):
         self.write(self.media, '{"mealie": "https://food.example:9925/"}')
         out, err = io.StringIO(), io.StringIO()
         with mock.patch.dict(os.environ, self.env), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err), mock.patch.object(ml, 'TIMEOUT', .4):
-            for mode in ('ok', 'refuse', 'garbage', 'redirect', 'slow', 'huge'):
+            for mode in ('ok', 'refuse', 'garbage', 'redirect', 'slow', 'huge', 'cut', 'nothttp', 'drip'):
                 self.scenario(mode=mode, delay=1, plan=[dish('Lentil soup', 'lentil-soup')]); ml._cache.clear()
                 for path in ('status', 'plan', 'plan', 'nothing'):
                     code, obj = ml.get(path, {'again': ['1']} if path == 'plan' else {}, None)
@@ -285,6 +349,68 @@ class OnTheServer(unittest.TestCase):
         self.assertIn('mealie', log, 'the server says it loaded the plugin')
         self.assertNotIn('test-token', log, 'the token is never logged')
         self.assertTrue(all(r['auth'] == 'Bearer ' + TOKEN for r in self.srv.seen))
+
+class Roles(unittest.TestCase):
+    """docs/people.md: plugin.json declares no "roles", so every api/mealie/ path and the plugin's files are the owner's. A
+    learner gets 403 and Mealie is not asked; the owner gets the plan. The real server in this process (as
+    tests/mentor_gate_test.py does), with a people file; on Linux the real /proc lookup says the request came through
+    Tailscale Serve (ARGUS_SERVE_UID = this test's user id), elsewhere that lookup is simulated."""
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp(prefix='mealie-roles-test-')
+        home = os.path.join(cls.tmp, 'home'); conf = os.path.join(home, '.config', 'argus-ui'); os.makedirs(conf)
+        static, bundled = os.path.join(cls.tmp, 'static'), os.path.join(cls.tmp, 'bundled'); os.makedirs(static)
+        shutil.copytree(os.path.join(R, 'plugins', 'mealie'), os.path.join(bundled, 'mealie'), ignore=shutil.ignore_patterns('__pycache__'))
+        with open(os.path.join(static, 'theme.json'), 'w') as f: f.write('{}')
+        with open(os.path.join(static, 'index.html'), 'w') as f: f.write('<!doctype html><script>const STATE = /*STATE*/null;</script>')
+        people = os.path.join(conf, 'people.json')
+        with open(people, 'w') as f:
+            json.dump({'people': [{'id': 'owner-one', 'name': 'Owner One', 'role': 'owner', 'logins': ['owner@example.com']},
+                                  {'id': 'learner-two', 'name': 'Learner Two', 'role': 'learner', 'logins': ['learner@example.com']}]}, f)
+        cls.scen = os.path.join(cls.tmp, 'scenario.json')
+        with open(cls.scen, 'w') as f: json.dump({'mode': 'ok', 'token': TOKEN, 'plan': [dish('Lentil soup', 'lentil-soup')]}, f)
+        cls.fake = fake.start(cls.scen)
+        tok, mj = os.path.join(conf, 'mealie-token.txt'), os.path.join(conf, 'mealie.json')
+        with open(tok, 'w') as f: f.write(TOKEN + '\n')
+        with open(mj, 'w') as f: json.dump({'url': f'http://127.0.0.1:{cls.fake.server_port}'}, f)
+        me = os.getuid() if hasattr(os, 'getuid') else 4242
+        env = {k: v for k, v in os.environ.items() if not k.startswith('ARGUS_')}
+        env.update(HOME=home, USERPROFILE=home, ARGUS_STATIC=static, ARGUS_BUNDLED=bundled, ARGUS_PLUGINS=os.path.join(cls.tmp, 'mine'),
+                   ARGUS_PEOPLE=people, ARGUS_SERVE_UID=str(me), ARGUS_DEV='1', ARGUS_MEALIE_TOKEN=tok, ARGUS_MEALIE=mj,
+                   ARGUS_LINKS=os.path.join(cls.tmp, 'links.json'), ARGUS_REGISTRY=os.path.join(cls.tmp, 'agents'),
+                   ARGUS_ALERTS=os.path.join(cls.tmp, 'alerts'), ARGUS_WATCH='0', ARGUS_SYSTEMCTL=sys.executable)
+        cls.env = mock.patch.dict(os.environ, env, clear=True); cls.env.start()     # kept until tearDownClass: the plugin reads it per request
+        try:
+            a = load('argus_ui_mealie_roles', os.path.join(R, 'server', 'argus_ui.py'))
+            if not os.path.isfile('/proc/net/tcp'): a.identity.connection_uid = lambda peer, ours, proc='/proc', our_inode=None: me
+            a.load_server_plugins()
+            assert 'mealie' in a.SERVER_PLUGINS, 'the Mealie plugin did not load'
+            cls.srv = a.ThreadingHTTPServer(('127.0.0.1', 0), a.H)
+            threading.Thread(target=cls.srv.serve_forever, daemon=True).start()
+        except BaseException:
+            cls.env.stop(); cls.fake.shutdown(); cls.fake.server_close(); raise
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.srv.shutdown(); cls.srv.server_close(); cls.env.stop()
+        cls.fake.shutdown(); cls.fake.server_close(); shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def get(self, path, login):
+        c = http.client.HTTPConnection('127.0.0.1', self.srv.server_address[1], timeout=10)
+        c.request('GET', '/argus/' + path, headers={'Host': '127.0.0.1', 'Tailscale-User-Login': login, 'X-Forwarded-For': '192.0.2.20'})
+        r = c.getresponse(); b = r.read(); c.close()
+        return r.status, b
+
+    def test_a_learner_gets_403_and_mealie_is_not_asked(self):
+        for path in ('api/mealie/status', 'api/mealie/plan', 'api/mealie/plan?again=1', 'plugins/mealie/page.js'):
+            code, body = self.get(path, 'learner@example.com')
+            self.assertEqual(code, 403, f'{path}: {body[:200]!r}')
+            self.assertNotIn(b'Lentil', body)
+        self.assertEqual(self.fake.seen, [], 'nothing reached Mealie for her')
+        code, state = self.get('api/state', 'learner@example.com')
+        self.assertEqual(code, 200); self.assertNotIn('mealie', [p['id'] for p in json.loads(state).get('plugins', [])], 'not one of her sections')
+        code, body = self.get('api/mealie/status', 'owner@example.com')
+        self.assertEqual((code, json.loads(body)['line']), (200, 'Tonight: Lentil soup'), 'the owner gets it')
 
 if __name__ == '__main__':
     unittest.main()

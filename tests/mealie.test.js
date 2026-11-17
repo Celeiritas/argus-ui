@@ -60,14 +60,22 @@ run(async b => {
     }
     check(!(await p.content()).includes('browser-test-token'), 'nor in the page as drawn');
 
-    // 5. phone width
-    scenario({mode: 'ok', plan: week});
+    // 5. phone width, with a recipe whose name looks like markup: it is drawn as text, in the section and on Today (review M5)
+    const odd = '<b>x</b> & "q"';
+    scenario({mode: 'ok', plan: [...week, {in_days: 0, entryType: 'side', recipe: {name: odd, slug: 'b-x'}}]});
     const ph = await page(b, 375, 760);
     await ph.goto(BASE + 'mealie'); await sleep(5200);
     await ph.locator('.mealie .mealcheck').click(); await ph.locator('.mealie .day').first().waitFor({timeout: 5000});
+    await ph.locator('.mealie .meal', {hasText: '<b>x</b>'}).waitFor({timeout: 5000}).catch(() => {});
+    const shown = await ph.locator('.mealie .meal').evaluateAll(ms => ms.map(m => m.lastElementChild.textContent.trim()));
+    check(shown.includes(odd) && await ph.locator('.mealie .days b').count() === 0, `a name like "${odd}" is text, not markup (${JSON.stringify(shown)})`);
     const hits = await ph.locator('.mealie .mealcheck').evaluate(e => [e.offsetWidth, e.offsetHeight]);
     check(await noOverflow(ph) && hits[0] >= 44 && hits[1] >= 44, `375 px: no sideways scrolling, Check again ${hits.join(' x ')} px`);
     await shot(ph, 'mealie-phone');
+    scenario({mode: 'ok', plan: [{...dinner, recipe: {name: odd, slug: 'b-x'}}]}); await sleep(5200);
+    await ph.locator('.mealie .mealcheck').click(); await ph.locator('.mealie .mealsum', {hasText: 'Tonight: <b>'}).waitFor({timeout: 5000}).catch(() => {});
+    await p.goto(BASE + 'home'); await tile.filter({hasText: 'Tonight: <b>'}).waitFor({timeout: 5000}).catch(() => {});
+    check((await tile.locator('.pl').textContent()).replace(/\u00a0/g, ' ').includes('Tonight: ' + odd) && await tile.locator('.pl b').count() === 0, 'and on Today\'s tile');
     check(p.errors.length === 0 && ph.errors.length === 0, 'no page errors ' + p.errors.concat(ph.errors).join(' | '));
   } finally {
     aside(TOKEN); scenario({mode: 'ok', plan: []});                      // later checks see "Not set up yet"

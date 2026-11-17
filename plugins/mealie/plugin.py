@@ -11,10 +11,11 @@
 #   GET /api/households/mealplans?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD&perPage=N   Authorization: Bearer <token>
 #     -> {"page", "perPage", "total", "totalPages", "items": [{"date", "entryType", "title", "text", "recipe": {"name", "slug"} | null, ...}]}
 #   GET /api/users/self -> {"groupSlug", ...}; a recipe's page is <mealie>/g/<groupSlug>/r/<recipe slug>
-import calendar, datetime, json, os, re, socket, threading, time, urllib.error, urllib.parse, urllib.request
+import calendar, datetime, http.client, json, os, re, socket, threading, time, urllib.error, urllib.parse, urllib.request
 
 DEFAULT_URL = 'http://127.0.0.1:9925'       # Mealie's documented default port, on the machine LeafyGrove runs on
-TIMEOUT = 3                                 # seconds for each ask; Today never waits longer for a meal
+TIMEOUT = 3                                 # seconds in all for one look at Mealie (the plan and, once per token, the group
+                                            # together): Today never waits longer for a meal, however slowly Mealie answers
 MAX_BYTES = 1 << 20                         # Mealie's answer is read up to 1 MB, no more
 FRESH, STALE_ERR = 60, 30                   # a good answer is kept 60 s, a failure 30 s (the page asks every 15 s)
 AGAIN = 5                                   # "Check again" asks Mealie again when the kept answer is older than 5 s
@@ -95,14 +96,19 @@ _OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedire
 class Failed(Exception):
     def __init__(self, state): super().__init__(state); self.state = state
 
-def ask(base, path, tok):
-    """GET base+path with the token; the decoded JSON, or Failed(state). No text from the exception is kept: an error
-    answer could echo a header."""
+def _get(base, path, tok, until):
+    """GET base+path with the token, given up at `until` (time.monotonic()); the decoded JSON, or Failed(state). No text
+    from the exception is kept: an error answer could echo a header."""
     req = urllib.request.Request(base + path, headers={'Authorization': 'Bearer ' + tok, 'Accept': 'application/json',
                                                        'User-Agent': 'LeafyGrove-mealie'})
     try:
-        with _OPENER.open(req, timeout=TIMEOUT) as r:
-            body = r.read(MAX_BYTES + 1)
+        with _OPENER.open(req, timeout=max(.05, until - time.monotonic())) as r:
+            body = b''
+            while len(body) <= MAX_BYTES:              # piece by piece, so an answer that trickles in still ends on time
+                if time.monotonic() > until: raise Failed('slow')
+                part = r.read1(65536)
+                if not part: break
+                body += part
     except urllib.error.HTTPError as e:
         e.close()
         raise Failed('refused' if e.code in (401, 403) else 'unexpected') from None
@@ -110,12 +116,34 @@ def ask(base, path, tok):
     except urllib.error.URLError as e:
         raise Failed('slow' if isinstance(e.reason, (socket.timeout, TimeoutError)) else 'down') from None
     except (OSError, ValueError): raise Failed('down') from None
+    except http.client.HTTPException: raise Failed('unexpected') from None   # cut short (IncompleteRead), not HTTP (BadStatusLine)
     if len(body) > MAX_BYTES: raise Failed('unexpected')
     try: return json.loads(body.decode('utf-8'))
     except ValueError: raise Failed('unexpected') from None
 
+def ask(base, path, tok, until):
+    """_get on a helper thread, waited for until `until` at the latest: the deadline holds even when one network step
+    (connecting, a header line) stalls. A helper left behind stops on its own at its socket timeout or deadline; its
+    answer is dropped. Anything it raises becomes a Failed state, never an exception with text."""
+    left = until - time.monotonic()
+    if left <= 0: raise Failed('slow')
+    box = {}
+    def run():
+        try: box['doc'] = _get(base, path, tok, until)
+        except Failed as e: box['state'] = e.state
+        except Exception: box['state'] = 'unexpected'
+    t = threading.Thread(target=run, name='mealie-ask', daemon=True); t.start(); t.join(left)
+    if t.is_alive(): raise Failed('slow')
+    if 'doc' in box: return box['doc']
+    raise Failed(box.get('state', 'unexpected'))
+
 def _text(v, n=100):
     return ' '.join(str(v).split())[:n] if isinstance(v, (str, int, float)) and not isinstance(v, bool) else ''
+
+def part(v):
+    """True for one safe piece of a link's path: no / ? # %, and not "." or ".." (a browser reads those as "here" and
+    "up one", so /g/../r/.. would open Mealie's home page instead of the recipe)."""
+    return bool(re.fullmatch(r'[A-Za-z0-9._~-]+', v)) and v not in ('.', '..')
 
 def entries(doc):
     """Mealie's page of plan entries -> [{date, type, name, slug}], checked; Failed('unexpected') when it is not that shape."""
@@ -131,19 +159,19 @@ def entries(doc):
         name = _text(rec.get('name')) or _text(it.get('title')) or _text(it.get('text')) or 'A meal with no name'
         slug = _text(rec.get('slug'), 200)
         kind = str(it.get('entryType') or '').lower()
-        out.append({'date': day[:10], 'type': kind if kind in ORDER else 'other', 'name': name,
-                    'slug': slug if re.fullmatch(r'[A-Za-z0-9._~-]+', slug) else ''})
+        out.append({'date': day[:10], 'type': kind if kind in ORDER else 'other', 'name': name, 'slug': slug if part(slug) else ''})
     out.sort(key=lambda e: (e['date'], ORDER.index(e['type']) if e['type'] in ORDER else len(ORDER), e['name'].lower()))
     return out
 
 _lock = threading.Lock()
 _cache = {}            # key -> (time, result)
-_slug = {}             # (base, token stamp) -> group slug ('' when Mealie did not say)
+_slug = {}             # (base, token stamp) -> (time, group slug or None when Mealie did not answer)
 
 def fetch(today, env=None, now=None, max_age=None):
     """Everything the section shows, from the cache when it is fresh: {state, entries, group, more}. state '' = read.
-    One fetch at a time; the GETs that arrive meanwhile wait and share its answer. max_age: "Check again" asks Mealie
-    again when the kept answer is older than that (never more than once every few seconds)."""
+    One fetch at a time; the GETs that arrive meanwhile wait and share its answer. Both asks together take at most
+    TIMEOUT seconds. max_age: "Check again" asks Mealie again when the kept answer is older than that (never more than
+    once every few seconds)."""
     now = time.time() if now is None else now
     tok_path, conf_path = where(env)
     tok, problem, stamp = token(tok_path)
@@ -155,22 +183,28 @@ def fetch(today, env=None, now=None, max_age=None):
         keep = FRESH if hit and not hit[1]['state'] else STALE_ERR
         if max_age is not None: keep = min(keep, max_age)
         if hit and now - hit[0] < keep: return hit[1]
+        until = time.monotonic() + TIMEOUT
         end = today + datetime.timedelta(days=DAYS - 1)
         q = urllib.parse.urlencode({'start_date': today.isoformat(), 'end_date': end.isoformat(), 'perPage': 100, 'page': 1})
         try:
-            doc = ask(base, '/api/households/mealplans?' + q, tok)
+            doc = ask(base, '/api/households/mealplans?' + q, tok, until)
             res = {'state': '', 'entries': entries(doc), 'group': '', 'more': False}
             total = doc.get('total')
             res['more'] = isinstance(total, int) and total > len(doc['items'])
-            if (base, stamp) not in _slug:      # the recipe links' group, once per token; links are left out when it fails
-                try:
-                    me = ask(base, '/api/users/self', tok)
-                    g = _text(me.get('groupSlug'), 100) if isinstance(me, dict) else ''
-                    _slug[(base, stamp)] = g if re.fullmatch(r'[A-Za-z0-9._~-]+', g) else ''
-                except Failed: pass
-            res['group'] = _slug.get((base, stamp), '')
         except Failed as e:
             res = {'state': e.state, 'entries': [], 'group': '', 'more': False}
+        if not res['state']:
+            # the recipe links' group: once per token while Mealie gives it; a failed ask is not repeated for STALE_ERR
+            # seconds, and never costs the plan already read (the section shows it without links meanwhile)
+            known = _slug.get((base, stamp))
+            if not known or (known[1] is None and not 0 <= now - known[0] < STALE_ERR):
+                try:
+                    me = ask(base, '/api/users/self', tok, until)
+                    g = _text(me.get('groupSlug'), 100) if isinstance(me, dict) else ''
+                    _slug[(base, stamp)] = (now, g if part(g) else '')
+                except Failed:
+                    _slug[(base, stamp)] = (now, None)
+            res['group'] = _slug[(base, stamp)][1] or ''
         _cache.clear(); _cache[key] = (now, res)
         return res
 

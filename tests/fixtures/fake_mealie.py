@@ -4,8 +4,11 @@
 #   GET /api/households/mealplans?start_date=&end_date=&perPage=&page=   a page of plan entries
 #   GET /api/users/self                                                   {"groupSlug": ...}
 # What it answers comes from a scenario file, read on every request so a check can change it between asks:
-#   {"mode": "ok" | "refuse" | "slow" | "garbage" | "redirect" | "huge", "token": "<the token it accepts>", "group": "kitchen",
-#    "delay": 2, "plan": [{"in_days": 0, "entryType": "dinner", "recipe": {"name": "...", "slug": "..."}, "title": ""}, ...]}
+#   {"mode": "ok" | "refuse" | "slow" | "garbage" | "redirect" | "huge" | "cut" | "nothttp" | "drip", "token": "<the token it
+#    accepts>", "group": "kitchen", "delay": 2, "self_mode": <a mode for /api/users/self alone>,
+#    "plan": [{"in_days": 0, "entryType": "dinner", "recipe": {"name": "...", "slug": "..."}, "title": ""}, ...]}
+# cut: a chunked answer that stops mid-body (http.client's IncompleteRead); nothttp: a first line that is not HTTP
+# (BadStatusLine); drip: headers at once, then one byte of the body every `delay` seconds (never trips a per-step timeout).
 # in_days counts from today on this machine. Every request is recorded as {"path", "auth"} in .seen (and appended to
 # <scenario>.seen.jsonl when run as a program), so a check can see what reached it, the redirect's target included.
 #   python3 tests/fixtures/fake_mealie.py <port> <scenario.json>
@@ -32,12 +35,26 @@ def make_server(port, scenario, log=None):
                 with open(scenario, encoding='utf-8') as f: s = json.load(f)
             except (OSError, ValueError): s = {}
             mode = s.get('mode', 'ok')
+            if self.path.startswith('/api/users/self') and s.get('self_mode'): mode = s['self_mode']
             if self.path.startswith('/caught'): return self.send(200, {'caught': True})
             if mode == 'slow': time.sleep(float(s.get('delay', 2)))
             if rec['auth'] != 'Bearer ' + str(s.get('token', '')) or mode == 'refuse':
                 return self.send(401, {'detail': 'Could not validate credentials'})
             if mode == 'redirect': return self.send(302, {}, {'Location': f'http://127.0.0.1:{self.server.server_port}/caught'})
             if mode == 'garbage': return self.send(200, b'<html>not json</html>')
+            if mode == 'nothttp':
+                self.close_connection = True; self.wfile.write(b'NOT HTTP AT ALL\r\n\r\n'); return
+            if mode == 'cut':                # a chunk that promises 4096 bytes, 20 of them, then the connection ends
+                self.close_connection = True
+                self.wfile.write(b'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\n\r\n1000\r\n{"items": [{"date": "')
+                return
+            if mode == 'drip':
+                self.close_connection = True; body = b' ' * 200 + b'{}'
+                self.wfile.write(b'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: %d\r\n\r\n' % len(body)); self.wfile.flush()
+                try:
+                    for c in body: time.sleep(float(s.get('delay', .3))); self.wfile.write(bytes([c])); self.wfile.flush()
+                except OSError: pass
+                return
             u = urlsplit(self.path)
             if u.path == '/api/users/self': return self.send(200, {'id': 'u1', 'username': 'cook', 'groupSlug': s.get('group', 'kitchen'), 'householdSlug': 'family'})
             if u.path != '/api/households/mealplans': return self.send(404, {'detail': 'Not Found'})

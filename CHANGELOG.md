@@ -8,6 +8,11 @@ Mealie becomes a section: Today says tonight's meal from the owner's Mealie meal
 - **The token stays on the server**: `~/.config/argus-ui/mealie-token.txt` (or `ARGUS_MEALIE_TOKEN`), read on every request, sent only to Mealie; never in an answer, the page or a log; redirects are not followed and no proxy is used. Mealie's address on the server: `http://127.0.0.1:9925`, or `mealie.json` (`ARGUS_MEALIE`).
 - A bundled server plugin (`plugins/mealie/`), owner only, with no agent's name. Read once a minute (failures 30 s). Built on Mealie v3.30.0's API, checked against its source at that tag.
 - Tests: `tests/mealie_test.py` (no browser) and `tests/mealie.test.js`, against a stand-in Mealie (`tests/fixtures/fake_mealie.py`), never a real one.
+- **After review** (M1 to M5, before merge):
+  - **3 seconds in all**: one deadline covers the plan and the group together, and a trickling answer stops at it (it used to be 3 s for each step of each ask). A failed group ask is remembered 30 s like other failures; the plan it came with is kept, without links.
+  - **An answer cut short or not HTTP** reads *Mealie answered something unexpected* and is remembered like other failures (it used to escape the plugin's checks).
+  - **No `.` or `..`** as a recipe or group in a link.
+  - Tests: the proxy in the environment is still not used, a learner gets 403 and no tile, a recipe named `<b>x</b>` is text on the section and Today. The layout check at 1920 px counts sections instead of leaving test plugins out by name: 10 (a real host today) and 11 keep the weather on the strip; the test's full set (12) hides it on Watch and Phone alerts, which the run notes.
 
 ## 4.52.1 – 2026-11-16
 Small fixes from the open list (after 4.52.0, the phone-first layout; nothing here changes the page's layout).
