@@ -99,7 +99,7 @@ run(async b => {
         await q.waitForTimeout(5400);
         const sm = await edge.boundingBox();
         check(w0 > 60 && await edge.evaluate(e => e.classList.contains('small')) && Math.round(sm.width) === 44 && Math.round(sm.height) === 44 && await edge.getAttribute('aria-label') === name0,
-          `the marker is the pill "Look" (${Math.round(w0)} px) for 5 s, then an arrow-only round button of 44 px with the same name (${Math.round(sm.width)}x${Math.round(sm.height)})`);
+          `the marker is the pill "See what needs a look" (${Math.round(w0)} px) for 5 s, then an arrow-only round button of 44 px with the same name (${Math.round(sm.width)}x${Math.round(sm.height)})`);
         await shot(q, 'W2-watch-edge-small-412-night');
         await edge.click(); await q.waitForTimeout(900);
         const vis = await q.locator('.tblock.eyed').evaluate(e => { const r = e.getBoundingClientRect(); return r.top >= 0 && r.top < innerHeight; });

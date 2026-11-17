@@ -37,6 +37,19 @@ run(async b => {
     return {h1: r('.title h1'), sub: r('#sub'), modes: m && !m.hidden ? r('#modes') : null}; });
   check(hd.sub.top >= hd.h1.bottom - 1, 'the greeting and date sit under the name');
   if (hd.modes) check(Math.abs((hd.modes.top + hd.modes.bottom) / 2 - (hd.h1.top + hd.h1.bottom) / 2) < 16 && hd.modes.left > hd.h1.right, 'the Desktop/Game switch shares the name\'s line');
+  // the visual review (2026-11-17): every row's picture and words start on one line, the broken row's red bar inside the card's
+  // padding; the card is solid (the scene does not show through), its words 4.5:1 or more on it
+  const al = await t.evaluate(() => { const s = document.querySelector('.home>.needs.first'), sl = s.getBoundingClientRect().left + s.clientLeft;
+    return [...s.querySelectorAll('.need')].map(n => ({alert: n.classList.contains('alert'), row: n.getBoundingClientRect().left - sl, mark: n.querySelector('.nmark').getBoundingClientRect().left, words: n.querySelector('.nb').getBoundingClientRect().left})); });
+  const spread = k => Math.max(...al.map(a => a[k])) - Math.min(...al.map(a => a[k]));
+  check(al.length >= 2 && al.some(a => a.alert) && spread('mark') <= 1 && spread('words') <= 1, `the needs rows' pictures and words share one left edge, the broken one's too (pictures ${al.map(a => Math.round(a.mark)).join('/')}, words ${al.map(a => Math.round(a.words)).join('/')})`);
+  check(al.filter(a => a.alert).every(a => a.row > 0), `and its red bar is inside the card (${al.filter(a => a.alert).map(a => Math.round(a.row)).join(', ')} px from its inner edge)`);
+  const rgb = c => c.match(/[\d.]+/g).map(Number), lum = c => { const v = rgb(c).slice(0, 3).map(x => { x /= 255; return x <= .03928 ? x / 12.92 : ((x + .055) / 1.055) ** 2.4; }); return .2126 * v[0] + .7152 * v[1] + .0722 * v[2]; };
+  const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m); return Math.round((x + .05) / (y + .05) * 10) / 10; };
+  const nc = await t.evaluate(() => { const s = document.querySelector('.home>.needs.first');
+    return {bg: getComputedStyle(s).backgroundColor, text: [...s.querySelectorAll('#needs-h, .need p, .need p small, .need .tl, .need .tl b')].filter(e => e.offsetHeight).map(e => getComputedStyle(e).color)}; });
+  const alpha = rgb(nc.bg).length > 3 ? rgb(nc.bg)[3] : 1, lowest = Math.min(...nc.text.map(c => ratio(c, nc.bg)));
+  check(alpha === 1 && nc.text.length >= 4 && lowest >= 4.5, `the needs card is solid (${nc.bg}, alpha ${alpha}), its words ${lowest}:1 or more on it`);
   check(await noOverflow(t), '412: no sideways scrolling');
   await shot(t, 'phone-today-412-needs');
   await t.setViewportSize({width: 375, height: 812}); await t.waitForTimeout(300);
@@ -55,6 +68,8 @@ run(async b => {
   if (await c.locator('.home .now').count()) {
     check(await calm.count() === 1 && /Nothing needs you/.test(await calm.locator('#needs-h').textContent()) && await calm.locator('.now').count() === 1, 'one band: "Nothing needs you" and the server\'s line');
     check(await c.locator('.home > .now').count() === 0, 'and no second band for the server');
+    const nl = await calm.locator('.now').evaluate(n => [getComputedStyle(n, '::before').content, n.innerText.trim()]);
+    check(/^(none|normal)$/.test(nl[0]) && !/^·/.test(nl[1]), `the server's line starts with its words, no stray "·" ("${nl[1]}", before: ${nl[0]})`);
   } else check(/Nothing needs you/.test(await c.locator('#needs-h').textContent()), 'nothing needs you (no server line in this fixture)');
   const fit = await c.evaluate(() => { scrollTo(0, 0); const kids = [...document.querySelector('#main .home').children];
     return [Math.round(Math.max(...kids.map(e => e.getBoundingClientRect().bottom))), Math.round(document.querySelector('.tabbar').getBoundingClientRect().top)]; });
@@ -85,6 +100,28 @@ run(async b => {
   check(await evs() === 3, 'Show fewer folds it again');
   check(await noOverflow(w), 'Watch 412: no sideways scrolling');
   check(w.errors.length === 0, `no page errors on Watch (${w.errors.join(' | ')})`);
+  // the visual review (2026-11-17): the marker for what is broken (out of view) sits bottom centre just above the bar on a phone and,
+  // in a scroll sweep, never covers a control or a task's state pill (it used to sit on the top card's pill at the top right)
+  await w.evaluate(() => scrollTo(0, 0)); await w.waitForTimeout(300);
+  const sw = await w.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms)), out = {shown: 0, hits: [], off: [], label: ''}, H = document.documentElement.scrollHeight - innerHeight;
+    for (let y = 0; y <= H + 40; y += 40) {
+      scrollTo(0, Math.min(y, H)); await wait(90);
+      const e = document.getElementById('satEdge'); if (!e || e.hidden || getComputedStyle(e).display === 'none') continue;
+      out.shown++; const m = e.getBoundingClientRect(), bar = document.getElementById('tabbar').getBoundingClientRect(), vw = document.documentElement.clientWidth;
+      if (!out.label && !e.classList.contains('small')) out.label = e.textContent.trim();
+      if (Math.abs((m.left + m.right) / 2 - vw / 2) > 2 || m.bottom > bar.top) out.off.push(`${y}: ${Math.round(m.left)}-${Math.round(m.right)} x ${Math.round(m.top)}-${Math.round(m.bottom)}, bar ${Math.round(bar.top)}`);
+      for (const x of document.querySelectorAll('a[href],button,summary,input,select,textarea,[role=button],[role=link],[role=switch],.card .pill')) {
+        if (x === e || e.contains(x)) continue; const r = x.getBoundingClientRect(); if (!r.width || !r.height) continue;
+        if (Math.min(r.right, m.right) > Math.max(r.left, m.left) && Math.min(r.bottom, m.bottom) > Math.max(r.top, m.top)) out.hits.push(`${y}: ${(x.getAttribute('aria-label') || x.textContent).trim().slice(0, 24)}`);
+      }
+    }
+    return out; });
+  check(sw.shown >= 3 && sw.hits.length === 0, `412 scroll sweep: the marker shown at ${sw.shown} steps, over no control or state pill ${JSON.stringify(sw.hits.slice(0, 4))}`);
+  check(sw.off.length === 0, `and it sits bottom centre, above the bar ${JSON.stringify(sw.off.slice(0, 3))}`);
+  check(sw.label === 'See what needs a look' && await w.locator('#satEdge').getAttribute('aria-label') === 'See what needs a look', `its label is verb-first and is its name ("${sw.label}")`);
+  await w.evaluate(() => scrollTo(0, 0)); await w.waitForTimeout(300);
+  await w.evaluate(() => scrollTo(0, document.documentElement.scrollHeight)); await w.waitForTimeout(500);   // the full pill, for the picture
   await shot(w, 'phone-watch-412');
   // a computer keeps every group open, devices after them, and every event
   await w.setViewportSize({width: 1440, height: 900}); await w.waitForTimeout(400);

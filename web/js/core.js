@@ -704,7 +704,7 @@ const satellite = (() => {
   const A = $('#argus'), red = $('svg .eye.red', A);
   const live = document.createElement('p'); live.className = 'sr'; live.id = 'satSay'; live.setAttribute('aria-live', 'polite'); document.body.append(live);
   const edge = document.createElement('button'); edge.type = 'button'; edge.id = 'satEdge'; edge.className = 'satedge'; edge.hidden = true;
-  edge.setAttribute('aria-label', 'Scroll to what needs a look'); document.body.append(edge);
+  edge.setAttribute('aria-label', 'See what needs a look'); document.body.append(edge);   // the same words as the pill, so a voice command that reads them works
   let key = null, keys = new Set(), count = 0, at = null, seen = null, shrink = 0;   // the block it glares at, every trouble key, where it sat, the observer
   const say = t => { live.textContent = t; };
   const base = it => (it ? it.say : 'Something is wrong').replace(/[.\s]+$/, '');
@@ -714,20 +714,21 @@ const satellite = (() => {
     return `<svg viewBox="90.2 64.1 28 28" aria-hidden="true">${g.outerHTML}</svg>`;
   }
   const centre = el => { const r = el.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; };
-  // The edge marker, shown only while the block is out of view. The pill "Look" for 5 seconds after it appears or after the set
+  // The edge marker, shown only while the block is out of view. The pill "See what needs a look" for 5 seconds after it appears or after the set
   // of trouble changes; then an arrow-only round button of 44 px (same name), so it does not sit on a control for long.
   function full() { edge.classList.remove('small'); clearTimeout(shrink); shrink = setTimeout(() => { edge.classList.add('small'); spot(); }, 5000); spot(); }
   // It never rests on a control (W3): after every scroll, resize and change of size it takes the first spot down the right edge (up
-  // from the bottom bar when the block is below) where it touches no button, link or other control, 4 px clear. Nowhere free: it
-  // waits out of sight until a spot frees up on the next scroll.
-  const CONTROLS = 'a[href],button,summary,input,select,textarea,[role=button],[role=link],[tabindex]:not([tabindex="-1"])';
+  // from the bottom bar when the block is below) where it touches no button, link or other control, 4 px clear. On a phone (4.52.0
+  // review) it sits bottom centre, just above the bar, in thumb reach, and moves up that column only past a control. A task's state
+  // pill (it reads like a switch) and a toast count as controls too. Nowhere free: it waits out of sight until a spot frees up.
+  const CONTROLS = 'a[href],button,summary,input,select,textarea,[role=button],[role=link],[tabindex]:not([tabindex="-1"]),.card .pill,#toast.show';
   function spot() {
     if (edge.hidden) return;
-    const vw = document.documentElement.clientWidth, w = edge.offsetWidth || (edge.classList.contains('small') ? 44 : 84), h = 44, x = vw - 16 - w;
+    const ph = PHONE.matches, vw = document.documentElement.clientWidth, w = edge.offsetWidth || (edge.classList.contains('small') ? 44 : 84), h = 44, x = ph ? (vw - w) / 2 : vw - 16 - w;
     const bar = $('#tabbar'), barTop = bar && bar.offsetHeight && getComputedStyle(bar).display !== 'none' ? bar.getBoundingClientRect().top : innerHeight;
     const rs = $$(CONTROLS).filter(e => e !== edge && !edge.contains(e)).map(e => e.getBoundingClientRect())
       .filter(r => r.width && r.height && r.bottom > 0 && r.top < innerHeight && r.right > x - 4 && r.left < x + w + 4);
-    const free = y => rs.every(r => r.bottom <= y - 4 || r.top >= y + h + 4), up = !edge.classList.contains('down'), lo = 12, hi = barTop - h - 12;
+    const free = y => rs.every(r => r.bottom <= y - 4 || r.top >= y + h + 4), up = !ph && !edge.classList.contains('down'), lo = 12, hi = barTop - h - 12;
     for (let i = 0; i <= hi - lo; i += 4) {
       const y = up ? lo + i : hi - i;
       if (free(y)) { edge.style.top = `${y}px`; edge.style.bottom = ''; edge.classList.remove('nospot'); return; }
@@ -736,6 +737,7 @@ const satellite = (() => {
   }
   let spotAt = 0; const respot = () => { cancelAnimationFrame(spotAt); spotAt = requestAnimationFrame(spot); };
   addEventListener('scroll', respot, {passive: true}); addEventListener('resize', respot);
+  if ($('#toast')) new MutationObserver(respot).observe($('#toast'), {attributes: true, attributeFilter: ['class']});   // a toast shows: step out of its way
   function edgeFor(block, changed) {
     seen?.disconnect(); seen = null;
     if (!block || !('IntersectionObserver' in window)) { edge.hidden = true; clearTimeout(shrink); return; }
@@ -744,7 +746,7 @@ const satellite = (() => {
       if (e.isIntersecting) { edge.hidden = true; clearTimeout(shrink); return; }
       const up = e.boundingClientRect.top < 0, bar = $('#tabbar'), barH = bar && bar.offsetHeight && getComputedStyle(bar).display !== 'none' ? bar.offsetHeight : 0;
       edge.classList.toggle('up', up); edge.classList.toggle('down', !up); edge.style.top = up ? '12px' : ''; edge.style.bottom = up ? '' : `${barH + 12}px`;
-      edge.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${up ? 'M12 5 5 13h4v6h6v-6h4z' : 'M12 19 5 11h4V5h6v6h4z'}" fill="currentColor"/></svg><span>Look</span>`;
+      edge.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${up ? 'M12 5 5 13h4v6h6v-6h4z' : 'M12 19 5 11h4V5h6v6h4z'}" fill="currentColor"/></svg><span>See what needs a look</span>`;
       if (edge.hidden) { edge.hidden = false; full(); } else spot();   // it appears: the full pill first
     }, {threshold: .25});
     seen.observe(block);

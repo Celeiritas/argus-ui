@@ -66,8 +66,10 @@ a visual hierarchy by his priorities). Wider screens keep the layout above.
 **Today**, top to bottom:
 1. **The header** on two short lines: the name with the Desktop/Game switch beside it; the short date and the weather under it.
    Argus sits at 56 px beside both.
-2. **What needs you**, first, framed red when something broke. When nothing does, one band carries both *Nothing needs you*
-   and the server's line (`.needs.calm`), so the calm state costs one line.
+2. **What needs you**, first, framed red when something broke, on a solid card (the scene does not show through it). A
+   broken task's red bar sits in the card's own padding, so every row's picture and words start on the same line. When nothing
+   needs you, one band carries both *Nothing needs you* and, on the line under it, the server's line (`.needs.calm`, no leading
+   dot), so the calm state costs one band.
 3. **The devices line.**
 4. **One line per quiet section** that has something to say, from its status line (*Mentor · 6 cards due*), in place of the
    Sections tiles: the bottom bar already reaches every section, and a quiet section's line is the only news a tile carries.
@@ -82,6 +84,9 @@ a visual hierarchy by his priorities). Wider screens keep the layout above.
    phone All view the folded groups' cards are not there to drop a power on; their own pages have them.
 4. **What happened lately**: the three newest, then *Show more* / *Show fewer* (`aria-expanded`; it stays open across the 15 s
    redraw). Hidden when there are three or fewer.
+
+Argus's marker for something broken that is out of view (*See what needs a look*, above) sits bottom centre on a phone, just
+above the bottom bar, in thumb reach; it moves up only to clear a control, so it never covers a task's state pill or buttons.
 
 Crossing the width (turning a tablet, narrowing a window) draws the page again.
 
@@ -335,10 +340,11 @@ the broken card and glares at it. On Watch (owner only), `satellite` in `web/js/
   says the new one with the count (*Extra is running but not working. Now 3 things need a look.*); when one leaves and others
   remain, the sentence says the new count, without a pulse. Reduced motion: the words only.
 - **Out of view**: when the block is scrolled away, an edge marker appears on the right edge (from the top; from the bottom bar up if
-  the block is below): the pill *Look* with an arrow for 5 seconds after it appears or after the set of trouble changes, then an
-  arrow-only round button of 44 px with the same name (*Scroll to what needs a look*). **It never rests on a control**: after every
-  scroll and resize it takes the first spot down that edge where it touches no button, link or other control (4 px clear); where
-  there is none, it waits out of sight until there is. Checked by a scroll sweep at 360 and 412 px (0 % of every control covered). A
+  the block is below): the pill *See what needs a look* with an arrow for 5 seconds after it appears or after the set of trouble
+  changes, then an arrow-only round button of 44 px with the same name. On a phone it sits bottom centre instead, just above the
+  bottom bar (4.52.0). **It never rests on a control**: after every scroll and resize it takes the first spot along its edge (on a
+  phone, up its centre column from the bar) where it touches no button, link, other control, task state pill or toast (4 px
+  clear); where there is none, it waits out of sight until there is. Checked by a scroll sweep at 360 and 412 px (0 % of every control covered). A
   tap scrolls back to the block. Reduced motion: it changes without a transition.
 - **His other eyes look at that block, not at the pointer**, while anything is red (`look.fix`). Carrying a bolt and holding a
   button still come first.
