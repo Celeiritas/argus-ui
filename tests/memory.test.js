@@ -150,7 +150,7 @@ run(async b => {
         check(await noOverflow(n) && fits, `${s.name}, ${w} px: no sideways scrolling, every sentence wraps inside its row`);
         await n.close();
       }
-      const t = await page(b, 412, 915);
+      const t = await page(b, 1024, 768);      // a computer: a phone has no Sections tiles since 4.52.0 (the needs row is read at 360 and 412 below)
       // Today: the line is in one place (4.44.0): the row in Needs you when it needs you, else Mnemosyne's card
       await t.goto(BASE); const card = t.locator('.place[data-id="memory"]').locator('.pl'), row = t.locator('.need', {hasText: s.today});
       await (s.needs ? row : card.filter({hasText: s.today})).waitFor({timeout: 5000}).catch(() => {});

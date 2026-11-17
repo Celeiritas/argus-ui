@@ -16,6 +16,7 @@ run(async b => {
   // one failed task, every other one well
   units(u => { Object.entries(u).forEach(([k, v]) => { if (k !== JOB && v.Result && v.Result !== 'success') { v.Result = 'success'; if (v.ActiveState === 'failed') v.ActiveState = 'inactive'; } }); fail(u); });
   const p = await page(b, 412, 915);
+  try {                                                                // a check that throws must still give the units and the mark back (4.52.0: one throw here failed watch, salience and works after it)
   await known(p, false);                                               // no mark left from an earlier run
   // the realm otherwise quiet (alerts and checks from earlier tests left out, every other section's line kept but needing
   // nothing), and Mentor with six cards due that says it needs him: the page itself must keep Mentor quiet, whatever it says
@@ -32,11 +33,14 @@ run(async b => {
     'Mentor with 6 cards due is not in "things need you": no row, no Study button');
   check(await p.locator('#needs-h').textContent() === '1 thing needs you', `the count is the failed task alone (${await p.locator('#needs-h').textContent()})`);
   check(await p.locator('#tabbar .tab[data-id=mentor] .tabcount').count() === 0 && await p.locator('#tabbar .tab[data-id=mentor] .sr').count() === 0, 'no count or dot on Mentor in the bar');
-  check(await tile('mentor').count() === 1 && /6\u00a0cards due/.test(await tile('mentor').locator('.pl').textContent()), `Mentor's tile still says it: "${await tile('mentor').locator('.pl').textContent().catch(() => '')}"`);
+  // a phone has no Sections tiles (4.52.0, docs/home.md "On a phone"): a quiet section keeps its line as one line of its own
+  const ql = p.locator('#main .home > a.qline[data-id="mentor"]');
+  check(await ql.count() === 1 && /6\scards due/.test(await ql.textContent()), `Mentor's line still says it on a phone: "${await ql.textContent().catch(() => '')}"`);
   const real = await (await p.request.get(BASE + 'api/mentor/status')).json();
   check(real.needs === false && real.action === '' && !('count' in real), `the server says the same to the owner: never needs him, no button, no count (${JSON.stringify(real)})`);
   await p.setViewportSize({width: 1440, height: 900}); await p.evaluate(() => render()); await p.waitForTimeout(300);
   check(await p.locator('#realms a.realm[data-id=mentor] .dot').count() === 0, 'no dot on Mentor in the wide strip');
+  check(await tile('mentor').count() === 1 && /6\u00a0cards due/.test(await tile('mentor').locator('.pl').textContent()), `on a computer Mentor's tile still says it: "${await tile('mentor').locator('.pl').textContent().catch(() => '')}"`);
   await p.setViewportSize({width: 412, height: 915}); await p.evaluate(() => render()); await p.waitForTimeout(300);
 
   // ---- 4. Known, low priority: from Today's row ----
@@ -45,9 +49,8 @@ run(async b => {
   const hit = await mark.boundingBox();
   check(hit && hit.height >= 44 && hit.width >= 44, `it is at least 44 px (${hit && Math.round(hit.width)} x ${hit && Math.round(hit.height)})`);
   await mark.click();
-  await p.waitForFunction(() => document.getElementById('needs-h')?.textContent === 'Nothing needs you' && /known/.test(document.querySelector('#main .place[data-id="argus"] .pl')?.textContent || ''), null, {timeout: 6000}).catch(() => {});
+  await p.waitForFunction(() => document.getElementById('needs-h')?.textContent === 'Nothing needs you', null, {timeout: 6000}).catch(() => {});
   check(await row().count() === 0 && await p.locator('#needs-h').textContent() === 'Nothing needs you', `marked known, it leaves Today: "${await p.locator('#needs-h').textContent()}"`);
-  check(/^All \d+\u00a0tasks well\u00a0· 1\u00a0known$/.test(await tile('argus').locator('.pl').textContent()), `Argus's tile: "${await tile('argus').locator('.pl').textContent()}", the dot stays with "well" and "1 known" wraps as one piece`);
   check(!!(await jobNow(p)).known, 'the server keeps the mark');
   check(await p.locator('#toastAct').isVisible() && await p.locator('#toastAct').textContent() === 'Undo' && await p.evaluate(() => document.activeElement?.id === 'toastAct'), 'a toast offers Undo, and focus is on it');
   await p.locator('#toastAct').click();
@@ -81,6 +84,11 @@ run(async b => {
 
   // ---- it comes back when it works again and then fails, or when it fails another way ----
   check((await known(p, true)).status() === 200 && !!(await jobNow(p)).known, 'marked again');
+  // Argus's tile counts it as known (a computer: a phone has no tiles, 4.52.0; before, this was read at 412 px right after the mark)
+  await p.setViewportSize({width: 1024, height: 768}); await p.evaluate(() => refresh());
+  await p.waitForFunction(() => /known/.test(document.querySelector('#main .place[data-id="argus"] .pl')?.textContent || ''), null, {timeout: 6000}).catch(() => {});
+  check(/^All \d+\u00a0tasks well\u00a0· 1\u00a0known$/.test(await tile('argus').locator('.pl').textContent().catch(() => '')), `Argus's tile: "${await tile('argus').locator('.pl').textContent().catch(() => '')}", the dot stays with "well" and "1 known" wraps as one piece`);
+  await p.setViewportSize({width: 412, height: 915}); await p.evaluate(() => render()); await p.waitForTimeout(300);
   units(u => Object.assign(u[JOB], {Result: 'success', ActiveState: 'inactive', ExecMainStatus: '0'}));
   check(!(await jobNow(p)).known, 'it ran well: the mark is gone');
   units(u => fail(u));
@@ -95,6 +103,8 @@ run(async b => {
   await p.evaluate(() => { S.role = 'learner'; render(); }); await p.waitForTimeout(400);
   check(await p.locator('button.knownbtn').count() === 0, 'a learner sees no "Mark as known"');
   check(p.errors.length === 0, 'no page errors ' + p.errors.join(' | '));
-  await known(p, false);
-  units(u => { Object.keys(u).forEach(k => delete u[k]); Object.assign(u, JSON.parse(saved)); });
+  } finally {
+    await known(p, false).catch(() => {});
+    units(u => { Object.keys(u).forEach(k => delete u[k]); Object.assign(u, JSON.parse(saved)); });
+  }
 });

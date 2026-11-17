@@ -133,8 +133,10 @@ run(async b => {
   check(tb.y + tb.h >= 759 && tb.w >= 374 && await ph.locator('.realms').isHidden(), 'phone: the sections sit in a bar at the bottom instead of the strip');
   check(await more.evaluate(e => e.classList.contains('on')) && /Olympus/.test(await more.textContent()), 'phone: on a place inside More, the More slot is the current one and names it');
   await ph.goto(BASE + 'home'); await settled(ph);
-  const [pn, pp] = await boxes(ph, '.home .needs', '.home .places');
-  check(pn && pp && pp.y > pn.y && pn.w >= 340, `phone: Home is one column, full width (rows ${pn && pn.w} px wide)`);
+  // a phone's Today (4.52.0): no Sections tiles; what needs you first, the rest below it in one full-width column
+  const [pn, pl] = await boxes(ph, '.home .needs', '.home > :last-child');
+  check(pn && pl && pl.y > pn.y && pn.w >= 340 && pl.w >= 340 && await ph.locator('.home .places').count() === 0,
+    `phone: Home is one column, full width, with no tiles (rows ${pn && pn.w} px wide, the last block ${pl && pl.w} px)`);
   check(await noOverflow(ph), 'phone: no sideways scrolling');
   await ph.goto(BASE + 'argus'); await ph.locator('.card').first().waitFor();
   check((await box(ph, '.argus')).w <= 96, 'phone: Argus is 96 px, so the first task card shows sooner');

@@ -4,7 +4,9 @@
 // Zeus always does (4.50.1: on and locked, even when today.json says otherwise); Mnemosyne's switch says what off drops.
 // Saved on the server (one Today on every device), so the checks read it back after a reload. A learner has no Edit button
 // (the server's 403 is in tests/today_edit_test.py and tests/gate_test.py). Every check here leaves today.json at the default.
-// Pictures (numbered, at 412 and 1920 px): SHOTS, or EDIT_SHOTS when set (a folder of their own).
+// A phone has no Sections tiles since 4.52.0 (docs/home.md "On a phone"): the whole flow runs at 600 px (the narrowest width
+// with tiles, and Edit's narrow rows) and 1920 px; a 412 px phone gets its own checks (Edit Today beside Open, Edit and Done).
+// Pictures (numbered, at 600 and 1920 px): SHOTS, or EDIT_SHOTS when set (a folder of their own).
 const {BASE, check, page, noOverflow, run} = require('./lib');
 const fs = require('fs'), path = require('path');
 const HOME = path.join(path.dirname(process.env.FIXTURES), 'home'), CFG = path.join(HOME, '.config/argus-ui');
@@ -43,11 +45,9 @@ async function flow(b, w, h, n) {
   const before = await tiles(t);
   check(before.includes('demo-server') && before.includes('spartamelee') && before.includes('argus'), `${tag}: the fixture's tiles (${before.join(', ')})`);
   check(await t.locator('#editToday').count() === 1 && (await t.locator('#editToday').boundingBox()).height >= 44, `${tag}: the owner has Edit Today in the Sections heading, 44 px tall`);
-  if (w === 412) {
-    const fit = await t.evaluate(() => { scrollTo(0, 0); return [document.querySelector('.home .places').getBoundingClientRect().bottom, document.querySelector('.tabbar').getBoundingClientRect().top]; });
-    check(fit[0] <= fit[1], `412 x 915: Today with its Edit button still ends above the bottom bar (Sections end ${Math.round(fit[0])}, bar ${Math.round(fit[1])})`);
+  if (w === 600) {
     await t.evaluate(() => { S.role = 'learner'; render(); });
-    check(await t.locator('#editToday').count() === 0, 'a learner has no Edit Today');
+    check(await t.locator('#editToday').count() === 0, `${tag}: a learner has no Edit Today`);
     await t.evaluate(() => { S.role = 'owner'; render(); }); await t.waitForTimeout(200);
   }
   await shot(t, `${n}01-today-${tag}`);
@@ -161,8 +161,27 @@ run(async b => {
   const q = await page(b, 412, 915); await q.goto(BASE);
   try {
     check((await save(q, {reset: true})).ok(), 'start from the default layout');
-    await flow(b, 412, 915, '');
+    await flow(b, 600, 915, '');
     await flow(b, 1920, 1080, '');
+
+    // a phone (4.52.0): no tiles; Edit Today beside Open's heading, 44 px tall, Today with it above the bottom bar; Edit and Done work
+    const ph = await today(b, 412, 915);
+    const pf = await ph.evaluate(() => { scrollTo(0, 0); const e = document.getElementById('editToday'), k = [...document.querySelectorAll('#main .home > *')].filter(x => x.offsetHeight);
+      return {open: !!(e && e.closest('.open .placeshead')), h: e ? Math.round(e.getBoundingClientRect().height) : 0, tiles: document.querySelectorAll('#main .placelist').length,
+        end: k.length ? Math.round(k[k.length - 1].getBoundingClientRect().bottom) : 0, bar: Math.round(document.querySelector('.tabbar').getBoundingClientRect().top)}; });
+    check(pf.open && pf.h >= 44 && !pf.tiles, `412: no tiles, the owner has Edit Today in Open's heading, ${pf.h} px tall`);
+    check(pf.end <= pf.bar, `412 x 915: Today with its Edit button still ends above the bottom bar (ends ${pf.end}, bar ${pf.bar})`);
+    await ph.evaluate(() => { S.role = 'learner'; render(); });
+    check(await ph.locator('#editToday').count() === 0, '412: a learner has no Edit Today');
+    await ph.evaluate(() => { S.role = 'owner'; render(); }); await ph.waitForTimeout(200);
+    await shot(ph, '01-today-412');
+    await ph.locator('#editToday').click(); await ph.locator('#main .home.edit').waitFor();
+    check(await ph.evaluate(() => document.activeElement.id) === 'edit-h' && await noOverflow(ph) && !(await small(ph)).length, '412: Edit opens with the keyboard on its heading, fits, every control 44 px or more');
+    await ph.evaluate(() => scrollTo(0, 0)); await shot(ph, '02-edit-412');
+    await ph.locator('#main .edit .edend [data-ed=done]').click(); await ph.locator('#editToday').waitFor({timeout: 5000}).catch(() => {});
+    check(await ph.evaluate(() => document.activeElement.id) === 'editToday' && await ph.locator('#main .home.phone').count() === 1, '412: after Done the phone Today is back, the keyboard on Edit Today');
+    check(!ph.errors.length, `412: no page errors (${ph.errors.join(' | ')})`);
+    await ph.close();
 
     // a group typed and then a button pressed at once (no Enter, no Tab): leaving the field regroups, and the first press
     // still counts (a Move acts on the same link in its new group; Done saves the new group)
@@ -206,16 +225,20 @@ run(async b => {
     // every tile hidden: Today says so and Edit Today stays, so he can bring them back
     const ids = await (async () => { const x = await today(b, 412, 915); const v = await x.evaluate(() => home.tileList().map(e => e.id)); await x.close(); return v; })();
     check((await save(q, {tiles: {hidden: ids}})).ok(), 'save a layout with every tile hidden');
-    const e = await today(b, 412, 915);
+    const e = await today(b, 600, 915);      // a computer's Today says it in the Sections panel; a phone has none (4.52.0), so Edit Today is enough there
     check(await e.locator('#main .places .quiet').textContent().then(s => /Every section is hidden/.test(s)).catch(() => false) && await e.locator('#editToday').count() === 1,
       'every tile hidden: Today says so and still has Edit Today');
     await e.close();
+    const e4 = await today(b, 412, 915);
+    check(await e4.locator('#editToday').count() === 1, 'every tile hidden, a phone: Edit Today is still there');
+    await e4.close();
 
     // a broken today.json: Today shows the default and says so in plain words; saving sets the old file aside
     fs.writeFileSync(TD, '{"v":1,"tiles":');
     const k = await today(b, 412, 915);
     const why = await k.locator('#main .today-problem').textContent().catch(() => '');
-    check(/could not be used/.test(why) && /default layout/.test(why) && (await tiles(k)).includes('spartamelee'), `a broken today.json: the default layout, and a line that says so ("${why}")`);
+    const dflt = await k.evaluate(() => home.tileList().some(e => e.id === 'spartamelee' && e.shown));   /* a phone draws no tiles (4.52.0): the layout the page uses */
+    check(/could not be used/.test(why) && /default layout/.test(why) && dflt, `a broken today.json: the default layout, and a line that says so ("${why}")`);
     await shot(k, '07-broken-file-412');
     await k.close();
     check((await save(q, {reset: true})).ok() && fs.readdirSync(CFG).some(f => /^today\.set-aside-\d{8}-\d{4}\.json$/.test(f)), 'Reset over a broken file keeps the old one beside it (today.set-aside-<date>.json)');
