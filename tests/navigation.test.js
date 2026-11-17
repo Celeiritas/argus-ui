@@ -86,9 +86,13 @@ run(async b => {
         const mem = secs.find(x => x.id === 'memory');
         check(!!mem && mem.dot && /no copy outside/.test(mem.line), `${w}: Mnemosyne's row has its dot and her line ("${mem && mem.line}")`);
         await shot(p, 'nav-phone-more');
+        // the sheet's bottom: Media, Other pages and Settings (a picture for the owner's review)
+        await p.evaluate(() => { const m = document.getElementById('moreSheet'); m.scrollTop = m.scrollHeight; }); await p.waitForTimeout(200);
+        await shot(p, 'nav-phone-more-settings');
       } else {
         const folded = await p.locator('#realms .realm.over').evaluateAll(es => es.map(e => e.dataset.id));
         check(JSON.stringify(secs.map(x => x.id).sort()) === JSON.stringify([...folded].sort()), `${w}: More's sections are exactly the pills folded off the strip (${folded.join(' ') || 'none'})`);
+        if (w === 1440) await shot(p, 'nav-1440-more');
       }
       const small = await p.locator('#moreSheet a, #moreSheet button').evaluateAll(es => es.map(e => e.getBoundingClientRect()).filter(r => r.width && (r.width < 44 || r.height < 44)).length);
       check(small === 0, `${w}: every control in More is 44 px or more`);
