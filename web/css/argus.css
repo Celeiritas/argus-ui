@@ -381,3 +381,27 @@ dialog .confirm{border-color:var(--danger);color:var(--danger)}
 .satedge.small{width:var(--hit);padding:0;justify-content:center}.satedge.small span{display:none}   /* after 5 s: an arrow-only round button, same name (W2) */
 .tl.unsure{color:var(--run)}   /* Argus could not look again: said, so a stale page never reads as all well */
 .satedge.nospot{display:none}   /* no spot free of controls on the right edge right now: it waits (core.js spot) */
+/* On a phone (4.52.0, docs/home.md "On a phone"): Today fits one screen in the owner's order of what matters, and Watch's
+   groups that are all well are one line each. These classes are only drawn on a phone (PHONE in core.js). */
+.home>.needs.first:has(.need.alert){border:1px solid var(--bad)}   /* something broke: it leads, framed as on Watch */
+.home>.needs.calm{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 var(--s2);padding:var(--s2) var(--s3);border:1px solid var(--server-border);background:var(--server-bg)}
+.needs.calm>h2.state{margin:0;font-size:var(--fs-body);line-height:1.4}
+.needs.calm>.now{margin:0;color:var(--server-words);font-size:var(--fs-body);line-height:1.4}.needs.calm>.now::before{content:"· "}
+.needs.calm .nowname{color:var(--server-name);font-weight:600}
+.needs.calm>.needlist{flex:1 0 100%}.needs.calm>.needlist:empty{display:none}
+.home>.qline{display:flex;align-items:center;gap:var(--s2) var(--s3);min-height:var(--hit);margin:0 0 var(--s3);padding:var(--s1) var(--s3);border-radius:12px;
+  background:rgb(28 33 39 / .86);color:var(--snow);text-decoration:none;font-size:var(--fs-sec)}
+.qline>img,.qline>svg{width:28px;height:28px;flex:none}
+.qline .qw b{font-weight:600}.qline .qw small{display:none}.qline .qt{margin-left:auto;color:var(--powder);text-align:right}
+.qline:hover{background:var(--card)}.qline:focus-visible{outline:2px solid var(--powder);outline-offset:2px}
+.home.phone>.open .openlink{padding:var(--s1) var(--s3) var(--s1) var(--s1)}.home.phone>.open .openlink svg{width:24px;height:24px}
+.home.phone>.open .openlink small{display:none}   /* the chip's name is enough on a phone */
+.home.phone>.editrow{display:flex;justify-content:flex-end}
+section.persona.folded{margin-top:var(--s2)}
+.persona.folded .ph{margin:0;padding:var(--s1) var(--s3);border-radius:12px;background:rgb(28 33 39 / .86)}
+.persona.folded .ph img{width:32px;height:32px}.persona.folded .ph h2{font-size:var(--fs-body)}
+.persona.folded .ph:hover{background:var(--card)}.persona.folded .ph:focus-visible{outline:2px solid var(--powder);outline-offset:2px}
+.fold-go{margin-left:auto;padding-left:var(--s2);font-size:var(--fs-h1);line-height:1;color:var(--powder)}
+.lately:has(>.latemore):not(.all) .ev:nth-child(n+4){display:none}   /* a phone: the three newest until Show more */
+.lately:not(:has(.ev:nth-child(4)))>.latemore{display:none}
+.latemore{width:100%;margin-top:var(--s2);justify-content:center}

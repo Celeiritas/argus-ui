@@ -11,6 +11,10 @@
 //      from status v2 (api/<id>/status: line, needs, action), cut at a word to two lines (fitLines). A new section (workouts,
 //      meals, music) only has to answer that to get its tile. A section with a row above has no tile; no tiles, no heading.
 //      A quiet section (server/quiet.py: Mentor) keeps its tile and its line, and never has a row.
+//   On a phone (4.52.0, PHONE in core.js) Today fits one screen, in the owner's order of what matters: a row that needs you
+//   first; else one band says both "Nothing needs you" and the server's line; the devices line; one line for each quiet
+//   section (Mentor's cards due) in place of the tiles, which the bottom bar already reaches; Open last, its chips without
+//   their small words (the media players have apps of their own on a phone).
 //   The owner makes Today his own (4.50.0, Edit Today, today-edit.js): tiles and Open's links shown or hidden, in his order,
 //   under his names, links in his groups (layout() below applies today.json). A learner's page has the default.
 // A row whose need is met fades out (200 ms); a new row slides in. Under reduced motion they just go and come.
@@ -105,6 +109,9 @@ const home = (() => {
   let fitting = 0;
   addEventListener('resize', () => { cancelAnimationFrame(fitting); fitting = requestAnimationFrame(() => here === 'home' && fitLines()); });
   document.fonts?.ready.then(() => here === 'home' && fitLines());   // the first draw may measure before Nunito is in
+  // on a phone, the tiles give way to one line for each quiet section that has something to say (Mentor: "6 cards due")
+  const quietLines = () => tileList().filter(e => e.shown && isQuiet(e.id) && STATUS[e.id]?.line).map(e =>
+    `<a class="qline" href="${esc(e.href)}" data-id="${esc(e.id)}">${e.mark}<span class="qw">${words(e)}</span><span class="qt">${esc(STATUS[e.id].line)}</span></a>`).join('');
   // the server's band: its name (now_name, from the server) in the name colour, the rest in the words colour; the same text
   // as before, so a line without that name (a learner, an older server) is drawn plain
   function nowBand(now) {
@@ -123,13 +130,25 @@ const home = (() => {
     // Edit Today (the owner's): in the Sections heading's row, so Today gets no taller; with every tile hidden it stays
     const edit = owner ? '<button type="button" class="editbtn" id="editToday">Edit Today</button>' : '';
     const placesBody = places ? `<ul class="placelist">${places}</ul>` : owner && tileList().length && tileList().every(e => !e.shown) ? '<p class="quiet">Every section is hidden from Today. Edit Today to show them again.</p>' : '';
-    // the server's line stands above the list, on its own: inside the list's panel it read as one more thing to do
-    const html = `<section class="home" aria-label="Today">${now ? nowBand(now) : ''}${why ? `<p class="people-problem today-problem" role="status">${esc(why)}</p>` : ''}${devices.line()}
-      <section class="needs" aria-labelledby="needs-h"><h2 class="state${list.length ? ' bad' : ''}" id="needs-h">${state}</h2>
+    const problem = why ? `<p class="people-problem today-problem" role="status">${esc(why)}</p>` : '';
+    const rows = `<ul class="needlist">${list.map(n => row(n, seen && !seen.has(n.key))).join('')}</ul>`;
+    const needsPart = `<section class="needs${PHONE.matches && list.length ? ' first' : ''}" aria-labelledby="needs-h"><h2 class="state${list.length ? ' bad' : ''}" id="needs-h">${state}</h2>
         ${now || list.length || asking ? '' : '<p class="quiet">The realm is quiet.</p>'}
-        <ul class="needlist">${list.map(n => row(n, seen && !seen.has(n.key))).join('')}</ul></section>
+        ${rows}</section>`;
+    let html;
+    if (PHONE.matches) {
+      // a phone: what needs you first, else one band for "Nothing needs you" and the server's line; Open and Edit Today last
+      const calm = now && !list.length;
+      const band = calm ? `<section class="needs calm" aria-labelledby="needs-h"><h2 class="state" id="needs-h">${state}</h2>${nowBand(now)}${rows}</section>` : now ? nowBand(now) : '';
+      const tail = links ? `<section class="open" aria-labelledby="open-h"><div class="placeshead"><h2 id="open-h">Open</h2>${edit}</div>${links}</section>` : edit ? `<div class="editrow">${edit}</div>` : '';
+      html = `<section class="home phone" aria-label="Today">${problem}${calm ? '' : needsPart}${band}${devices.line()}${quietLines()}${tail}</section>`;
+    } else {
+      // the server's line stands above the list, on its own: inside the list's panel it read as one more thing to do
+      html = `<section class="home" aria-label="Today">${now ? nowBand(now) : ''}${problem}${devices.line()}
+      ${needsPart}
       ${links ? `<section class="open" aria-labelledby="open-h"><h2 id="open-h">Open</h2>${links}</section>` : ''}
       ${placesBody || edit ? `<section class="places" aria-labelledby="places-h"><div class="placeshead"><h2 id="places-h">Sections</h2>${edit}</div>${placesBody}</section>` : ''}</section>`;
+    }
     if (html.replace(/ fresh/g, '') === last) return;
     const focused = document.activeElement?.closest?.('#main a')?.getAttribute('href');   // a redraw must not drop keyboard focus
     const onEdit = document.activeElement?.id === 'editToday';
@@ -151,7 +170,7 @@ const home = (() => {
   function greet() {
     const h = new Date().getHours(), wx = ($('#wxText')?.textContent || '').trim();
     return [h < 5 ? 'Good night' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening',
-      new Date().toLocaleDateString([], {weekday: 'long', month: 'long', day: 'numeric'}) + (wx ? ` · ${wx}` : '')];
+      new Date().toLocaleDateString([], PHONE.matches ? {weekday: 'short', month: 'short', day: 'numeric'} : {weekday: 'long', month: 'long', day: 'numeric'}) + (wx ? ` · ${wx}` : '')];   // a phone: "Mon, Nov 16", on one line
   }
   return {show, greet, draw, tileList, openList, reset: () => { last = ''; }};
 })();

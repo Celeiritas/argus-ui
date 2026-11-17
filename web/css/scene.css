@@ -155,3 +155,11 @@ a.srow:focus-visible{outline:2px solid var(--powder);outline-offset:-2px}
 /* a wider screen: the strip's More opens the same sheet as a small window in the middle; the strip keeps its own Mute */
 @media (min-width:600px){dialog.sheet{margin:auto;width:min(440px,calc(100vw - 2 * var(--s4)));max-height:80dvh;border-radius:12px;border-bottom:1px solid var(--line)}
  .sheet .sheet-foot{display:none}}
+/* Today on a phone (4.52.0): two short lines, the name with the Desktop/Game switch beside it and the greeting and date under
+   them; Argus at 56 px beside both. Watch keeps its own header (the tools need their room). */
+@media (max-width:599.98px){
+ body.today header{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"title argus";gap:var(--s2) var(--s3)}
+ body.today .argus{width:56px}
+ body.today .title{display:flex;flex-wrap:wrap;align-items:center;gap:0 var(--s2)}
+ body.today .title .modes{order:2;margin:0 0 0 auto}body.today .title .sub{order:3;flex:1 0 100%}
+ body.today .mode-seg{padding:0 var(--s2)}}
