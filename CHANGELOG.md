@@ -1,5 +1,16 @@
 # Changelog
 
+## 4.54.0 – 2026-11-17
+One way to each place (the owner's decisions of 2026-11-16, docs/home.md "One way to each place"): the bars go places, Today says what needs you.
+- **Today has no Open list, no Sections tiles and no Edit Today**, at every width. It is one reading column (at most 880 px) on a computer too: what needs you, the devices line, then one line per section with news (*Mentor · 6 cards due*), each ending in a chevron so it reads as a link.
+- **What needs you is sorted by what it costs to leave it**: what broke and alerts, then Mnemosyne (a backup with no copy outside the home), then Zeus, then the rest (a skipped workout). A row's first sentence is 16 px, the rest under it 14 px.
+- **A section that opens elsewhere**: a `links.json` entry with `"section": true` (only JSON `true`) is a section: the last pill of the computer's top bar, with the opens-elsewhere mark and read out as "opens another page"; a row in More's sections on a phone. Its name comes from `links.json`, never from the repository.
+- **More, top to bottom**: the sections the bar leaves out, each with its live line and its count; **Media** (Jellyfin, Audiobookshelf; never on the top bar); **Other pages**; **Settings**: Phone alerts, Mute sounds (a phone), Edit Today (the owner's). Edit Today from another page goes to Today and starts there once.
+- **Edit Today**: *Open* becomes *Links in More* (names and order only; Show and groups are gone, a saved one is ignored). The Sections list's Show is "its line on Today when it has news".
+- **Visual review leftovers** (4.52.0's review): the Desktop/Game switch's other half is a plain segment (its ring shows only while held); Argus's group chevrons are the same 16 px chevron as Today's lines; on a phone an event shows only "10 minutes ago" (the full date is its title); the page title (24 px) and section headings (18 px) are written down as the two exceptions to 16/14/12 (docs/ux-audit-4.1.md).
+- Tests: `tests/navigation.test.js` checks each decision at 412, 1024, 1440 and 1920 px (and 375 px for sideways scrolling), with placeholder links and players written to the test HOME; the tests that read the tiles or Open now read the lines and More. `tests/today_test.py`: `section` is true only for JSON `true`.
+- **On the host** (not in this release): rename the studio's `links.json` entry and add `"section": true` to make it a section.
+
 ## 4.53.0 – 2026-11-16
 Mealie becomes a section: Today says tonight's meal from the owner's Mealie meal plan (docs/mealie.md). LeafyGrove only reads it.
 - **Today's tile** *Mealie* says *Tonight: Lentil soup*, *No dinner planned · Lunch: Salad*, or *No meal planned today*. It never asks for you: a meal is news, not a task.

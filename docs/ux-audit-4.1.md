@@ -18,4 +18,7 @@ Run with the VectorLab UX skills (`ux-audit` + domain skills), catalog defaults 
 | Reduced motion | CSS only; JS particles still ran | particles/strikes skipped, fades ≤150ms |
 | Horizontal overflow 375/1280 | none | none |
 
+**Type sizes (4.54.0):** text is 16/14/12 px; two headings are named exceptions: the page title (`--fs-h1`, 24 px) and
+section headings (`--fs-h2`, 18 px, e.g. "4 things need you"). Nothing else is set outside the three.
+
 **Documented exceptions:** the powers' effects (petrify, crumble, lightning) run longer than 300ms and animate a crack stroke; they are one-shot feedback tied to the action and are skipped under reduced motion. Argus's idle wander/blink is a character loop, off under reduced motion.
