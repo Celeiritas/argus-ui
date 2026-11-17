@@ -89,7 +89,7 @@ const todayEdit = (() => {
     scrollTo({top: 0, behavior: 'auto'}); $('#edit-h').focus();
   }
   // the keyboard goes back to the More button that is showing (the strip's or the bottom bar's), where Edit Today was found
-  function stop() { d = null; home.reset(); home.draw(); $$('[data-more]').find(b => !b.hidden && b.getClientRects().length)?.focus(); }
+  function stop() { d = null; home.reset(); home.draw(); drawNav(); $$('[data-more]').find(b => !b.hidden && b.getClientRects().length)?.focus(); }
   const listOf = what => what === 'tiles' ? d.tiles : d.open;
   function move(what, i, by) {
     const list = listOf(what), j = i + by; if (j < 0 || j >= list.length) return;

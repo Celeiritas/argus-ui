@@ -90,7 +90,9 @@ const home = (() => {
       : `<section class="needs${list.length ? ' first' : ''}" aria-labelledby="needs-h"><h2 class="state${list.length ? ' bad' : ''}" id="needs-h">${state}</h2>
         ${now || list.length || asking ? '' : '<p class="quiet">The realm is quiet.</p>'}
         ${rows}</section>${now ? nowBand(now) : ''}`;
-    const html = `<section class="home${PHONE.matches ? ' phone' : ''}" aria-label="Today">${problem}${needsPart}${devices.line()}${newsLines(list)}</section>`;
+    // rows listed while a section has not answered yet: say so under the lines (the heading says it when nothing is listed)
+    const ask = asking && total ? '<p class="quiet asking">Asking every section…</p>' : '';
+    const html = `<section class="home${PHONE.matches ? ' phone' : ''}" aria-label="Today">${problem}${needsPart}${devices.line()}${newsLines(list)}${ask}</section>`;
     if (html.replace(/ fresh/g, '') === last) return;
     const focused = document.activeElement?.closest?.('#main a')?.getAttribute('href');   // a redraw must not drop keyboard focus
     const gone = seen && !RM.matches ? $$('#main .need[data-key]').filter(li => !keys.has(li.dataset.key)).map(li => [li, [...li.parentNode.children].indexOf(li)]) : [];

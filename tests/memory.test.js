@@ -168,7 +168,7 @@ run(async b => {
       }
       const t = await page(b, 1024, 768);
       // Today: the line is in one place (4.44.0): the row in Needs you when it needs you, else Mnemosyne's line under Sections
-      await t.goto(BASE); const card = t.locator('.news a.qline[data-id="memory"]').locator('.qt'), row = t.locator('.need', {hasText: s.today});
+      await t.goto(BASE); const card = t.locator('.news a.qline[data-id="memory"]').locator('.qt'), row = t.locator('.need', {hasText: s.today.split(/(?<=[.!?])\s+/)[0]});   // a row's first sentence (4.54.0: the rest is under it)
       await (s.needs ? row : card.filter({hasText: s.today})).waitFor({timeout: 5000}).catch(() => {});
       await t.waitForFunction(() => !/Checking…|Asking every section/.test(document.querySelector('#main .home').textContent), null, {timeout: 5000}).catch(() => {});
       if (!s.needs) check((await card.textContent()).replace(/\u00a0/g, ' ') === s.today,   /* a count keeps its word (a no-break space, 4.49.0) */

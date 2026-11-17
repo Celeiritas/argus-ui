@@ -103,8 +103,7 @@ header{grid-template-areas:"title argus tools"}.title{grid-area:title}.argus{gri
  .realms{position:fixed;z-index:40;left:0;top:0;bottom:0;width:var(--rail);flex-direction:column;align-items:stretch;flex-wrap:nowrap;gap:var(--s1);padding:var(--s4) var(--s2);overflow-y:auto;border-bottom:0;border-right:1px solid var(--line);background:rgb(28 33 39 / .78)}
  .realm{border-radius:12px}
  .realms .wx{margin:auto 0 0;padding:0 var(--s2);white-space:normal}
- .realms .mute,.realms .wx + .mute{margin:var(--s2) 0 0}.realms .wx[hidden] + .mute{margin:auto 0 0}
- .home{max-width:1600px}}
+ .realms .mute,.realms .wx + .mute{margin:var(--s2) 0 0}.realms .wx[hidden] + .mute{margin:auto 0 0}}
 /* short screens (a phone on its side): Argus shrinks so a task shows on the first screen */
 @media (max-height:500px) and (orientation:landscape){.argus{width:96px}.side .argus{width:56px}.hero{width:96px}}
 /* a phone (under 600 px): the sections move to a bar at the bottom, in thumb reach (Today, Watch, Study, Approvals, More), and the

@@ -41,6 +41,13 @@ async function openMore(p) { await moreBtn(p).click(); await p.locator('#moreShe
 async function closeMore(p) { if (await p.locator('#moreSheet[open]').count()) { await p.keyboard.press('Escape'); await p.waitForTimeout(150); } }
 async function edit(p) { await openMore(p); await p.locator('#editToday').click(); await p.locator('#main .home.edit').waitFor(); }
 const onMore = p => p.evaluate(() => !!document.activeElement?.matches('[data-more]') && !document.getElementById('moreSheet').open);
+// a learner's page, drawn and looked at in one step: the 15 s refresh brings the owner's state back, and a check made after
+// it would see his More (CI run 44063305461). Her bar may have no More at all; where it has one, its sheet has no Edit Today.
+const asLearner = p => p.evaluate(() => { S.role = 'learner'; render();
+  const more = [...document.querySelectorAll('[data-more]')].find(b => !b.hidden && b.getClientRects().length);
+  if (more) more.click();
+  const ed = document.getElementById('editToday'), r = {more: !!more, edit: !!ed.getClientRects().length};
+  document.getElementById('moreSheet').close(); S.role = 'owner'; render(); return r; });
 const row = (p, id) => p.locator(`#main .edit .edrow[data-id="${id}"]`);
 const lrow = (p, href) => p.locator(`#main .edit .edrow[data-key="link:${href}"]`);
 const small = p => p.locator('#main .edit').evaluate(ed => [...ed.querySelectorAll('button, input:not([type=checkbox]), label.check, label.edswitch')]
@@ -58,9 +65,8 @@ async function flow(b, w, h, n) {
     `${tag}: the owner has Edit Today in More's Settings, 44 px tall`);
   await closeMore(t);
   if (w === 600) {
-    await t.evaluate(() => { S.role = 'learner'; render(); }); await openMore(t);
-    check(!(await t.locator('#editToday').isVisible()), `${tag}: a learner has no Edit Today`);
-    await closeMore(t); await t.evaluate(() => { S.role = 'owner'; render(); }); await t.waitForTimeout(200);
+    const l = await asLearner(t); await t.waitForTimeout(200);
+    check(!l.edit, `${tag}: a learner has no Edit Today (${JSON.stringify(l)})`);
   }
   await shot(t, `${n}01-today-${tag}`);
 
@@ -182,9 +188,8 @@ run(async b => {
     const eh = await ph.locator('#editToday').boundingBox();
     check(!!eh && eh.height >= 44 && await ph.locator('#main #editToday').count() === 0, `412: Edit Today in More's Settings, ${eh && Math.round(eh.height)} px tall, not on Today`);
     await closeMore(ph);
-    await ph.evaluate(() => { S.role = 'learner'; render(); }); await openMore(ph);
-    check(!(await ph.locator('#editToday').isVisible()), '412: a learner has no Edit Today');
-    await closeMore(ph); await ph.evaluate(() => { S.role = 'owner'; render(); }); await ph.waitForTimeout(200);
+    const l = await asLearner(ph); await ph.waitForTimeout(200);
+    check(!l.edit, `412: a learner has no Edit Today (${JSON.stringify(l)})`);
     await shot(ph, '01-today-412');
     await edit(ph); await ph.waitForTimeout(400);
     check(await ph.evaluate(() => document.activeElement.id) === 'edit-h' && await noOverflow(ph) && !(await small(ph)).length, '412: Edit opens with the keyboard on its heading, fits, every control 44 px or more');

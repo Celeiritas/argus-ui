@@ -66,11 +66,6 @@ run(async b => {
         const last = pills[pills.length - 1] || {};
         check(last.word === 'Studio Test' && last.link && /opens another page/.test(last.sr), `${w}: the section that opens elsewhere is the top bar's last pill, with the opens-elsewhere mark (${pills.map(x => x.word + (x.over ? ' (in More)' : '')).join(', ')})`);
         check(!pills.some(x => /Jellyfin|Audiobookshelf|Notes/.test(x.word)), `${w}: no media player and no plain link on the top bar`);
-        if (w === 1920) {
-          const bare = await p.evaluate(() => document.querySelector('.realms').classList.contains('bare'));
-          check(last.shown && !last.over, `1920: Studio Test is on the top bar itself, not folded into More${bare ? ' (the weather made room: it is under the name on Today)' : ''}`);
-          await shot(p, 'nav-1920-bar');
-        }
       }
 
       // ---- More ----
@@ -101,6 +96,32 @@ run(async b => {
       check(await p.waitForFunction(() => !document.getElementById('moreSheet').open && document.activeElement?.matches('[data-more]'), null, {timeout: 3000}).then(() => true, () => false), `${w}: Esc closes More, focus back on More`);
       check(p.errors.length === 0, `${w}: no page errors ${p.errors.join(' | ')}`);
       await p.close();
+    }
+
+    // ---- 1920 x 1080 with a real host's count: ten sections and the studio (the owner, 2026-11-16: the studio joins the top
+    // bar and the weather may leave it). The fixture has more plugins than a host, so the last ones are left out of the page's
+    // state until the strip holds 11 pills (as tests/layout.test.js does). Pill widths follow the names, so with the real
+    // names the cut-off can move by a section either way; the check names what it saw.
+    {
+      const REAL = 10, wp = await page(b, 1920, 1080);
+      let drop = 0;
+      const trim = j => { if (drop && Array.isArray(j.plugins)) j.plugins = j.plugins.slice(0, Math.max(0, j.plugins.length - drop)); return j; };
+      await wp.route(u => /\/home$/.test(new URL(u).pathname), settle(async r => { const res = await r.fetch();
+        const body = (await res.text()).replace(/(const INIT = )(\{.*?\})(;<\/script>)/s, (m, a, j, z) => a + JSON.stringify(trim(JSON.parse(j))).replace(/<\//g, '<\\/') + z);
+        const headers = {...res.headers()}; delete headers['content-length'];
+        await r.fulfill({status: res.status(), headers, body}); }));
+      await wp.route('**/api/state*', settle(async r => { const res = await r.fetch(); await r.fulfill({response: res, json: trim(await res.json())}); }));
+      const pills = async () => { await wp.goto(BASE + 'home'); await settled(wp); await wp.evaluate(() => document.fonts.ready); await wp.waitForTimeout(300);
+        return wp.locator('#realms .realm').count(); };
+      for (drop = 0; await pills() > REAL + 1 && drop < 40; drop++);
+      const bar = await wp.evaluate(() => { const ps = [...document.querySelectorAll('#realms .realm')], s = ps[ps.length - 1], r = document.querySelector('.realms');
+        return {n: ps.length, word: s?.querySelector('b')?.textContent, over: s?.classList.contains('over'), shown: !!s?.offsetWidth, bare: r.classList.contains('bare'), compact: r.classList.contains('compact'),
+          folded: ps.filter(e => e.classList.contains('over')).map(e => e.querySelector('b')?.textContent)}; });
+      check(bar.n === REAL + 1 && bar.word === 'Studio Test' && bar.shown && !bar.over,
+        `1920, ${bar.n} pills (${REAL} sections and the studio): Studio Test is on the top bar itself, not folded into More (weather ${bar.bare ? 'off the strip' : 'on the strip'}, second lines ${bar.compact ? 'hidden' : 'shown'}${bar.folded.length ? ', in More: ' + bar.folded.join(', ') : ''})`);
+      await shot(wp, 'nav-1920-bar');
+      check(wp.errors.length === 0, `1920 trimmed: no page errors ${wp.errors.join(' | ')}`);
+      await wp.close();
     }
 
     // ---- calm: the phone's Today when nothing needs him, and a 375 px phone ----
