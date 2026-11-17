@@ -550,9 +550,9 @@ run(async b => {
       await ctx.close();
       const oc = await phone(b, {login: OWNER}); const o = await open(oc, '', 1200);
       await o.locator('#tabbar [data-more]').click(); await o.waitForTimeout(300);
-      check(await o.locator('#moreList .srow', {hasText: 'Phone alerts'}).count() === 1, 'owner: Phone alerts is in the More sheet');
+      check(await o.locator('#morePhone .srow', {hasText: 'Phone alerts'}).count() === 1, 'owner: Phone alerts is in the More sheet, under Settings');
       await shot(o, 'more-412-owner');
-      await o.locator('#moreList .srow', {hasText: 'Phone alerts'}).click(); await o.waitForURL(/\/phone$/);
+      await o.locator('#morePhone .srow', {hasText: 'Phone alerts'}).click(); await o.waitForURL(/\/phone$/);
       check(await o.locator('h1').textContent() === 'Phone alerts', 'owner: the More sheet opens the page');
       await oc.close();
     } finally { fs.renameSync(FILE, path.join(CONF, `people.json.set-aside-${Date.now()}`)); }

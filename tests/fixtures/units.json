@@ -20,7 +20,7 @@
   "timer": true,
   "timer_on": true,
   "timer_en": true,
-  "Description": "Hermes sorting - file finished downloads into the libraries"
+  "Description": "Hermes sorting: file finished downloads into the libraries"
  },
  "hermes-media": {
   "Result": "success",

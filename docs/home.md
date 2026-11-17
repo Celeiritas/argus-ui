@@ -31,32 +31,21 @@ opens on: the bare address `<base>/`, and `<base>/home`, its old address, which 
 
    A row whose need is met **fades out** where it stood (200 ms, hidden from screen readers while it goes); a row that is new
    since the last draw slides in. Under reduced motion both just happen. Warnings stay on their cards on Argus's page.
-4. **Open** (the owner's): the media players and recipes (Jellyfin, Audiobookshelf, Mealie; below), then the links to other pages on this machine
-   (below), each a 44 px chip with its name, what it is and the "opens elsewhere" mark. Neither file, no row. **As compact as
-   4.44.0** (the owner, 4.45.0 round 2): the chips flow in one list with no label, the players first, then every link that has
-   no `"group"`. LeafyGrove makes up no labels. A **label** (12 px, 600, the quiet meta colour `--frost`) shows only for a group
-   the links themselves name in links.json (below): its chips come after the unlabelled ones, as their own list named by
-   the label for a screen reader. On a phone (600 px and narrower) the label sits inline at the start of its chips, in the
-   same wrap, so grouped links add at most one line to Open (412 x 915: 146 px with no groups, 198 px with two). On wider
-   screens each group is a block and the blocks sit side by side where they fit (one row at 915 px; two in Open's 692 px
-   column at 1920 px). With no grouped links, Open is the one list of 4.44.0.
-5. **Sections**: one compact tile per section, in the bar's order (4.45.0): its 32 px mark, its name (14 px, 600; the god's,
-   "Finding your way" below) and its status line (12 px) under it. Two tiles a row on a phone (360 to about 470 px), four or more on wider screens (each at
-   least 220 px wide from 1200 px, so a line has room: six a row at 1920 px). The words in a row start at the same height. Argus
-   says "All 6 tasks well", "All 12 tasks well · 1 known" (a failure marked known, never red) or "1 task failed" (red edge); a
-   server plugin shows its status line (gold edge while it needs you; a quiet one never does, but keeps its line: "6 cards
-   due"); a static plugin shows its version; Olympus says "Powers, weather, seasons". The whole tile is one link, at least
-   44 px, and a screen reader hears its name and its whole line ("Mnemosyne, Backing up now").
-   **A line takes two lines at most** and is cut after the last whole word that fits, with "…" (`fitLines()` in
-   `web/js/home.js`; never inside a word, unless one word alone is wider than the tile). A " · " keeps its dot on the line
-   before (a no-break space), so no line starts with "·", and a number keeps the word after it ("1 known", "3 connected";
-   4.49.0), so no line ends on a bare number: "All 6 tasks well ·" / "1 known". The words cut off stay in the link's name, so a screen reader hears
-   the whole line. With nothing needing you, all of Today fits above the phone's bottom bar
-   at 412 x 915 (measured with two players, links in two groups and nine tiles, the panels 12 px apart on a phone: the
-   Sections panel ends at 749 px with one-line statuses and at 775 px with six of nine on two lines; the bar starts
-   at 842 px). **One place for each fact** (4.44.0): a section with a row above has no tile until that row is gone (Argus with
-   a failed task, Zeus with a deploy waiting), so the same news is never said twice on one screen. No tile left, no
-   heading.
+4. **One line per section with news** (4.54.0; the phone's quiet lines of 4.52.0, now at every width), under the heading
+   *Sections*: a shown section (Edit Today's Sections list) whose server status has a line and that has no row above, e.g.
+   *Mentor · 6 cards due*. Its mark, its name (16 px, 600), its line (14 px) and a chevron at the end, which says the line
+   goes somewhere (visual review item 12); the whole line is one link, at least 44 px, and a screen reader hears its name and
+   its whole line. **One place for each fact** (4.44.0): a section with a row above has no line until that row is gone.
+   Argus (its news is the rows), Olympus and static plugins have no line. No line left, no heading.
+
+**No Open list, no Sections tiles, no Edit Today on Today** (4.54.0, the owner's decisions of 2026-11-16, "One way to each
+place" below): the bars reach every section, More holds the media players, the other pages and Edit Today. Today has one
+reading column at every width (at most 880 px), so a computer reads the same as a phone.
+
+**What needs you, in order of what it costs to leave it** (4.54.0, `needRank()` in `web/js/home.js`, a stable sort): what
+broke and every alert first, then Mnemosyne (data: a backup with no copy outside the home), then Zeus (a deploy waiting for a
+yes), then everything else (a skipped workout, a meal). Within a rank the bar's order. A row's text is its first sentence at
+16 px and the rest under it at 14 px (`.ndetail`, visual review item 5), so a long backup line is quick to scan.
 
 ## On a phone (4.52.0)
 Below 600 px wide (the width where the bottom bar shows, `PHONE` in `core.js`) Today and Watch are drawn in the owner's order
@@ -71,10 +60,9 @@ a visual hierarchy by his priorities). Wider screens keep the layout above.
    needs you, one band carries both *Nothing needs you* and, on the line under it, the server's line (`.needs.calm`, no leading
    dot), so the calm state costs one band.
 3. **The devices line.**
-4. **One line per quiet section** that has something to say, from its status line (*Mentor · 6 cards due*), in place of the
-   Sections tiles: the bottom bar already reaches every section, and a quiet section's line is the only news a tile carries.
-5. **Open, last**: its chips without their small words, *Edit Today* beside the heading. Films and audiobooks have apps of their
-   own on a phone, so their links are the lowest thing here (on a computer they keep their place).
+4. **One line per section with news**, as on every width (above).
+
+Edit Today, the media players and the links are in More (the bottom bar's last slot), not on Today (4.54.0).
 
 **Watch** (the All view; a single group's page is unchanged):
 1. Anything broken, as before.
@@ -90,14 +78,26 @@ above the bottom bar, in thumb reach; it moves up only to clear a control, so it
 
 Crossing the width (turning a tablet, narrowing a window) draws the page again.
 
-## Sections or Open (4.45.0)
-The rule that keeps the two apart: **Sections are parts of LeafyGrove, each with a live line; Open jumps to another app or
-site.** A Section is a tile with a word and a line that changes; an Open item is a small chip with the "opens elsewhere" mark
-(`LINK_MARK`). An **integration** (a recipe app, a music library, a workout log) becomes a Section tile when LeafyGrove reads from
-it, through status v2 (below), like any other section; its own site may also have a chip in Open, under a group of its own,
-to jump there. It never becomes a Section by being a link.
-Mealie is the first (4.53.0, docs/mealie.md): its tile says tonight's meal, its section the week, and its chip in Open
-still jumps to Mealie itself.
+## One way to each place (4.54.0)
+The owner's decisions (2026-11-16) replace *Sections or Open* (4.45.0): **the bars go places, Today says what needs you.**
+- **Sections** are on the bars: the phone's bottom bar has Today, Argus, Mentor, Zeus and More; the computer's top bar has
+  every section that fits. A section's news is one line on Today (above); there are no tiles.
+- **A section that opens elsewhere** (a studio on the same machine, served by its own program) is a section like the others,
+  set in `links.json` with `"section": true` ("Links to other pages", below). On the computer it is a pill on the top bar,
+  right after Zeus, with the opens-elsewhere mark (`LINK_MARK`) and read out as "…, opens another page"; on a narrow strip it
+  stays on the bar while the later sections fold into More. On a phone it is the last row of More's sections. It never takes the bar's "you are here" (it leaves
+  LeafyGrove). Its name is `links.json`'s `name` (or the owner's name for it in Edit Today); the repository never holds it.
+- **More**, top to bottom (`#moreSheet`, `drawMore()` in `web/js/core.js`):
+  1. the sections the bar leaves out (a phone: every one but Today, Argus, Mentor and Zeus; a computer: the pills folded off
+     the strip), each with its mark, its name, its live line (12 px; `placeLine()`: "All 6 tasks well · 1 known", a status
+     line, a version) and its count when it needs you (gold; red on Argus);
+  2. **Media**: Jellyfin and Audiobookshelf (`media.json`; never on the top bar; a section of their own, like Mealie, is not
+     repeated here);
+  3. **Other pages**: the `links.json` entries that are not sections;
+  4. **Settings**: Phone alerts, Mute sounds (a phone; the strip has its own on a computer) and Edit Today (the owner's).
+  An empty part has no heading. Esc, Close or a tap outside gives focus back to More.
+- **An integration** (a recipe app, a workout log) is a section when LeafyGrove reads from it, through status v2 (below);
+  Mealie is the first (4.53.0, docs/mealie.md). Its own site is in Media when `media.json` names it, never twice.
 
 ## What the server is doing now (4.44.0)
 One line above the list, in a band of its own across Today (not a row of the list), for the owner only, written by the server
@@ -126,8 +126,9 @@ background), words `#cbb8ff` (7.08:1). A theme without colours gets the page's n
 7.00:1 on `--card`).
 
 ## Films, shows, audiobooks and recipes (4.44.0; Mealie 4.48.0)
-The media players' own pages, and Mealie's recipes, (they are other sites, not LeafyGrove sections) are the first chips in Today's Open row when the host
-says where they are, in `~/.config/argus-ui/media.json` (or `ARGUS_MEDIA`), read on every refresh:
+The media players' own pages, and Mealie's recipes, (they are other sites, not LeafyGrove sections) are listed when the host
+says where they are, in `~/.config/argus-ui/media.json` (or `ARGUS_MEDIA`), read on every refresh (since 4.54.0 they are
+in More under **Media**, not on Today, "One way to each place" above):
 ```json
 {"jellyfin": "http://<host>:<port>/", "audiobookshelf": "http://<host>:<port>/", "mealie": "http://<host>:<port>/"}
 ```
@@ -136,7 +137,7 @@ spaces or quotes (a player on the tailnet or the home network is often plain htt
 no chip. They show as **Jellyfin · Films and shows**, **Audiobookshelf · Audiobooks and podcasts** and **Mealie · Recipes**
 (a plain service: no agent's name on it), plain links with
 `rel="noopener noreferrer"` (no referrer, no hold on LeafyGrove's window), for the owner only. Keep the file on the host; never
-commit it. They are on Today only, not in the strip or More.
+commit it. They are in More, never on the strip. Mealie's address is not listed under Media: Mealie is a section.
 The `mealie` address also links each recipe in the Mealie section to its page in Mealie (docs/mealie.md).
 
 ## A section's card: status v2
@@ -145,7 +146,7 @@ The `mealie` address also links each recipe in the Mealie section to its page in
 verb-first, at most 32 characters, and defaults to "Open <name>"; the server cuts a longer `action` (32) or `line` (160)
 after the last whole word, with "…" (`clip()`, 4.45.0; before, it cut inside a word). LeafyGrove passes on only these three fields and never errors
 (`{"line": null}` when a plugin has nothing or fails). A plugin that answers only `{"line"}` keeps working and simply never
-needs you. **A new section (workouts, meals, music) gets its tile on Today by answering this, nothing else.** Mentor answers
+needs you. **A new section (workouts, meals, music) gets its line on Today by answering this, nothing else.** Mentor answers
 `needs` when cards are due; Memory (docs/memory.md) when the newest snapshot is older than 8 days or the job failed. To the
 owner, the server answers for a quiet section (Mentor, "Quiet" below) with its line, `needs: false`, no `action` and no
 `count`, whatever the plugin said.
@@ -155,13 +156,14 @@ One list of places, in this order, drawn three ways (`sections()` and `drawNav()
 **Today, Argus, Mentor, Zeus (the Throne plugin), Mnemosyne (the Memory plugin), Olympus, Controllers, Spartamelee,
 Ariad-Node**, any other plugin, then the links to other pages and anything "coming later".
 **A section that belongs to a god is called by the god's name, and only that, everywhere** (4.45.0; the owner: "I need it as
-the ONLY title"): the bar, the strip, the More sheet, its tile on Today, its page heading and the "who" line of a row. The
+the ONLY title"): the bar, the strip, the More sheet, its line on Today, its page heading and the "who" line of a row. The
 name comes from the theme's agent (`WORDS` and `wordOf()` in `core.js`), so another theme's god names it there. Sections with
 no god keep their own name (Spartamelee, Ariad-Node, the links). Buttons stay verb-first ("Open
 Argus"). Addresses and ids do not change (`/watch`, `throne`, `memory`); the plain words of before (Watch, Study, Approvals,
 Backups, Playground) are kept in `WORDS` as `was`, for the search the next build adds.
 - **On a phone (under 600 px)**: a bar at the bottom edge, in thumb reach, with five slots: Today, Argus, Mentor, Zeus and
-  **More**. More opens a sheet from the bottom with every other place, the links ("Other pages") and the sound switch;
+  **More**. More opens a sheet from the bottom with every other place, the media, the links ("Other pages") and Settings
+  (4.54.0, "One way to each place" above);
   Escape, Close or a tap outside shuts it and gives focus back to More. While you are on a place inside More, the More slot
   is the current one and names it. The bar keeps clear of the phone's own gesture bar (`env(safe-area-inset-bottom)`), and
   the page and the scene end above it, so nothing hides behind it.
@@ -169,7 +171,8 @@ Backups, Playground) are kept in `WORDS` as `was`, for the search the next build
   ending in **More** and Mute sounds. The strip is always one row inside the screen (4.44.0): when the places do not fit (a
   laptop, a phone on its side), the pills first drop their second line (a link's or a coming one's; still read out), then the weather goes, then the last
   pills fold into More, never Today or the place you are on; widen the window and they come back. Nothing scrolls sideways and
-  nothing passes under Mute. More here holds the folded places, **Phone alerts** and the links to other pages, so Phone
+  nothing passes under Mute. More here holds the folded places, the media, the links to other pages and Settings (**Phone
+  alerts**, Edit Today), so Phone
   alerts has a way in at every width; on a place inside it, More is the current one and a screen reader hears its name (no
   second line on screen: it made More, and so the strip, change shape from page to page). The strip has one shape on every
   page at a given width.
@@ -199,7 +202,7 @@ reach the server. The server's own check comes with sign-in.
 What Today, the phone and the 08:00 summary keep still about, in **one place**: `server/quiet.py` (the owner, 2026-11-13: "the
 cognitive annoyance of the alert is taking up space, same with Mentor. I don't need Mentor notifications like EVER").
 - **Quiet sections**: `quiet_sections()`: the default set `DEFAULT_QUIET = {'mentor'}` plus the sections the owner switched
-  off in Edit Today (4.50.0, `quiet` in `today.json`), never `NEVER_QUIET = {'throne'}` (Zeus, 4.50.1). For the owner a quiet section never needs him: its tile keeps
+  off in Edit Today (4.50.0, `quiet` in `today.json`), never `NEVER_QUIET = {'throne'}` (Zeus, 4.50.1). For the owner a quiet section never needs him: its line on Today keeps
   its line ("6 cards due"), but the server answers its status with `needs: false`, no `action` and no `count` (so no row, no
   number under "N things need you", no "Study 10 minutes" button, no dot or count on the bar, the strip or More), an event about
   it never buzzes the phone, and it is never in the daily summary. The page gets the set as `quiet` in the owner's state and
@@ -208,7 +211,7 @@ cognitive annoyance of the alert is taking up space, same with Mentor. I don't n
   known**, a plain button on its card on Argus's page and on its row on Today (the owner's; no hold: it changes what reminds
   him, not what runs), sends `POST api/known` `{"job": "<task>", "on": true}`; a toast says *<task> is marked as known, low
   priority. It comes back if it fails another way.* with **Undo** (focused). Marked, the task leaves "N things need you" and
-  every count, never buzzes, is not a need in the summary, and Argus's tile says so quietly: *All 12 tasks well · 1 known*. On
+  every count, never buzzes, is not a need in the summary, and Argus's line (in More) says so quietly: *All 12 tasks well · 1 known*. On
   Argus's page it stays (sorted below the others; the view follows it when he marks it there), all in grey (`.card.known`: its pill in `--frost`, its name and values in `--powder`), with *Known, low priority · marked today, 5:40 PM*
   and **Unmark** (`"on": false`).
 - **It comes back by itself.** The mark keeps the failure's **fingerprint**: systemd's `Result` and `ExecMainStatus` and the
@@ -221,20 +224,20 @@ cognitive annoyance of the alert is taking up space, same with Mentor. I don't n
   an unknown task, 409 for a task that is not failing, 403 to a learner (the usual POST checks first).
 
 ## Edit Today (4.50.0)
-The owner makes Today his own (`web/js/today-edit.js`, `server/today.py`). **Edit Today** sits in the Sections heading's row
-(the owner's only; it takes no height, so Today still ends above the phone's bar). It is a mode: Today's place becomes three
+The owner makes Today his own (`web/js/today-edit.js`, `server/today.py`). **Edit Today** is the last row of More, under
+Settings (4.54.0; the owner's only): on Today it closes More and starts; elsewhere it goes to Today (`<base>/#edit`) and starts
+there, once (the address loses `#edit`, so a reload does not start it again). It is a mode: Today's place becomes three
 lists, with **Done** and **Cancel** at the top and the bottom, and nothing is kept until Done. Going to another section is the
 same as Cancel.
-- **Sections**: every tile Today can show, each with **Show**, a name field and **Move up** / **Move down**. A god's section
+- **Sections**: every section Today can give a line, each with **Show** (its line on Today when it has news), a name field
+  and **Move up** / **Move down**. A god's section
   (`godOwned()` in `core.js`: a `WORDS` god or one of the theme's agents) has no field: a god's name is the only title (4.45.0).
-  A new name shows wherever the section is named (`wordOf()`): its tile, the bar, the strip and More. A hidden tile keeps its
+  A new name shows wherever the section is named (`wordOf()`): its line, the bar, the strip and More. A hidden one keeps its
   bar slot, its place in More and its row under "N things need you" when it needs him.
-- **Open**: every player and link, each with Show, a name, a **Group** (type a group's name to put it there, a new name to make
-  one, nothing to take it out; Enter applies at once) and Move up / down within its group. Each group has its name (rename it,
-  or empty it to let its links go) and Move up / down for the whole group. Open on Today keeps its compact look ("What it
-  shows", item 4): the links without a group first, then each group. A hidden entry stays in More.
+- **Links in More** (4.54.0; was *Open*): every player and link, each with a name and Move up / down; the order and the names
+  are More's. There is no Show and no group any more (a saved `hidden` or `groups` is ignored and dropped on the next save).
 - **Reminders**: one switch per server section (the ones whose status can say "needs"). Off, it is quiet (see *Quiet* below):
-  its tile keeps its line, but it never asks for him on Today and never buzzes his phone. Mentor is always off and locked
+  its line stays, but it never asks for him on Today and never buzzes his phone. Mentor is always off and locked
   (*Never reminds you*). **Zeus is always on and locked** (*Always reminds you*; 4.50.1, the owner: "Lock Zeus on"): he asks
   for the owner's yes (deploys, merges, root changes), and off, those requests would leave Today and never buzz the phone, so
   work would wait without him knowing. The server keeps it so (`NEVER_QUIET = {'throne'}` in `server/quiet.py`): `throne` in
@@ -246,7 +249,7 @@ same as Cancel.
   Argus has no switch: a failed task always counts (*Mark as known* is the way to set one aside).
 - **Reset to default** fills the lists with the default; Done keeps it (the file then holds only `{"v": 1}`).
 - **Keyboard**: every move is a button; after a move the keyboard stays on the same button of the same row (or on the other one
-  when it reached the end). Edit opens with the keyboard on its heading; Done and Cancel give it back to Edit Today.
+  when it reached the end). Edit opens with the keyboard on its heading; Done and Cancel give it back to More.
 - **Stored server-side**, so every device shows the same Today and an update keeps it: `~/.config/argus-ui/today.json` (or
   `ARGUS_TODAY`), next to `links.json`; an install never touches that folder. Only what differs from the default is kept:
   ```json
@@ -254,7 +257,7 @@ same as Cancel.
    "open": {"order": ["link:/notes/"], "hidden": ["media:audiobookshelf"], "names": {"link:/notes/": "Notes"},
             "groups": {"link:/notes/": "Daily"}}, "quiet": ["memory"]}
   ```
-  Open's keys are `link:<href>` and `media:<id>`. A section or link not in a saved order comes after the ones that are, in its
+  The links' keys are `link:<href>` and `media:<id>`. A section or link not in a saved order comes after the ones that are, in its
   own order, so a new one shows up at the end. **No file**: the default layout. **A broken file** (not JSON, a wrong shape, over
   64 KB): Today shows the default and a line above it says *Your Today settings (today.json) could not be used (…), so Today shows
   the default layout. Save from Edit to replace them; the old file is kept beside it.* The next save moves it to
@@ -267,23 +270,28 @@ same as Cancel.
   `today_problem` for a broken file) in the owner's state only.
 
 ## Links to other pages (4.25.0)
-Pages on the same machine that aren't LeafyGrove sections (a studio, a dashboard) can sit in More and on Today. List them in
-`~/.config/argus-ui/links.json` (or `ARGUS_LINKS`), read on every refresh:
+Pages on the same machine that aren't LeafyGrove's own (a studio, a dashboard) are listed in `~/.config/argus-ui/links.json`
+(or `ARGUS_LINKS`), read on every refresh:
 ```json
-[{"name": "Sound Lab", "what": "Studio", "href": "/studio/", "group": "Studio"}]
+[{"name": "Notes", "what": "Pages", "href": "/notes/"},
+ {"name": "<Studio name>", "what": "Studio", "href": "/<studio path>/", "section": true}]
 ```
 `href` must be a path on this host (`/…`) or an `https://` address; anything else (`javascript:`, `//other-host`) is dropped,
-as is a broken file. At most 8. `group` is optional (4.45.0): links with the same group sit together on Today under that
-label, in the order they first come (at most 40 characters). A link with no group sits with the players, unlabelled
-(4.45.0 round 2: no *Watch and listen*, no *Other pages*; "What it shows", item 4). In the More sheet (under "Other pages", at every width since 4.44.0; no longer a pill of its
-own in the strip) a link has an "opens another page" mark; on Today it is a chip in the Open row.
+as is a broken file. At most 8. **`"section": true`** (4.54.0; only the JSON value `true` counts, not `"true"` or `1`) makes
+the link a section that opens elsewhere: a pill at the end of the computer's top bar and a row in More's sections on a phone
+("One way to each place", above). Any other link is a row under **Other pages** in More, with the opens-elsewhere mark. Keep
+the file on the host; never commit it (a real path or name there is the host's, not the repository's). `group` (4.45.0) is
+no longer used.
 
 ## Behaviour
 - The page refreshes every 15 seconds like the others: it draws at once from what it knows, then asks the server plugins
   again. A card still waiting for its answer says "Checking…". An unchanged page is not redrawn, so focus and a running
   fade stay put; when it is redrawn, keyboard focus stays on the link you were on.
-- Every row button, chip and tile is a plain link at least 44 px tall. On a phone the buttons go full width under their
-  sentence and the tiles make two columns, with no sideways scrolling at 360 px.
+- **One strong button**: only the top row's main button (its fix when it has one, else its way there) is filled in the
+  bolt's gold; every other row's buttons, and **Mark as known** on any row, are outlined, the same size: snow words and a 1 px frost border on the card, the
+  plain focus ring. The eye goes to one thing first.
+- Every row button and line is a plain link at least 44 px tall. On a phone the buttons go full width under their
+  sentence, with no sideways scrolling at 360 px.
 - The last thing on every page scrolls clear of the phone's bottom bar (checked at 360 x 800 on every section and Phone
   alerts, `tests/today-layout.test.js`).
 - Each part sits on one quiet panel so it reads over the scene.
@@ -312,7 +320,7 @@ that drive (and a second check of the same drive) are one line under it, *Also w
 on Today (they still count, one each, on the bar and in the panel's heading).
 
 When checks.json declares a `fix` for the check (and the problem is not the drive itself), the block has **one press-and-hold
-button**, *Restart Jellyfin* (`"say"` of the fix, else its units), in the bolt's gold look, made with `holdConfirm`, for the owner
+button**, *Restart Jellyfin* (`"say"` of the fix, else its units), in the bolt's gold look on the top row (outlined on a lower one, "One strong button" above), made with `holdConfirm`, for the owner
 only. Holding it 3 seconds sends `POST api/watch/fix` once (docs/checks.md "Your yes from the page"); the toast says what the
 server answered, and the block says *Restarting it now, as you asked* until Argus knows. It then ends on *Works again* (the row)
 or *You restarted Jellyfin at 4:52 AM, and it did not help.* (the block). A refresh never redraws a button that is being held, or one that is armed (the click-twice path of a screen reader).

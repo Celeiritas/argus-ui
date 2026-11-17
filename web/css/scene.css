@@ -103,8 +103,7 @@ header{grid-template-areas:"title argus tools"}.title{grid-area:title}.argus{gri
  .realms{position:fixed;z-index:40;left:0;top:0;bottom:0;width:var(--rail);flex-direction:column;align-items:stretch;flex-wrap:nowrap;gap:var(--s1);padding:var(--s4) var(--s2);overflow-y:auto;border-bottom:0;border-right:1px solid var(--line);background:rgb(28 33 39 / .78)}
  .realm{border-radius:12px}
  .realms .wx{margin:auto 0 0;padding:0 var(--s2);white-space:normal}
- .realms .mute,.realms .wx + .mute{margin:var(--s2) 0 0}.realms .wx[hidden] + .mute{margin:auto 0 0}
- .home{max-width:1600px}}
+ .realms .mute,.realms .wx + .mute{margin:var(--s2) 0 0}.realms .wx[hidden] + .mute{margin:auto 0 0}}
 /* short screens (a phone on its side): Argus shrinks so a task shows on the first screen */
 @media (max-height:500px) and (orientation:landscape){.argus{width:96px}.side .argus{width:56px}.hero{width:96px}}
 /* a phone (under 600 px): the sections move to a bar at the bottom, in thumb reach (Today, Watch, Study, Approvals, More), and the
@@ -134,7 +133,7 @@ header{grid-template-areas:"title argus tools"}.title{grid-area:title}.argus{gri
 .tabcount{position:absolute;top:-6px;left:18px;min-width:20px;height:20px;padding:0 5px;border-radius:99px;background:var(--bolt);color:#1C2127;font-size:var(--fs-meta);font-weight:600;line-height:20px;text-align:center;box-shadow:0 0 0 2px var(--night)}
 .tabcount:empty{min-width:12px;width:12px;height:12px;padding:0;top:-2px;left:20px}
 [data-id=argus] .tabcount{background:#C93030;color:#fff}
-/* More: a sheet from the bottom edge with the other places, the links to other pages and the sound switch */
+/* More (4.54.0): a sheet from the bottom edge: the other sections with their lines, Media, Other pages, Settings */
 dialog.sheet{margin:auto 0 0;width:100%;max-width:none;max-height:85dvh;padding:0;border-radius:16px 16px 0 0;border-bottom:0;overflow:auto;overscroll-behavior:contain}
 dialog.sheet[open]{animation:sheetin var(--t3) ease-out}
 @keyframes sheetin{from{transform:translateY(40px);opacity:0}}
@@ -142,19 +141,22 @@ dialog.sheet[open]{animation:sheetin var(--t3) ease-out}
 .sheet-head{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);margin-bottom:var(--s2)}
 .sheet h2{margin:0;font-size:var(--fs-h2);font-weight:600}
 .sheet h3{margin:var(--s4) 0 var(--s1);font-size:var(--fs-meta);font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--frost)}
-.sheet h3[hidden]{display:none}
+.sheet h3[hidden],.sheetlist[hidden],.sheetlist>li[hidden]{display:none}
 .sheetlist{list-style:none;margin:0;padding:0}
 .srow{display:flex;align-items:center;gap:var(--s3);min-height:56px;padding:var(--s1) var(--s2);border-radius:12px;text-decoration:none;color:var(--powder)}
 .srow>img,.srow>svg{width:40px;height:40px;flex:none}
 .srow b{display:block;font-size:var(--fs-body);font-weight:600;line-height:1.25;color:var(--snow)}.srow small{display:block;font-size:var(--fs-meta);line-height:1.3}
 .srow.on{background:#2b333c;box-shadow:inset 3px 0 0 var(--bolt)}   /* you are here: the bar's gold, as a left edge */.srow.soon{opacity:.6}
 .srow .tabcount{position:static;margin-left:auto;flex:none}
-a.srow:focus-visible{outline:2px solid var(--powder);outline-offset:-2px}
-.sheet-foot{margin-top:var(--s4);padding-top:var(--s3);border-top:1px solid var(--line)}
+a.srow:focus-visible,button.srow:focus-visible{outline:2px solid var(--powder);outline-offset:-2px}
+/* Settings: plain rows of words, no mark; Mute sounds and Edit Today are buttons drawn as rows */
+.setlist .srow{min-height:48px}
+button.srow{width:100%;margin:0;border:0;background:transparent;font:inherit;font-size:var(--fs-body);font-weight:600;color:var(--snow);text-align:left;cursor:pointer}
+button.srow:hover,a.srow:hover{background:#2b333c}
 @media (prefers-reduced-motion:reduce){dialog.sheet[open]{animation:none}}
 /* a wider screen: the strip's More opens the same sheet as a small window in the middle; the strip keeps its own Mute */
 @media (min-width:600px){dialog.sheet{margin:auto;width:min(440px,calc(100vw - 2 * var(--s4)));max-height:80dvh;border-radius:12px;border-bottom:1px solid var(--line)}
- .sheet .sheet-foot{display:none}}
+ .setlist .setmute{display:none}}
 /* Today on a phone (4.52.0): two short lines, the name with the Desktop/Game switch beside it and the greeting and date under
    them; Argus at 56 px beside both. Watch keeps its own header (the tools need their room). */
 @media (max-width:599.98px){

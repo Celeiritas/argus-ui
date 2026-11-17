@@ -1,10 +1,11 @@
-// Edit Today (4.50.0, docs/home.md "Edit Today"): the owner makes Today his own. A mode with a clear Done: Today's place on the
-// page becomes three lists, and nothing is kept until he presses Done (Cancel leaves Today as it was; Reset to default fills
-// the lists with the default, and Done keeps that).
-//   Sections: each tile shown or hidden, moved up or down, renamed (a god's tile keeps its god's name: core.js godOwned),
-//   Open: each link or player shown or hidden, renamed, put in a group (typing a new group name makes the group, an empty one
-//         takes it out), moved up or down in its group; a group renamed or moved as a whole. As compact on Today as before.
-//   Reminders: one switch per section that can need him (a server plugin's status). Off: its tile keeps its line, but it never
+// Edit Today (4.50.0, docs/home.md "Edit Today"): the owner makes Today his own. Its button is in More's Settings (4.54.0); on
+// another page it goes to Today first (<base>/#edit, home.js). A mode with a clear Done: Today's place on the page becomes
+// three lists, and nothing is kept until he presses Done (Cancel leaves Today as it was; Reset to default fills the lists with
+// the default, and Done keeps that).
+//   Sections: each section renamed (a god's keeps its god's name: core.js godOwned) and moved up or down; one that can have
+//         a line on Today (a server plugin: it has a status line) is shown there or hidden (4.54.0: no Show where it does nothing),
+//   Links in More: each player or link renamed and moved up or down (4.54.0: no groups and no Show; More lists them all),
+//   Reminders: one switch per section that can need him (a server plugin's status). Off: its line stays, but it never
 //         asks for him on Today or buzzes his phone (server/quiet.py). Mentor is always off and cannot be switched on; Zeus
 //         is always on and cannot be switched off (he asks for the owner's yes). Mnemosyne's says off also drops the backup
 //         line from the 08:00 summary.
@@ -17,6 +18,7 @@ const todayEdit = (() => {
   // editing only while the lists are on the page: going to another section and back is the same as Cancel
   const on = () => { if (d && !$('#main .home.edit')) d = null; return !!d; };
   const plainWord = e => WORDS[e.id]?.name || e.own || e.id;          // a tile's name before the owner renamed it
+  const canLine = id => PLUGINS.some(p => p.id === id && p.kind === 'server');   // home.js newsLines: only these have a line
   const same = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
   const QUIET_ALWAYS = ['mentor'];         // server/quiet.py DEFAULT_QUIET: never reminds him, whatever the file says
   const QUIET_NEVER = ['throne'];          // server/quiet.py NEVER_QUIET: Zeus asks for his yes, so he always reminds (4.50.1)
@@ -29,17 +31,13 @@ const todayEdit = (() => {
     const was = S.today; S.today = lay;    // tileList / openList read the layout through myToday()
     try {
       const names = lay.tiles?.names || {}, onames = lay.open?.names || {};
-      const tiles = home.tileList().map(e => ({id: e.id, mark: e.mark, god: godOwned(e.id), word: e.word, def: plainWord(e), name: godOwned(e.id) ? '' : names[e.id] || plainWord(e), shown: e.shown}));
-      const open = home.openList().filter(x => x.key.length <= 300).map(x => ({key: x.key, what: x.what || '', def: x.def, own: x.own, name: onames[x.key] || x.def, group: x.group, shown: x.shown}));
-      return {tiles, open: tidy(open), quiet: new Set((lay.quiet || []).filter(quietable))};
+      const tiles = home.tileList().map(e => ({id: e.id, mark: e.mark, god: godOwned(e.id), word: e.word, def: plainWord(e), name: godOwned(e.id) ? '' : names[e.id] || plainWord(e), shown: e.shown, line: canLine(e.id)}));
+      const open = linkList().map(x => ({key: x.key, what: x.what || '', def: x.def, name: onames[x.key] || x.def}));
+      return {tiles, open, quiet: new Set((lay.quiet || []).filter(quietable))};
     } finally { S.today = was; }
   }
-  // Open's order as Today shows it: the entries without a group first, then each group, in the order the groups first come
-  function tidy(list) {
-    const gs = []; list.forEach(x => { const g = x.group.trim(); if (g && !gs.includes(g)) gs.push(g); });
-    return [...list.filter(x => !x.group.trim()), ...gs.flatMap(g => list.filter(x => x.group.trim() === g))];
-  }
-  const groupsOf = () => { const gs = []; d.open.forEach(x => { const g = x.group.trim(); if (g && !gs.includes(g)) gs.push(g); }); return gs; };
+  // More's players and links (a player that is also a section, Mealie, is not in More: it has its own row there)
+  const linkList = () => home.openList().filter(x => x.key.length <= 300 && !(x.media && PLUGINS.some(p => p.id === x.id)));
   // the sections that can remind him: the server plugins (each answers status with "needs"); Argus's own failures are not a reminder
   const reminders = () => PLUGINS.filter(p => p.kind === 'server' && p.id !== 'argus' && visible([{id: p.id}]).length).map(p => ({id: p.id, word: wordOf(p.id, p.name)}));
 
@@ -49,29 +47,19 @@ const todayEdit = (() => {
   const show = (on, name) => `<label class="check edshow"><input type="checkbox" data-f="shown"${on ? ' checked' : ''} aria-label="Show ${esc(name)} on Today"><span aria-hidden="true">Show</span></label>`;
   function tileRow(t, i) {
     const name = t.god ? t.word : t.name.trim() || t.def;
-    return `<li class="edrow${t.shown ? '' : ' off'}" data-list="tiles" data-i="${i}" data-id="${esc(t.id)}"><span class="edmark">${t.mark}</span>`
+    return `<li class="edrow${t.line && !t.shown ? ' off' : ''}" data-list="tiles" data-i="${i}" data-id="${esc(t.id)}"><span class="edmark">${t.mark}</span>`
       + `<div class="edname">${t.god ? `<b>${esc(t.word)}</b><small>A god's name: it stays</small>`
         : `<input type="text" class="edin" data-f="name" maxlength="40" value="${esc(t.name)}" aria-label="Name of the ${esc(t.def)} tile" autocomplete="off" spellcheck="false">`}</div>`
-      + show(t.shown, name) + mv('tiles', i, d.tiles.length, name) + '</li>';
+      + (t.line ? show(t.shown, name) : '') + mv('tiles', i, d.tiles.length, name) + '</li>';
   }
-  function openRow(x, i, k, n) {
+  function openRow(x, i) {
     const name = x.name.trim() || x.def;
-    return `<li class="edrow edlink${x.shown ? '' : ' off'}" data-list="open" data-i="${i}" data-key="${esc(x.key)}"><span class="edmark">${LINK_MARK}</span>`
+    return `<li class="edrow edlink" data-list="open" data-i="${i}" data-key="${esc(x.key)}"><span class="edmark">${LINK_MARK}</span>`
       + `<div class="edname"><input type="text" class="edin" data-f="name" maxlength="40" value="${esc(x.name)}" aria-label="Name of the link ${esc(x.def)}" autocomplete="off" spellcheck="false">${x.what ? `<small>${esc(x.what)}</small>` : ''}</div>`
-      + `<label class="edgroupin"><span>Group</span><input type="text" class="edin" data-f="group" maxlength="40" list="edGroups" value="${esc(x.group)}" aria-label="Group of ${esc(name)} (empty: no group)" autocomplete="off" spellcheck="false"></label>`
-      + show(x.shown, name) + mv('open', k, n, name) + '</li>';
+      + mv('open', i, d.open.length, name) + '</li>';
   }
-  function openPart() {
-    if (!d.open.length) return '';
-    const gs = groupsOf(), at = x => d.open.indexOf(x);
-    const block = (items, g, gi) => `<div class="edg">${g === null ? (gs.length ? '<h3 class="edgh">Without a group</h3>' : '')
-      : `<div class="edghead"><label class="edgnamein"><span>Group name</span><input type="text" class="edin edgname" data-g="${esc(g)}" maxlength="40" value="${esc(g)}" autocomplete="off" spellcheck="false"></label>${mv('group', gi, gs.length, `the group ${g}`, ` data-g="${esc(g)}"`)}</div>`}`
-      + `<ol class="edlist">${items.map((x, k) => openRow(x, at(x), k, items.length)).join('')}</ol></div>`;
-    const loose = d.open.filter(x => !x.group.trim());
-    return `<section aria-labelledby="ed-open"><h2 id="ed-open">Open</h2><p class="edhint">Type a group name on a link to put it in that group, or a new name to make one. Empty takes it out of its group.</p>`
-      + (loose.length ? block(loose, null) : '') + gs.map((g, gi) => block(d.open.filter(x => x.group.trim() === g), g, gi)).join('')
-      + `<datalist id="edGroups">${gs.map(g => `<option value="${esc(g)}"></option>`).join('')}</datalist></section>`;
-  }
+  const openPart = () => !d.open.length ? '' : `<section aria-labelledby="ed-open"><h2 id="ed-open">Links in More</h2><p class="edhint">Their names, and their order in More.</p>`
+    + `<ol class="edlist">${d.open.map(openRow).join('')}</ol></section>`;
   function quietPart() {
     const rs = reminders(); if (!rs.length) return '';
     // a locked switch (Mentor always off, Zeus always on) is disabled but still read out: its label says its state in words
@@ -80,7 +68,7 @@ const todayEdit = (() => {
       const note = SWITCH_NOTE[r.id], nid = note && `edq-note-${esc(r.id)}`;
       return `<li><label class="edswitch${lock ? ' locked' : ''}"><input type="checkbox" role="switch" data-q="${esc(r.id)}"${onn ? ' checked' : ''}${lock ? ' disabled' : ''}${note ? ` aria-describedby="${nid}"` : ''}>`
         + `<span class="edsw"><b>${esc(r.word)}</b><small class="edstate">${state}</small></span></label>${note ? `<p class="ednote" id="${nid}">${esc(note)}</p>` : ''}</li>`; };
-    return `<section aria-labelledby="ed-quiet"><h2 id="ed-quiet">Reminders</h2><p class="edhint">Off: its tile keeps its line, but it never asks for you on Today and never buzzes your phone.</p>`
+    return `<section aria-labelledby="ed-quiet"><h2 id="ed-quiet">Reminders</h2><p class="edhint">Off: its line stays on Today, but it never asks for you there and never buzzes your phone.</p>`
       + `<ul class="edswitches">${rs.map(sw).join('')}</ul></section>`;
   }
   const acts = where => `<div class="edacts"><button type="button" class="primary" data-ed="done"${where === 'top' ? ' id="editDone"' : ''}${saving ? ' aria-busy="true" disabled' : ''}>Done</button><button type="button" data-ed="cancel">Cancel</button>`
@@ -88,10 +76,10 @@ const todayEdit = (() => {
   function draw() {
     $('#main').innerHTML = `<section class="home edit" aria-labelledby="edit-h"><div class="edtop"><h2 class="state" id="edit-h" tabindex="-1">Edit Today</h2>`
       + `<p class="edhint">Show, hide, move and rename. Nothing changes until you press Done.</p>${acts('top')}</div>`
-      + `<section aria-labelledby="ed-tiles"><h2 id="ed-tiles">Sections</h2><ol class="edlist">${d.tiles.map(tileRow).join('')}</ol></section>`
+      + `<section aria-labelledby="ed-tiles"><h2 id="ed-tiles">Sections</h2><p class="edhint">Their names everywhere. Shown: its line on Today when it has news.</p><ol class="edlist">${d.tiles.map(tileRow).join('')}</ol></section>`
       + openPart() + quietPart() + `<div class="edend">${acts('end')}</div></section>`;
   }
-  // after a redraw the keyboard goes back to the same control (a moved row's button, a renamed group's field)
+  // after a redraw the keyboard goes back to the same control (a moved row's button)
   const refocus = sel => { const el = $(sel); if (el && !el.disabled) el.focus(); else if (el) el.closest('.edmove')?.querySelector('button:not([disabled])')?.focus(); };
 
   // ---- the owner's actions ----
@@ -100,32 +88,25 @@ const todayEdit = (() => {
     d = draft(myToday()); draw();
     scrollTo({top: 0, behavior: 'auto'}); $('#edit-h').focus();
   }
-  function stop() { d = null; home.reset(); home.draw(); $('#editToday')?.focus(); }
-  function move(what, i, by, g) {
-    if (what === 'tiles') { const j = i + by; if (j < 0 || j >= d.tiles.length) return; [d.tiles[i], d.tiles[j]] = [d.tiles[j], d.tiles[i]]; draw(); return refocus(`[data-list=tiles][data-i="${j}"] [data-mv="${by}"]`); }
-    if (what === 'open') {                 // within its own group: swap with the one before or after in the same group
-      const x = d.open[i], peers = d.open.filter(y => y.group.trim() === x.group.trim()), k = peers.indexOf(x), y = peers[k + by]; if (!y) return;
-      const a = d.open.indexOf(x), b = d.open.indexOf(y); [d.open[a], d.open[b]] = [d.open[b], d.open[a]]; draw();
-      return refocus(`[data-list=open][data-i="${b}"] [data-mv="${by}"]`);
-    }
-    const gs = groupsOf(), gi = gs.indexOf(g), j = gi + by; if (gi < 0 || j < 0 || j >= gs.length) return;   // a whole group
-    [gs[gi], gs[j]] = [gs[j], gs[gi]];
-    d.open = [...d.open.filter(x => !x.group.trim()), ...gs.flatMap(h => d.open.filter(x => x.group.trim() === h))]; draw();
-    refocus(`.edghead [data-mv="${by}"][data-g="${CSS.escape(g)}"]`);
+  // the keyboard goes back to the More button that is showing (the strip's or the bottom bar's), where Edit Today was found
+  function stop() { d = null; home.reset(); home.draw(); drawNav(); $$('[data-more]').find(b => !b.hidden && b.getClientRects().length)?.focus(); }
+  const listOf = what => what === 'tiles' ? d.tiles : d.open;
+  function move(what, i, by) {
+    const list = listOf(what), j = i + by; if (j < 0 || j >= list.length) return;
+    [list[i], list[j]] = [list[j], list[i]]; draw(); refocus(`[data-list=${what}][data-i="${j}"] [data-mv="${by}"]`);
   }
   // what Done sends: only what differs from the default, so a section or link added later still finds its place
   function layout() {
     const base = draft({}), lay = {};
     const t = {}, tn = {};
     if (!same(d.tiles.map(x => x.id), base.tiles.map(x => x.id))) t.order = d.tiles.map(x => x.id);
-    const th = d.tiles.filter(x => !x.shown).map(x => x.id); if (th.length) t.hidden = th;
+    const th = d.tiles.filter(x => x.line && !x.shown).map(x => x.id); if (th.length) t.hidden = th;
     d.tiles.forEach(x => { const v = x.name.trim(); if (!x.god && v && v !== x.def) tn[x.id] = v; }); if (Object.keys(tn).length) t.names = tn;
     if (Object.keys(t).length) lay.tiles = t;
-    const o = {}, on = {}, og = {};
+    const o = {}, on = {};                 // 4.54.0: an older file's Open "hidden" and "groups" are not kept
     if (!same(d.open.map(x => x.key), base.open.map(x => x.key))) o.order = d.open.map(x => x.key);
-    const oh = d.open.filter(x => !x.shown).map(x => x.key); if (oh.length) o.hidden = oh;
-    d.open.forEach(x => { const v = x.name.trim(), g = x.group.trim(); if (v && v !== x.def) on[x.key] = v; if (g !== x.own) og[x.key] = g; });
-    if (Object.keys(on).length) o.names = on; if (Object.keys(og).length) o.groups = og;
+    d.open.forEach(x => { const v = x.name.trim(); if (v && v !== x.def) on[x.key] = v; });
+    if (Object.keys(on).length) o.names = on;
     if (Object.keys(o).length) lay.open = o;
     if (d.quiet.size) lay.quiet = [...d.quiet];
     return lay;
@@ -147,74 +128,36 @@ const todayEdit = (() => {
   }
   function resetDraft() { d = draft({}); draw(); refocus('#editDone'); toast('Back to the default layout. Press Done to keep it, or Cancel.'); }
 
-  // A press of the mouse or a finger that takes the keyboard out of a group field fires 'change' (so regroup) before its click.
-  // Redrawing then would replace the button under the finger and lose the tap (Done, Cancel, Reset or a Move pressed straight
-  // after typing a group). So while a press is down the regroup waits in `later`: the click applies it first and then does what
-  // was pressed, on the same row or group (found by the object, not its old place); a press that ends anywhere else applies it
-  // just after (mouseup). Enter and Tab are not presses: they apply at once, as before.
-  let pressed = false, later = null;
-  const listOf = what => what === 'tiles' ? d.tiles : d.open;
-  function settle() {
-    const el = later; later = null; if (!el || !on() || !el.isConnected) return;
-    const a = document.activeElement, r = a && a !== el && a.dataset?.f && a.closest('#main .edit [data-i]');   // the field he pressed into, if any
-    const x = r && listOf(r.dataset.list)[+r.dataset.i];
-    regroup(el, false);
-    if (x) refocus(`[data-list=${r.dataset.list}][data-i="${listOf(r.dataset.list).indexOf(x)}"] [data-f=${a.dataset.f}]`);
-  }
-  document.addEventListener('mousedown', e => { pressed = e.button === 0 && on(); }, true);   // before the press moves the keyboard
-  document.addEventListener('mouseup', () => { pressed = false; if (later) setTimeout(settle, 0); }, true);   // after its click
-  document.addEventListener('keydown', () => { pressed = false; }, true);
-
   // ---- wiring: one listener each on the page for clicks, typing and switches ----
   document.addEventListener('click', e => {
-    if (e.target.closest('#editToday')) return start();
+    if (e.target.closest('#editToday')) return fromMore();
     if (!on()) return;
     const b = e.target.closest('#main .edit button'); if (!b || b.disabled) return;
-    const row = b.closest('[data-i]'), x = row && listOf(row.dataset.list)[+row.dataset.i];   // what was pressed, before a regroup
-    const lr = later?.dataset.f === 'group' && later.closest('[data-i]'), moving = lr && d.open[+lr.dataset.i];   // a link about to change group
-    const gx = b.dataset.g !== undefined && d.open.find(y => y.group.trim() === b.dataset.g && y !== moving);   // a member of the pressed group
-    settle();
     if (b.dataset.ed === 'done') return done();
     if (b.dataset.ed === 'cancel') return stop();
     if (b.dataset.ed === 'reset') return resetDraft();
-    if (!b.dataset.mv) return;
-    if (b.dataset.what === 'group') { if (gx) move('group', -1, +b.dataset.mv, gx.group.trim()); return; }
-    if (x) move(b.dataset.what, listOf(b.dataset.what).indexOf(x), +b.dataset.mv);
+    const row = b.closest('[data-i]'); if (b.dataset.mv && row) move(row.dataset.list, +row.dataset.i, +b.dataset.mv);
   });
   document.addEventListener('input', e => {             // typing: kept in the draft as it is typed, nothing redrawn
     if (!on()) return;
     const el = e.target, row = el.closest('[data-i]');
-    if (row && el.dataset.f === 'name') (row.dataset.list === 'tiles' ? d.tiles : d.open)[+row.dataset.i].name = el.value;
+    if (row && el.dataset.f === 'name') listOf(row.dataset.list)[+row.dataset.i].name = el.value;
   });
   document.addEventListener('change', e => {
     if (!on()) return;
     const el = e.target, row = el.closest('[data-i]');
     if (el.dataset.q) { if (el.checked) d.quiet.delete(el.dataset.q); else d.quiet.add(el.dataset.q);
       const s = el.closest('label').querySelector('.edstate'); if (s) s.textContent = el.checked ? 'Reminds you' : 'Off: never asks for you'; return; }
-    if (row && el.dataset.f === 'shown') { (row.dataset.list === 'tiles' ? d.tiles : d.open)[+row.dataset.i].shown = el.checked; row.classList.toggle('off', !el.checked); return; }
-    if (pressed && (el.dataset.f === 'group' || el.classList.contains('edgname'))) { later = el; return; }   // waits for the click (above)
-    regroup(el, false);
+    if (row && el.dataset.f === 'shown') { d.tiles[+row.dataset.i].shown = el.checked; row.classList.toggle('off', !el.checked); }
   });
-  // Enter in a group field applies it at once and keeps the keyboard there (the row may have moved to its new group)
-  document.addEventListener('keydown', e => {
-    if (e.key !== 'Enter' || !on() || !(e.target.dataset.f === 'group' || e.target.classList.contains('edgname'))) return;
-    e.preventDefault(); regroup(e.target, true);
-  });
-  // A group field applied: a link put in another group (or out of one), or a group renamed (empty: its links leave the group).
-  // Open's order follows, so the list is drawn again. `stay`: Enter, the keyboard stays on that field; else he left it (Tab,
-  // a tap elsewhere), and the keyboard goes to what comes after it in that row (its Show, or the group's Move buttons).
-  function regroup(el, stay) {
-    const to = el.value.replace(/\s+/g, ' ').trim(), row = el.closest('[data-i]');
-    if (row && el.dataset.f === 'group') {
-      const x = d.open[+row.dataset.i]; if (x.group.trim() === to) return;
-      x.group = to; d.open = tidy(d.open); draw();
-      return refocus(`[data-list=open][data-i="${d.open.indexOf(x)}"] ${stay ? '[data-f=group]' : '[data-f=shown]'}`);
-    }
-    if (el.dataset.g === undefined || !el.classList.contains('edgname')) return;
-    const from = el.dataset.g, first = d.open.find(x => x.group.trim() === from); if (from === to) return;
-    d.open.forEach(x => { if (x.group.trim() === from) x.group = to; }); d.open = tidy(d.open); draw();
-    const h = to && `.edghead:has(.edgname[data-g="${CSS.escape(to)}"])`;
-    refocus(!to ? `[data-list=open][data-i="${d.open.indexOf(first)}"] [data-f=group]` : stay ? `${h} .edgname` : `${h} [data-mv]`);
+  // Edit Today in More's Settings: More closes; on Today the lists open at once, on another page Today opens with them
+  // (<base>/#edit, home.js draw())
+  function fromMore() {
+    // the sheet's 'close' (core.js) would give the keyboard back to the More button after start() put it on the lists
+    moreFrom?.setAttribute('aria-expanded', 'false'); moreFrom = null;
+    const sheet = $('#moreSheet'); if (sheet?.open) sheet.close();
+    if (here !== 'home') { location.href = url('') + '#edit'; return; }
+    start();
   }
   return {on, start};
 })();

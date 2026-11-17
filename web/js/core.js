@@ -45,8 +45,8 @@ function muteLabel() { $$('#mute,#muteMore').forEach(b => b.textContent = soundO
 // many sections on a laptop or a phone on its side: before the strip wraps, the pills drop their second line (still read
 // out), then the weather goes, then (4.44.0) the last pills fold into More, never Today or the place you are on. The strip
 // is always one row inside the screen: nothing scrolls sideways and nothing passes under Mute sounds (it replaced the
-// sideways-scrolling strip of 4.28.0). More always holds Phone alerts and the links to other pages, so they have a way in
-// at every width.
+// sideways-scrolling strip of 4.28.0). More always holds the media, the other pages and Settings, so they have a way in at
+// every width.
 function fitRealms() {
   const bar = $('.realms'), pills = $$('#realms .realm'), mute = $('#mute');
   if (!pills.length) return;                                                  // drawNav() has not run yet
@@ -339,12 +339,18 @@ function sections() {
     if (p) add(id, url(id), p.name, pluginMark(p)); else if (a && SIDE.includes(id)) add(id, url(id), a.name, icon(id)); };
   add('home', url(''), 'Today', HOME_MARK);
   add('argus', WATCH, 'Argus', icon('argus'));
-  ['mentor', 'throne', 'memory'].forEach(sec);
+  ['mentor', 'throne'].forEach(sec);
+  // a link that says "section": true (links.json on the host, 4.54.0: Tactylos Studio) is a section that opens another page: a
+  // pill on the strip with the opens-elsewhere mark, right after Zeus, so on a narrow strip it stays on the bar while the later
+  // sections fold into More (the owner's call, 2026-11-17); on a phone, the last row of More's sections (drawMore). Its name:
+  // links.json's, or the owner's from Edit Today.
+  (S.links || []).forEach((x, i) => { if (x.section === true) out.push({id: `link-${i}`, kind: 'link', section: true, href: x.href, word: openName(x), own: x.name, what: x.what || '', realm: '', mark: LINK_MARK}); });
+  sec('memory');
   add('olympus', url('olympus'), 'Olympus', icon('olympus'));
   ['controllers', 'spartamelee', 'ariad-node'].forEach(sec);
   PLUGINS.forEach(p => sec(p.id));
-  add('phone', url('phone'), 'Phone alerts', icon('argus'));   // the owner's (visible() leaves it out for a learner); More sheet only: alerts.js
-  (S.links || []).forEach((x, i) => out.push({id: `link-${i}`, kind: 'link', href: x.href, word: openName(x), realm: x.what || 'Opens another page', mark: LINK_MARK}));
+  add('phone', url('phone'), 'Phone alerts', icon('argus'));   // the owner's (visible() leaves it out for a learner); More's Settings: alerts.js
+  (S.links || []).forEach((x, i) => { if (x.section !== true) out.push({id: `link-${i}`, kind: 'link', href: x.href, word: openName(x), realm: x.what || 'Opens another page', mark: LINK_MARK}); });
   (S.soon || []).filter(x => !PLUGINS.some(p => p.name === x.name)).forEach((x, i) => out.push({id: `soon-${i}`, kind: 'soon', word: x.name, realm: `${x.what} · coming later`, mark: BLADES}));
   return out.map(e => ({...e, on: e.id === 'argus' ? !side : e.id === here, count: e.kind ? 0 : needCount(e.id)}));
 }
@@ -352,7 +358,23 @@ const sumNeeds = list => { const n = list.reduce((s, e) => s + (e.count === true
 // a count when something needs you (red for Watch's failures, gold for what waits), said to a screen reader after the name
 const badge = (n, cls, id) => n ? `<span class="${cls}"${id ? ` id="${id}"` : ''} aria-hidden="true">${n === true ? '' : n}</span>` : '';
 const needSay = n => n ? `<span class="sr">, ${n === true ? 'needs you' : `${n} need${n === 1 ? 's' : ''} you`}</span>` : '';
-const words = e => `<b>${esc(e.word)}</b>${e.realm ? `<small>${esc(e.realm)}</small>` : ''}${needSay(e.count)}`;
+const words = e => `<b>${esc(e.word)}</b>${e.realm ? `<small>${esc(e.realm)}</small>` : ''}${e.kind === 'link' || e.kind === 'media' ? '<span class="sr">, opens another page</span>' : ''}${needSay(e.count)}`;
+// the pointer at the end of a row that takes you somewhere (Today's section lines, Watch's folded groups): one drawing, 16 px
+const CHEVRON = '<svg class="chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+// a place's live line (More's rows; the Sections tiles' line until 4.54.0): Argus counts its trouble, a server plugin says its
+// status line (api/<id>/status), a static one its version, a section that opens elsewhere what it is
+function placeLine(e) {
+  const pl = (n, one, many = one + 's') => `${n} ${n === 1 ? one : many}`;
+  if (e.kind === 'link') return e.what || '';
+  if (e.id === 'argus') {
+    const tr = trouble(), f = tr.n, kn = tr.known.length, all = !tr.alerts.length && !tr.checks.length && tr.tasks.every(j => j.state === 'failed');
+    return !f ? `All ${pl((S.jobs || []).length, 'task')} well${kn ? ` · ${kn} known` : ''}` : all ? `${pl(f, 'task')} failed` : `${pl(f, 'thing')} need${f === 1 ? 's' : ''} a look`;
+  }
+  if (e.id === 'olympus') return 'Powers, weather, seasons';
+  const p = PLUGINS.find(x => x.id === e.id); if (!p) return '';
+  if (p.kind === 'server') { const s = STATUS[p.id]; return s === undefined ? 'Checking…' : s ? s.line : ''; }
+  return p.version ? `Version ${p.version}` : '';
+}
 const cur = e => e.on ? ' aria-current="page"' : '';
 function pill(e) {          // the strip on wider screens
   const inner = `${e.mark}${badge(e.count, 'dot', e.id === 'argus' ? 'realmDot' : '')}<span>${words(e)}</span>`;
@@ -362,32 +384,53 @@ function pill(e) {          // the strip on wider screens
 function tab(e) {           // a slot of the phone's bottom bar
   return `<a class="tab${e.on ? ' on' : ''}" href="${esc(e.href)}" data-id="${esc(e.id)}"${cur(e)}><span class="tabicon">${e.mark}${badge(e.count, 'tabcount')}</span>${words(e)}</a>`;
 }
-function row(e) {           // a line of the More sheet
-  const inner = `${e.mark}<span>${words(e)}</span>${badge(e.count, 'tabcount')}`;
-  return `<li>${e.kind === 'soon' ? `<span class="srow soon" aria-disabled="true">${inner}</span>` : `<a class="srow${e.on ? ' on' : ''}" href="${esc(e.href)}" data-id="${esc(e.id)}"${cur(e)}>${inner}</a>`}</li>`;
+function srow(e) {          // a line of the More sheet: its mark (none in Settings), its name and line, its count
+  const inner = `${e.mark || ''}<span>${words(e)}</span>${badge(e.count, 'tabcount')}`;
+  return e.kind === 'soon' ? `<span class="srow soon" aria-disabled="true">${inner}</span>`
+    : `<a class="srow${e.on ? ' on' : ''}" href="${esc(e.href)}" data-id="${esc(e.id)}"${cur(e)}${e.kind === 'media' ? ' rel="noopener noreferrer"' : ''}>${inner}</a>`;
 }
+const row = e => `<li>${srow(e)}</li>`;
 const drawn = {};           // what each part of the bar was last drawn with: unchanged parts are not redrawn (focus stays put)
 function put(el, html) { if (!el || drawn[el.id] === html) return false; drawn[el.id] = html; el.innerHTML = html; return true; }
 function drawNav() {
   if (!S) return;
   const all = visible(sections()), prim = all.filter(e => PRIMARY.includes(e.id)), more = all.filter(e => !PRIMARY.includes(e.id));
-  put($('#realms'), all.filter(e => !e.kind && e.id !== 'phone').map(pill).join(''));   // Phone alerts and the links: in More
+  put($('#realms'), all.filter(isPlace).map(pill).join(''));   // Phone alerts, the media and the other links: in More
   const open = more.find(e => e.on);   // you are on a place inside More: the More slot is the current one and names it
   put($('#tabs'), prim.map(tab).join('') + (more.length ? `<button class="tab more${open ? ' on' : ''}" type="button" data-more aria-haspopup="dialog" aria-controls="moreSheet" aria-expanded="false"><span class="tabicon">${MORE_MARK}${badge(sumNeeds(more), 'tabcount')}</span><b>More</b>${open ? `<small>${esc(open.word)}</small><span class="sr">, ${esc(open.word)} is open</span>` : ''}${needSay(sumNeeds(more))}</button>` : ''));
   $('#tabbar').style.setProperty('--slots', prim.length + (more.length ? 1 : 0));
   fitRealms(); placeMarker();   // fitRealms fills the More sheet for whichever bar is showing
 }
-// The More sheet holds what the bar that is showing leaves out. A phone: every place after Today, Watch, Study and
-// Approvals. A wider screen: the pills folded off the strip, Phone alerts, and the links to other pages; the strip's More pill
-// carries their count and, on a place inside it, is the current one and names it (like the phone's).
+// a section: a place of LeafyGrove or a section that opens elsewhere (Tactylos Studio); not Phone alerts, a media player or a link
+const isPlace = e => (!e.kind || e.section) && e.id !== 'phone';
+// The More sheet (4.54.0, docs/home.md "One way to each place"), top to bottom:
+//   the sections the bar that is showing leaves out (a phone: every one after Today, Argus, Mentor and Zeus, a section that
+//   opens elsewhere last; a wider screen: the pills folded off the strip, in the strip's order), each with its live line and
+//   its count;
+//   Media: the players (media.json; Mealie has its own section), another site each, so a plain link that sends no referrer;
+//   Other pages: the links (links.json) that are not sections, and sections still to come;
+//   Settings: Phone alerts, Mute sounds (a phone; the strip has its own) and Edit Today (the owner's).
+// Media and the links in the owner's order and under his names (Edit Today). The strip's More pill carries the sections'
+// count and, on a place inside the sheet, is the current one (like the phone's More).
 function drawMore(strip) {
-  const all = visible(sections()), folded = new Set($$('#realms .realm.over').map(a => a.dataset.id));
-  const more = all.filter(e => strip ? e.kind || e.id === 'phone' || folded.has(e.id) : !PRIMARY.includes(e.id));
-  put($('#moreList'), more.filter(e => !e.kind).map(row).join(''));
-  const away = more.filter(e => e.kind);
-  put($('#moreAway'), away.map(row).join('')); $('#moreAwayH').hidden = !away.length;
-  const b = $('#realmMore'), open = more.find(e => e.on), n = sumNeeds(more);
-  b.hidden = !more.length; b.classList.toggle('on', !!open);
+  const all = visible(sections()), folded = new Set($$('#realms .realm.over').map(a => a.dataset.id)), owner = role() === 'owner';
+  const secs = all.filter(e => isPlace(e) && (strip ? folded.has(e.id) : !PRIMARY.includes(e.id)));
+  if (!strip) secs.sort((a, b) => !!a.section - !!b.section);   // a phone: a section that opens elsewhere is More's last section row
+  put($('#moreList'), secs.map(e => row({...e, realm: placeLine(e)})).join('')); $('#moreList').hidden = !secs.length;
+  const opens = owner && typeof home !== 'undefined' ? home.openList() : [];   // home.js: media then links, his order and names
+  const media = opens.filter(x => x.media && !PLUGINS.some(p => p.id === x.id));
+  put($('#moreMedia'), media.map(x => row({id: `media-${x.id}`, kind: 'media', href: x.href, word: x.name, realm: x.what || '', mark: LINK_MARK, count: 0})).join(''));
+  $('#moreMediaH').hidden = $('#moreMedia').hidden = !media.length;
+  const away = [...opens.filter(x => !x.media && !x.section).map(x => ({id: x.key, kind: 'link', href: x.href, word: x.name, realm: x.what || 'Opens another page', mark: LINK_MARK, count: 0})),
+    ...all.filter(e => e.kind === 'soon')];
+  put($('#moreAway'), away.map(row).join('')); $('#moreAwayH').hidden = $('#moreAway').hidden = !away.length;
+  const ph = all.find(e => e.id === 'phone');
+  put($('#morePhone'), ph ? srow({...ph, mark: ''}) : ''); $('#morePhone').hidden = !ph;
+  $('#moreEdit').hidden = !owner;
+  const sets = (ph ? 1 : 0) + (owner ? 1 : 0) + (strip ? 0 : 1);   // Mute sounds is in the sheet on a phone only
+  $('#moreSetH').hidden = $('#moreSet').hidden = !sets;
+  const b = $('#realmMore'), open = [...secs, ...(ph ? [ph] : [])].find(e => e.on), n = sumNeeds([...secs, ...(ph ? [ph] : [])]);
+  b.hidden = !secs.length && !media.length && !away.length && !sets; b.classList.toggle('on', !!open);
   // no second line naming the open page (only read out): it made More wider on that page alone, and the strip changed shape
   put(b, `${MORE_MARK}${badge(n, 'dot')}<span><b>More</b>${open ? `<span class="sr">, ${esc(open.word)} is open</span>` : ''}${needSay(n)}</span>`);
 }
@@ -480,7 +523,7 @@ function render() {
     if (first && worst(p) > 0 && !ls.length && !js.some(j => alertsFor(j).length)) {
       const n = (v, one, many = one) => v ? `${v} ${v === 1 ? one : many}` : '';
       const said = ['All well', n(js.length, 'task', 'tasks'), n(cr.length, 'check', 'checks'), n(c('running'), 'running'), n(c('frozen'), 'frozen'), n(kc, 'known')].filter(Boolean).join(' · ');
-      return `<section class="persona folded" aria-labelledby="h-${p.key}"><a class="ph" href="${p.key === 'argus' ? WATCH + '/argus' : url(p.key)}"><img src="static/icons/${p.key}.png" alt=""><div><h2 id="h-${p.key}">${esc(p.name)}</h2><div class="dom">${esc(said)}</div></div><span class="fold-go" aria-hidden="true">›</span></a></section>`;
+      return `<section class="persona folded" aria-labelledby="h-${p.key}"><a class="ph" href="${p.key === 'argus' ? WATCH + '/argus' : url(p.key)}"><img src="static/icons/${p.key}.png" alt=""><div><h2 id="h-${p.key}">${esc(p.name)}</h2><div class="dom">${esc(said)}</div></div><span class="fold-go">${CHEVRON}</span></a></section>`;
     }
     return `<section class="persona" aria-labelledby="h-${p.key}"><a class="ph" href="${p.key === 'argus' ? WATCH + '/argus' : url(p.key)}"><img src="static/icons/${p.key}.png" alt=""><div><h2 id="h-${p.key}">${esc(p.name)}</h2><div class="dom">${esc(p.domain)}</div></div><div class="counts">${counts}</div></a>
       ${cr.length ? `<ul class="crows" aria-label="${esc(p.name)}: checks">${cr.map(checkRow).join('')}</ul>` : ''}
@@ -534,6 +577,7 @@ function checkRow(w) {
   return `<li class="crow ${st[0]}" data-check="${esc(w.id)}"><span class="cdot" aria-hidden="true"></span><span class="cw"><b>${esc(w.title)}</b><span>${esc(st[1])}${w.since && !w.fixing ? ` · ${esc(sinceText(w.since))}` : ''}</span></span></li>`;
 }
 // "What happened lately": the newest 10 events (api/events) as plain sentences, each with a relative and an exact time.
+// On a phone only the relative time shows; the exact one is its title and stays read out (argus.css .exw, 4.54.0).
 const lately = {html: '', at: 0, since: '', all: false};   // all: a phone's "Show more" is open
 document.addEventListener('click', e => { const b = e.target.closest('.latemore'); if (!b) return;
   lately.all = !lately.all; b.closest('.lately').classList.toggle('all', lately.all);
@@ -547,7 +591,7 @@ function ago(t) {
 const exact = t => { const d = new Date(t); return isNaN(d) ? '' : d.toLocaleString([], {weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'}); };
 function latelyHtml(evs, sinceAt) {
   if (!evs.length) return `<p class="quiet">Nothing has happened since ${esc(exact(sinceAt) || 'the server started')}.</p>`;
-  return `<ol class="events">${evs.map(e => `<li class="ev ${e.level === 'alert' ? 'bad' : e.level === 'warn' ? 'warn' : 'good'}"><p class="et">${esc(e.title)}</p>${e.body ? `<p class="eb">${esc(e.body)}</p>` : ''}<p class="ew"><time datetime="${esc(e.at)}">${esc(ago(e.at))}</time> · ${esc(exact(e.at))}</p></li>`).join('')}</ol>`;
+  return `<ol class="events">${evs.map(e => `<li class="ev ${e.level === 'alert' ? 'bad' : e.level === 'warn' ? 'warn' : 'good'}"><p class="et">${esc(e.title)}</p>${e.body ? `<p class="eb">${esc(e.body)}</p>` : ''}<p class="ew"><time datetime="${esc(e.at)}" title="${esc(exact(e.at))}">${esc(ago(e.at))}</time><span class="exw"> · ${esc(exact(e.at))}</span></p></li>`).join('')}</ol>`;
 }
 async function askLately() {
   if (Date.now() - lately.at < 10000) return; lately.at = Date.now();

@@ -1,6 +1,6 @@
 // Today (docs/home.md): what needs *you*, and what LeafyGrove opens on. One line with the state in words, the rows that need you
-// (the failed thing first, verb-first buttons), the "Open" links, then one one-line card per section (status v2). A met need
-// fades out. /home still works. Keyboard, focus across redraws, phone.
+// (the failed thing first, verb-first buttons), then one line per section with news (status v2). No tiles and no Open row at
+// any width since 4.54.0: links and media are in More. A met need fades out. /home still works. Keyboard, focus across redraws, phone.
 const {BASE, check, page, noOverflow, shot, run} = require('./lib');
 const fs = require('fs'), path = require('path');
 const AL = path.join(path.dirname(process.env.FIXTURES), 'home/.local/state/argus-ui/alerts');
@@ -29,57 +29,61 @@ run(async b => {
   check(/Argus: Does not restart a failed task by himself\./.test(t1) && /You: Read its log on its card, then press Run to try again\./.test(t1), 'in plain words: what Argus did and what you can do');
   check(/\/argus\/argus$/.test(await task.first().locator('a.go').getAttribute('href')), 'and the button goes to Watch');
   check(await need('deploy waiting').locator('a.go').textContent() === 'Review app 9.9.9' && await need('deploy waiting').locator('small').textContent() === 'Zeus', 'a section that needs you: its line, its god\'s name and only that (Zeus), its verb-first button');
-  const place = t => p.locator('.place', {hasText: t}), tile = id => p.locator(`.place[data-id="${id}"]`);
-  for (const t of ['Spartamelee', 'Demo Server']) check(await place(t).count() === 1, `a card for ${t}`);
-  // one place for each fact (4.44.0): Watch (a failed task), Approvals (a deploy) and Chiron (workouts) have rows above, so no card
+  // one line for each section with news (4.54.0, no tiles at any width): a server plugin's status line, by its god's name, to its section
+  const qline = id => p.locator(`.news a.qline[data-id="${id}"]`);
   await p.waitForFunction(() => !/Checking…|Asking every section/.test(document.querySelector('#main .home').textContent));
   const listed = await p.evaluate(() => [...document.querySelectorAll('.needlist .need .go')].map(a => a.getAttribute('href').replace(/.*\//, '')));
-  check(await tile('mentor').count() === 1 && await tile('mentor').locator('.pw b').textContent() === 'Mentor', 'Mentor (nothing due) keeps its card, called Mentor');
-  for (const [t, id] of [['Argus', 'argus'], ['Zeus', 'throne'], ['Chiron', 'chiron']])
-    check(listed.includes(id) && await tile(id).count() === 0, `${t} has a row above (${listed.join(', ')}), so it has no card under Sections`);
-  check(await tile('olympus').count() === 1 && await tile('olympus').locator('.pw b').textContent() === 'Olympus' && await tile('olympus').locator('.pl').textContent() === 'Powers, weather, seasons'
-    && /\/olympus$/.test(await tile('olympus').getAttribute('href')), 'a card called Olympus (not "Playground"), with what it is');
-  await place('Demo Server').locator('.pl', {hasText: '1 ping answered · all well'}).waitFor({timeout: 5000});
-  check(true, "a server plugin's card shows its status line");
+  check(await p.locator('#news-h').textContent() === 'Sections' && await qline('mentor').count() === 1 && await qline('mentor').locator('b').textContent() === 'Mentor', 'Mentor (nothing due) has its line under Sections, called Mentor');
+  for (const [t, id] of [['Zeus', 'throne'], ['Chiron', 'chiron']])
+    check(listed.includes(id) && await qline(id).count() === 0, `${t} has a row above (${listed.join(', ')}), so no line under Sections (one place for each fact)`);
+  check(listed.includes('argus') && await p.locator('.news a.qline[data-id="argus"], .news a.qline[data-id="olympus"], .news a.qline[data-id="spartamelee"]').count() === 0,
+    'Argus (its news is the rows), Olympus and a static plugin have no line on Today');
+  await qline('demo-server').locator('.qt', {hasText: 'ping answered'}).waitFor({timeout: 5000});
+  check(/^1\u00a0ping answered\u00a0· all well$/.test(await qline('demo-server').locator('.qt').textContent()), "a server plugin's line says its status line, a count kept with its word");
   check(await need('Demo Server').count() === 0, 'a plugin whose status does not say "needs" stays out of the list');
-  check(/Version 0\.0\.1-test/.test(await place('Spartamelee').textContent()), "a static plugin's card shows its version");
-  const order = await p.locator('.placelist .place .pw b').allTextContents(), inBar = await p.evaluate(() => sections().map(e => e.word));
-  check(order.length >= 3 && order.every((t, i) => !i || inBar.indexOf(order[i - 1]) < inBar.indexOf(t)), `cards in the bar's order (${order.join(', ')})`);
+  check(await qline('demo-server').locator('svg.chev').count() === 1 && /\/demo-server$/.test(await qline('demo-server').getAttribute('href')), 'the line ends in the chevron and opens its section');
+  check(await p.evaluate(() => [placeLine({id: 'olympus'}), placeLine({id: 'spartamelee'})].join(' | ')) === 'Powers, weather, seasons | Version 0.0.1-test', "More's lines: Olympus says what it is, a static plugin its version");
+  const order = await p.locator('.newslist .qline').evaluateAll(as => as.map(a => a.dataset.id)), inBar = await p.evaluate(() => sections().map(e => e.id));
+  check(order.length >= 2 && order.every((t, i) => !i || inBar.indexOf(order[i - 1]) < inBar.indexOf(t)), `lines in the bar's order (${order.join(', ')})`);
+  check(await p.locator('.home .places, .home .place, .home .open, .home #editToday').count() === 0, 'no Sections tiles, no Open row and no Edit Today button on Today (4.54.0)');
   const hits = await p.locator('#main a').evaluateAll(as => as.map(a => a.getBoundingClientRect()).filter(r => r.width && (r.height < 44 || r.width < 44)).length);
   check(hits === 0, 'every link on Today is at least 44 by 44 px');
 
-  // the Open row: links to other pages on this machine (~/.config/argus-ui/links.json), after the rows; unsafe hrefs dropped
+  // links (~/.config/argus-ui/links.json on the host): a plain one sits in More under Other pages; one that says "section": true
+  // is a section that opens elsewhere, a pill right after Zeus with the opens-elsewhere mark (4.54.0). Unsafe hrefs dropped
   const LK = path.join(path.dirname(process.env.FIXTURES), 'home/.config/argus-ui/links.json');
   fs.mkdirSync(path.dirname(LK), {recursive: true});
-  fs.writeFileSync(LK, JSON.stringify([{name: 'Sound Lab', what: 'Studio', href: '/studio-test/'}, {name: 'Bad', what: 'x', href: 'javascript:alert(1)'}]));
+  fs.writeFileSync(LK, JSON.stringify([{name: 'Studio Test', what: 'Studio', href: '/studio-test/', section: true}, {name: 'Notes Test', what: 'Notes', href: '/notes-test/'}, {name: 'Bad', what: 'x', href: 'javascript:alert(1)'}]));
   await p.evaluate(() => refresh()); await p.waitForTimeout(700);
-  const lk = p.locator('#moreAway a.srow');
-  check(await lk.count() === 1 && await lk.getAttribute('href') === '/studio-test/' && /Sound Lab/.test(await lk.textContent()) && await p.locator('#realms a.realm.link').count() === 0 && await p.locator('#realmMore').isVisible(),
-    'a link from links.json sits in More under Other pages, not as a pill of its own (4.44.0); an unsafe href is dropped');
-  const op = p.locator('.open .openlink');
-  check(await op.count() === 1 && await op.getAttribute('href') === '/studio-test/' && /Sound Lab\s*Studio/.test(await op.textContent()), 'and on Today in the Open row');
-  const ys = await p.evaluate(() => ['.needs', '.open', '.places'].map(s => document.querySelector('.home ' + s).getBoundingClientRect()));
-  check(ys[1].top >= ys[0].top && ys[2].top >= ys[1].bottom - 1, 'Today reads in order: the state and its rows, Open, then the sections');
-  fs.unlinkSync(LK); await p.evaluate(() => refresh()); await p.locator('.home .open').waitFor({state: 'detached', timeout: 3000}).catch(() => {});
-  check(await p.locator('#moreAway .srow').count() === 0 && await p.locator('.home .open').count() === 0, 'no links file, no links and no Open row');
+  const lk = p.locator('#moreAway a.srow'), sec = p.locator('#realms a.realm.link');
+  check(await lk.count() === 1 && await lk.getAttribute('href') === '/notes-test/' && /Notes Test/.test(await lk.textContent()) && await p.locator('#realmMore').isVisible(),
+    'a plain link sits in More under Other pages; an unsafe href is dropped');
+  check(await sec.count() === 1 && await sec.getAttribute('href') === '/studio-test/' && /Studio Test/.test(await sec.textContent()) && /opens another page/.test(await sec.textContent())
+    && await p.evaluate(() => document.querySelector('#realms a.realm.link')?.previousElementSibling?.dataset.id) === 'throne', 'a link that says "section": true is a pill of its own, right after Zeus, read out as opening another page');
+  check(await p.locator('.home a[href="/studio-test/"], .home a[href="/notes-test/"]').count() === 0, 'neither is on Today');
+  fs.unlinkSync(LK); await p.evaluate(() => refresh()); await p.waitForTimeout(700);
+  check(await p.locator('#moreAway .srow').count() === 0 && await sec.count() === 0, 'no links file, no links');
 
-  // the media players (4.44.0): their addresses come from ~/.config/argus-ui/media.json on the host, never from the repository
+  // the media players (4.44.0): their addresses come from ~/.config/argus-ui/media.json on the host, never from the repository.
+  // Since 4.54.0 they are in More under Media, never on the strip or on Today
   const MD = path.join(path.dirname(process.env.FIXTURES), 'home/.config/argus-ui/media.json');
   fs.writeFileSync(MD, JSON.stringify({audiobookshelf: 'http://books.example:13378/', jellyfin: 'https://films.example/web/', mealie: 'http://food.example:9925/', qbittorrent: 'https://x.example/', Bad: 'javascript:alert(1)'}));
-  await p.evaluate(() => refresh()); await p.locator('.home .open .openlink').first().waitFor({timeout: 3000}).catch(() => {});
-  const md = await p.locator('.home .open .openlink').evaluateAll(as => as.map(a => [a.textContent.replace(/\s+/g, ' ').trim(), a.getAttribute('href'), a.getAttribute('rel'), a.getAttribute('target')]));
-  check(JSON.stringify(md) === JSON.stringify([['JellyfinFilms and shows', 'https://films.example/web/', 'noopener noreferrer', null], ['AudiobookshelfAudiobooks and podcasts', 'http://books.example:13378/', 'noopener noreferrer', null], ['MealieRecipes', 'http://food.example:9925/', 'noopener noreferrer', null]]),
-    'Open: a row each for Jellyfin, Audiobookshelf and Mealie (4.48.0) from media.json, plain links with rel="noopener noreferrer"; other keys and unsafe addresses dropped ' + JSON.stringify(md));
-  fs.unlinkSync(MD); await p.evaluate(() => refresh()); await p.locator('.home .open').waitFor({state: 'detached', timeout: 3000}).catch(() => {});
-  check(await p.locator('.home .open').count() === 0, 'no media.json, no rows for the players');
+  await p.evaluate(() => refresh()); await p.locator('#moreMedia a.srow').first().waitFor({state: 'attached', timeout: 3000}).catch(() => {});
+  const md = await p.locator('#moreMedia a.srow').evaluateAll(as => as.map(a => [a.querySelector('b').textContent, a.querySelector('small')?.textContent || '', a.getAttribute('href'), a.getAttribute('rel'), a.getAttribute('target')]));
+  check(JSON.stringify(md) === JSON.stringify([['Jellyfin', 'Films and shows', 'https://films.example/web/', 'noopener noreferrer', null], ['Audiobookshelf', 'Audiobooks and podcasts', 'http://books.example:13378/', 'noopener noreferrer', null]]),
+    'More, Media: Jellyfin and Audiobookshelf from media.json (Mealie has its own section), plain links with rel="noopener noreferrer"; other keys and unsafe addresses dropped ' + JSON.stringify(md));
+  check(!await p.locator('#moreMediaH').evaluate(e => e.hidden) && await p.locator('#realms a[href*="films.example"], .home a[href*="films.example"]').count() === 0, 'under a Media heading; not on the strip, not on Today');
+  fs.unlinkSync(MD); await p.evaluate(() => refresh()); await p.waitForTimeout(700);
+  check(await p.locator('#moreMedia .srow').count() === 0 && await p.locator('#moreMediaH').evaluate(e => e.hidden), 'no media.json, no Media part');
 
   // one line on what the server is doing now (4.44.0), only from what it knows: a timer's run in progress, the game guard's record
   const now = () => p.locator('.home > p.now').textContent().then(t => t.trim(), () => '');
   check(await now() === 'The server: busy with Hermes media' && await p.locator('.home .quiet').count() === 0, `the server's line says what runs now ("${await now()}")`);
-  // on its own above the list, not inside the list's panel, where it read as one more thing to do (the review of the first draft)
+  // on its own, not inside the list's panel, where it read as one more thing to do (the review of the first draft); since 4.54.0
+  // under the panel at every width (one reading column, docs/home.md "One way to each place"), as on a phone
   const at = await p.evaluate(() => { const n = document.querySelector('.home p.now'), s = document.querySelector('.home .needs');
-    return n && s ? [!!n.closest('.needs'), n.getBoundingClientRect().bottom <= s.getBoundingClientRect().top + 1] : null; });
-  check(JSON.stringify(at) === '[false,true]', `the server's line stands above the list's panel, not in it (${JSON.stringify(at)})`);
+    return n && s ? [!!n.closest('.needs'), n.getBoundingClientRect().top >= s.getBoundingClientRect().bottom - 1] : null; });
+  check(JSON.stringify(at) === '[false,true]', `the server's line stands under the list's panel, not in it (${JSON.stringify(at)})`);
   const RM_ = path.join(path.dirname(process.env.FIXTURES), 'home/.config/leafy/realm.json'), GG = path.join(path.dirname(process.env.FIXTURES), 'home/.local/state/medusa-gameguard/frozen-by-me.json');
   fs.mkdirSync(path.dirname(RM_), {recursive: true}); fs.mkdirSync(path.dirname(GG), {recursive: true});
   fs.writeFileSync(RM_, JSON.stringify({SERVER: 'Shelf'})); fs.writeFileSync(GG, JSON.stringify(['mnemosyne-ollama']));
@@ -126,28 +130,28 @@ run(async b => {
   const content = await p.waitForFunction(() => document.getElementById('argus').classList.contains('content'), null, {timeout: 2000}).then(() => true, () => false);
   await p.locator('#needs-h', {hasText: 'Nothing needs you'}).waitFor({timeout: 2000});
   check(content, 'Needs you emptied: "Nothing needs you", and Argus gives a slow, contented blink');
-  const back = await p.locator('.placelist .place .pw b').allTextContents();
-  check(back.slice(0, 3).join(' ') === 'Argus Mentor Zeus', `with their rows gone, Argus, Mentor and Zeus have their cards again, first, in the bar's order (${back.slice(0, 4).join(', ')})`);
-  check(/^All \d+\u00a0tasks well$/.test(await tile('argus').locator('.pl').textContent()), "Argus's card says all is well");
+  await p.waitForFunction(() => document.querySelector('.news a.qline[data-id="throne"]') && document.querySelector('.news a.qline[data-id="chiron"]'), null, {timeout: 3000}).catch(() => {});
+  check(await qline('throne').count() === 1 && await qline('chiron').count() === 1 && /All quiet/.test(await qline('throne').textContent()), 'with their rows gone, Zeus and Chiron have their lines again');
+  check(/^All \d+ tasks well$/.test(await p.evaluate(() => placeLine({id: 'argus'}))), "Argus's line (More's row) says all is well");
   // a learner whose one section has a row above: nothing under Sections, so no Sections heading either
   await p.route('**/api/mentor/status', r => r.fulfill({json: {line: '3 due', needs: true, action: 'Study 10 minutes'}}));
   await p.evaluate(() => { S.role = 'learner'; render(); }); await p.locator('.need', {hasText: '3 due'}).waitFor({timeout: 3000}).catch(() => {});
-  check(await need('3 due').count() === 1 && await p.locator('#places-h').count() === 0 && await p.locator('.home .places').count() === 0,
+  check(await need('3 due').count() === 1 && await p.locator('#news-h').count() === 0 && await p.locator('.home .news').count() === 0,
     'a learner with Mentor in the list (not quiet for her): no empty Sections heading');
-  check(await p.locator('.home p.now').count() === 0 && await p.locator('.home .open').count() === 0, "and no server line and no Open row: those are the owner's");
+  check(await p.locator('.home p.now').count() === 0, "and no server line: that is the owner's");
   await p.unroute('**/api/mentor/status'); await p.route('**/api/mentor/status', r => r.fulfill({json: {line: 'Nothing due', needs: false, action: ''}}));
-  await p.evaluate(() => home.show()); await p.locator('#places-h').waitFor({timeout: 3000}).catch(() => {});
-  check(await p.locator('#places-h').count() === 1 && await tile('mentor').count() === 1 && await p.locator('.placelist .place').count() === 1, 'and with nothing due, Mentor is her one card under Sections');
+  await p.evaluate(() => home.show()); await p.locator('#news-h').waitFor({timeout: 3000}).catch(() => {});
+  check(await p.locator('#news-h').count() === 1 && await qline('mentor').count() === 1 && await p.locator('.newslist .qline').count() === 1, 'and with nothing due, Mentor is her one line under Sections');
   await p.unroute('**/api/mentor/status'); await p.evaluate(() => { delete S.role; render(); });
   await p.waitForTimeout(900); await p.evaluate(() => home.show()); await p.waitForTimeout(300);
   check(!await p.locator('#argus').evaluate(e => e.classList.contains('content')), 'a redraw while it stays empty does not blink again');
   await p.unroute('**/api/*/status'); await p.evaluate(() => refresh()); await p.waitForTimeout(700);
   check(await task.count() === 1, 'the next refresh shows the failed task again');
 
-  await place('Spartamelee').focus(); await p.evaluate(() => refresh()); await p.waitForTimeout(500);
-  check(await p.evaluate(() => document.activeElement?.getAttribute('href')?.endsWith('spartamelee')), 'the refresh keeps keyboard focus');
-  await p.keyboard.press('Enter'); await p.waitForURL(/\/spartamelee$/);
-  check(true, 'Enter on a card opens its section');
+  await qline('demo-server').focus(); await p.evaluate(() => refresh()); await p.waitForTimeout(500);
+  check(await p.evaluate(() => document.activeElement?.getAttribute('href')?.endsWith('demo-server')), 'the refresh keeps keyboard focus');
+  await p.keyboard.press('Enter'); await p.waitForURL(/\/demo-server$/);
+  check(true, 'Enter on a line opens its section');
   check(p.errors.length === 0, 'no page errors ' + p.errors.join(' | '));
 
   const old = await page(b); await old.goto(BASE + 'home'); await old.waitForTimeout(600);
