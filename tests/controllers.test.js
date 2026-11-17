@@ -87,14 +87,16 @@ run(async b => {
     'Home: the place opens <base>/controllers and none is called Pads');
   check(p.errors.length === 0, 'no page errors ' + p.errors.join(' | '));
 
-  // 375 px, Today: a count keeps its word. Before 4.49.0 the tile read "3 connected · 1" and then "Steam virtual" on the next line
-  await ph.goto(BASE + 'home'); const tl = ph.locator('.place[data-id="controllers"] .pl');
+  // the narrowest tile, Today: a count keeps its word. Before 4.49.0 the tile read "3 connected · 1" and then "Steam virtual" on the next line.
+  // A phone has no Sections tiles since 4.52.0 (docs/home.md "On a phone"): 600 px is the narrowest width with tiles, and they are narrowest there
+  const tw = await page(b, 600, 760);
+  await tw.goto(BASE + 'home'); const tl = tw.locator('.place[data-id="controllers"] .pl');
   await tl.filter({hasText: 'Steam'}).waitFor({timeout: 5000}).catch(() => {});
   const apart = await tl.evaluate(el => { const n = el.firstChild, i = n.data.indexOf('1\u00a0Steam'); if (i < 0) return `no "1 Steam" in ${JSON.stringify(n.data)}`;
     const r = document.createRange(), top = k => { r.setStart(n, k); r.setEnd(n, k + 1); return r.getClientRects()[0].top; };
     return Math.abs(top(i) - top(i + 2)) > 2 ? '"1" ends a line, "Steam" starts the next' : ''; });
-  check(!apart && await noOverflow(ph), `phone, Today: the Controllers tile keeps "1" with "Steam" (${apart || 'on one line'}), no sideways scrolling`);
-  await shot(ph, 'controllers-phone-today');
+  check(!apart && await noOverflow(tw), `600 px, Today: the Controllers tile keeps "1" with "Steam" (${apart || 'on one line'}), no sideways scrolling`);
+  await shot(tw, 'controllers-600-today'); await tw.close();
 
   await ph.goto(BASE + 'controllers'); await ph.locator('.controllers .controller').first().waitFor({timeout: 5000});
   check(await noOverflow(ph), 'phone: no sideways scrolling');

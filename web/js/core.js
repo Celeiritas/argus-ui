@@ -5,6 +5,9 @@ const $ = (s, e = document) => e.querySelector(s), $$ = (s, e = document) => [..
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const wait = ms => new Promise(z => setTimeout(z, ms));
 const RM = matchMedia('(prefers-reduced-motion: reduce)');      // reduced motion: skip particles/strikes, fade only
+// a phone: the width where the bottom bar shows (scene.css). Today and Watch put what matters first and fold the rest (4.52.0,
+// docs/home.md "On a phone"); crossing the line (a phone turned, a window narrowed) draws the page again
+const PHONE = matchMedia('(max-width: 599.98px)');
 // works at http://<host>:8095/ and at https://<host>.<tailnet>.ts.net/argus/  (agent pages: <base>/<agent>)
 const MOUNT = /^\/argus(\/|$)/.test(location.pathname) ? '/argus/' : '/';
 const REST = location.pathname.slice(MOUNT.length - (location.pathname === '/argus' ? 1 : 0)).replace(/^\/+|\/+$/g, '');
@@ -26,7 +29,7 @@ const WATCH = '/argus/argus';
 const SIDE = ['mentor', 'olympus', 'home', 'phone'];
 const side = SIDE.includes(here) || !!plugin, onOlympus = here === 'olympus';     // Olympus: a playground where the powers act on the scene
 const only = side ? null : here === 'argus' ? (SEG[1] === 'argus' ? 'argus' : null) : here;   // Watch: one agent's tasks, or all (null)
-document.body.classList.toggle('side', side); document.body.classList.toggle('play', onOlympus);
+document.body.classList.toggle('side', side); document.body.classList.toggle('play', onOlympus); document.body.classList.toggle('today', here === 'home');
 let gaze = null, drag = null, armed = null, justDragged = false;   // what Argus watches; drag/armed belong to the god tools (powers.js)                                                // Argus watches whatever you throw on Olympus
 
 /* ---------- sound ---------- */
@@ -458,21 +461,32 @@ function render() {
   const items = only ? troubleItems().filter(it => it.agent === only) : troubleItems();
   const tn = items.reduce((t, it) => t + weight(it), 0);       // the programs folded under a drive count too, as on the bar
   const top = items.length ? `<section class="trouble" aria-labelledby="trouble-h"><h2 id="trouble-h">${tn === 1 ? 'One thing needs a look' : `${tn} things need a look`}</h2>${items.map(troubleBlock).join('')}</section>` : '';
-  const end = only ? '' : `<section class="lately" aria-labelledby="lately-h"><h2 id="lately-h">What happened lately</h2><div id="lately">${lately.html || '<p class="quiet">Loading…</p>'}</div></section>`;
+  // on a phone the three newest show, and "Show more" opens the rest (it stays open across the 15 s redraw)
+  const lmore = PHONE.matches ? `<button type="button" class="latemore" aria-controls="lately" aria-expanded="${lately.all}">${lately.all ? 'Show fewer' : 'Show more'}</button>` : '';
+  const end = only ? '' : `<section class="lately${lately.all ? ' all' : ''}" aria-labelledby="lately-h"><h2 id="lately-h">What happened lately</h2><div id="lately">${lately.html || '<p class="quiet">Loading…</p>'}</div>${lmore}</section>`;
   // Argus's device list (devices.js, docs/devices.md) after the task groups, on the All view and Argus's own: the tasks stay first.
   // Focus on its Check again survives this 15 s redraw (the keyboard stays where it was)
   const devFocus = !!document.activeElement?.matches?.('#devices .devagain');
-  $('#main').innerHTML = top + (list.map(p => {
+  // On a phone, the All view (4.52.0, docs/home.md "On a phone"): anything broken, then the devices, then the groups; a group
+  // whose tasks all work is one line that opens its own page, and a group with trouble or a message stays open
+  const first = PHONE.matches && !only, dev = !only || only === 'argus' ? devices.panel() : '';
+  const groups = list.map(p => {
     const js = (by[p.key] || []).map((j, i) => [j, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(x => x[0]), ls = lone[p.key] || [];
     const cr = (rows[p.key] || []).map((w, i) => [w, i]).sort((a, b) => (a[0].works === false ? 0 : 1) - (b[0].works === false ? 0 : 1) || a[1] - b[1]).map(x => x[0]);
     const c = s => js.filter(j => j.state === s && !(s === 'failed' && j.known)).length, kc = js.filter(j => j.known && failing(j)).length;
     const na = (S.alerts || []).filter(a => a.level === 'alert' && ownerKey(a.job) === p.key && !js.some(j => j.known && jobIs(j, a.job))).length;
     const counts = (na ? [`<span class="failed">${na} alert${na === 1 ? '' : 's'}</span>`] : []).concat(['failed', 'running', 'frozen'].filter(s => c(s)).map(s => `<span class="${s}">${c(s)} ${s}</span>`))
       .concat(kc ? [`<span class="known">${kc} known</span>`] : []).concat(`${js.length} task${js.length === 1 ? '' : 's'}`).join(' · ');
+    if (first && worst(p) > 0 && !ls.length && !js.some(j => alertsFor(j).length)) {
+      const n = (v, one, many = one) => v ? `${v} ${v === 1 ? one : many}` : '';
+      const said = ['All well', n(js.length, 'task', 'tasks'), n(cr.length, 'check', 'checks'), n(c('running'), 'running'), n(c('frozen'), 'frozen'), n(kc, 'known')].filter(Boolean).join(' · ');
+      return `<section class="persona folded" aria-labelledby="h-${p.key}"><a class="ph" href="${p.key === 'argus' ? WATCH + '/argus' : url(p.key)}"><img src="static/icons/${p.key}.png" alt=""><div><h2 id="h-${p.key}">${esc(p.name)}</h2><div class="dom">${esc(said)}</div></div><span class="fold-go" aria-hidden="true">›</span></a></section>`;
+    }
     return `<section class="persona" aria-labelledby="h-${p.key}"><a class="ph" href="${p.key === 'argus' ? WATCH + '/argus' : url(p.key)}"><img src="static/icons/${p.key}.png" alt=""><div><h2 id="h-${p.key}">${esc(p.name)}</h2><div class="dom">${esc(p.domain)}</div></div><div class="counts">${counts}</div></a>
       ${cr.length ? `<ul class="crows" aria-label="${esc(p.name)}: checks">${cr.map(checkRow).join('')}</ul>` : ''}
       ${js.length || ls.length ? `<div class="grid">${ls.map(alertCard).join('')}${js.map(card).join('')}</div>` : cr.length ? '' : `<div class="empty"><b>No ${esc(p.name)} tasks yet</b>Background jobs named <code>${esc(p.key)}-…</code> appear here on their own, so you can watch and run them. <a href="https://github.com/Celeiritas/argus-ui#which-jobs-show-up">Learn how to add a task</a></div>`}</section>`;
-  }).join('') || `<div class="empty"><b>No tasks found</b>Argus shows systemd --user jobs whose names start with an agent's key. <a href="https://github.com/Celeiritas/argus-ui#which-jobs-show-up">Learn how to add a task</a></div>`) + (!only || only === 'argus' ? devices.panel() : '') + end;
+  }).join('') || `<div class="empty"><b>No tasks found</b>Argus shows systemd --user jobs whose names start with an agent's key. <a href="https://github.com/Celeiritas/argus-ui#which-jobs-show-up">Learn how to add a task</a></div>`;
+  $('#main').innerHTML = top + (first ? dev + groups : groups + dev) + end;
   if (devFocus) $('#devices .devagain')?.focus({preventScroll: true});
   if (!only) askLately();
   wireFixes();
@@ -520,7 +534,11 @@ function checkRow(w) {
   return `<li class="crow ${st[0]}" data-check="${esc(w.id)}"><span class="cdot" aria-hidden="true"></span><span class="cw"><b>${esc(w.title)}</b><span>${esc(st[1])}${w.since && !w.fixing ? ` · ${esc(sinceText(w.since))}` : ''}</span></span></li>`;
 }
 // "What happened lately": the newest 10 events (api/events) as plain sentences, each with a relative and an exact time.
-const lately = {html: '', at: 0, since: ''};
+const lately = {html: '', at: 0, since: '', all: false};   // all: a phone's "Show more" is open
+document.addEventListener('click', e => { const b = e.target.closest('.latemore'); if (!b) return;
+  lately.all = !lately.all; b.closest('.lately').classList.toggle('all', lately.all);
+  b.setAttribute('aria-expanded', String(lately.all)); b.textContent = lately.all ? 'Show fewer' : 'Show more'; });
+PHONE.addEventListener('change', () => { if (S) { home.reset(); render(); } });
 function ago(t) {
   const d = new Date(t), s = (Date.now() - d) / 1000; if (isNaN(d)) return '';
   const n = (v, w) => `${v} ${w}${v === 1 ? '' : 's'} ago`;
@@ -686,7 +704,7 @@ const satellite = (() => {
   const A = $('#argus'), red = $('svg .eye.red', A);
   const live = document.createElement('p'); live.className = 'sr'; live.id = 'satSay'; live.setAttribute('aria-live', 'polite'); document.body.append(live);
   const edge = document.createElement('button'); edge.type = 'button'; edge.id = 'satEdge'; edge.className = 'satedge'; edge.hidden = true;
-  edge.setAttribute('aria-label', 'Scroll to what needs a look'); document.body.append(edge);
+  edge.setAttribute('aria-label', 'See what needs a look'); document.body.append(edge);   // the same words as the pill, so a voice command that reads them works
   let key = null, keys = new Set(), count = 0, at = null, seen = null, shrink = 0;   // the block it glares at, every trouble key, where it sat, the observer
   const say = t => { live.textContent = t; };
   const base = it => (it ? it.say : 'Something is wrong').replace(/[.\s]+$/, '');
@@ -696,20 +714,21 @@ const satellite = (() => {
     return `<svg viewBox="90.2 64.1 28 28" aria-hidden="true">${g.outerHTML}</svg>`;
   }
   const centre = el => { const r = el.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; };
-  // The edge marker, shown only while the block is out of view. The pill "Look" for 5 seconds after it appears or after the set
+  // The edge marker, shown only while the block is out of view. The pill "See what needs a look" for 5 seconds after it appears or after the set
   // of trouble changes; then an arrow-only round button of 44 px (same name), so it does not sit on a control for long.
   function full() { edge.classList.remove('small'); clearTimeout(shrink); shrink = setTimeout(() => { edge.classList.add('small'); spot(); }, 5000); spot(); }
   // It never rests on a control (W3): after every scroll, resize and change of size it takes the first spot down the right edge (up
-  // from the bottom bar when the block is below) where it touches no button, link or other control, 4 px clear. Nowhere free: it
-  // waits out of sight until a spot frees up on the next scroll.
-  const CONTROLS = 'a[href],button,summary,input,select,textarea,[role=button],[role=link],[tabindex]:not([tabindex="-1"])';
+  // from the bottom bar when the block is below) where it touches no button, link or other control, 4 px clear. On a phone (4.52.0
+  // review) it sits bottom centre, just above the bar, in thumb reach, and moves up that column only past a control. A task's state
+  // pill (it reads like a switch) and a toast count as controls too. Nowhere free: it waits out of sight until a spot frees up.
+  const CONTROLS = 'a[href],button,summary,input,select,textarea,[role=button],[role=link],[tabindex]:not([tabindex="-1"]),.card .pill,#toast.show';
   function spot() {
     if (edge.hidden) return;
-    const vw = document.documentElement.clientWidth, w = edge.offsetWidth || (edge.classList.contains('small') ? 44 : 84), h = 44, x = vw - 16 - w;
+    const ph = PHONE.matches, vw = document.documentElement.clientWidth, w = edge.offsetWidth || (edge.classList.contains('small') ? 44 : 84), h = 44, x = ph ? (vw - w) / 2 : vw - 16 - w;
     const bar = $('#tabbar'), barTop = bar && bar.offsetHeight && getComputedStyle(bar).display !== 'none' ? bar.getBoundingClientRect().top : innerHeight;
     const rs = $$(CONTROLS).filter(e => e !== edge && !edge.contains(e)).map(e => e.getBoundingClientRect())
       .filter(r => r.width && r.height && r.bottom > 0 && r.top < innerHeight && r.right > x - 4 && r.left < x + w + 4);
-    const free = y => rs.every(r => r.bottom <= y - 4 || r.top >= y + h + 4), up = !edge.classList.contains('down'), lo = 12, hi = barTop - h - 12;
+    const free = y => rs.every(r => r.bottom <= y - 4 || r.top >= y + h + 4), up = !ph && !edge.classList.contains('down'), lo = 12, hi = barTop - h - 12;
     for (let i = 0; i <= hi - lo; i += 4) {
       const y = up ? lo + i : hi - i;
       if (free(y)) { edge.style.top = `${y}px`; edge.style.bottom = ''; edge.classList.remove('nospot'); return; }
@@ -718,6 +737,7 @@ const satellite = (() => {
   }
   let spotAt = 0; const respot = () => { cancelAnimationFrame(spotAt); spotAt = requestAnimationFrame(spot); };
   addEventListener('scroll', respot, {passive: true}); addEventListener('resize', respot);
+  if ($('#toast')) new MutationObserver(respot).observe($('#toast'), {attributes: true, attributeFilter: ['class']});   // a toast shows: step out of its way
   function edgeFor(block, changed) {
     seen?.disconnect(); seen = null;
     if (!block || !('IntersectionObserver' in window)) { edge.hidden = true; clearTimeout(shrink); return; }
@@ -726,7 +746,7 @@ const satellite = (() => {
       if (e.isIntersecting) { edge.hidden = true; clearTimeout(shrink); return; }
       const up = e.boundingClientRect.top < 0, bar = $('#tabbar'), barH = bar && bar.offsetHeight && getComputedStyle(bar).display !== 'none' ? bar.offsetHeight : 0;
       edge.classList.toggle('up', up); edge.classList.toggle('down', !up); edge.style.top = up ? '12px' : ''; edge.style.bottom = up ? '' : `${barH + 12}px`;
-      edge.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${up ? 'M12 5 5 13h4v6h6v-6h4z' : 'M12 19 5 11h4V5h6v6h4z'}" fill="currentColor"/></svg><span>Look</span>`;
+      edge.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${up ? 'M12 5 5 13h4v6h6v-6h4z' : 'M12 19 5 11h4V5h6v6h4z'}" fill="currentColor"/></svg><span>See what needs a look</span>`;
       if (edge.hidden) { edge.hidden = false; full(); } else spot();   // it appears: the full pill first
     }, {threshold: .25});
     seen.observe(block);

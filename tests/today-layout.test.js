@@ -1,5 +1,5 @@
-// Today at a glance (4.45.0, docs/home.md): Sections as compact tiles (two a row on a phone, the line cut at a word to two
-// lines), Open's chips under a small label for each kind when there is more than one, the server's band in the theme's
+// Today at a glance (4.45.0, docs/home.md): Sections as compact tiles (the line cut at a word to two lines; since 4.52.0 a
+// phone has no tiles, docs/home.md "On a phone", so the tiles are read at 600 px, the narrowest width that has them), Open's chips under a small label for each kind when there is more than one, the server's band in the theme's
 // colours, the last thing on every page clear of the phone's bottom bar, and the strip's count clear of its pill's label.
 // The fixture: two media players, links in two groups, the server's name in realm.json; every section quiet (the morning
 // when nothing needs you), one with a line too long for its tile and one with a single word too long for it.
@@ -46,36 +46,43 @@ run(async b => {
     const t = await today(b, 412, 915);
     check(/Nothing needs you/.test(await t.locator('#needs-h').textContent()), `the fixture: nothing needs you (${(await t.locator('.home .needs').textContent()).replace(/\s+/g, ' ').slice(0, 300)})`);
 
-    // 1. Sections: compact tiles, two a row on a phone; each one link, 44 px or more; the whole of Today above the bottom bar
-    const tiles = await t.locator('.placelist .place').evaluateAll(es => es.map(e => { const r = e.getBoundingClientRect(); return [Math.round(r.top), Math.round(r.width), Math.round(r.height)]; }));
+    // 1. a phone (4.52.0): no Sections tiles, and the whole of Today above the bottom bar
+    const px = v => Math.round(v);
+    const lastFit = p => p.evaluate(() => { scrollTo(0, 0); const r = s => document.querySelector(s).getBoundingClientRect(), k = [...document.querySelectorAll('.home > *')].filter(e => e.offsetHeight);
+      return {first: k[0] && k[0].className, last: k.length ? k[k.length - 1].className : '', bottom: k.length ? r('.home > :last-child').bottom : 0, bar: r('.tabbar').top, tiles: document.querySelectorAll('.home .places, .placelist').length}; });
+    const fit = await lastFit(t);
+    check(fit.tiles === 0 && fit.bottom <= fit.bar, `412 x 915: with nothing needing you, no tiles and all of Today above the bottom bar (${fit.first} to ${fit.last}, ends at ${px(fit.bottom)}, bar at ${px(fit.bar)})`);
+    // and with the sections' own lines (the quiet ones get a line each)
+    const o = await today(b, 412, 915, true), of = await lastFit(o);
+    check(of.tiles === 0 && of.bottom <= of.bar, `412 x 915: with the sections' own lines too (ends at ${px(of.bottom)}, bar at ${px(of.bar)})`);
+    await o.close();
+
+    // Sections at 600 px (the narrowest tiles): each one link, 44 px or more
+    const w6 = await today(b, 600, 915);
+    const tiles = await w6.locator('.placelist .place').evaluateAll(es => es.map(e => { const r = e.getBoundingClientRect(); return [Math.round(r.top), Math.round(r.width), Math.round(r.height)]; }));
     const row1 = tiles.filter(x => Math.abs(x[0] - tiles[0][0]) < 2).length;
-    check(tiles.length >= 8 && row1 === 2, `412: Sections are tiles, two a row (${tiles.length} tiles, ${row1} in the first row, ${tiles[0] && tiles[0][1]} px wide)`);
-    check(tiles.every(x => x[1] >= 44 && x[2] >= 44) && await t.locator('.placelist li').evaluateAll(ls => ls.every(l => l.querySelectorAll('a').length === 1)),
+    check(tiles.length >= 8 && row1 >= 3, `600: Sections are tiles, three or more a row (${tiles.length} tiles, ${row1} in the first row, ${tiles[0] && tiles[0][1]} px wide)`);
+    check(tiles.every(x => x[1] >= 44 && x[2] >= 44) && await w6.locator('.placelist li').evaluateAll(ls => ls.every(l => l.querySelectorAll('a').length === 1)),
       `each tile is one link at least 44 by 44 px (heights ${[...new Set(tiles.map(x => x[2]))].join(', ')})`);
-    const mark = await t.locator('.placelist .place').first().evaluate(a => { const m = a.querySelector('img,svg'), w = a.querySelector('.pw b'), l = a.querySelector('.pl');
+    const mark = await w6.locator('.placelist .place').first().evaluate(a => { const m = a.querySelector('img,svg'), w = a.querySelector('.pw b'), l = a.querySelector('.pl');
       return [Math.round(m.getBoundingClientRect().width), getComputedStyle(w).fontSize, getComputedStyle(w).fontWeight, getComputedStyle(l).fontSize, l.getBoundingClientRect().top >= w.getBoundingClientRect().bottom - 1]; });
     check(JSON.stringify(mark) === '[32,"14px","600","12px",true]', `a tile: a 32 px mark, the word 14/600, the line 12 px under it (${JSON.stringify(mark)})`);
-    const fit = await t.evaluate(() => { scrollTo(0, 0); const r = s => document.querySelector(s).getBoundingClientRect();
-      return {band: [r('.home > .now').top, r('.home > .now').bottom], needs: r('.home .needs').bottom, open: r('.home .open').bottom, places: [r('.home .places').top, r('.home .places').bottom], bar: r('.tabbar').top}; });
-    const px = v => Math.round(v);
-    check(fit.places[1] <= fit.bar, `412 x 915: with nothing needing you, all of Today is above the bottom bar (band ${px(fit.band[0])}-${px(fit.band[1])}, state to ${px(fit.needs)}, Open to ${px(fit.open)}, Sections ${px(fit.places[0])}-${px(fit.places[1])}, bar at ${px(fit.bar)})`);
-    // and with the sections' own lines, most of them two lines long
-    const o = await today(b, 412, 915, true);
-    const of = await o.evaluate(() => { scrollTo(0, 0); const r = s => document.querySelector(s).getBoundingClientRect();
-      return {places: r('.home .places').bottom, bar: r('.tabbar').top, n: document.querySelectorAll('.place .pl').length,
-        two: [...document.querySelectorAll('.place .pl')].filter(pl => pl.clientHeight > parseFloat(getComputedStyle(pl).lineHeight) * 1.5).length}; });
-    check(of.n >= 8 && of.two >= 5 && of.places <= of.bar, `412 x 915: with the sections' own lines (${of.two} of ${of.n} on two lines) too (Sections end at ${px(of.places)}, bar at ${px(of.bar)})`);
+    // with the sections' own lines, most of them two lines long (before 4.52.0 read at 412 px, where they also had to end above the bar)
+    const o6 = await today(b, 600, 915, true);
+    const of6 = await o6.evaluate(() => ({n: document.querySelectorAll('.place .pl').length,
+      two: [...document.querySelectorAll('.place .pl')].filter(pl => pl.clientHeight > parseFloat(getComputedStyle(pl).lineHeight) * 1.5).length}));
+    check(of6.n >= 8 && of6.two >= 5, `600: the sections' own lines fit their tiles (${of6.two} of ${of6.n} on two lines)`);
     // the words of a row's tiles line up at the top, whichever line wraps; a wrapped line never starts with the "·" between two facts
-    const rows = await o.evaluate(() => { const by = new Map(); document.querySelectorAll('.place').forEach(a => { const y = Math.round(a.getBoundingClientRect().top), w = a.querySelector('.pw b');
+    const rows = await o6.evaluate(() => { const by = new Map(); document.querySelectorAll('.place').forEach(a => { const y = Math.round(a.getBoundingClientRect().top), w = a.querySelector('.pw b');
       by.set(y, [...(by.get(y) || []), Math.round(w.getBoundingClientRect().top)]); }); return [...by.values()].filter(r => r.length > 1); });
     check(rows.length >= 3 && rows.every(r => Math.max(...r) - Math.min(...r) <= 1), `the words in a row of tiles line up (${JSON.stringify(rows)})`);
-    const dots = await o.evaluate(() => [...document.querySelectorAll('.place .pl')].map(pl => pl.textContent).filter(s => s.includes('·')));
+    const dots = await o6.evaluate(() => [...document.querySelectorAll('.place .pl')].map(pl => pl.textContent).filter(s => s.includes('·')));
     check(dots.length >= 1 && dots.every(s => !/ ·/.test(s) && / ·/.test(s)), `a " · " keeps its dot on the line before (${JSON.stringify(dots)})`);
-    await o.close();
+    await o6.close();
 
     // a line is cut after the last word that fits, never inside a word (one word wider than the tile is the only exception); the
     // link's name keeps the whole line
-    const lines = await t.evaluate(() => [...document.querySelectorAll('.place .pl')].map(pl => { const sr = pl.querySelector('.sr'), full = pl.textContent;
+    const lines = await w6.evaluate(() => [...document.querySelectorAll('.place .pl')].map(pl => { const sr = pl.querySelector('.sr'), full = pl.textContent;
       return {full, shown: sr ? full.slice(0, full.length - sr.textContent.length) : full, cut: pl.classList.contains('cut'), after: getComputedStyle(pl, '::after').content,
         fits: pl.scrollHeight <= pl.clientHeight + 1 && pl.scrollWidth <= pl.clientWidth + 1, lines: Math.round(pl.clientHeight / parseFloat(getComputedStyle(pl).lineHeight))}; }));
     const long = lines.find(l => l.full === LONG), word = lines.find(l => l.full === WORD);
@@ -83,11 +90,12 @@ run(async b => {
     check(long && long.cut && /…/.test(long.after) && long.shown.length > 8 && LONG.startsWith(long.shown) && /^[\s,;:·.\-–—]/.test(LONG.slice(long.shown.length)) && /[\p{L}\p{N}]$/u.test(long.shown),
       `a long line is cut after a whole word, with "…" ("${long && long.shown}…")`);
     check(word && word.cut && word.shown.length >= 6 && WORD.startsWith(word.shown), `one word wider than its tile is cut inside it, the one exception ("${word && word.shown}…")`);
-    check(await t.getByRole('link', {name: anyGap(LONG)}).count() === 1 && await t.getByRole('link', {name: anyGap(WORD)}).count() === 1, "and each tile's link still says its whole line");
+    check(await w6.getByRole('link', {name: anyGap(LONG)}).count() === 1 && await w6.getByRole('link', {name: anyGap(WORD)}).count() === 1, "and each tile's link still says its whole line");
     check(lines.filter(l => l.cut).length === 2, `a line that fits is not cut (${lines.filter(l => l.cut).length} cut)`);
 
     // 3. the server's band: across Today, lined up with the panels, in the theme's colours, every text 4.5:1 or more
-    const band = () => t.evaluate(() => { const n = document.querySelector('.home > p.now'), nm = n && n.querySelector('.nowname'), h = document.querySelector('.home'), s = document.querySelector('.home .needs');
+    // (600 px: on a phone, 4.52.0, the band is one with "Nothing needs you", checked after this)
+    const band = () => w6.evaluate(() => { const n = document.querySelector('.home > p.now'), nm = n && n.querySelector('.nowname'), h = document.querySelector('.home'), s = document.querySelector('.home .needs');
       if (!n || !nm) return null; const c = getComputedStyle(n), cn = getComputedStyle(nm), r = n.getBoundingClientRect();
       return {bg: c.backgroundColor, words: c.color, name: cn.color, border: c.borderTopColor, size: c.fontSize, weights: [cn.fontWeight, c.fontWeight], text: n.textContent, nameText: nm.textContent,
         dl: r.left - s.getBoundingClientRect().left, dw: r.width - h.getBoundingClientRect().width, gap: s.getBoundingClientRect().top - r.bottom,
@@ -103,13 +111,21 @@ run(async b => {
     check(bd && bd.size === '16px' && bd.weights.join() === '600,400', `16 px, the name 600 and the words 400 (${bd && bd.size}, ${bd && bd.weights})`);
     check(bd && Math.abs(bd.dl) <= 1 && Math.abs(bd.dw) <= 1 && Math.abs(bd.gap - bd.panelGap) <= 1 && bd.gap >= 11 && bd.gap <= 17,
       `the band spans Today, lined up with the panel below, the same gap as between the panels (left ${bd && bd.dl}, width ${bd && bd.dw}, gap ${bd && bd.gap}, panels ${bd && bd.panelGap})`);
-    check(bd && bd.lines === 1, `on a 412 px phone the band is one line (${bd && bd.lines})`);
+    check(bd && bd.lines === 1, `at 600 px the band is one line (${bd && bd.lines})`);
     check(bd && bd.cursor === 'auto' && !bd.role && /^none 0s/.test(bd.anim), `not a button and not moving (${bd && [bd.cursor, bd.role, bd.anim]})`);
     // a theme without colours (themes/starter) gets the page's own neutral ones, readable too
-    await t.evaluate(() => [...document.querySelectorAll('style')].filter(s => /--server-bg/.test(s.textContent)).forEach(s => s.remove()));
+    await w6.evaluate(() => [...document.querySelectorAll('style')].filter(s => /--server-bg/.test(s.textContent)).forEach(s => s.remove()));
     const nb = await band(), nn = nb ? ratio(nb.name, nb.bg) : 0, nw = nb ? ratio(nb.words, nb.bg) : 0;
     check(nb && nb.bg === 'rgb(35, 42, 49)' && nn >= 4.5 && nw >= 4.5, `without the theme's colours the band is neutral (${nb && nb.bg}; name ${nn.toFixed(2)}:1, words ${nw.toFixed(2)}:1)`);
-    await t.reload(); await settled(t);
+    await w6.close();
+    // a phone, nothing needing him: one band says "Nothing needs you" and the server's line, in the band's colours, readable
+    const calm = await t.evaluate(() => { const c = document.querySelector('.home > .needs.calm'), n = c && c.querySelector('.now'), nm = n && n.querySelector('.nowname');
+      if (!c || !n || !nm) return null; const s = getComputedStyle(c);
+      return {bg: s.backgroundColor, border: s.borderTopColor, h: c.querySelector('#needs-h').textContent, name: getComputedStyle(nm).color, words: getComputedStyle(n).color, nameText: nm.textContent,
+        alone: !document.querySelector('.home > .now') && document.querySelectorAll('.home .needs').length === 1}; });
+    check(calm && calm.h === 'Nothing needs you' && calm.nameText === 'Shelf' && calm.alone, `phone: one band holds "Nothing needs you" and the server's line, no second band (${JSON.stringify(calm)})`);
+    check(calm && calm.bg === 'rgb(58, 42, 94)' && calm.name === 'rgb(123, 216, 143)' && calm.words === 'rgb(203, 184, 255)' && calm.border === 'rgb(91, 74, 133)' && ratio(calm.name, calm.bg) >= 4.5 && ratio(calm.words, calm.bg) >= 4.5,
+      `phone: the calm band in the theme's colours, each text 4.5:1 or more (${calm && [calm.bg, calm.name, calm.words, calm.border].join(', ')})`);
 
     // 2. Open stays compact (4.45.0 round 2): no automatic labels; a label only for a links.json "group", inline at the start of
     // its chips on a phone (at most one more line than the same chips without labels), side by side on wide screens
@@ -142,12 +158,12 @@ run(async b => {
     fs.writeFileSync(LK, JSON.stringify(LINKS));
     await t.close();
 
-    // two a row down to 360 px; more on wider screens
-    for (const [w, h, min] of [[360, 800, 2], [915, 412, 4], [1920, 1080, 6]]) {
+    // no tiles on a 360 px phone (4.52.0); three or more a row from 600 px, more on wider screens
+    for (const [w, h, min] of [[360, 800, 0], [600, 800, 3], [915, 412, 4], [1920, 1080, 6]]) {
       const q = await today(b, w, h);
       const xs = await q.locator('.placelist .place').evaluateAll(es => es.map(e => Math.round(e.getBoundingClientRect().top)));
       const n = xs.filter(y => Math.abs(y - xs[0]) < 2).length;
-      check(w === 360 ? n === 2 : n >= min, `${w} x ${h}: ${n} tiles a row`);
+      check(min ? n >= min : xs.length === 0, `${w} x ${h}: ${min ? n + ' tiles a row' : 'a phone has no tiles (' + xs.length + ')'}`);
       // Open's groups sit side by side where they fit, so a wide screen keeps Open about as short as before
       // (the players first, unlabelled, then the groups; flex-end lines them up by their bottoms)
       const blocks = await q.evaluate(() => { const o = document.querySelector('.home .open'); return {w: Math.round(o.getBoundingClientRect().width),
@@ -158,7 +174,7 @@ run(async b => {
       await q.close();
     }
     const ph = await today(b, 375, 812);
-    check(await noOverflow(ph), '375 x 812: no sideways scrolling with the band, the groups and the tiles');
+    check(await noOverflow(ph), '375 x 812: no sideways scrolling with the band, the groups and the quiet lines');
     await ph.close();
 
     // 4. the last thing on every page scrolls clear of the phone's bottom bar
