@@ -133,6 +133,7 @@ pre{white-space:pre-wrap;word-break:break-all;font-size:var(--fs-meta);line-heig
   border:1px solid transparent;border-radius:22px;font-size:var(--fs-sec);font-weight:600;line-height:1.2;text-align:center;overflow-wrap:anywhere;color:var(--powder)}
 button.mode-seg{background:transparent}button.mode-seg:hover:not([disabled]){color:var(--snow);border-color:var(--powder)}
 .mode-seg.on{color:var(--mode-ink)}
+.mode-seg .hold-ring{display:none}.mode-seg.holding .hold-ring{display:block}   /* the other half reads as a plain segment, not a radio; the ring shows while held (4.54.0) */
 .mode-seg.on.m-game{background:var(--mode-game);border-color:var(--mode-game-edge)}.mode-seg.on.m-desktop{background:var(--mode-desktop);border-color:var(--mode-desktop-edge)}
 /* while it switches, the mode it leaves keeps its colour (the white words keep 6.4:1 / 6.0:1) and gets a dashed white edge */
 .modes.switching .mode-seg.on{border-style:dashed;border-color:var(--mode-ink)}
@@ -210,7 +211,7 @@ dialog .confirm{border-color:var(--danger);color:var(--danger)}
 .plugin-links a:hover{color:var(--snow)}
 .plugin-own-card p{margin:0;font-size:var(--fs-sec);color:var(--powder);max-width:60ch}
 .plugin-own-card .ver{font-size:var(--fs-meta);color:var(--frost)}
-/* Home (docs/home.md): one tile per section; the whole tile is the link */
+/* Today (docs/home.md): what needs you, then one line per section with news; one column at every width (4.54.0) */
 .home{position:relative;z-index:2;padding:0 0 var(--s6);max-width:880px}
 .home h2{font-size:var(--fs-meta);font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--frost);margin:var(--s2) 0 var(--s2)}
 .home h2 .count{display:inline-block;min-width:1.6em;padding:0 var(--s1);border-radius:999px;background:var(--bad);color:#fff;text-align:center;letter-spacing:0}
@@ -220,9 +221,10 @@ dialog .confirm{border-color:var(--danger);color:var(--danger)}
 .need.fresh{animation:needin var(--t3) ease-out}   /* only a row that is new since the last draw slides in; a met need fades out (home.js) */
 .need .nmark img,.need .nmark svg{width:44px;height:44px;display:block}
 .need p{margin:0;color:var(--snow);font-size:var(--fs-body)}.need p small{display:block;color:var(--powder);font-size:var(--fs-meta)}
+.need p.ndetail{margin-top:2px;color:var(--powder);font-size:var(--fs-sec);line-height:1.4}   /* the rest after a row's first sentence (4.54.0) */
 .need.alert{box-shadow:inset 3px 0 0 var(--bad);margin-left:calc(-1 * var(--s2));padding-left:var(--s2)}   /* the bar sits in the panel's own padding, so its mark and words line up with the rows below (4.52.0) */
 .need .go{display:inline-flex;align-items:center;min-height:var(--hit);padding:0 var(--s3);border-radius:8px;background:var(--bolt);color:#1C2127;font-weight:600;font-size:var(--fs-sec);text-decoration:none;white-space:nowrap}
-.need .go:focus-visible,.place:focus-visible{outline:2px solid var(--powder);outline-offset:3px}
+.need .go:focus-visible{outline:2px solid var(--powder);outline-offset:3px}
 @keyframes needin{from{opacity:0;translate:-12px 0}to{opacity:1;translate:0 0}}
 .quiet{margin:0;padding:0 0 var(--s2);color:var(--powder)}
 /* the server's line on what it does now: a band across Today in the server's own colours (the theme's, 4.45.0), lined up with
@@ -230,38 +232,9 @@ dialog .confirm{border-color:var(--danger);color:var(--danger)}
 .home>.now{grid-column:1 / -1;margin:0 0 var(--s4);padding:var(--s2) var(--s4);border:1px solid var(--server-border);border-radius:12px;background:var(--server-bg);color:var(--server-words);font-size:var(--fs-body);font-weight:400;line-height:1.4;overflow-wrap:anywhere}
 .home>.now .nowname{color:var(--server-name);font-weight:600}
 .home h2.state{font-size:var(--fs-h2);text-transform:none;letter-spacing:0;color:var(--snow);margin:var(--s2) 0}.home h2.state.bad{color:var(--snow)}
-.openlist{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:var(--s2)}
-.openlink{display:inline-flex;align-items:center;gap:var(--s2);min-height:var(--hit);padding:var(--s1) var(--s3) var(--s1) var(--s1);border:1px solid var(--line);border-radius:99px;text-decoration:none;color:var(--powder)}
-.openlink svg{width:32px;height:32px;flex:none}.openlink b{display:block;color:var(--snow);font-size:var(--fs-sec);font-weight:600;line-height:1.2}.openlink small{display:block;font-size:var(--fs-meta);line-height:1.2}
-.openlink:hover{border-color:var(--powder)}.openlink:focus-visible{outline:2px solid var(--powder);outline-offset:3px}
-/* Open's groups (4.45.0), only when links.json gives a link a "group": the chips without a group first, unlabelled, then each
-   group with its small label. A wide screen: the groups side by side, the label over its chips, all chips on one bottom line.
-   A phone: everything flows in the one wrap of chips, as with no groups, and each label sits in front of its own chips (the
-   label and its chips wrap together, so a label never ends a line alone). The label in the heading's colour, below "Open". */
-.opengroups{display:flex;flex-wrap:wrap;align-items:flex-end;gap:var(--s2) var(--s6)}.og{min-width:0;max-width:100%}
-.opengroup{margin:0 0 var(--s1);font-size:var(--fs-meta);font-weight:600;line-height:1.4;color:var(--frost)}
-@media (max-width:600px){.opengroups{align-items:center;gap:var(--s2)}.opengroups>.openlist{display:contents}
- .og{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s2)}.og>.openlist{display:contents}.opengroup{margin:0 var(--s1) 0 0}}
-/* a section's compact tile (4.45.0): its mark, its plain word and its status line under it (two lines at most, cut at a word by
-   home.js fitLines); the whole tile is the link. Two tiles a row on a phone, more on wider screens. The realm name stays in
-   the link's name for a screen reader. */
-.placelist{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(136px,1fr));gap:var(--s2)}
-@media (min-width:601px){.placelist{grid-template-columns:repeat(auto-fill,minmax(176px,1fr))}}
-@media (min-width:1200px){.placelist{grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}}   /* fewer lines wrap on a wide screen */
-.placelist>li{display:flex}   /* the tiles of a row share one height; their words line up at the top */
-.place{position:relative;flex:1 1 auto;min-width:0;box-sizing:border-box;display:grid;grid-template-columns:32px minmax(0,1fr);grid-template-areas:"m w" "m l";align-content:start;align-items:center;gap:0 var(--s2);min-height:var(--hit);padding:var(--s1) var(--s2);border:1px solid var(--line);border-radius:12px;background:var(--card);text-decoration:none;color:var(--powder)}
-.place>img,.place>svg{grid-area:m;width:32px;height:32px;transition:transform var(--t2)}.place:hover>img,.place:hover>svg{transform:translateY(-2px)}
-.place .pw{grid-area:w;min-width:0}.place .pw b{display:block;color:var(--snow);font-size:var(--fs-sec);font-weight:600;line-height:1.2;overflow-wrap:break-word}
-.place .pw small{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}   /* the realm name: heard, not shown on a tile */
-.place .pl{grid-area:l;font-size:var(--fs-meta);line-height:1.25;max-height:2.5em;overflow:hidden;overflow-wrap:normal;white-space:normal}.place .pl:empty{display:none}
-.place .pl.cut::after{content:"…" / ""}   /* fitLines cut it at a word; the rest is still in the link's name (a .sr span) */
-.place.bad{box-shadow:inset 3px 0 0 var(--bad)}.place.bad .pl{color:var(--bad)}.place.needs{box-shadow:inset 3px 0 0 var(--bolt)}.place.needs .pl{color:var(--snow)}
-/* Edit Today (4.50.0, today-edit.js, docs/home.md "Edit Today"): the owner's button sits in the Sections heading's row and
-   takes no height of its own (Today stays clear of the phone's bar); a broken today.json is said in the people-file line's look */
-.placeshead{display:flex;align-items:center;justify-content:space-between;gap:var(--s2)}
-.editbtn{margin:-5px 0;flex:none}
+/* a broken today.json (Edit Today, 4.50.0, today-edit.js, docs/home.md "Edit Today") is said in the people-file line's look */
 .home>.today-problem{grid-column:1 / -1;width:auto;margin:0 0 var(--s4)}
-/* Edit mode: one panel each for the top (Done, Cancel), Sections, Open, Reminders and the end (Reset to default). Each row: its
+/* Edit mode: one panel each for the top (Done, Cancel), Sections, Links in More, Reminders and the end (Reset to default). Each row: its
    mark, its name (a field; a god's name as plain words), Show, and Move up / down (44 px buttons: the keyboard and touch path) */
 .home.edit{display:block;max-width:880px}
 .home.edit>.edtop,.home.edit>.edend{background:rgb(28 33 39 / .86);border-radius:12px;padding:var(--s2) var(--s4) var(--s3);margin-bottom:var(--s4)}
@@ -271,20 +244,15 @@ dialog .confirm{border-color:var(--danger);color:var(--danger)}
 .edlist{list-style:none;margin:0;padding:0}
 .edrow{display:grid;grid-template-columns:32px minmax(0,1fr) auto auto;grid-template-areas:"m n s v";align-items:center;gap:var(--s1) var(--s2);padding:var(--s2) 0;border-bottom:1px solid var(--line)}
 .edrow:last-child{border-bottom:0}
-.edrow.edlink{grid-template-columns:32px minmax(0,1fr) minmax(0,11rem) auto auto;grid-template-areas:"m n g s v"}
+.edrow.edlink{grid-template-columns:32px minmax(0,1fr) auto;grid-template-areas:"m n v"}
 .edmark{grid-area:m}.edmark img,.edmark svg{width:32px;height:32px;display:block}
 .edname{grid-area:n;min-width:0}.edname b{display:block;color:var(--snow);font-size:var(--fs-body);font-weight:600;line-height:1.3}
 .edname small{display:block;font-size:var(--fs-meta);line-height:1.3;color:var(--frost)}
 .edin{width:100%;min-height:var(--hit);padding:0 var(--s2);border:1px solid var(--line);border-radius:8px;background:var(--night);color:var(--snow);font:inherit;font-size:var(--fs-body)}
 .edin:hover{border-color:var(--powder)}.edin:focus-visible{outline:2px solid var(--powder);outline-offset:2px}
-.edgroupin{grid-area:g;display:flex;flex-direction:column;min-width:0}.edgroupin span{font-size:var(--fs-meta);line-height:1.3;color:var(--frost)}
 .edshow{grid-area:s;padding:0 var(--s1)}
 .edmove{grid-area:v;display:flex;gap:var(--s1)}.edmove .edbtn{padding:0;font-size:var(--fs-body)}
 .edrow.off .edmark,.edrow.off .edname b,.edrow.off .edname small{opacity:.55}   /* hidden from Today: still here to show again */
-.edg+.edg{margin-top:var(--s3)}
-.edgh{margin:var(--s2) 0 0;font-size:var(--fs-meta);font-weight:600;color:var(--frost)}
-.edghead{display:flex;align-items:flex-end;gap:var(--s2)}.edgnamein{flex:1 1 auto;max-width:20rem;display:flex;flex-direction:column;min-width:0}
-.edgnamein span{font-size:var(--fs-meta);line-height:1.3;color:var(--frost)}.edgname{font-weight:600}   /* a visible "Group name": not mistaken for a link's name */
 .edswitches{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:0 var(--s4)}
 .edswitch{display:flex;align-items:center;gap:var(--s3);min-height:var(--hit);padding:var(--s1) 0;cursor:pointer}
 .edswitch input{appearance:none;-webkit-appearance:none;flex:none;position:relative;width:44px;height:26px;margin:0;border:1px solid var(--frost);border-radius:13px;background:var(--line);cursor:pointer;transition:background-color var(--t2),border-color var(--t2)}
@@ -296,15 +264,14 @@ dialog .confirm{border-color:var(--danger);color:var(--danger)}
 .ednote{margin:0 0 var(--s2) calc(44px + var(--s3));font-size:var(--fs-meta);line-height:1.3;color:var(--powder)}   /* under a switch, lined up with its words */
 @media (max-width:600px){
  .edrow{grid-template-columns:32px minmax(0,1fr) auto;grid-template-areas:"m n n" ". s v"}
- .edrow.edlink{grid-template-columns:32px minmax(0,1fr) auto;grid-template-areas:"m n n" ". g g" ". s v"}
+ .edrow.edlink{grid-template-areas:"m n v"}
  .home.edit>.edtop,.home.edit>.edend{padding:var(--s2) var(--s3);margin-bottom:var(--s3)}}
 @media (prefers-reduced-motion:reduce){.edswitch input,.edswitch input::before{transition:none}}
 @media (max-width:600px){.need{grid-template-columns:44px 1fr}.need .go{grid-column:1 / -1;justify-content:center}.home>section,.home>.now{padding:var(--s2) var(--s3);margin-bottom:var(--s3)}}
-@media (prefers-reduced-motion:reduce){.need{animation:none}.place img,.place>svg{transition:none}}
-/* Screen sizes (docs/ui-plan.md §14). Wide: Home puts Needs you beside Places. Ultrawide (2:1 or wider, 1800px+): the sections
+@media (prefers-reduced-motion:reduce){.need{animation:none}}
+/* Screen sizes (docs/ui-plan.md §14). Today is one column at every width (4.54.0). Ultrawide (2:1 or wider, 1800px+): the sections
    bar becomes a rail down the left edge (scene.css, after the bar's own rules), and content may run wider. Short screens (a phone on its
    side, scene.css): Argus shrinks so the page starts on the first screen. */
-@media (min-width:1200px){.home{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 var(--s4);align-items:start;max-width:1400px}.home>.places{grid-column:1 / -1}}
 /* Watch: trouble first (core.js troubleBlock, docs/home.md "Trouble first"). One block per broken thing, three plain lines, the
    declared fix as one press-and-hold button in the bolt's look. Compact rows for checks with no card; "What happened lately". */
 .trouble,.lately{position:relative;z-index:2;background:rgb(28 33 39 / .92);border-radius:12px;padding:var(--s2) var(--s4) var(--s3);margin-top:var(--s4)}
@@ -361,6 +328,7 @@ dialog .confirm{border-color:var(--danger);color:var(--danger)}
 .ev.bad{box-shadow:inset 3px 0 0 var(--bad)}.ev.warn{box-shadow:inset 3px 0 0 var(--run)}
 .ev p{margin:0;max-width:70ch}.et{font-size:var(--fs-sec);font-weight:600;color:var(--snow)}.eb{font-size:var(--fs-sec);color:var(--powder);line-height:1.45}
 .ew{font-size:var(--fs-meta);color:var(--powder)}
+@media (max-width:599.98px){.ew .exw{display:none}}   /* a phone: "2 h ago" alone; the date is its title (4.54.0) */
 /* The satellite eye (core.js satellite, docs/home.md): a copy of Argus's red eye in the top-right gutter of the first trouble block.
    The gutter (60 px) keeps the block's words and its button clear of it. The glare pulses 4 times (4.8 s), then holds (WCAG 2.2.2). */
 .tblock.eyed{padding-right:60px}
@@ -382,8 +350,8 @@ dialog .confirm{border-color:var(--danger);color:var(--danger)}
 .tl.unsure{color:var(--run)}   /* Argus could not look again: said, so a stale page never reads as all well */
 .satedge.nospot{display:none}   /* no spot free of controls on the right edge right now: it waits (core.js spot) */
 @media (max-width:599.98px){.satedge{right:auto;left:50%;transform:translateX(-50%)}}   /* a phone: bottom centre, just above the bar, up from there only past a control (core.js spot) */
-/* On a phone (4.52.0, docs/home.md "On a phone"): Today fits one screen in the owner's order of what matters, and Watch's
-   groups that are all well are one line each. These classes are only drawn on a phone (PHONE in core.js). */
+/* Today in the owner's order of what matters (4.52.0 on a phone, 4.54.0 at every width), and Watch's groups that are all
+   well are one line each on a phone (PHONE in core.js). */
 .home>.needs.first{background:var(--card)}   /* solid: the scene does not show through what you read and press */
 .home>.needs.first:has(.need.alert){border:1px solid var(--bad)}   /* something broke: it leads, framed as on Watch */
 .home>.needs.calm{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 var(--s2);padding:var(--s2) var(--s3);border:1px solid var(--server-border);background:var(--server-bg)}
@@ -391,19 +359,20 @@ dialog .confirm{border-color:var(--danger);color:var(--danger)}
 .needs.calm>.now{flex:1 0 100%;margin:0;color:var(--server-words);font-size:var(--fs-body);line-height:1.4}   /* the server's line on a line of its own, no leading dot */
 .needs.calm .nowname{color:var(--server-name);font-weight:600}
 .needs.calm>.needlist{flex:1 0 100%}.needs.calm>.needlist:empty{display:none}
-.home>.qline{display:flex;align-items:center;gap:var(--s2) var(--s3);min-height:var(--hit);margin:0 0 var(--s3);padding:var(--s1) var(--s3);border-radius:12px;
-  background:rgb(28 33 39 / .86);color:var(--snow);text-decoration:none;font-size:var(--fs-sec)}
-.qline>img,.qline>svg{width:28px;height:28px;flex:none}
-.qline .qw b{font-weight:600}.qline .qw small{display:none}.qline .qt{margin-left:auto;color:var(--powder);text-align:right}
+/* one line per section with news (home.js newsLines): its mark, its name with its line under it, the chevron; the whole row
+   is the link, 44 px or more */
+.newslist{list-style:none;margin:0;padding:0}.newslist>li+li{border-top:1px solid var(--line)}
+.qline{display:grid;grid-template-columns:28px minmax(0,1fr) 16px;align-items:center;gap:var(--s3);min-height:var(--hit);margin:0 calc(-1 * var(--s2));padding:var(--s2);border-radius:8px;color:var(--snow);text-decoration:none}
+.qline>img,.qline>svg:first-child{width:28px;height:28px}
+.qline .qw{min-width:0}.qline .qw b{display:block;font-size:var(--fs-body);font-weight:600;line-height:1.3}
+.qline .qt{display:block;color:var(--powder);font-size:var(--fs-sec);line-height:1.4;overflow-wrap:break-word}
 .qline:hover{background:var(--card)}.qline:focus-visible{outline:2px solid var(--powder);outline-offset:2px}
-.home.phone>.open .openlink{padding:var(--s1) var(--s3) var(--s1) var(--s1)}.home.phone>.open .openlink svg{width:24px;height:24px}
-.home.phone>.open .openlink small{display:none}   /* the chip's name is enough on a phone */
-.home.phone>.editrow{display:flex;justify-content:flex-end}
+.chev{width:16px;height:16px;flex:none;color:var(--powder)}
 section.persona.folded{margin-top:var(--s2)}
 .persona.folded .ph{margin:0;padding:var(--s1) var(--s3);border-radius:12px;background:rgb(28 33 39 / .86)}
 .persona.folded .ph img{width:32px;height:32px}.persona.folded .ph h2{font-size:var(--fs-body)}
 .persona.folded .ph:hover{background:var(--card)}.persona.folded .ph:focus-visible{outline:2px solid var(--powder);outline-offset:2px}
-.fold-go{margin-left:auto;padding-left:var(--s2);font-size:var(--fs-h1);line-height:1;color:var(--powder)}
+.fold-go{display:flex;margin-left:auto;padding-left:var(--s2);color:var(--powder)}   /* the same chevron as Today's lines (4.54.0) */
 .lately:has(>.latemore):not(.all) .ev:nth-child(n+4){display:none}   /* a phone: the three newest until Show more */
 .lately:not(:has(.ev:nth-child(4)))>.latemore{display:none}
 .latemore{width:100%;margin-top:var(--s2);justify-content:center}
