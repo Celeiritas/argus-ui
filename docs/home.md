@@ -58,6 +58,33 @@ opens on: the bare address `<base>/`, and `<base>/home`, its old address, which 
    a failed task, Zeus with a deploy waiting), so the same news is never said twice on one screen. No tile left, no
    heading.
 
+## On a phone (4.52.0)
+Below 600 px wide (the width where the bottom bar shows, `PHONE` in `core.js`) Today and Watch are drawn in the owner's order
+of what matters, so Today fits one screen and Watch stays short when all is well (the owner, 2026-11-16: less scrolling,
+a visual hierarchy by his priorities). Wider screens keep the layout above.
+
+**Today**, top to bottom:
+1. **The header** on two short lines: the name with the Desktop/Game switch beside it; the short date and the weather under it.
+   Argus sits at 56 px beside both.
+2. **What needs you**, first, framed red when something broke. When nothing does, one band carries both *Nothing needs you*
+   and the server's line (`.needs.calm`), so the calm state costs one line.
+3. **The devices line.**
+4. **One line per quiet section** that has something to say, from its status line (*Mentor · 6 cards due*), in place of the
+   Sections tiles: the bottom bar already reaches every section, and a quiet section's line is the only news a tile carries.
+5. **Open, last**: its chips without their small words, *Edit Today* beside the heading. Films and audiobooks have apps of their
+   own on a phone, so their links are the lowest thing here (on a computer they keep their place).
+
+**Watch** (the All view; a single group's page is unchanged):
+1. Anything broken, as before.
+2. **Devices**, before the groups.
+3. **Groups**: a group whose tasks all work is one line (*All well · 4 tasks · 1 running*, plus checks, frozen and known
+   counts) that opens its own page. A group with a failure, a task with an alert, or a message of its own stays open. On the
+   phone All view the folded groups' cards are not there to drop a power on; their own pages have them.
+4. **What happened lately**: the three newest, then *Show more* / *Show fewer* (`aria-expanded`; it stays open across the 15 s
+   redraw). Hidden when there are three or fewer.
+
+Crossing the width (turning a tablet, narrowing a window) draws the page again.
+
 ## Sections or Open (4.45.0)
 The rule that keeps the two apart: **Sections are parts of LeafyGrove, each with a live line; Open jumps to another app or
 site.** A Section is a tile with a word and a line that changes; an Open item is a small chip with the "opens elsewhere" mark

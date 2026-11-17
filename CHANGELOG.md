@@ -1,5 +1,11 @@
 # Changelog
 
+## 4.52.0 – 2026-11-16
+On a phone, Today fits one screen and Watch is much shorter, in the owner's order of what matters (2026-11-16: "less scrolling", "visual hierarchy", and the media players are low on a phone because they have apps). Wider screens are unchanged.
+- **Today on a phone:** the name and the Desktop/Game switch share one line, the short date and weather the next. Something that needs you comes first, framed when it is broken; when nothing does, one band says *Nothing needs you* and the server's line together. Then the devices line, then one line for each quiet section with something to say (*Mentor · 6 cards due*) in place of the Sections tiles (the bottom bar reaches every section). *Open* comes last, its chips without their small words, with *Edit Today* beside its heading.
+- **Watch on a phone (All):** anything broken, then Devices, then the groups. A group whose tasks all work is one line (*All well · 4 tasks · 1 running*) that opens its own page; a group with a failure, an alert or a message stays open. *What happened lately* shows the three newest and *Show more* (it stays open across redraws).
+- Turning the phone or narrowing the window draws the page again for the new width.
+
 ## 4.51.2 – 2026-11-16
 A machine added to Tailscale again (reinstalled) no longer shows *Offline* while it is on (the owner's pick, 2026-11-16: "Can't tell + reason").
 - When the device's Tailscale entry is offline and another machine with the same machine name is online, the row says *Can't tell* and *Another machine on Tailscale has this name and is online: remove the old entry* (review R2, finding 1). Both offline: still *Offline*.
