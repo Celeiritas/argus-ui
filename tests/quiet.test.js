@@ -58,8 +58,10 @@ run(async b => {
   check(await row().count() === 1 && !(await jobNow(p)).known && await p.locator('#needs-h').textContent() === '1 thing needs you', 'Undo: the row comes back, the mark is gone');
 
   // ---- from its card on Argus: grey, "Known, low priority · marked today", Unmark ----
+  // on Hermes' own page: on a phone the All view folds a group whose only failure is known (4.52.0, docs/home.md "On a phone"),
+  // so there the card stays on its group's page (before, this was the All view at 412 px); the fold is checked below
   const w = await page(b, 412, 915); await w.route('**/api/state*', settle(async r => { const res = await r.fetch(); const j = await res.json(); j.alerts = []; j.watch = []; await r.fulfill({json: j}); }));
-  await w.goto(BASE + 'argus'); await w.waitForTimeout(900);
+  await w.goto(BASE + 'hermes'); await w.waitForTimeout(900);
   const card = w.locator(`.card[data-job="${JOB}"]`);
   await card.locator('button.knownbtn[data-on="1"]').click();
   await card.locator('.knownline').waitFor({timeout: 6000}).catch(() => {});
@@ -77,6 +79,13 @@ run(async b => {
     return {name: getComputedStyle(e.querySelector('.job')).color, value: getComputedStyle(e.querySelector('dd')).color, powder: c('--powder')}; });
   check(grey.name === grey.powder && grey.value === grey.powder, `the whole card is quiet: its name and values in the grey too (${JSON.stringify(grey)})`);
   check(await card.locator('button.knownbtn').textContent() === 'Unmark', 'the card offers Unmark');
+  // the phone's All view: Hermes, its only failure known, is one line that counts it and opens Hermes' page
+  const a = await page(b, 412, 915); await a.route('**/api/state*', settle(async r => { const res = await r.fetch(); const j = await res.json(); j.alerts = []; j.watch = []; await r.fulfill({json: j}); }));
+  await a.goto(BASE + 'argus'); await a.locator('.persona').first().waitFor({timeout: 5000}).catch(() => {});
+  const hf = a.locator('.persona.folded', {has: a.locator('#h-hermes')}), hs = await hf.locator('.dom').textContent({timeout: 3000}).catch(() => '');
+  check(await hf.count() === 1 && /^All well · .*\b1 known$/.test(hs) && await a.locator(`.card[data-job="${JOB}"]`).count() === 0 && /\/hermes$/.test(await hf.locator('a.ph').getAttribute('href').catch(() => '')),
+    `phone, All view: Hermes with only a known failure is one line that counts it and opens its page ("${hs}")`);
+  await a.close();
   await card.locator('button.knownbtn').click();
   await card.locator('.knownline').waitFor({state: 'detached', timeout: 6000}).catch(() => {});
   check(!await card.evaluate(e => e.classList.contains('known')) && await card.locator('button.knownbtn').textContent() === 'Mark as known' && !(await jobNow(w)).known, 'Unmark: the card counts again, with "Mark as known"');

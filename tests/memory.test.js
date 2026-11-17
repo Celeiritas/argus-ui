@@ -88,10 +88,24 @@ run(async b => {
     await shot(p, 'memory');
     check(p.errors.length === 0, 'no page errors ' + p.errors.join(' | '));
 
+    // The fixture's newest snapshot is from Nov 8, 2026. Up to 8 calendar days later Memory's tile says its line; after that the
+    // snapshot is stale (plugins/memory/plugin.py STALE_DAYS), Memory needs you, and its row says the line in place of the tile
+    // (one place for each fact, docs/home.md). Before 4.52.0 only the tile was read, so the check broke on Nov 17, 2026.
+    const d = new Date(), old = Math.round((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(2026, 10, 8)) / 864e5);
+    const tail = "; no word from your PC's backup yet. The server has no copy outside your home yet.";
     const h = await page(b);
-    await h.goto(BASE); await h.locator('.place[data-id="memory"]').locator('.pl', {hasText: 'Backing up'}).waitFor({timeout: 5000}).catch(() => {});
-    check(await h.locator('.place[data-id="memory"]').locator('.pl').textContent() === "Backing up the server now; no word from your PC's backup yet. The server has no copy outside your home yet.",
-      "Today: Mnemosyne's card shows Memory's line, the running backup first");
+    await h.goto(BASE);
+    if (old <= 8) {
+      await h.locator('.place[data-id="memory"]').locator('.pl', {hasText: 'Backing up'}).waitFor({timeout: 5000}).catch(() => {});
+      check(await h.locator('.place[data-id="memory"]').locator('.pl').textContent() === "Backing up the server now" + tail,
+        "Today: Mnemosyne's card shows Memory's line, the running backup first");
+    } else {
+      const want = `Backing up the server now (last one: ${old} days ago)` + tail, mrow = h.locator('.need[data-key="needs-memory"] .nb p');
+      await mrow.filter({hasText: 'Backing up'}).waitFor({timeout: 5000}).catch(() => {});
+      const said = await mrow.textContent({timeout: 3000}).catch(() => '');
+      check(said.endsWith(want) && await h.locator('.place[data-id="memory"]').count() === 0,
+        `Today: the snapshot is ${old} days old, so Mnemosyne's row (no card) shows Memory's line, the running backup first ("${said}")`);
+    }
     await p.close(); await h.close();              // their 15-second refreshes would only slow the checks below
 
     const ph = await page(b, 375, 760);

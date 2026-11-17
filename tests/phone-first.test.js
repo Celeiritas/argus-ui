@@ -3,29 +3,36 @@
 // needs you), then the same page made quiet by routes, as in tests/today-layout.test.js.
 const {BASE, check, page, noOverflow, shot, run} = require('./lib');
 const settled = p => p.waitForFunction(() => { const h = document.querySelector('#main .home'); return h && !/Checking…|Asking every section/.test(h.textContent); });
-async function quiet(p) {
-  await p.route('**/api/state', async r => { const res = await r.fetch(), j = await res.json();
-    (j.jobs || []).forEach(x => { if (x.state === 'failed') x.state = 'running'; delete x.works; }); (j.watch || []).forEach(w => { if (w.works === false) w.works = true; });
-    j.alerts = []; await r.fulfill({response: res, json: j}); });
+const settle = fn => async r => { try { await fn(r); } catch (e) { if (!/closed|disposed/i.test(String(e && e.message))) throw e; } };
+// Open needs something to open: a player and a link when the server has none (no media.json or links.json in the fixture)
+const OPEN = {media: [{id: 'jellyfin', name: 'Jellyfin', what: 'Films', href: 'https://films.example/web/'}], links: [{name: 'Notes', what: 'Pages', href: '/notes-test/'}]};
+// calm: a calm morning, as in tests/today-layout.test.js: nothing failed, no alerts, every section's own line needing nothing
+async function fixture(p, calm) {
+  await p.route('**/api/state*', settle(async r => { const res = await r.fetch(), j = await res.json();
+    if (!(j.media || []).length && !(j.links || []).length) Object.assign(j, OPEN);
+    if (calm) { (j.jobs || []).forEach(x => { if (x.state === 'failed') x.state = 'running'; delete x.works; }); (j.watch || []).forEach(w => { if (w.works === false) w.works = true; }); j.alerts = []; }
+    await r.fulfill({response: res, json: j}); }));
+  if (calm) await p.route('**/api/*/status*', settle(async r => { const res = await r.fetch(); let j = {}; try { j = await res.json(); } catch (e) {} await r.fulfill({json: {...j, needs: false, action: ''}}); }));
 }
 // ten things that happened, newest first, for "What happened lately"
 const EVENTS = {since: new Date(Date.now() - 864e5).toISOString(), events: Array.from({length: 10}, (_, i) => ({at: new Date(Date.now() - (i + 1) * 6e5).toISOString(), level: 'good', title: `Event ${i + 1}`}))};
 const top = (p, s) => p.evaluate(s => { const e = document.querySelector(s); return e ? Math.round(e.getBoundingClientRect().top) : null; }, s);
 run(async b => {
   // 1. Today on a 412 px phone, with something that needs you
-  const t = await page(b, 412, 915); await t.goto(BASE); await settled(t); await t.locator('.needs .need').first().waitFor({timeout: 5000});
+  const t = await page(b, 412, 915); await fixture(t, false); await t.goto(BASE); await settled(t); await t.locator('.needs .need').first().waitFor({timeout: 5000});
   const order = await t.evaluate(() => [...document.querySelector('#main .home').children].map(e => e.className.split(' ')[0] + (e.classList.contains('first') ? '.first' : '')));
   check(await t.locator('.home.phone').count() === 1, 'a phone draws Today in its own order (.home.phone)');
   check(order.filter(c => c !== 'people-problem')[0] === 'needs.first', `what needs you comes first (${order.join(', ')})`);
   check(await t.locator('.home .places').count() === 0, 'no Sections tiles on a phone (the bottom bar reaches every section)');
   check(order[order.length - 1] === 'open', `Open is last (${order.join(', ')})`);
   check(await t.locator('.home .open #editToday').count() === 1, 'Edit Today sits beside Open\'s heading');
-  check(await t.locator('.home .open .openlink small').evaluateAll(s => s.every(e => getComputedStyle(e).display === 'none')), "Open's chips without their small words");
+  check(await t.locator('.home .open .openlink small').evaluateAll(s => s.length > 0 && s.every(e => getComputedStyle(e).display === 'none')), "Open's chips without their small words");
   const ql = t.locator('.home > a.qline[data-id="mentor"]');
   check(await ql.count() === 1 && /Mentor/.test(await ql.textContent()) && /\/mentor$/.test(await ql.getAttribute('href')), `a quiet section with something to say is one line: "${(await ql.count()) ? (await ql.textContent()).replace(/\s+/g, ' ').trim() : 'none'}"`);
   const qh = await ql.evaluate(e => Math.round(e.getBoundingClientRect().height)).catch(() => 0);
   check(qh >= 44, `and a 44 px target (${qh} px)`);
-  check(/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun), /.test(await t.locator('#sub').textContent()), `the date is short ("${await t.locator('#sub').textContent()}")`);
+  const sb = await t.locator('#sub').textContent();      // the greeting, then the date, then the weather
+  check(/^Good (morning|afternoon|evening|night) · (Mon|Tue|Wed|Thu|Fri|Sat|Sun), (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{1,2}( · |$)/.test(sb), `the date is short ("${sb}")`);
   const hd = await t.evaluate(() => { const r = s => document.querySelector(s)?.getBoundingClientRect(), m = document.querySelector('#modes');
     return {h1: r('.title h1'), sub: r('#sub'), modes: m && !m.hidden ? r('#modes') : null}; });
   check(hd.sub.top >= hd.h1.bottom - 1, 'the greeting and date sit under the name');
@@ -43,7 +50,7 @@ run(async b => {
   await t.close();
 
   // 2. Today when nothing needs you: one band says it and the server's line, and all of Today is above the bottom bar
-  const c = await page(b, 412, 915); await quiet(c); await c.goto(BASE); await c.evaluate(() => refresh()); await settled(c); await c.waitForTimeout(500);
+  const c = await page(b, 412, 915); await fixture(c, true); await c.goto(BASE); await c.evaluate(() => refresh()); await settled(c); await c.waitForTimeout(500);
   const calm = c.locator('.home > .needs.calm');
   if (await c.locator('.home .now').count()) {
     check(await calm.count() === 1 && /Nothing needs you/.test(await calm.locator('#needs-h').textContent()) && await calm.locator('.now').count() === 1, 'one band: "Nothing needs you" and the server\'s line');
