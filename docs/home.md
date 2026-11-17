@@ -96,6 +96,8 @@ site.** A Section is a tile with a word and a line that changes; an Open item is
 (`LINK_MARK`). An **integration** (a recipe app, a music library, a workout log) becomes a Section tile when LeafyGrove reads from
 it, through status v2 (below), like any other section; its own site may also have a chip in Open, under a group of its own,
 to jump there. It never becomes a Section by being a link.
+Mealie is the first (4.53.0, docs/mealie.md): its tile says tonight's meal, its section the week, and its chip in Open
+still jumps to Mealie itself.
 
 ## What the server is doing now (4.44.0)
 One line above the list, in a band of its own across Today (not a row of the list), for the owner only, written by the server
@@ -135,6 +137,7 @@ no chip. They show as **Jellyfin · Films and shows**, **Audiobookshelf · Audio
 (a plain service: no agent's name on it), plain links with
 `rel="noopener noreferrer"` (no referrer, no hold on LeafyGrove's window), for the owner only. Keep the file on the host; never
 commit it. They are on Today only, not in the strip or More.
+The `mealie` address also links each recipe in the Mealie section to its page in Mealie (docs/mealie.md).
 
 ## A section's card: status v2
 `GET api/<id>/status` → `{"line": "…", "needs": true, "action": "Study 5 due cards"}`. `line` is required for anything to show;

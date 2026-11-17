@@ -1,5 +1,14 @@
 # Changelog
 
+## 4.53.0 – 2026-11-16
+Mealie becomes a section: Today says tonight's meal from the owner's Mealie meal plan (docs/mealie.md). LeafyGrove only reads it.
+- **Today's tile** *Mealie* says *Tonight: Lentil soup*, *No dinner planned · Lunch: Salad*, or *No meal planned today*. It never asks for you: a meal is news, not a task.
+- **The section** `<base>/mealie`, *Meals this week*: today (always), then each of the next six days with a meal, each meal its kind and name, linked to the recipe in Mealie when `media.json` gives Mealie's address. **Check again** asks Mealie again (Enter works, focus stays); **Open Mealie** jumps there.
+- **Every state in words**: *Not set up yet: make an API token in Mealie* (no token file, the first state on every server), *Mealie refused the token: make a new one*, *Mealie is not answering*, *Mealie took too long to answer* (3 s), *Mealie answered something unexpected*; the section says what to do for each.
+- **The token stays on the server**: `~/.config/argus-ui/mealie-token.txt` (or `ARGUS_MEALIE_TOKEN`), read on every request, sent only to Mealie; never in an answer, the page or a log; redirects are not followed and no proxy is used. Mealie's address on the server: `http://127.0.0.1:9925`, or `mealie.json` (`ARGUS_MEALIE`).
+- A bundled server plugin (`plugins/mealie/`), owner only, with no agent's name. Read once a minute (failures 30 s). Built on Mealie v3.30.0's API, checked against its source at that tag.
+- Tests: `tests/mealie_test.py` (no browser) and `tests/mealie.test.js`, against a stand-in Mealie (`tests/fixtures/fake_mealie.py`), never a real one.
+
 ## 4.52.1 – 2026-11-16
 Small fixes from the open list (after 4.52.0, the phone-first layout; nothing here changes the page's layout).
 - **Devices: your own tailnet first.** A machine shared into your tailnet from someone else's with the same first name (their `desk`) no longer makes your own device *Can't tell*: names in your own tailnet (Tailscale's `MagicDNSSuffix`, else the server's own DNS name) are matched first, then shared ones, then host names. A shared machine is never taken for your machine added again (review R2, finding 2).

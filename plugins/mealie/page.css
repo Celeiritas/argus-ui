@@ -1,0 +1,26 @@
+/* Mealie (plugins/mealie/page.js). Type 16/14/12, weights 400/600; every state is said in words, never colour alone. */
+.mealie{max-width:760px}
+.mealie .mealhead{display:flex;flex-wrap:wrap;gap:var(--s3);align-items:flex-start;justify-content:space-between;margin:0 0 var(--s3)}
+.mealie .mealhead h3{margin:0}
+.mealie .mealsum{margin:var(--s1) 0 0;color:var(--powder);font-size:var(--fs-sec);overflow-wrap:anywhere}
+.mealie .mealsum:empty{display:none}
+.mealie .mealacts{display:flex;flex-wrap:wrap;gap:var(--s2);align-items:center}
+.mealie .mealcheck,.mealie .openmealie{min-height:var(--hit)}
+.mealie .openmealie{display:inline-flex;align-items:center;padding:0 var(--s2);font-size:var(--fs-sec)}
+.mealie .days{list-style:none;margin:0;padding:0}
+.mealie .day{padding:var(--s3) 0;border-top:1px solid var(--line)}
+.mealie .day:first-child{border-top:0;padding-top:0}
+.mealie .day h4{margin:0 0 var(--s1);font-size:var(--fs-sec);font-weight:600;color:var(--powder)}
+.mealie .meals{list-style:none;margin:0;padding:0}
+.mealie .meal{display:grid;grid-template-columns:6.5em minmax(0,1fr);gap:var(--s2);align-items:center;min-height:var(--hit);font-size:var(--fs-body)}
+.mealie .meal .kind{color:var(--frost);font-size:var(--fs-meta)}
+.mealie .meal a,.mealie .meal span:last-child{overflow-wrap:anywhere}
+.mealie .meal a{display:inline-flex;align-items:center;min-height:var(--hit)}
+.mealie .none{margin:0;color:var(--frost);font-size:var(--fs-sec)}
+.mealie .empty.problem{border-style:solid;border-left:4px solid var(--bad)}
+.mealie .mealnote{color:var(--powder);font-size:var(--fs-sec);margin:var(--s3) 0 0}
+.mealie .mealfoot{color:var(--frost);font-size:var(--fs-meta);margin:var(--s4) 0 0}
+@media (max-width:640px){
+  .mealie{padding:var(--s4)}
+  .mealie .meal{grid-template-columns:5.5em minmax(0,1fr)}
+}

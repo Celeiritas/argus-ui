@@ -21,17 +21,22 @@ mkdir -p "$T/home/.config/argus-ui/plugins"; cp -r "$R"/tests/plugin-fixtures/. 
 # and bundled ones, as an install puts them next to LeafyGrove (an agent-claiming plugin, and a demo-server that yours replaces)
 cp -r "$R"/tests/bundled-fixtures/. "$T/pkg/bundled/"
 $PYTHON -c "import json,time,sys; json.dump({'sky':'rain','desc':'Light rain','is_day':True,'temp':48,'unit':'F','precip':.6,'clouds':90,'wind':14,'south':False,'at':int(time.time()),'source':'Open-Meteo'}, open(sys.argv[1],'w'))" "$T/home/.cache/argus-ui/sky.json"
+# Mealie (docs/mealie.md): a stand-in Mealie on MEALIE_PORT (tests/fixtures/fake_mealie.py); the server asks it through
+# FIXTURES/mealie/mealie.json. The token file is not there until tests/mealie.test.js writes it, so Today says "Not set up yet"
+MEALIE_PORT=${MEALIE_PORT:-8094}; mkdir -p "$T/fx/mealie"; echo '{"mode": "ok", "plan": []}' > "$T/fx/mealie/scenario.json"
+echo "{\"url\": \"http://127.0.0.1:$MEALIE_PORT\"}" > "$T/fx/mealie/mealie.json"
 # the server's own state goes to explicit paths outside HOME (on Windows ~ follows USERPROFILE, so both point at the temp HOME)
 ST="$T/state"; mkdir -p "$ST"; export ARGUS_EVENTS="$ST/events.jsonl"
 # ARGUS_SERVE_UID: this runner counts as Tailscale Serve, so the real identity check runs and a test that sends
 # Tailscale-User-Login itself is believed (no people file: everyone is the owner anyway; docs/people.md)
 HOME="$T/home" USERPROFILE="$T/home" ARGUS_SERVE_UID=$(id -u) ARGUS_WATCH_STATE="$ST/watch.json" ARGUS_DEV=1 ARGUS_WEATHER=40,-111 ARGUS_STATIC="$T/pkg/static" ARGUS_BUNDLED="$T/pkg/bundled" ARGUS_SYSTEMCTL="$T/fx/fake_systemctl.py" ARGUS_JOURNALCTL="$T/fx/fake_journal.sh" ARGUS_PORT=$PORT \
   ARGUS_SUMMARY=0 ARGUS_PUSH_TEST_ORIGIN="http://127.0.0.1:$PUSH_PORT" ARGUS_WATCH_INTERVAL=1 ARGUS_MOUNTINFO="$T/fx/watch/host-good.mountinfo" FAKE_PODMAN_DIR="$T/pod" ARGUS_CONTROLLERS_SYSROOT="$T/fx/controllers-sysfs/four" ARGUS_CONTROLLERS="$T/fx/controllers.json" ARGUS_MODES="$T/fx/modes.json" \
-  ARGUS_DEVICES="$T/fx/devices/active.json" ARGUS_TAILSCALE="$T/fx/fake_tailscale.py" ARGUS_DEVICES_CACHE=1 \
+  ARGUS_DEVICES="$T/fx/devices/active.json" ARGUS_TAILSCALE="$T/fx/fake_tailscale.py" ARGUS_DEVICES_CACHE=1   ARGUS_MEALIE="$T/fx/mealie/mealie.json" ARGUS_MEALIE_TOKEN="$T/fx/mealie/token.txt" \
   $PYTHON "$T/pkg/argus_ui.py" > "$T/server.log" 2>&1 & PID=$!
 # a stand-in local model server for tests/mentor-ai.test.js (docs/mentor-ai.md); off for every other check
 MODEL_PORT=${MODEL_PORT:-8098}; $PYTHON "$T/fx/fake_model.py" $MODEL_PORT > "$T/model.log" 2>&1 & MPID=$!; export MODEL_PORT
-trap 'kill $PID $MPID 2>/dev/null; echo "(server log and screenshots: $T)"' EXIT
+$PYTHON "$T/fx/fake_mealie.py" $MEALIE_PORT "$T/fx/mealie/scenario.json" > "$T/mealie.log" 2>&1 & MLPID=$!
+trap 'kill $PID $MPID $MLPID 2>/dev/null; echo "(server log and screenshots: $T)"' EXIT
 for i in $(seq 50); do curl -s -o /dev/null "http://127.0.0.1:$PORT/" && break; sleep .2; done
 fail=0
 # the deck rubric (docs/mentor-rubric.md): the shipped decks pass, and the checker still catches each rule
@@ -122,6 +127,13 @@ fi
 if [ -z "$1" ] || [ "$1" = controllers ]; then
   echo "== controllers model"
   $PYTHON "$R/tests/controllers_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1
+fi
+# Mealie's section and Today line against a stand-in Mealie (tests/fixtures/fake_mealie.py), and the bundled plugin on a real
+# server: tests/mealie_test.py; the browser side is tests/mealie.test.js
+if [ -z "$1" ] || [ "$1" = mealie ]; then
+  echo "== mealie model"
+  st=0; out=$($PYTHON -W ignore::ResourceWarning "$R/tests/mealie_test.py" 2>&1) || st=$?
+  if [ $st = 0 ]; then grep -E "^Ran|^OK" <<<"$out" || true; else echo "$out"; fail=1; fi
 fi
 # "Works, not just runs" (watch.py, docs/checks.md): canned mount tables, a fake container runtime, a real server in its own process
 if [ -z "$1" ] || [ "$1" = works ]; then
