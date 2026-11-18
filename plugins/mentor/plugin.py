@@ -172,7 +172,7 @@ def _get(b, person, path, query):
         r = mentor.stats(db, deck)
         if b.reload and person['my_role'] == 'owner': r['deck_folder'] = learners.shown(b.dirs[0])
         return 200, r
-    if path == 'session': return 200, {'session': mentor.load_session(db)}     # 4.56: "Continue where you stopped"
+    if path == 'session': return 200, {'session': mentor.load_session(db), 'seen': mentor.last_attempt(db)}     # 4.56: "Continue where you stopped"
     if path == 'today': return 200,{**mentor.today(db, deck_names(b)), 'learner': {k: person[k] for k in ('id', 'name', 'role')}}
     if path == 'track':                          # Preview: one track's size, history and a few questions; nothing is scheduled
         t = mentor.track_preview(db, (query.get('id') or [''])[0], deck_names(b))

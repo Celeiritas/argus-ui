@@ -1083,6 +1083,7 @@ def set_settings(db, changes):
     changes = {k: v for k, v in (changes or {}).items() if k in SETTINGS}
     with DB_LOCK:
         cur = settings(db); new = {}
+        before = set(track_map(db).values()) if 'focus' in changes else set()
         for k, v in changes.items():
             try:
                 if k in ('pinned', 'shelved', 'ask_confidence'): new[k] = _ids(v)
@@ -1098,8 +1099,13 @@ def set_settings(db, changes):
         # a track is pinned or shelved, never both: the list sent in this request wins
         if 'shelved' in new: new['pinned'] = [x for x in new.get('pinned', cur['pinned']) if x not in new['shelved']]
         if 'pinned' in new: new['shelved'] = [x for x in new.get('shelved', cur['shelved']) if x not in new['pinned']]
-        for k, v in new.items():
-            db.execute("INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (k, json.dumps(v)))
+        put = lambda k, v: db.execute("INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (k, json.dumps(v)))
+        for k, v in new.items(): put(k, v)
+        if 'focus' in new:                      # a pinned or shelved track that the focus took in no longer exists: drop it,
+            gone = before - set(track_map(db).values())     # so it never counts as one of the 3 pins without being seen
+            after = settings(db)
+            for k in ('pinned', 'shelved'):
+                if any(x in gone for x in after[k]): put(k, [x for x in after[k] if x not in gone])
         db.commit()
     return settings(db)
 
@@ -1725,10 +1731,11 @@ def today(db, names=None):
     scope = [r for r in live if r['pinned']] or live           # nothing pinned yet: every track off the shelf
     focus = None
     if focus_on(st):                                            # 4.56: Continue studies the focus only
-        f = next((r for r in rows if r['id'] == FOCUS), None) or {'id': FOCUS, 'due': 0, 'new_left': 0, 'later': 0, 'tomorrow': 0}
+        f = next((r for r in rows if r['id'] == FOCUS), None) or {'id': FOCUS, 'due': 0, 'new': 0, 'new_left': 0, 'later': 0, 'tomorrow': 0}
         ids = [d for d in st['focus']['lessons'] if tm.get(d) == FOCUS]
         focus = {'goal': st['focus'].get('goal', ''), 'ids': ids, 'lessons': len(ids), 'missing': len(st['focus']['lessons']) - len(ids),
-                 'new_per_day': new_limit(st, FOCUS), 'plan': {'reviews': f['due'], 'new': f['new_left'], 'later': f['later'], 'tomorrow': f['tomorrow']}}
+                 'new_per_day': new_limit(st, FOCUS), 'plan': {'reviews': f['due'], 'new': f['new_left'], 'unseen': f['new'],
+                                                               'later': f['later'], 'tomorrow': f['tomorrow']}}
         scope = [f]
     week = []
     for i in range(6, -1, -1):
@@ -1748,23 +1755,31 @@ def today(db, names=None):
 # database; leaving the page or reloading brings it back on Today as "Continue where you stopped". Kept 12 hours.
 SESSION_KEEP, SESSION_TEXT, SESSION_MISSED = 12 * 3600, 2000, 50
 
-def _when(x):
-    if isinstance(x, bool) or not isinstance(x, (int, float)) or not 0 < x < 1e11: raise TypeError
+def _secs(x):
+    if isinstance(x, bool) or not isinstance(x, (int, float)) or not 0 <= x < 1e6: raise TypeError
     return float(x)
 
+def last_attempt(db):
+    """The newest attempt id in this database (0 when there is none): the page sends it back as 'seen' with each save."""
+    return db.execute("SELECT COALESCE(MAX(id), 0) FROM attempts").fetchone()[0]
+
 def save_session(db, s):
-    """Store the session the page sends; returns what was stored. A late save for a card already rated after it was sent
-    (a typing save that arrives after the rating) is ignored: None, and the stored session stays as it was."""
+    """Store the session the page sends; returns what was stored. The server stamps the time (the phone's clock is never
+    compared with ours). seen: the newest attempt id the page knew of when it sent the save (last_attempt() on Today, then
+    each answer's id). A save whose card has a rating on an attempt newer than that is stale: a typing save that arrives
+    after the rating, or a second tab still showing a card the first tab rated. It is ignored: None, and the stored session
+    stays as it was. A save without 'seen' (the page could not learn it) is not checked."""
     if not isinstance(s, dict): raise TypeError
-    card = s.get('card')
+    card, seen = s.get('card'), s.get('seen')
     if card is not None and (not isinstance(card, str) or not 0 < len(card) <= 200): raise TypeError
+    if seen is not None and (isinstance(seen, bool) or not isinstance(seen, int) or seen < 0): raise TypeError
     text, missed = s.get('text', ''), s.get('missed', [])
     if not isinstance(text, str) or not isinstance(missed, list) or not all(isinstance(x, str) and 0 < len(x) <= 200 for x in missed): raise TypeError
-    out = {'started': _when(s.get('started')), 'review_only': s.get('review_only') is True, 'card': card, 'text': text[:SESSION_TEXT],
-           'shown': s.get('shown') is True, 'answered': _count(s.get('answered', 0)), 'right': _count(s.get('right', 0)),
-           'missed': missed[-SESSION_MISSED:], 'at': _when(s.get('at'))}
-    if card and db.execute("SELECT 1 FROM attempts WHERE card_id=? AND rating>0 AND COALESCE(undone, 0)=0 AND at>=? AND at>?",
-                           (card, out['started'], out['at'])).fetchone():
+    out = {'used': _secs(s.get('used', 0)), 'review_only': s.get('review_only') is True, 'early': s.get('early') is True,
+           'card': card, 'text': text[:SESSION_TEXT], 'answered': _count(s.get('answered', 0)), 'right': _count(s.get('right', 0)),
+           'missed': missed[-SESSION_MISSED:], 'at': time.time()}
+    if card and seen is not None and db.execute(
+            "SELECT 1 FROM attempts WHERE card_id=? AND rating>0 AND COALESCE(undone, 0)=0 AND id>?", (card, seen)).fetchone():
         return None
     set_meta(db, 'session', out)
     return out

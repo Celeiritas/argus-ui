@@ -328,8 +328,8 @@ class Focus(WithGames):
 class Session(WithGames):
     """4.56: a session stopped halfway is kept (per person) and comes back with the card and the half-typed answer."""
     def saved(self, **kw):
-        s = {'started': time.time() - 120, 'review_only': False, 'card': 'ux-hci:affordance', 'text': 'half an answer', 'shown': False,
-             'answered': 2, 'right': 1, 'missed': ['ux-hci:mental-model'], 'at': time.time()}
+        s = {'used': 120, 'review_only': False, 'early': False, 'card': 'ux-hci:affordance', 'text': 'half an answer',
+             'seen': m.last_attempt(self.db), 'answered': 2, 'right': 1, 'missed': ['ux-hci:mental-model']}
         s.update(kw); return s
 
     def test_session_round_trip(self):
@@ -351,22 +351,60 @@ class Session(WithGames):
         self.assertIsNone(m.load_session(self.db)['card'], 'a card outside the focus is not reopened')
 
     def test_session_expires_after_12h(self):
-        m.save_session(self.db, self.saved(at=time.time() - 13 * 3600, started=time.time() - 13.5 * 3600))
+        s = m.save_session(self.db, self.saved(at=1.0))
+        self.assertGreater(s['at'], time.time() - 5, "the server stamps the time; the page's clock is never used")
+        m.set_meta(self.db, 'session', {**s, 'at': time.time() - 13 * 3600})
         self.assertIsNone(m.load_session(self.db))
 
+    def test_session_keeps_what_resume_needs(self):
+        s = m.save_session(self.db, self.saved(early=True, review_only=True, used=300))
+        self.assertEqual((s['early'], s['review_only'], s['used']), (True, True, 300.0), '"Study a little more" resumes as itself')
+        self.assertNotIn('shown', s)
+
     def test_session_stale_save_ignored(self):
-        first = m.save_session(self.db, self.saved())
-        self.rate('ux-hci:affordance', 3)            # the card is rated; a typing save sent before that arrives late
-        self.assertIsNone(m.save_session(self.db, self.saved(text='late keystrokes', at=time.time() - 5)))
-        self.assertEqual(m.load_session(self.db), first)
-        self.assertIsNotNone(m.save_session(self.db, self.saved(card='ux-hci:mental-model', text='')), 'the next card saves')
+        seen = m.last_attempt(self.db)
+        first = m.save_session(self.db, self.saved(seen=seen))
+        a = self.rate('ux-hci:affordance', 3)        # the card is rated; a typing save sent before that arrives late
+        self.assertIsNone(m.save_session(self.db, self.saved(text='late keystrokes', seen=seen)))
+        self.assertEqual(m.load_session(self.db)['text'], first['text'])
+        self.assertIsNotNone(m.save_session(self.db, self.saved(card='ux-hci:mental-model', text='', seen=a['attempt'])), 'the next card saves')
+        self.assertIsNotNone(m.save_session(self.db, self.saved(seen=a['attempt'])), 'the same card served again after its rating saves')
+
+    def test_session_second_tab_cannot_bring_back_a_rated_card(self):
+        # Review Focus 4: two tabs on the same card; tab A rates it and moves on; tab B (older) types and saves "now"
+        both = m.last_attempt(self.db)
+        m.save_session(self.db, self.saved(seen=both))
+        a = self.rate('ux-hci:affordance', 3)
+        m.save_session(self.db, self.saved(card='ux-hci:accessible-name', text='', seen=a['attempt']))     # tab A, next card
+        self.assertIsNone(m.save_session(self.db, self.saved(text='tab B types', seen=both)))              # tab B, stale
+        self.assertEqual(m.load_session(self.db)['card'], 'ux-hci:accessible-name')
+        m.undo(self.db, a['attempt'])                # an undone rating no longer makes the card stale
+        self.assertIsNotNone(m.save_session(self.db, self.saved(text='tab B types', seen=both)))
+
+    def test_session_bad_seen_refused(self):
+        for bad in (-1, True, '3', 1.5):
+            with self.assertRaises(TypeError): m.save_session(self.db, self.saved(seen=bad))
+
+    def test_focus_plan_counts_unseen_new(self):
+        m.set_settings(self.db, {'focus': {'lessons': ['ux-hci'], 'new_per_day': 2}})
+        p = m.today(self.db)['focus']['plan']
+        n = self.db.execute("SELECT COUNT(*) FROM cards WHERE deck='ux-hci' AND kind NOT IN ('learn')").fetchone()[0]
+        self.assertGreater(p['unseen'], p['new'], 'unseen counts every new question, not only today\'s')
+        self.assertLessEqual(p['unseen'], n)
+
+    def test_focus_drops_pin_of_a_track_it_took_in(self):
+        m.set_settings(self.db, {'pinned': ['ux-hci', 'psych-design']})
+        m.set_settings(self.db, {'focus': {'lessons': ['ux-hci']}})
+        self.assertEqual(m.settings(self.db)['pinned'], ['psych-design'], 'no invisible pin counts toward the 3')
+        m.set_settings(self.db, {'shelved': ['ai-coding']}); m.set_settings(self.db, {'focus': {'lessons': ['mod1']}})
+        self.assertEqual(m.settings(self.db)['shelved'], ['ai-coding'], 'a track the focus did not take stays where it was')
 
     def test_session_text_capped(self):
         s = m.save_session(self.db, self.saved(text='x' * 2500, missed=['ux-hci:affordance'] * 80))
         self.assertEqual((len(s['text']), len(s['missed'])), (2000, 50))
 
     def test_session_bad_input_ignored(self):
-        for bad in (None, [], 'x', {'started': 'soon'}, self.saved(answered=-1), self.saved(card=5)):
+        for bad in (None, [], 'x', {'used': 'soon'}, self.saved(answered=-1), self.saved(card=5)):
             with self.assertRaises((TypeError, ValueError)): m.save_session(self.db, bad)
         self.assertIsNone(m.load_session(self.db))
 

@@ -33,7 +33,7 @@
 **Interfaces — Produces:**
 - Setting `focus`: `{'goal': str (≤140, same cleaning as _goal), 'lessons': [id, …] (≤ 50, via _ids), 'new_per_day': int 0..20 (default 2)}`; `{}` = no focus. `set_settings(db, {'focus': {...}})` replaces it whole; `{'focus': {}}` clears it.
 - `FOCUS = 'focus'` track id. `track_map(db)` maps every id in `focus.lessons` that exists to `'focus'` (overrides its group/own track).
-- `deck_where(db, 'focus')` → `"c.deck IN (…)"` over the existing focus lessons; `"0", []` when none exist.
+- `deck_where(db, 'focus')` → `"c.deck IN (…)"` over the existing focus lessons; `"0", []` when none exist. *(Not built: nothing offers 'focus' in the picker. The focus's new-a-day limit applies wherever its lessons are studied, one limit per track as for every track.)*
 - `tracks()` lists the focus track first with name `'Focus'` (the goal is shown separately).
 - `new_limit(st, 'focus')` returns `focus.new_per_day`.
 - `today()` adds `focus: None | {goal, lessons: n, missing: n, plan: {reviews, new, later}}` where `plan.reviews` = focus cards due now, `plan.new` = focus new left today; when focus is set, `scope` = `['focus']` and `due`/`new_left` count the focus only.
@@ -78,7 +78,7 @@
 - [x] Step 1: Python tests `test_session_round_trip`, `test_session_skips_missing_card`, `test_session_expires_after_12h`, `test_session_stale_save_ignored`, `test_session_text_capped` (2,500 chars → 2,000).
 - [x] Step 2: run → fail; implement; run the Python Mentor suite → pass.
 - [x] Step 3: page: save on session start, on each card shown, and 800 ms after the last keystroke in the answer box; clear on Finish. On load, when `GET session` returns one, Today shows **Continue where you stopped** (primary) in place of Continue; it reopens the session view on the saved card with `text` back in the box and the timer restarted with the minutes left (at least 2).
-- [x] Step 4: browser test in `tests/mentor.test.js`: start a session, type half an answer, reload → Continue where you stopped → same card, same text; then Show the answer with one tap on a 375 px touch viewport keeps the text (Review Focus 5). *(Built in `tests/mentor-today.test.js` on a wide screen; the 375 px touch one-tap check is not built yet.)*
+- [ ] Step 4 (half built): browser test in `tests/mentor.test.js`: start a session, type half an answer, reload → Continue where you stopped → same card, same text; then Show the answer with one tap on a 375 px touch viewport keeps the text (Review Focus 5). *(Built in `tests/mentor-today.test.js` on a wide screen; the 375 px touch one-tap check is not built yet.)*
 - [x] Step 5: CI green; commit `feat(mentor): a session stopped halfway comes back with its answer`.
 
 ### Task B4: ship 4.56.0

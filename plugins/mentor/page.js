@@ -232,7 +232,7 @@
     if (isLearn(c)) { if (S) saveSession(); return learnCard(c); }
     if (!replaying && !again) M.count++;
     const mod = moduleOf(c.deck), big = mod && mod.summary && mod.summary.schematic_mental_model;
-    c.think = REVEAL.includes(c.kind) && answerMode() === 'think';
+    c.think = REVEAL.includes(c.kind) && answerMode() === 'think' && !M.typed;     /* 4.56: text typed before a reload comes back in a box */
     // fewer steps per card (4.38): "How sure are you?" on every fifth card, or on every card of a track that asks for it
     const askConf = c.ask_confidence || M.count %((M.today && M.today.confidence_every) || 5) === 0;
     const teachBtn = c.teach_id && !c.replaying ? `<button type="button" class="link" id="teachBtn" aria-controls="teachbox" aria-expanded="false">Teach me first</button>` : '';
@@ -414,7 +414,7 @@
     const btn = $('#checkBtn'); btn.disabled = true; clearIdle();
     let r; try { r = await send('answer', {card: c.id, text: c.think ? '' : text, confidence: conf, ms: Math.round(performance.now() - M.t0), hints: M.hints, reflections: M.reflections, think: !!c.think && M.hints < 4, taught: !!c.taught}); } catch (e) { r = {ok: false}; }
     if (!r.ok) { btn.disabled = false; return toast("Couldn't reach Mentor to check that answer. Check that the server is on, then try again."); }
-    M.result = r; M.grade_wrong = false; r.shown = M.hints === 4;
+    M.result = r; M.grade_wrong = false; r.shown = M.hints === 4; seenAttempt(r.attempt);
     const n = r.hits.length + r.missed.length, pct = Math.round(r.coverage * 100);
     const shown = M.hints === 4;
     let kind = tone(r.coverage, shown), head, detail;
@@ -596,7 +596,7 @@
     go.disabled = true;
     let r; try { r = await send('answer', {card: c.id, text, ms: Math.round(performance.now() - M.t0), skipped: !!skipped}); } catch (e) { r = {ok: false}; }
     if (!r.ok) { go.disabled = false; toast("Couldn't reach Mentor. Check that the server is on, then try again."); return null; }
-    M.result = {...r, skipped: !!skipped};
+    M.result = {...r, skipped: !!skipped}; seenAttempt(r.attempt);
     return r;
   }
   function revealAll(c) {
@@ -692,7 +692,7 @@
   async function todayView() {
     if (M.view !== 'today') return;
     const seq = M.seq = (M.seq || 0) + 1;
-    let t, saved = null; try { [t, saved] = await Promise.all([get('today'), get('session').then(r => r.session).catch(() => null)]); } catch (e) { t = null; }
+    let t, saved = null; try { [t, saved] = await Promise.all([get('today'), get('session').then(r => { if (Number.isInteger(r.seen)) M.seen = r.seen; return r.session; }).catch(() => null)]); } catch (e) { t = null; }
     if (seq !== M.seq || M.view !== 'today') return;
     if (!t || !t.tracks) { $('#mpanel').innerHTML = `<div class="panel"><p class="coach">Couldn't reach Mentor. Check that the server is on, then try again.</p></div>`; return; }
     M.today = t;
@@ -800,7 +800,7 @@
       const lessons = $$('#focusForm input[name=flesson]:checked').map(i => i.value), raw = $('#fnew').value.trim(), n = Number(raw), err = $('#ferr');
       const bad = !lessons.length ? 'Choose at least one lesson.' : lessons.length > 50 ? 'Choose 50 lessons at most.'
         : !raw || !Number.isInteger(n) || n < 0 || n > 20 ? 'New questions a day: a whole number from 0 to 20.' : '';
-      if (bad) { err.textContent = bad; err.hidden = false; return (!lessons.length || lessons.length > 50 ? $('#focusForm input[name=flesson]') : $('#fnew')).focus(); }
+      if (bad) { err.textContent = bad; err.hidden = false; return ((!lessons.length || lessons.length > 50 ? $('#focusForm input[name=flesson]') : $('#fnew')) || $('#cancelFocus')).focus(); }
       done({goal: $('#fgoal').value, lessons, new_per_day: n}, 'Focus saved. Continue now studies only those lessons.');
     };
     const cf = $('#clearFocus'); if (cf) cf.onclick = () => done({}, 'Focus cleared. Today mixes your tracks again.');
@@ -811,21 +811,25 @@
      being typed, the tally) so a reload, a locked phone or a closed tab brings it back on Today. Saved when it starts, on
      every card, and 800 ms after the last keystroke; cleared on Finish ----- */
   const typedText = () => { const b = $$('#qform input.blank'); return b.length ? b.map(i => i.value).join('\n') : ($('#qform textarea#ans') || {value: ''}).value; };
+  // seen: the newest attempt id this tab knows of (from Today, then each answer). The server ignores a save for a card rated
+  // on a newer attempt, so a late keystroke or an older second tab never brings back a card already rated.
+  const seenAttempt = id => { if (Number.isInteger(id)) M.seen = Math.max(M.seen || 0, id); };
   function saveSession() {
     clearTimeout(M.saveT); M.saveT = null;
     const T = M.timed; if (!T || M.view !== 'session') return;
-    const s = {started: T.start / 1000, review_only: !!T.reviewOnly, card: M.card ? M.card.id : null, text: M.card && !isLearn(M.card) ? typedText().slice(0, 2000) : '',
-               shown: !!M.result, answered: T.cards, right: T.right, missed: T.missed.filter(Boolean).slice(-50), at: Date.now() / 1000};
+    const s = {used: Math.max(0, (Date.now() - T.start) / 1000), review_only: !!T.reviewOnly, early: !!T.early, card: M.card ? M.card.id : null,
+               text: M.card && !isLearn(M.card) ? typedText().slice(0, 2000) : '', seen: Number.isInteger(M.seen) ? M.seen : null,
+               answered: T.cards, right: T.right, missed: T.missed.filter(Boolean).slice(-50)};
     send('session', {session: s}).catch(() => {});      // best effort: a lost save only loses the place, never an answer
   }
   const forgetSession = () => { clearTimeout(M.saveT); M.saveT = null; send('session', {session: null}).catch(() => {}); };
   addEventListener('input', e => { if (M.view === 'session' && M.timed && e.target.closest && e.target.closest('#qform')) { clearTimeout(M.saveT); M.saveT = setTimeout(saveSession, 800); } }, true);
   function resumeSession(s) {
     const mins = (M.today && M.today.minutes) || 10, ms = mins * 60000;
-    const left = Math.max(2 * 60000, ms - Math.max(0, (s.at - s.started) * 1000));     // the minutes left, at least 2
+    const left = Math.max(2 * 60000, ms - Math.max(0, (s.used || 0) * 1000));     // the minutes left, at least 2
     M.timed = {start: Date.now() - (ms - left), ms, mins, done: false, more: 0, cards: s.answered || 0, right: s.right || 0, missed: [...(s.missed || [])],
-               early: false, reviewOnly: !!s.review_only};
-    M.replay = []; M.card = null; M.restore = s.card ? {card: s.card, text: s.text || ''} : null;
+               early: !!s.early, reviewOnly: !!s.review_only};
+    M.replay = []; M.again = null; M.card = null; M.restore = s.card ? {card: s.card, text: s.text || ''} : null;
     setView('session'); startTimer();
   }
   let TICK = null;
@@ -839,7 +843,9 @@
   function startTimer() {
     const T = M.timed, box = $('#mtime'), bar = $('#mtime .tfill'), fill = $('#mtime .tfill span'), left = $('#mtleft');
     if (!T || !box) return;
-    box.hidden = false; bar.setAttribute('aria-valuemax', T.mins); left.textContent = `${T.mins} minutes. The bar fills as you go; when it is full, finish the card you are on.`;
+    const rest = Math.max(1, Math.round((T.ms - (Date.now() - T.start)) / 60000));     /* a resumed session says the minutes left */
+    box.hidden = false; bar.setAttribute('aria-valuemax', T.mins);
+    left.textContent = `${rest < T.mins ? `${plural(rest, 'minute')} left` : `${T.mins} minutes`}. The bar fills as you go; when it is full, finish the card you are on.`;
     const tick = () => {
       const f = Math.min(1, (Date.now() - T.start) / T.ms);
       fill.style.width = (100 * f).toFixed(2) + '%'; bar.setAttribute('aria-valuenow', Math.round(f * T.mins));
@@ -856,7 +862,7 @@
     const F = t && t.focus, P = F && F.plan;
     if (F) {                                  // 4.56: with a focus, one plain line of what happened, what is next, and Finish
       const nx = P.reviews ? `Still due now: ${plural(P.reviews, 'review')}.` : P.tomorrow ? `Next: ${plural(P.tomorrow, 'review')} tomorrow.`
-        : F.new_per_day && F.lessons ? `Next: ${plural(F.new_per_day, 'new question')} tomorrow.` : 'Nothing is scheduled to come back yet.';
+        : F.new_per_day && F.lessons && P.unseen ? `Next: ${plural(Math.min(F.new_per_day, P.unseen), 'new question')} tomorrow.` : 'Nothing is scheduled to come back yet.';
       $('#mpanel').innerHTML = `<div class="panel done summary" id="spanel"><p class="kicker">${esc(F.goal || 'Your focus')}</p>
         <h2 class="lesson-title" id="shead" tabindex="-1">${T.cards ? `You practised ${plural(T.cards, 'card')} · ${T.right} right` : 'No cards answered this time.'}</h2>
         <p class="coach">${esc(nx)}</p>
