@@ -22,9 +22,14 @@ FORMAT = 'mentor-evidence/1'
 POLICY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'policy.json')
 CHECKS = ('answerability', 'alignment', 'leakage', 'prerequisites', 'support', 'solution', 'novelty', 'contract')
 RISKS = ('routine', 'clinical', 'regulated')
-ITEM_LISTS = ('tier_1_faded_code_drills', 'tier_2_self_explanation_cards', 'tier_3_terminology_cards', 'faded_code_drills', 'code_cards')
-# words that make a lesson clinical or regulatory whatever its evidence says: it then needs a qualified person's review
-CLINICAL = re.compile(r'\b(nclex|clinical|dosage|medication|patients?|nursing|contraindicat\w*)\b', re.I)
+# every list the importer reads items from (mentor.import_module), legacy names included: an item in any of them is checked
+ITEM_LISTS = ('tier_1_faded_code_drills', 'tier_2_self_explanation_cards', 'tier_3_terminology_cards', 'faded_code_drills',
+              'self_explanation_flashcards', 'code_cards')
+# words that make a lesson clinical or regulatory whatever its evidence says: it then needs a qualified person's review.
+# Stems, so plurals and other forms count (medications, nurses, doses, clinically); matched on the decoded text, so a
+# \u-escaped word in the raw JSON counts too.
+CLINICAL = re.compile(r'\b(nclex|clinic\w*|dosag\w*|doses?|dosing|medicat\w*|medicin\w*|patients?|nurs(e|es|ing)\b|'
+                      r'contraindicat\w*|prescription\w*|pharmac\w*|fda\b|510\(k\))', re.I)
 STAMPED = re.compile(r'(19|20)\d{6}[_-]?\d{4,6}')      # a capture named by its time: a new deck each run, never a refinement
 
 class Held(Exception):
@@ -41,10 +46,23 @@ def policy():
 def item_ids(doc):
     return [str(i.get('id')) for k in ITEM_LISTS for i in (doc.get(k) or []) if isinstance(i, dict) and i.get('id')]
 
+def idless(doc):
+    """Items the importer would still turn into cards (it numbers them term_01, card_01, ...) but that no evidence can name."""
+    return [f'{k} #{n + 1}' for k in ITEM_LISTS for n, i in enumerate(doc.get(k) or []) if isinstance(i, dict) and not i.get('id')]
+
+def texts(x):
+    """Every string in a decoded JSON value (keys too), so a word written with \\u escapes is still found."""
+    if isinstance(x, str): yield x
+    elif isinstance(x, dict):
+        for k, v in x.items(): yield str(k); yield from texts(v)
+    elif isinstance(x, list):
+        for v in x: yield from texts(v)
+
 def check(raw, evidence, mid, previous=None, published=None, why_retired=None, contract=None):
     """The gate. raw: the lesson file's bytes; evidence: its evidence document; mid: the lesson id (its file name);
     previous: the sha256 of the revision published before, if any; published: {other lesson id: name} already published;
-    why_retired(raw, mid) -> '' or why the reset retired it; contract(doc, mid) -> (cards, notes), the importer itself.
+    why_retired(raw, mid) -> '' or why the reset retired it; contract(doc, mid, checked) -> (cards, notes, unchecked), the importer itself: it imports the lesson into a
+    throwaway database and names every practice card it made that is not one of the checked item ids.
     Returns {'revision', 'reason'}; raises Held."""
     why = []
     try: doc = json.loads(raw.decode('utf-8'))
@@ -62,7 +80,7 @@ def check(raw, evidence, mid, previous=None, published=None, why_retired=None, c
         why.append('every source needs a locator and the revision that was checked; none may be missing')
     risk = ev.get('risk')
     if risk not in RISKS: why.append(f'risk must be one of {", ".join(RISKS)}')
-    text = raw.decode('utf-8', 'replace')
+    text = '\n'.join(texts(doc))
     if risk == 'routine' and CLINICAL.search(text):
         why.append(f'the lesson mentions "{CLINICAL.search(text).group(0)}": clinical or regulated material is never routine')
     if risk in ('clinical', 'regulated'):
@@ -72,6 +90,7 @@ def check(raw, evidence, mid, previous=None, published=None, why_retired=None, c
             why.append(f'{risk} material needs an independent qualified person\'s review (review.by, review.qualification); Claude cannot sign it')
     items, ids = ev.get('items') if isinstance(ev.get('items'), dict) else {}, item_ids(doc)
     if not ids: why.append('the lesson has no items with ids to check')
+    for where in idless(doc): why.append(f'{where}: an item without an id cannot be checked; give it an id and evidence')
     for iid in ids:
         it = items.get(iid)
         if not isinstance(it, dict): why.append(f'{iid}: not in the evidence (unchecked)'); continue
@@ -92,9 +111,10 @@ def check(raw, evidence, mid, previous=None, published=None, why_retired=None, c
         if r: why.append(r)
     if contract and not why:
         try:
-            n, notes = contract(doc, mid)
+            n, notes, unchecked = contract(doc, mid, ids)
             if not n: why.append('the importer made no practice cards from it')
             if notes: why.append('the importer skipped parts of it: ' + '; '.join(notes[:4]))
+            for c in unchecked: why.append(f'the importer made card {c}, which no checked item accounts for')
         except (ValueError, KeyError, TypeError, AttributeError) as x: why.append(f'the importer refused it: {str(x)[:160]}')
     if why: raise Held(why)
     reason = str((ev.get('correction') or {}).get('reason') or '').strip() or ('first publication' if not previous else 'republished unchanged')

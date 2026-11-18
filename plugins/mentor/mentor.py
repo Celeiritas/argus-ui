@@ -48,7 +48,7 @@ publish = _ilu.module_from_spec(_ps); _ps.loader.exec_module(publish)     # 4.59
 
 # ---------- 4.59: the owner's collection (docs/mentor.md "Clean slate and publication") ----------
 # ~/.config/argus-ui/mentor.json (or ARGUS_MENTOR_CONFIG) says which sources feed the owner's collection. Without the file
-# every source works as before. scripts/mentor-clean-slate-v1.py writes it: the theme's decks and the old inbox off, and
+# every source works as before. scripts/mentor-clean-slate-v2.py writes it: the theme's decks, your own deck folder and the old inbox off, and
 # every file and lesson id it retired listed, so a copy put back is refused instead of bringing the old decks back.
 # Published lessons arrive in LESSONS, each with its evidence file; only lessons that pass the gate (publish.py) import.
 CONFIG_FILE = os.path.expanduser(os.environ.get('ARGUS_MENTOR_CONFIG', '~/.config/argus-ui/mentor.json'))
@@ -56,22 +56,22 @@ LESSONS = os.path.expanduser(os.environ.get('ARGUS_MENTOR_LESSONS', '~/.local/sh
 _coll = [None, None]       # mentor.json's mtime when last read, and what it said
 
 def collection():
-    """The collection settings: {'id', 'theme_decks', 'legacy_inbox', 'retired_files' (sha256 set), 'retired_decks' (id set)}.
+    """The collection settings: {'id', 'theme_decks', 'own_decks', 'legacy_inbox', 'retired_files' (sha256 set), 'retired_decks' (id set)}.
     A missing file means every source on, as before 4.59. A broken file turns the old sources OFF (a reset is never undone
     by a typo) and is reported in 'problem'."""
     try: mt = os.stat(CONFIG_FILE).st_mtime
-    except OSError: return {'id': None, 'theme_decks': True, 'legacy_inbox': True, 'retired_files': set(), 'retired_decks': set(), 'problem': ''}
+    except OSError: return {'id': None, 'theme_decks': True, 'own_decks': True, 'legacy_inbox': True, 'retired_files': set(), 'retired_decks': set(), 'problem': ''}
     if _coll[0] != mt:
         try:
             with open(CONFIG_FILE, encoding='utf-8') as fh: doc = json.load(fh)
             if not isinstance(doc, dict) or doc.get('format') != 'mentor-collection/1': raise ValueError('not "format": "mentor-collection/1"')
             ret = doc.get('retired') if isinstance(doc.get('retired'), dict) else {}
             c = {'id': str(doc.get('collection') or '') or None, 'theme_decks': doc.get('theme_decks') is not False,
-                 'legacy_inbox': doc.get('legacy_inbox') is not False,
+                 'own_decks': doc.get('own_decks') is not False, 'legacy_inbox': doc.get('legacy_inbox') is not False,
                  'retired_files': {str(f.get('sha256')) for f in as_list(ret.get('files')) if isinstance(f, dict) and f.get('sha256')},
                  'retired_decks': {str(x) for x in as_list(ret.get('decks'))}, 'problem': ''}
         except (OSError, ValueError) as x:
-            c = {'id': None, 'theme_decks': False, 'legacy_inbox': False, 'retired_files': set(), 'retired_decks': set(),
+            c = {'id': None, 'theme_decks': False, 'own_decks': False, 'legacy_inbox': False, 'retired_files': set(), 'retired_decks': set(),
                  'problem': f'{os.path.basename(CONFIG_FILE)} could not be read ({str(x)[:120]}); the old sources stay off'}
         _coll[:] = [mt, c]
     return _coll[1]
@@ -238,14 +238,19 @@ def prepare(db):
     ensure_loose(db)
     db.commit()
 
-def dry_import(doc, mid):
+def dry_import(doc, mid, checked=()):
     """The content contract, checked by the importer itself: import the lesson into a throwaway database in memory.
-    Returns (practice cards, notes about anything skipped). Raises ValueError/KeyError/TypeError on a broken lesson."""
+    Returns (practice cards, notes about anything skipped, practice card ids not made from one of the `checked` item
+    ids), so the gate covers the cards the importer really makes, not only the items it can see listed.
+    Raises ValueError/KeyError/TypeError on a broken lesson."""
     db = sqlite3.connect(':memory:', factory=Conn)
     try:
         prepare(db)
-        if is_module(doc): return import_module(db, doc, mid, mid + '.json', False)
-        raise ValueError('only a lesson (tier lists or cta_summary) can be published; a course goes through its lessons')
+        if not is_module(doc): raise ValueError('only a lesson (tier lists or cta_summary) can be published; a course goes through its lessons')
+        n, notes = import_module(db, doc, mid, mid + '.json', False)
+        ok = {f'{mid}:{slug(i)}' for i in checked}
+        made = [r[0] for r in db.execute(f"SELECT id FROM cards WHERE deck=? AND kind NOT IN ({','.join('?' * len(LEARN))}) ORDER BY id", (mid, *LEARN))]
+        return n, notes, [c for c in made if c not in ok]
     finally: db.close()
 
 def loose_module(project):
@@ -275,7 +280,10 @@ def load_decks(db, folder):
         except Exception:
             continue
         if not isinstance(deck, dict): continue
-        if coll and retired(coll, raw, deck.get('id') if is_course(deck) or not is_module(deck) else slug(os.path.basename(f)[:-5])):
+        # the id each kind is stored under: a course as import_course slugs it, a lesson by its file name, a plain deck as is
+        did = (slug(deck.get('id') or os.path.basename(f)[:-5]) if is_course(deck) else
+               slug(os.path.basename(f)[:-5]) if is_module(deck) else deck.get('id'))
+        if coll and retired(coll, raw, did):
             continue
         if is_course(deck):
             try:
@@ -710,7 +718,7 @@ def context_packet(db, limit=30):
                       'prompt': (r['prompt'] or '')[:300], 'answer': (r['answer'] or '')[:300]})
     return {'format': 'mentor-context/1', 'collection': meta(db, 'collection') or coll['id'], 'policy': publish.policy().get('id'),
             'focus': st.get('focus'), 'goal': st.get('goal'), 'pinned': st.get('pinned'),
-            'sources': {'theme_decks': coll['theme_decks'], 'legacy_inbox': coll['legacy_inbox'], 'problem': coll['problem']},
+            'sources': {'theme_decks': coll['theme_decks'], 'own_decks': coll['own_decks'], 'legacy_inbox': coll['legacy_inbox'], 'problem': coll['problem']},
             'lessons': lessons, 'flags': flags,
             'cards': db.execute("SELECT COUNT(*) FROM cards").fetchone()[0], 'attempts': db.execute("SELECT COUNT(*) FROM attempts").fetchone()[0]}
 

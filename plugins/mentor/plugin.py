@@ -59,7 +59,8 @@ def book_for(person):
     lesson folder is (re)loaded by fresh(), under the Book's lock."""
     if person is None or person['owner_db']:     # 4.59: after the clean-slate reset the theme's decks no longer feed the owner
         path, inbox = owner_path(), True
-        dirs = DECK_DIRS if mentor.collection()['theme_decks'] else [d for d in DECK_DIRS if d != THEME_DECKS]
+        c = mentor.collection()     # own_decks off: your deck folder has no evidence either, so only the gated lessons folder feeds it
+        dirs = [d for d in DECK_DIRS if (d != THEME_DECKS or c['theme_decks']) and (d == THEME_DECKS or c['own_decks'])]
     else:
         path = os.path.join(os.path.dirname(owner_path()) or '.', f"mentor-{person['id']}.db")
         dirs, inbox = [os.path.join(SHARE, f"decks-{person['id']}")], False      # their own lessons only
