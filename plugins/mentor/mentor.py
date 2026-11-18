@@ -35,7 +35,7 @@ The server's routes are fixed (decks, next, stats, answer, rate, undo, settings)
 Scheduling: FSRS-4.5 (Free Spaced Repetition Scheduler) with its published default weights, plus Anki's behaviours on top
 (4.29): learning steps (1 min, 10 min; relearning 10 min), undo of the last rating, and bury siblings (same note, until tomorrow).
 """
-import ast, io, json, math, os, re, sqlite3, textwrap, threading, time, glob, tokenize
+import ast, io, json, math, os, re, sqlite3, textwrap, threading, time, glob, tokenize, unicodedata
 from difflib import SequenceMatcher
 import importlib.util as _ilu
 _cs = _ilu.spec_from_file_location('leafy_mentor_compare', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'compare.py'))
@@ -559,8 +559,9 @@ GENERIC = set('key causal mechanism mention must should explain explanation conc
               'consequence system mechanic python hci 1 2 3'.split())
 
 def norm(s):
-    # 4.55: Unicode-safe. casefold() and \w keep every script's letters and digits (猫, é, ß); only punctuation goes
-    return re.sub(r"[^\w\s]|_", " ", s.casefold().replace("'", ''))
+    # 4.55: Unicode-safe. NFC first (a decomposed é from some keyboards equals the composed one), then casefold() and \w
+    # keep every script's letters and digits (猫, é, ß); only punctuation goes
+    return re.sub(r"[^\w\s]|_", " ", unicodedata.normalize('NFC', s).casefold().replace("'", ''))
 
 def stem(w):
     for suf in ('ingly', 'edly', 'ing', 'ed', 'es', 's', 'ly'):
@@ -1318,9 +1319,10 @@ def answer(db, card_id, text, confidence, ms, hints=0, reflections=None, skipped
         extra = {'breadcrumb': data.get('breadcrumb', ''), 'rows': per}
         if c['kind'] == 'trace': extra['code'] = data.get('code', '')
     elif c['kind'] == 'predict' and not any('auto' in p for p in json.loads(c['points'] or '[]')):
-        # 4.55: an output has one right value. Compared exactly with the model answer, its key-idea wordings and `accept`
+        # 4.55: an output has one right value. Compared exactly with the model answer and `accept`; a key idea's `any`
+        # wordings count as whole answers only when there is one key idea (with several, each is only a fragment)
         pts = json.loads(c['points'] or '[]')
-        accepted = [c['answer'], *[a for p in pts for a in p.get('any', [])], *as_list(data.get('accept'))]
+        accepted = [c['answer'], *(pts[0].get('any', []) if len(pts) == 1 else []), *as_list(data.get('accept'))]
         cov = 1.0 if compare.same_value(text, accepted) else 0.0
         ideas = [p['idea'] for p in pts] or [c['answer']]
         hits, missed = (ideas, []) if cov else ([], ideas)

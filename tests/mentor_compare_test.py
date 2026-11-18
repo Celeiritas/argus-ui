@@ -19,6 +19,9 @@ class Compare(unittest.TestCase):
         self.assertTrue(c.same_value('1\n2\n3', ['1 2 3']))
     def test_unicode(self):
         self.assertTrue(c.same_value('猫', ['猫'])); self.assertFalse(c.same_value('', ['猫'])); self.assertFalse(c.same_value('犬', ['猫']))
+    def test_unicode_form(self):
+        # 'e' + a combining accent (some keyboards) equals the composed é; a plain e does not
+        self.assertTrue(c.same_value('café', ['café'])); self.assertFalse(c.same_value('cafe', ['café']))
     def test_variants(self):
         self.assertTrue(c.same_value('None', ['None', 'none'])); self.assertFalse(c.same_value('NONE', ['None', 'none']))
     def test_empty_accepted_never_matches(self):

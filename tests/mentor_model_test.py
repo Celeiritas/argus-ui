@@ -565,6 +565,18 @@ class Roles(Base):
         self.assertEqual(self.ans('x:neg', '-12')['coverage'], 1)
         self.assertEqual(self.ans('x:neg', '- 12')['coverage'], 1, 'an accepted wording')
 
+    def test_predict_fragment_of_several_ideas_is_not_the_output(self):
+        # review of 4.55: with two key ideas, each idea's wordings are fragments, never the whole output
+        k = dict(self.doc['modules'][0]['lessons'][0]['code_cards'][0], id='p-two', answer='1\n2\n3',
+                 eval_rubric=[{'idea': 'starts at 1', 'any': ['1']}, {'idea': 'ends at 3', 'any': ['3']}])
+        prompt, ans, pts, data = m.code_card(k, 'predict')
+        with m.DB_LOCK:
+            self.db.execute("INSERT INTO cards(id,deck,kind,prompt,answer,points,data) VALUES('x:two','x','predict',?,?,?,?)",
+                            (prompt, ans, json.dumps(pts), json.dumps(data))); self.db.commit()
+        self.assertEqual(self.ans('x:two', '1')['coverage'], 0, 'one idea of two is not the output')
+        self.assertEqual(self.ans('x:two', '3')['coverage'], 0)
+        self.assertEqual(self.ans('x:two', '1 2 3')['coverage'], 1)
+
     def test_trace_reversed(self):
         self.assertEqual(self.ans('loops--read:t-2', ['3', '6', '5'])['coverage'], 1)
         self.assertEqual(self.ans('loops--read:t-2', ['x=3', 'x = 6', ' x =5'])['coverage'], 1, 'spaces around = do not matter')
@@ -620,6 +632,7 @@ class Roles(Base):
         self.assertEqual(m.grade_term({'answer': '猫'}, '猫'), 1.0)
         self.assertEqual(m.grade_term({'answer': 'Straße'}, 'STRASSE'), 1.0, 'casefold: ß matches ss')
         self.assertEqual(m.grade_term({'answer': '猫'}, '犬'), 0.0)
+        self.assertEqual(m.grade_term({'answer': 'caf\u00e9'}, 'cafe\u0301'), 1.0, 'a decomposed accent equals the composed one (NFC)')
 
     def test_rust_drill_level3_self_checked(self):
         fades = {'3': {'code': 'fn double(x: i32) -> i32 {\n    {{BLANK_1}}\n}', 'answers': ['x * 2']}}

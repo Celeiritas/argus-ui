@@ -66,7 +66,7 @@
   const crumb = s => {
     const parts = (s || '').split(/\s*(?:->|→|›)\s*/).filter(Boolean), x = parts[parts.length - 1];
     const fn = x && !/\.(?:py|js|mjs|ts|rs|css|json|sh|md|html|ya?ml|toml|txt)$/i.test(x) ? `<p class="crumb"><span class="sr">Where in the code: </span><span>${inline(esc(x))}</span></p>` : '';
-    return fn + (parts.length ? `<details class="where"><summary>In your project</summary><ol class="path">${parts.map(p => `<li><code>${esc(p)}</code></li>`).join('')}</ol></details>` : '');
+    return fn + (parts.length > 1 ? `<details class="where"><summary>In your project</summary><ol class="path">${parts.map(p => `<li><code>${inline(esc(p))}</code></li>`).join('')}</ol></details>` : '');
   };
   // code to read with its line numbers (predict and trace cards name lines); lines wrap and keep their indent
   const codeLines = code => `<ol class="lines static" aria-label="The code, ${plural(code.split('\n').length, 'line')}">${code.split('\n').map((l, i) => `<li><span class="line"><span class="n" aria-hidden="true">${i + 1}</span><code>${esc(l) || ' '}</code></span></li>`).join('')}</ol>`;
@@ -494,7 +494,7 @@
     if (s.learn) { toast(r.skipped ? 'Skipped. It comes back if the practice card goes wrong.' : 'Read. On to the next card.'); return next(); }
     if (s.check) { M.last = {attempt: r.attempt, card: M.card && M.card.id, right: s.right, check: true};
       toast(`Saved for the module check: ${s.right ? 'counted as right' : 'counted as missed'}.`, {label: 'Undo', fn: undo}); return next(); }
-    const right = r.think || r.compare ? v >= 3 : r.coverage >= .99 && !r.shown && v > 1;
+    const right = r.think || r.compare ? v >= 3 && !r.shown && (M.hints || 0) <= 2 : r.coverage >= .99 && !r.shown && v > 1;   /* as right_answer() on the server: no hint above rung 2 */
     M.session.answered++; if (right) M.session.right++; else M.session.missed.push(M.card && M.card.id);
     const T = M.view === 'session' && M.timed; if (T) { T.cards++; if (right) T.right++; else T.missed.push(M.card && M.card.id); }
     M.last = {attempt: r.attempt, card: M.card && M.card.id, right};

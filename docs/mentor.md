@@ -12,7 +12,7 @@ Code an AI writes for you skips the part where you build the mental model (the *
 | **Learn first** (4.8.0) | **Learn cards** in front of each practice card: an *orientation* for the lesson, a *teach card* per term (ending in "spot it in this snippet"), a *worked example* per drill (the full code, annotated line by line; you may say why a line is there before the note appears (optional since 4.55), then explain the whole), a *pre-read* per explain card (the ideas it rests on, and a near example). A teach card or pre-read with a `try_first` question (4.24.0) asks it first: you type a guess, never graded or stored, then the explanation appears under it. Read once, never scheduled; they come back only when you are stuck | Worked examples before problems (Sweller & Cooper, 1985; Renkl, 2014); self-explanation (Chi et al., 1989); erroneous examples only after the correct one (Große & Renkl, 2007); pretesting (Richland, Kornell & Kao, 2009) |
 
 - **Teach before test** (since 4.38 a setting, *Show a lesson's reading cards before its questions*, off by default: see *Question first* below). In a new lesson, cards unlock in order: orientation → teach cards → terms → worked examples → drills → pre-reads → explain cards. Each practice card also waits for its own Learn card. Terms take up working memory, so they're learned before the code that uses them. A teach card or worked example can be skipped with *I know this, test me*; if the practice card then goes wrong, the skipped card comes back (Kalyuga et al., 2003).
-- **Hints before answers.** Every practice card has a four-rung hint ladder: a *nudge*, *the expert's first move* (what an expert scans for), a *near example* in different code, and the answer. From the second rung on, each needs a three-word reflection before the next (Aleven & Koedinger, 2002; the first hint is free since 4.38) and caps the rating Mentor suggests (rung 2: at most *Well enough*; rung 3: at most *Not well*, and a drill can't move up); the answer counts as a blank. A blank *Show answer* offers a hint first. The rung reached is stored with the attempt.
+- **Hints before answers.** Every practice card has a four-rung hint ladder: a *nudge*, *the expert's first move* (what an expert scans for), a *near example* in different code, and the answer. From the second rung on, a box asks what the hint told you (Aleven & Koedinger, 2002); since 4.55 it is optional and never holds back the next hint and caps the rating Mentor suggests (rung 2: at most *Well enough*; rung 3: at most *Not well*, and a drill can't move up); the answer counts as a blank. A blank *Show answer* offers a hint first. The rung reached is stored with the attempt.
 - **Stuck detection.** Wrong twice in a row on a card, a skipped Learn card whose practice card then fails, the answer shown twice, or *Needs work* twice in a week: the card's Learn card comes back before the next try (and in the last two cases the card is held for a day). The stats line counts cards sent back today. The Hint button pulses after 30–90 s without typing (never a modal, never a sound).
 - **Feedback that says where to look.** After a wrong answer the coach line is at most two sentences: the result, then the expert's first move and one place to look in the code. A slip (right before, wrong now) is named as one. Never about the person (Hattie & Timperley, 2007).
 - **Backward fading and expertise reversal.** Level 1 blanks the endings (return values, a call), level 2 the logic (a condition, a comprehension), level 3 leaves only the signature and docstring. A drill moves up a level when every blank is right and fast (under 15 s at level 1, 30 s at level 2, plus 5 s per extra blank), or right twice in a row at that level; it comes back within a day to try the new level. *Needs work* moves it down. Hints that help a beginner just slow down someone who knows the pattern (Kalyuga et al., 2003).
@@ -72,7 +72,7 @@ Argus ships one lesson, **Argus: caching, locks and the Mentor scheduler** (`the
 **How a card should read** (4.24.0): every lesson and deck follows the [deck rubric](mentor-rubric.md): no file paths or repo words in what you read, one idea per card, a question before each explanation, a worked example before the fades, plain words with every term defined once. `python3 scripts/check-deck.py <file or folder>` checks a lesson before it goes in the inbox; the tests run it on the decks that ship.
 
 ## The study screen and the Lessons page (4.25.0)
-- **No greyed-out buttons.** Every button works; if something is missing (a guess, a picked line, three words of *why*), a line under the field says what, and focus goes there.
+- **No greyed-out buttons.** Every button works; if something is missing (a guess or a picked line; the *why* is optional since 4.55), a line under the field says what, and focus goes there.
 - **Lines wrap.** Code and spot-it snippets wrap long lines and keep their indentation; nothing scrolls sideways. The box you write a whole function body in still doesn't wrap.
 - **One lesson chosen:** the header shows how many of its lesson cards you've read.
 - **End of a session:** "This session: 12 cards answered, 9 right", and **Replay your 3 mistakes** asks those cards again (`next?replay=<card id>` serves a practice card without its answer).
@@ -108,10 +108,10 @@ Four card roles for reading code before writing it (spec sections 5 and 8; read 
 
 | Role | You see | You do | Graded | Needs |
 |---|---|---|---|---|
-| `predict` | the code, with line numbers | type what it prints or returns | key ideas, against the model answer (`answer`) | `code`, `answer`, `eval_rubric` |
+| `predict` | the code, with line numbers | type what it prints or returns | exact, against the model answer (`answer`), `accept` and, when there is one key idea, its `any` wordings; only layout is forgiven. A rubric of plain sentences (`auto` points) is compared, not marked (4.55) | `code`, `answer`, `eval_rubric` |
 | `trace` | the code, with line numbers, and one box per step ("Step 2: after line 3") | type each name's value after that line | each step on its own: its `state` or an `accept` wording | `code`, `steps: [{"line": 3, "state": "total = 2", "accept": ["2"]}]` |
 | `parsons` | the lines, mixed (never in their right order) | put them in order with **Up** / **Down** on each line | exact order: one point per line in its right place (4 of 5 in place = 80%) | `lines`, in their right order (3 to 12) |
-| `write` | a box, starting from `starter` if given | write the code (<kbd>Enter</kbd> keeps the indent) | key ideas; Python's own syntax error is shown beside them (parsed, never run) | `answer` (the model code), `eval_rubric`, optional `starter` |
+| `write` | a box, starting from `starter` if given | write the code (<kbd>Enter</kbd> keeps the indent) | compared, not marked (4.55): yours beside the model code and its key ideas; Python's own syntax error is shown (parsed, never run) | `answer` (the model code), `eval_rubric`, optional `starter` |
 
 ```json
 "code_cards": [
@@ -181,10 +181,10 @@ Mentor marks an answer only when it can really check it. Matching key words cann
 
 | Activity | What Mentor does | Grader stored |
 |---|---|---|
-| Term | Compares the term (case, accents and script kept: `casefold`, Unicode letters) | `term-A` |
+| Term | Compares the term (case ignored with `casefold`; accents and script kept, Unicode put in one form, NFC) | `term-A` |
 | Blank in a drill (levels 1–2) | Code-aware match per blank | `drill-A` |
 | Whole body (drill level 3), Python | `ast` structure match and token similarity; parsed, never run | `drill-A` |
-| Predicted output, trace step | Exact comparison with the model answer and its listed variants (only layout is forgiven: spaces and line breaks; signs, operators, case and order count) | `predict-exact`, `trace-A` |
+| Predicted output, trace step | Exact comparison with the model answer and its listed variants (only layout is forgiven: spaces, line breaks, spaces beside brackets, commas, `:` and `=`, and the Unicode form; signs, operators, case, quote style and order count) | `predict-exact`, `trace-A` |
 | Line order (Parsons) | Position of each line | `parsons-A` |
 | Explanation, definition, written code | Nothing marked: yours beside the reference and its key ideas; you rate it, nothing is suggested. Python code shows its syntax error | `compare` |
 | Code in another language (Rust …), drill level 3 or written | *Self-checked*: shown beside the reference, never parsed as Python | `compare` |
