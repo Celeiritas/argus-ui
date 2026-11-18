@@ -136,7 +136,7 @@ ADDED = [('cards', 'data', "TEXT DEFAULT '{}'"), ('cards', 'ord', 'INTEGER DEFAU
          ('cards', 'learn_of', 'TEXT'), ('sched', 'refresh', 'INTEGER DEFAULT 0'),
          ('attempts', 'hints', 'INTEGER DEFAULT 0'), ('attempts', 'reflections', 'TEXT'), ('attempts', 'stuck', 'TEXT'),
          ('attempts', 'skipped', 'INTEGER DEFAULT 0'),
-         # 4.17: the local AI's part of an attempt (docs/mentor-ai.md), JSON; empty when it was off
+         # 4.17-4.54: the local AI's part of an attempt (docs/mentor-ai.md), JSON; never written since 4.55
          ('attempts', 'ai', 'TEXT'),
          # 4.26: courses; a lesson's place in one, a card's LO, note, role and whether it is a check item
          ('modules', 'course', 'TEXT'), ('modules', 'cmodule', 'TEXT'), ('modules', 'ord', 'INTEGER DEFAULT 0'),
@@ -254,7 +254,7 @@ def code_card(k, role):
     """One 4.32 code card (`code_cards` in a lesson, docs/mentor.md) -> (prompt, answer, points, data), or a string saying
     what is missing. predict: code + the model answer, graded by key ideas; trace: code + the value after each step's line,
     each step graded by key ideas; parsons: the lines in their right order, graded by position; write: the model code,
-    graded by key ideas (the local AI may add a meaning score in shadow mode, never the rating)."""
+    compared with the reference and rated by the learner (4.55; no model is asked)."""
     prompt = str(k.get('front_prompt') or '').strip()
     if not prompt: return 'needs a front_prompt'
     data = {'breadcrumb': str(k.get('file_breadcrumb') or ''), 'lang': str(k.get('lang') or 'python')}
@@ -1718,21 +1718,6 @@ def track_preview(db, tid, names=None):
             'cards': sum(n for k, n in kinds.items() if k not in LEARN), 'reading': sum(n for k, n in kinds.items() if k in LEARN),
             'learned': learned, 'answers': att[0], 'last': att[1], 'questions': qs,
             'pinned': tid in st['pinned'], 'shelved': tid in st['shelved']}
-
-# ---------- the local AI's part (docs/mentor-ai.md): stored with the attempt, shown labelled, not used for the rating ----------
-AI_KINDS = ('explain', 'define', 'write')     # written answers (4.32: and written code); drills, terms, traces and Parsons are graded exactly
-
-def card_prompt(db, card_id):
-    c = db.execute("SELECT prompt FROM cards WHERE id=?", (card_id,)).fetchone()
-    return fill(c['prompt']) if c else ''
-
-def set_ai(db, attempt_id, d):
-    with DB_LOCK:
-        db.execute("UPDATE attempts SET ai=? WHERE id=?", (json.dumps(d), attempt_id)); db.commit()
-
-def get_ai(db, attempt_id):
-    r = db.execute("SELECT ai FROM attempts WHERE id=?", (attempt_id,)).fetchone()
-    return json.loads(r['ai']) if r and r['ai'] else None
 
 def export(db, out):
     """Every rated attempt as one JSON line: the training data for a grader that learns from you (stage Bv2).

@@ -1,4 +1,7 @@
-"""Mentor's local AI (docs/mentor-ai.md): optional, off unless ~/.config/argus-ui/mentor-ai.json turns it on.
+"""RETIRED from study in 4.55: nothing in Mentor imports this file any more (plugin.py no longer loads it), so no answer
+is ever sent to a model server. Kept for its tests and as the record of what 4.17-4.54 did (docs/mentor-ai.md).
+
+Mentor's local AI (docs/mentor-ai.md): optional, off unless ~/.config/argus-ui/mentor-ai.json turns it on.
 
 A model server on this machine (Ollama, or anything OpenAI-compatible: llama.cpp's llama-server, LM Studio, vLLM) adds
   - a meaning score: embeddings of your answer and the model answer, compared (cosine), one more feature next to the rubric

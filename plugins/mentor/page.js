@@ -466,7 +466,6 @@
       ${r.compare || r.think ? '' : `<details class="report"><summary>Report a grading problem</summary><label class="check"><input type="checkbox" id="gw"> Mentor's grade was wrong: my answer was better or worse than it scored</label></details>`}</div>`}`;
     if (c.replaying) { $('#rhead').focus(); $('#replayNext').onclick = () => { M.result = null; next(); }; return; }
     $('#rhead').focus();
-    if (r.ai_pending) aiLater(r.attempt);
     // each key idea you got: a few olive leaves from its tick (reduced motion: the tick alone)
     if (FX) $$('#rpanel .ideas .hit').forEach((li, i) => setTimeout(() => { const b = li.getBoundingClientRect(); if (li.isConnected) FX.burst([b.left + 8, b.top + b.height / 2], LEAVES); }, 120 * i));
     // every key idea there: Mentor nods. Nothing for a miss: a wrong answer is part of learning, not something to flinch at
@@ -781,25 +780,6 @@
   }
 
   /* ----- lessons: the CTA summaries, progress, the Learn cards to read again, how to add one ----- */
-  /* ----- the local AI's part (docs/mentor-ai.md): Athena's owl brings it when it arrives; the rubric's grade never waits ----- */
-  const OWL = '<svg viewBox="22 20 56 66" aria-hidden="true"><path d="M34 40 L35 24 L44 34 Z M66 40 L65 24 L56 34 Z" fill="#8a7a5a"/><ellipse cx="50" cy="56" rx="19" ry="23" fill="#8a7a5a"/><ellipse cx="50" cy="63" rx="11" ry="14" fill="#d9c9a3"/><circle cx="42" cy="44" r="8.5" fill="#efe3c4"/><circle cx="58" cy="44" r="8.5" fill="#efe3c4"/><circle cx="42" cy="44" r="5" fill="#E7C35A"/><circle cx="58" cy="44" r="5" fill="#E7C35A"/><circle cx="42" cy="44" r="2.4" fill="#1C2127"/><circle cx="58" cy="44" r="2.4" fill="#1C2127"/><path d="M50 48 L47 52 L50 56 L53 52 Z" fill="#C9A36A"/></svg>';
-  async function aiLater(attempt) {
-    const panel = $('#rpanel'); if (!panel) return;
-    const box = document.createElement('div'); box.className = 'aiowl'; box.setAttribute('aria-live', 'polite');
-    box.innerHTML = `${OWL}<p><small>Local AI</small>Reading your answer…</p>`; $('.coach', panel).after(box);
-    for (let i = 0; i < 40; i++) {                 // up to about a minute; give up quietly after that
-      await wait(1500); if (!box.isConnected) return;
-      let a; try { a = await get('ai?attempt=' + attempt); } catch (e) { continue; }
-      if (a.state === 'pending') continue;
-      if (a.state !== 'done') { box.remove(); return; }       // off or not answering: the rubric's grade stands alone
-      box.innerHTML = `${OWL}<p><small>Local AI · ${esc(a.chat_model || a.model)} · not used for the rating</small>
-        Meaning match: <b>${Math.round(a.similarity * 100)}%</b>${a.feedback ? `<span class="fb">${esc(a.feedback)}</span>` : ''}</p>`;
-      return;
-    }
-    box.remove();
-  }
-  const aiLine = a => !a || !a.enabled ? 'Local AI: off (docs/mentor-ai.md says how to turn it on)' : a.problem ? `Local AI: off, the config has a problem: ${a.problem}`
-    : a.answering === false ? `Local AI: on (${a.embed_model}), but its server is not answering` : `Local AI: on (${a.embed_model}${a.feedback ? `, feedback by ${a.chat_model}` : ''}), not used for ratings yet`;
   // a course's module in the map (4.32): its lock, lessons mastered, share answered right, and its check, then its lessons
   const courseOf = ms => ((M.stats || {}).courses || []).find(c => !c.loose && c.modules.some(md => md.lessons.includes(ms[0].id)));
   const checkText = k => !k || k.state === 'none' ? '' : k.state === 'waiting' ? `Module check (${plural(k.items, 'question')}) once every lesson is practised`
@@ -847,7 +827,7 @@
         ${imp.length ? `<p class="label">Inbox files that need a look</p><ul class="ideas">${imp.map(i => `<li class="${i.ok ? 'hit' : 'miss'}"><code>${esc(i.path)}</code>: ${esc(i.msg)}</li>`).join('')}</ul>` : ''}
         ${owner ? `<details class="about"><summary>About Mentor and adding a lesson</summary>
           <p class="coach">Each lesson breaks down real work from your projects. You learn first (an overview, the terms, worked examples, the ideas behind each bug hunt), then practise, and reviews come back when you're about to forget.</p>
-          <p class="meta">Calibration: ${calText(s.calibration)}${s.labels ? ` · ${plural(s.labels, 'graded answer')} saved for the learning grader` : ''}</p><p class="meta" id="ailine">Local AI: checking…</p>
+          <p class="meta">Calibration: ${calText(s.calibration)}${s.labels ? ` · ${plural(s.labels, 'graded answer')} saved for the learning grader` : ''}</p><p class="meta" id="ailine">Local AI: retired from study (docs/mentor-ai.md)</p>
           ${s.inbox ? `<ol class="steps">
             <li>In Claude Code, right after building something, run <code>/mentor</code> (or <code>/mentor</code> plus a file or function name). It writes a JSON file to the project's <code>mentor_inbox</code> folder.</li>
             <li>Copy that file to <code>${esc(s.inbox)}</code> on the machine that runs Argus.</li>
@@ -855,7 +835,6 @@
           : `<p class="coach">This person's lessons are the files in <code>${esc(s.deck_folder || '')}</code> on the machine that runs Argus. Copy a lesson or deck file there; it shows up on the next visit.</p>`}</details>`
           : `<details class="about"><summary>About Mentor</summary><p class="coach">Questions come first; the lesson behind each one comes with the answer. Reviews come back when you are about to forget.</p></details>`}
       </div>`;
-      if (owner) get('ai').then(a => { const p = $('#ailine'); if (p) p.textContent = aiLine(a); }).catch(() => {});   // after the panel is drawn
       const tt = $('#toToday2'); if (tt) tt.onclick = () => setView('today');
       $$('[data-study]').forEach(b => b.onclick = () => { M.deck = b.dataset.study; save('mentor-deck', M.deck); fillPicker(); setView('practice'); });
       const ra = $('#reviewAll'); if (ra) ra.onclick = () => { M.deck = null; save('mentor-deck', null); fillPicker(); setView('practice'); };
