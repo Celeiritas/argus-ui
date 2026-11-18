@@ -71,6 +71,8 @@ if [ -z "$1" ] || [ "$1" = mentor ]; then
   $PYTHON "$R/tests/mentor_compare_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1    # 4.55 exact answers
   echo "== mentor people"  # 4.38: who is studying, one database per person, the AI fence (tests/mentor_people_test.py)
   $PYTHON "$R/tests/mentor_people_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1
+  echo "== mentor clean slate"   # 4.59: the reset, the publication gate, revisions, no network in study (tests/mentor_clean_slate_test.py)
+  $PYTHON "$R/tests/mentor_clean_slate_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1
   echo "== mentor today"   # 4.38: tracks, pin and shelf, question first, the daily new limit (tests/mentor_today_test.py)
   $PYTHON "$R/tests/mentor_today_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1
 fi

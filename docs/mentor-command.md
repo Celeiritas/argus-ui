@@ -1,144 +1,109 @@
 ---
-description: Silently extract a 3-tier Cognitive Task Analysis JSON (Mentor module) from recent code changes into ./mentor_inbox/ without polluting chat context.
+description: Turn one real learning need into a short source-grounded Mentor lesson; check, consolidate and publish supported routine material through the installed workflow.
 ---
 
-# STEALTH TELEMETRY & COGNITIVE TASK ANALYSIS (CTA) EXPORT
+<!-- The /mentor command as installed in ~/.claude/commands/mentor.md (4.59, 2026-11-18). It replaces the CTA exporter that used to be here; that text is in git history. Install: copy this file there and fill in the placeholders. -->
 
-## 1. OPERATIONAL DIRECTIVE (STERILE CONTEXT RULE)
-You are executing an out-of-band knowledge extraction for my external "Mentor" training program. 
-- **DO NOT** print the JSON payload, architectural lectures, or flashcard contents into our active chat window. Preserving our conversational context window for production coding is your highest priority (Liu et al., 2024; Monsell, 2003).
-- **DO NOT** modify, refactor, or break any existing project source code while running this command.
-- Your sole output action is to inspect the target code, write a strictly formatted JSON file to `./mentor_inbox/`, and reply in the chat with a single-line confirmation.
+# /mentor — outcome-first authoring, v2
 
-## 2. TARGET SCOPE RESOLUTION
-Determine what code to reverse-engineer based on `$ARGUMENTS`:
-- If `$ARGUMENTS` is provided (`$ARGUMENTS`), focus your extraction specifically on the files, functions, or concepts mentioned in `$ARGUMENTS`.
-- If `$ARGUMENTS` is empty, inspect the most recent code we wrote or modified in this session (or run `git diff HEAD` / `git log -n 1 -p` if needed to see the latest working delta).
+Updated November 18, 2026. Replaces the CTA exporter and earlier staging-only capture prompt. Run in your existing Claude Code/subscription session; no local generator or new paid API is required.
 
-## 3. THEORETICAL EXTRACTION PROTOCOL
-Decompile the target code using Cognitive Task Analysis (Clark et al., 2008) and the 4C/ID model (Van Merriënboer & Kirschner, 2018) across three cognitive tiers:
-1. **Tier 1: Recurrent Skills (Faded Worked Examples):** Isolate 5-to-15 line Minimal Viable Snippets (MVS) that strip out extraneous boilerplate (Sweller et al., 2019). Create a 3-stage backward-fading progression (Renkl & Atkinson, 2003) moving from low cognitive load (terminal syntax/return bindings blanked) to moderate load (control flow/comprehensions blanked) to high load (full body blanked below docstring/signature).
-2. **Tier 2: Non-Recurrent Schemas (Self-Explanation Cards):** Create diagnostic prompts utilizing the Self-Explanation Effect (Chi et al., 1989) and Test-Enhanced Learning (Roediger & Karpicke, 2006). Include:
-   - `Pre-Mortem`: Inject a subtle bug or invariant violation into a copy of our snippet and ask me to diagnose the failure mode.
-   - `Trade-Off`: Ask why this specific design pattern was chosen over a naive alternative and how it scales.
-   - `HCI-Bridge`: Connect the code mechanic to Human Factors / HCI engineering (e.g., latency perception, error prevention, mode confusion, developer cognitive ergonomics, state visibility).
-3. **Tier 3: Declarative Pre-Training (Terminology Chunks):** Extract key Python, Software Architecture, and Human Factors vocabulary used in the code to support pre-training chunking (Mayer & Pilegard, 2014). Define terms functionally in under 20 words, anchor them to the exact variable/line in our codebase, and contrast them with a commonly confused sibling term.
-4. **Tier 0: Learn-first material (teach before test).** Mentor shows these once, before the practice cards, so write them as the lesson, not as tests:
-   - `cta_summary.orientation`: 3 sentences in plain words — what the code does and what I will be able to do after (no file names: say what the code does, not where it lives). `cta_summary.expert_move`: the first thing an expert looks at in this code, one sentence, no answer tokens.
-   - For every term: `try_first` = one question I try to answer before the teach card explains (about the idea, not the code; not graded); `spot_it` = a 2-6 line snippet from the same code with `line` (1-based) = where the term's instance is and `why` (one sentence); `teach_order` so no term's anchor uses a term taught later; `expert_move` (how to recognise it); `hints` = [a question that points at the principle without naming it, a 2-4 line near example with different names].
-   - For every drill: `level_0_worked` = `annotations` (3-6, each `line`, `note` ≤ 8 words, `why` ≤ 25 words, in reading order, saying *why* the line exists, not what it does) and `self_explain` (`prompt` asking why, `rubric` of 1-3 `{idea, any}` ideas); `expert_move`; `look_at` = per level, 1-2 places to look when a blank is wrong; `hints` = per level, [nudge question, near example in different code].
-   - For every explain card: `preread` = `try_first` (one question before the ideas), `key_ideas` (2-3 statements the rubric assumes) and `near_example` (`code`, `ask`, `answer`: the same principle in different code); `expert_move`; `hints` as above.
+## Boundary and installed contract
 
-## 4. FILE SYSTEM EXECUTION & JSON SCHEMA
-1. Ensure the directory `./mentor_inbox/` exists (create it if it does not).
-2. Generate a filename using the current timestamp and module slug: `./mentor_inbox/YYYYMMDD_HHMMSS_<module_slug>.json`.
-3. Write the JSON file matching this exact schema (ensure valid JSON escaping for all code strings):
+Use Mentor's actual installed content schema, checker and publication operation. Inspect these at installation and when their version changes; do not invent another permanent JSON format. If safe publication is not implemented yet, stage outside watched folders and report that specific limitation. A `draft` field ignored by an importer is not a gate.
 
-```json
-{
-  "metadata": {
-    "timestamp": "ISO-8601 String",
-    "module_name": "String (e.g., combat_state_machine)",
-    "project": "Name of the repository folder (e.g., argus-ui)",
-    "source_files": ["List of relative file paths analyzed"],
-    "concepts_covered": ["List of Python, Architecture, and HCI tags"],
-    "lint": ["Any rule from section 6b this file breaks, one line each (Mentor shows them under the lesson)"]
-  },
-  "cta_summary": {
-    "schematic_mental_model": "2-3 sentences explaining high-level data flow, component coupling, and state transitions.",
-    "design_rules_heuristics": "Why this specific design pattern/idiom was chosen over naive alternatives.",
-    "hard_rules_invariants": "Strict system constraints that must never be violated (mutability, frame-timing, state safety, Big-O).",
-    "hci_human_factors_bridge": "How this backend/UI architecture affects human-in-the-loop performance, error tolerance, or cognitive load.",
-    "orientation": "3 sentences, plain words: what this code does and what I will be able to do after (no file names).",
-    "expert_move": "Lesson-level default: the first thing an expert looks at in this code."
-  },
-  "tier_1_faded_code_drills": [
-    {
-      "id": "drill_01",
-      "file_breadcrumb": "Folder -> File.py -> Class/Function (cards show only the last part)",
-      "context_comment": "Brief explanation of what this isolated 5-15 line Minimal Viable Snippet accomplishes and its inputs/outputs.",
-      "full_canonical_code": "Clean, idiomatic Python snippet.",
-      "level_1_fade": "Code with 1-2 terminal syntax elements or return bindings replaced with {{BLANK_1}}, {{BLANK_2}}.",
-      "level_2_fade": "Code with core control flow, comprehensions, or decorators replaced with {{BLANK_1}}, {{BLANK_2}}.",
-      "level_3_fade": "Only the function signature, type hints, and docstring constraints—body replaced with {{BLANK_1}}.",
-      "answers": {
-        "level_1": ["exact string for BLANK_1", "exact string for BLANK_2"],
-        "level_2": ["exact string for BLANK_1", "exact string for BLANK_2"],
-        "level_3": ["full canonical body implementation"]
-      },
-      "python_fluency_note": "Why this specific Python syntax is idiomatic (e.g., PEP-8, memory efficiency, generator evaluation, type safety).",
-      "expert_move": "The first thing an expert scans for in this snippet, one sentence.",
-      "look_at": {"level_1": ["where to look when blank 1 is wrong", "…"], "level_2": ["…"], "level_3": ["…"]},
-      "level_0_worked": {
-        "annotations": [{"line": 3, "note": "≤ 8 words", "why": "≤ 25 words: why this line exists"}],
-        "self_explain": {"prompt": "A why-question about the whole snippet", "rubric": [{"idea": "key idea", "any": ["wording", "another"]}]}
-      },
-      "hints": {"level_1": ["nudge question", "near example, 2-4 lines, different names"], "level_2": ["…", "…"], "level_3": ["…", "…"]}
-    }
-  ],
-  "tier_2_self_explanation_cards": [
-    {
-      "id": "card_01",
-      "card_type": "Pre-Mortem | Trade-Off | HCI-Bridge",
-      "file_breadcrumb": "Folder -> File.py -> Class/Function",
-      "front_prompt": "Diagnostic scenario or mutated code snippet containing a subtle bug/anti-pattern.",
-      "back_explanation": "Deep architectural or cognitive principle explaining WHY it breaks or WHY the design rule holds.",
-      "eval_rubric": [
-        {"idea": "Key causal mechanism my typed explanation must mention", "any": ["short phrase", "another wording", "a synonym"]},
-        {"idea": "Key invariant or Python mechanic", "any": ["short phrase", "another wording"]},
-        {"idea": "System or HCI consequence", "any": ["short phrase", "another wording"]}
-      ],
-      "expert_move": "The question an expert asks first about this failure mode.",
-      "preread": {
-        "try_first": "One question I answer before the ideas appear (not graded)",
-        "key_ideas": ["2-3 statements the rubric assumes, taught once before the card"],
-        "near_example": {"code": "the same principle in different code", "ask": "What would break here?", "answer": "one line"}
-      },
-      "hints": ["nudge question", "near example in different code"]
-    }
-  ],
-  "tier_3_terminology_cards": [
-    {
-      "id": "term_01",
-      "teach_order": 1,
-      "try_first": "One question I answer before the teach card explains (not graded)",
-      "expert_move": "How an expert recognises it, one sentence (no answer tokens).",
-      "spot_it": {"snippet": "2-6 lines from our code", "line": 2, "why": "one sentence: what makes that line the instance"},
-      "hints": ["A question that points at the principle without naming it", "A 2-4 line near example with different names"],
-      "term": "Exact Python, Architecture, or HCI/Human Factors term",
-      "category": "Python Syntax | Software Architecture | HCI & Human Factors",
-      "concise_definition": "Functional mechanical definition in under 20 words.",
-      "project_anchor": "The exact function, class or variable where this concept is used, by name and line of code, never a file name (e.g. `current()`: `with _lock:`).",
-      "contrast_anchor": "1-line distinction against a commonly confused sibling term (e.g., 'Unlike X, which does Y...').",
-      "cloze_prompt": "A single contextual sentence testing the term, with the term itself replaced by {{BLANK}}."
-    }
-  ]
-}
-```
+When running this capture command, do not modify application source, deploy services, reset progress, execute a real mod, read secrets or upload documents elsewhere. Those are separate implementation tasks. Read sources and use already authorized isolated checks. Do not install/call Qwen, another local generator, {{PC}} inference or a new metered service.
 
-## 5. TERMINAL RESPONSE FORMAT
-Once the file is written to disk, output ONLY this single line in the chat and nothing else:
-📦 [Mentor CTA Exported] -> ./mentor_inbox/<filename>.json (T1: <count> drills | T2: <count> cards | T3: <count> terms | +<count> learn cards)
+## 1. Select one genuine need
 
-## 6. RULES THE MENTOR APP DEPENDS ON (its importer checks these)
-- Output pure JSON (no comments, no trailing commas); escape newlines in code strings as `\n`.
-- Every `{{BLANK_n}}` in a fade has exactly one matching entry in that level's `answers` list, in order. A blank may accept alternatives: give a list, e.g. `["tmp", "tmp_path"]`.
-- `level_3_fade` has exactly one blank, `{{BLANK_1}}`, alone on its own line where the body goes. `answers.level_3[0]` is the body with its indentation relative to that line (first line not indented).
-- Drill code is Python. Level 3 answers are checked with Python's parser (never run), so the filled-in fade must be valid Python.
-- Each `eval_rubric` item is `{"idea", "any"}`: a phrase counts when all its words appear in my answer (common words, word endings and small typos are ignored), so keep phrases to 1-3 words and give several ways of saying the idea. Plain strings still work but are graded roughly.
-- `cloze_prompt` contains `{{BLANK}}` exactly once.
-- Front prompts may include code in ``` fences; use `inline code` for names.
-- Never put credentials, home-directory paths, hostnames or personal data in any field: the file is copied to another machine.
+Use `$ARGUMENTS` for an explicit goal/topic/source. Otherwise use the current project goal and actual recent questions, mistakes, attempts or next independent step. A diff shows code changes, not what the learner knows. Mark unobserved prior knowledge/performance unknown.
 
-## 6b. AUTHORING LIMITS (cognitive load; check these before writing, and list any you break in `metadata.lint`)
-- Snippets: 5-15 lines, one function or one block. Strip imports, logging and type noise unless they are the point.
-- Blanks: level 1 ≤ 2, level 2 ≤ 3, level 3 = 1 (the body). A blank is one token or one expression, never two statements.
-- Annotations: 3-6 per drill, each ≤ 25 words, attached to one line number, in reading order; the *why*, not the *what* ("holds the lock so a second request can't fetch too", not "acquires lock").
-- One new term per card: a teach card introduces its term only; if its anchor line needs a second new term, give that term an earlier `teach_order`.
-- Pre-train: every term used in a drill's annotations has a term card in the same lesson.
-- Self-explanation prompts ask *why*, not *what*.
-- A Pre-Mortem card always has a `preread`, and its code has a drill with a `level_0_worked` (the correct example before the broken one).
-- Hints never contain the answer token for that blank; a near example uses different names.
-- Follow the deck rubric (`docs/mentor-rubric.md`): no file paths or repo words (repo, PR, handoff, CLAUDE.md) in anything I read, one idea per card, a `try_first` question before each explanation, a worked example before the fades, plain words with every term defined once. Run `python3 scripts/check-deck.py <file>` when the argus-ui repo is at hand and fix every ERROR.
-- All Tier 0 fields are optional: without them Mentor derives plainer Learn cards from the fields above, so an older file still works.
+Obtain a small relevant context packet if Mentor supports it: current goal, related concepts/lessons, source revisions, essential prerequisites and relevant explicit feedback. Do not dump the whole archive, repository or learner history into context.
 
+Choose one observable outcome: “After this, I can …”. Examples: identify a function call, predict a return value, distinguish fetch from integration, or interpret a measurement endpoint. Do not teach every changed function or manufacture an HCI bridge. Zero output is valid when no worthwhile supported learning need exists.
+
+## 2. Establish the reference before writing questions
+
+Read the exact source passage/code and enough context to understand it. Distinguish source inspected, compiled/checked in an isolated example, actually observed in the project, inference/design hypothesis, explicitly hypothetical exercise, and unresolved/unverified.
+
+A build is not proof of all runtime behavior. A model summary, truncated search preview or another agent agreeing is not independent source verification. For empirical claims preserve the relevant apparatus, participants/task, outcome, qualifications and uncertainty. Give numbers units and scope; hypothetical data must be labelled rather than passed off as study results.
+
+Mnemosyne may supply original passages. Its old snapshot mislabelled notes as papers and had extraction damage: inspect actual origin/page/quality instead of trusting an old `kind:paper` label. Use full passages, not its old 200-character CLI preview or retired Ask answer. Narrow/hold an unsupported claim with an actionable reason.
+
+Future clinical/NCLEX and consequential regulated-device/legal assertions retain their domain/source review gates. Source labels alone do not make them eligible for automatic publication.
+
+## 3. Teach a small lesson
+
+Write a short plain-language explanation and a worked example when useful. Define essential terms in context; do not recursively create a scheduled card for every noun. If a snippet needs too many untaught concepts, narrow/split it or supply the prerequisite. A short advanced snippet is not necessarily beginner material.
+
+Usually create two or three useful activities, with zero to four as the default bounded range, not a quota or scientifically optimal size. A larger course requires a separate explicit scope. Choose formats to fit the outcome: prediction/state trace, classification, short completion/modification, concrete diagnosis, focused explanation, bounded application or a small authentic tool task.
+
+Do not make every item “why?” or “what should you test?”. Do not force every format, CTA tier, HCI bridge, bug, pretest or fading level into every lesson. Teach unfamiliar ideas before demanding explanations. Prepare a changed-context activity for later instead of several same-answer paraphrases now.
+
+## 4. Make the question and reference agree
+
+The front supplies enough situation/code for one intended task without printing the answer as a claim to repeat. Essential reasoning data is allowed. Avoid arbitrary PR numbers, timestamps, volatile paths and precise commercial-game trivia unless they serve the explicit goal.
+
+Write the reference and essential criteria together. Require what the question asks, not extra unasked principles. Accept valid alternatives. State every solution-changing assumption: for example, specify that a light attack cannot interrupt if that distinction drives the solution; state action-start timing before demanding an exact deadline calculation.
+
+Keep the core reference concise. Put long rationale/source details in the appropriate lesson/details fields. Include a purposeful optional hint; do not copy the answer into it or require a guessed answer/minimum word count before help.
+
+Use the actual language and task. Python, JavaScript and Rust need appropriate activities/evaluators. Real file context can help a navigation task; memorizing a line number is rarely the target. Unsupported code execution should be explicitly self-checked/unassessed, not penalized by the wrong parser.
+
+## 5. Consolidate against the fresh collection
+
+Compare outcome/concept and source revision with relevant existing published/draft lessons. Update a lesson or add a worthwhile changed-context variant rather than emitting another timestamp deck. Keep concept identity, question variant and source revision distinct.
+
+After the clean-slate reset, do not treat disliked legacy decks/mastery as the curriculum baseline. No old-to-new mapping or automatic installation of the optional 54-item proposal is required. Fresh content follows current goals and real needs.
+
+## 6. Run bounded automatic checks
+
+Before publication check:
+
+1. **Answerability:** solve the prompt without leaning on its intended answer. Is it sufficiently specified, with legitimate alternatives recognized?
+2. **Alignment:** do activity, outcome and criteria match?
+3. **Leakage:** is the tested answer already supplied? Word-overlap lint is a warning heuristic, not a semantic verdict.
+4. **Prerequisites:** does the intended learner have enough teaching/context?
+5. **Support/scope:** look for unsupported absolutes, causal/designer-intent claims and local study values turned into universal limits.
+6. **Solution:** verify arithmetic and deterministic examples; use an appropriate isolated parser/compiler/test when execution behavior is the target and available. Record what actually ran.
+7. **Novelty/relevance:** does this add useful practice within the current goal?
+8. **Contract:** validate fields, stable unique IDs, source links, answer variants and eligibility using the installed checker.
+
+One focused fresh-context solver/critique can expose ambiguity. Factual review needs the actual relevant source/code context; agreement is not certification. Allow one or two repairs for a small capture, then hold unresolved items with reasons rather than looping or filling a quota.
+
+Record the authoring-policy version, actual checks and concise repair/rejection reasons. Never invent a numerical quality score or source-check claim.
+
+## 7. Publish routine supported content efficiently
+
+Claude may source-check ordinary low-risk lessons and publish them through the installed application operation without asking the learner to approve every card. Examples include supported basic code/tool behavior, bounded source-backed explanations and self-contained hypothetical tasks whose references follow from stated assumptions.
+
+Unsupported claims, ambiguous tasks, bad extraction or unresolved disputes remain drafts/omissions with specific reasons. Clinical content retains independent qualified human review. The publication gate must bind the checked payload/revision and enforce eligibility; writing `verified:true` is insufficient.
+
+Publication makes content available; it does not make every new activity due today. Preserve the current goal and manageable intake. No local runtime grader is introduced: explanations use reference comparison/self-rating; deterministic tasks need suitable evaluators.
+
+Use stable native lesson identities and minimal source/revision evidence for new content. Do not reconstruct old mastery or merge discarded schedules. If only the legacy exporter currently exists, stage its supported payload with a compact evidence sidecar until safe publication is implemented. Earlier empty `tier_1`/`code_cards` arrays were temporary compatibility limits, not a permanent ban on supported varied activities.
+
+## 8. Use actual feedback
+
+Consult relevant “unclear”, “wrong”, “too much”, “already know” and “useful” flags. Prioritize disputed facts for source review; do not treat a bad question as learner failure. Revise the affected concept, recording policy/source versions and the reason.
+
+Do not infer personality/ability from sparse usage or promise autonomous model training. Improve authoring examples/rules using explicit feedback and later independent performance.
+
+## Output
+
+Write the installed native lesson format and only the evidence/review information it actually needs. Keep unresolved issues separate from published material. Do not print the whole deck into the coding conversation.
+
+Finish concisely:
+
+`Mentor: <outcome> — <N> activities; <published|staged|nothing new>; checks: <actual checks>; next task: <one action>; issues: <specific issue or none>.`
+
+Report only the state that actually occurred. If safe publication is unavailable, state the staging path and blocker rather than claiming import success or asking a ritual permission question.
+
+## Installed contract (argus-ui 4.59)
+
+- **Lesson format:** the lesson Mentor imports, `docs/mentor.md` "Lesson (what `/mentor` writes)".
+- **Authoring policy:** `plugins/mentor/policy.json` (`mentor-policy/1`), explained in `docs/mentor-authoring-policy.md`.
+- **Evidence:** `<lesson-id>.evidence.json` next to the lesson, `"format": "mentor-evidence/1"` (top of `plugins/mentor/publish.py`).
+- **Context packet:** `GET api/mentor/context` (owner only), or read-only on `{{SERVER}}`: `ssh {{SSH}} 'python3 -' < scripts/mentor-context-v1.py`.
+- **Check and publish:** `python scripts/mentor-publish-v1.py --check <lesson>.json` runs the server's gate locally; `--ssh {{SSH}}` then copies evidence and lesson into `~/.local/share/argus-ui/lessons/`, where the server checks them again.
+- **Staging** (when the server runs a Mentor older than 4.59): keep both files in a folder Mentor does not read and report the blocker. The old inbox is retired after the clean-slate reset (`docs/mentor.md` "Clean slate and publication").

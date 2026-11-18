@@ -434,7 +434,7 @@
     const btn = $('#checkBtn'); btn.disabled = true; clearIdle();
     let r; try { r = await send('answer', {card: c.id, text: c.think ? '' : text, confidence: conf, ms: Math.round(performance.now() - M.t0), hints: M.hints, reflections: M.reflections, think: !!c.think && M.hints < 4, taught: !!c.taught}); } catch (e) { r = {ok: false}; }
     if (!r.ok) { btn.disabled = false; return toast("Couldn't reach Mentor to check that answer. Check that the server is on, then try again."); }
-    M.result = r; M.grade_wrong = false; r.shown = M.hints === 4; seenAttempt(r.attempt);
+    M.result = r; M.grade_wrong = false; M.unclear = false; r.shown = M.hints === 4; seenAttempt(r.attempt);
     const n = r.hits.length + r.missed.length, pct = Math.round(r.coverage * 100);
     const shown = M.hints === 4;
     let kind = tone(r.coverage, shown), head, detail;
@@ -496,7 +496,7 @@
         <div class="seg rates">${RATES.map(([v, nm, d], i) => `<label><input type="radio" name="rate" value="${v}" ${v === r.suggested ? 'checked' : ''}><span><b>${i + 1}. ${nm}</b><small>${d}</small>${r.previews && r.previews[v] != null ? `<small class="when">In ${back(r.previews[v])}${lvl(v)}</small>` : ''}${v === r.suggested ? '<em class="tag">Mentor suggests</em>' : ''}</span></label>`).join('')}</div>
         <p class="help">${r.suggested ? `The suggestion comes from what you got right${M.hints ? ' and the hints you used' : ''}; pick what feels true.` : 'Compare it with what you thought, then pick one.'} Keys <kbd>1</kbd>–<kbd>4</kbd> choose, <kbd>Enter</kbd> saves, <kbd>Ctrl</kbd>+<kbd>Z</kbd> takes the last rating back.</p></fieldset>
       <div class="row"><button type="button" class="primary" id="rateBtn">${verb(r.suggested, r.previews)}</button></div>
-      ${r.compare || r.think ? '' : `<details class="report"><summary>Report a grading problem</summary><label class="check"><input type="checkbox" id="gw"> Mentor's grade was wrong: my answer was better or worse than it scored</label></details>`}</div>`}`;
+      <details class="report"><summary>Report a problem with this question</summary>${r.compare || r.think ? '' : `<label class="check"><input type="checkbox" id="gw"> Mentor's grade was wrong: my answer was better or worse than it scored</label>`}<label class="check"><input type="checkbox" id="unclear"> The question was unclear: it did not give what I needed to answer it</label></details></div>`}`;
     if (c.replaying) { $('#rhead').focus(); $('#replayNext').onclick = () => { M.result = null; next(); }; return; }
     $('#rhead').focus();
     // each key idea you got: a few olive leaves from its tick (reduced motion: the tick alone)
@@ -512,13 +512,14 @@
       const hero = $('#hero'); if (FX && streak && streak % 3 === 0 && hero && !hero.hidden && hero.offsetWidth) FX.motes($('#rhead'), hero, {color: '#B7C47E', n: 26, ms: 1100, lift: 90});
     }
     if ($('#gw')) $('#gw').onchange = e => M.grade_wrong = e.target.checked;
+    if ($('#unclear')) $('#unclear').onchange = e => M.unclear = e.target.checked;
     const pick = () => +($('input[name=rate]:checked')?.value || 0);
     $$('input[name=rate]').forEach(i => i.onchange = () => $('#rateBtn').textContent = verb(pick(), r.previews));
     $('#rateBtn').onclick = () => pick() ? rate(pick()) : toast('Pick how well you knew it first: Again, Hard, Good or Easy.');
   }
   async function rate(v) {
     if (!M.result) return; const r = M.result; M.result = null;
-    let s; try { s = await send('rate', {attempt: r.attempt, rating: v, grade_wrong: M.grade_wrong}); } catch (e) { s = {ok: false}; }
+    let s; try { s = await send('rate', {attempt: r.attempt, rating: v, grade_wrong: M.grade_wrong, unclear: M.unclear === true}); } catch (e) { s = {ok: false}; }
     if (!s.ok) { M.result = r; return toast("Couldn't save that rating. Try again in a moment."); }
     if (s.learn) { toast(r.skipped ? 'Skipped. It comes back if the practice card goes wrong.' : 'Read. On to the next card.'); return next(); }
     if (s.check) { M.last = {attempt: r.attempt, card: M.card && M.card.id, right: s.right, check: true};

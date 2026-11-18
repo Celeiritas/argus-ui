@@ -1,0 +1,33 @@
+{
+  "format": "mentor-policy",
+  "id": "mentor-policy/1",
+  "updated": "2026-11-18",
+  "about": "The shared authoring policy the /mentor command checks a lesson against (docs/mentor-authoring-policy.md). Its id goes into every evidence file (publish.py); a lesson checked against another version is not published. Change the rules by adding a version, never by editing this one in place. Content format: the lesson format Mentor imports (docs/mentor-command.md); this file adds no second schema.",
+  "checks": ["answerability", "alignment", "leakage", "prerequisites", "support", "solution", "novelty", "contract"],
+  "rules": [
+    {"id": "git-steps", "rule": "Fetch, integration (merge or rebase), commit and publication (push) are four different steps, and GitHub is not the only real repository: every clone is one.",
+     "bad": "Q: What does git fetch do? A: It updates your code with the changes on GitHub.",
+     "good": "Q: You ran git fetch. Your files did not change. Which step is still missing before your branch has the new commits, and which command does it? A: Integration: git merge (or git rebase) of origin/main; fetch only updated the remote-tracking refs in your own repository."},
+    {"id": "language-evaluator", "rule": "Grade code in its own language. Rust is never checked by Python's parser; a predicted output keeps every sign, operator and the order of lines.",
+     "bad": "A Rust drill whose whole-body answer is parsed and scored as Python; or a predicted output accepted as '3 5' when the program prints '-3\\n5'.",
+     "good": "A Rust prediction task with the exact expected output ('-3' then '5' on its own line), self-checked or compared exactly, never parsed as Python."},
+    {"id": "state-assumptions", "rule": "State every assumption that changes the solution: which attacks can interrupt, and when an action starts before an exact deadline is asked for.",
+     "bad": "Q: Can the player punish the heavy attack? (Nothing says whether a light attack interrupts it.)",
+     "good": "Q: A light attack cannot interrupt the heavy attack's last 12 frames; the player's action starts on the frame after the input. The heavy attack recovers in 18 frames. Can a 7-frame jab land before recovery ends? A: Yes: it lands on frame 8, inside the 18-frame recovery."},
+    {"id": "no-leak-keep-data", "rule": "The front never prints the finding it asks the learner to recall, and an application problem keeps the numbers it needs on the card.",
+     "bad": "Q: The study found a 250 ms latency threshold for detecting delay. What threshold did the study find?",
+     "good": "Q: In the study's tapping task, participants first noticed delay at 250 ms. Your controller's chain measures 180 ms. Will these participants likely notice it in that task? A: Probably not in that task; 180 ms is under the 250 ms they detected, but the result holds for that task only."},
+    {"id": "scope-of-findings", "rule": "A threshold from one study is not a universal limit, and a non-significant difference is not proof that two things are the same.",
+     "bad": "A: Haptic latency must stay under 250 ms for every controller. / A: The study showed vibration and sound give equal accuracy (p = 0.31).",
+     "good": "A: Under 250 ms for that apparatus and task; other tasks may differ. / A: The study did not detect a difference; that is not shown equivalence (no equivalence test was run)."},
+    {"id": "vocabulary-first", "rule": "Teach the words a question needs before asking for an explanation that uses them, inside the lesson's teaching, without a scheduled card for every noun.",
+     "bad": "Explain why the reducer must be pure. (Reducer and pure were never taught.) / Twelve term cards, one per noun in the snippet.",
+     "good": "A two-line teaching note defines reducer and pure in context, then one explanation item uses them; only the one term the outcome depends on becomes a card."},
+    {"id": "refine-not-repeat", "rule": "Capturing the same concept again revises its one lesson (a new revision with a reason) or adds a purposeful changed-context variant; never another lesson named by a timestamp.",
+     "bad": "lessons/20261118_0912-git-fetch.json next to lessons/20261117_2240-git-fetch.json, the same outcome twice.",
+     "good": "lessons/git-fetch-vs-merge.json, revision 2026-11-18b, correction.reason: 'item 2 was unclear (flagged); now names the remote'."},
+    {"id": "concrete-answers", "rule": "If every answer would be 'test with users' or 'check the source', the item must ask for a concrete prediction, classification, calculation or diagnosis instead.",
+     "bad": "Q: How would you know whether the new menu is easier? A: Test it with users.",
+     "good": "Q: Menu A needs 3 taps for Save, menu B 1 tap behind a long-press. Predict which one new users find faster and name the measure that would show it. A: Likely A, because a long-press is hidden (no signifier); measure time to first successful Save."}
+  ]
+}

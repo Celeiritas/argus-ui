@@ -141,7 +141,7 @@ run(async b => {
   check(await p.locator('.verdict.ok').count() === 1 && /Correct · context manager/.test(await p.locator('#rhead').textContent()) && /3 hints used/.test(await p.locator('#rpanel .deckname').first().textContent()), 'a right term is confirmed (Correct, in green, with a tick) and the hints used are shown');
   check(await p.locator('input[name=rate]:checked').first().inputValue() === '2', 'rung 3 caps the suggested rating at Hard');
   const rep = await p.locator('details.report summary').boundingBox();
-  check(rep && rep.height >= 44, `a graded term card offers "Report a grading problem" as a 44 px target (${rep && Math.round(rep.height)})`);
+  check(rep && rep.height >= 44, `a graded term card offers "Report a problem with this question" as a 44 px target (${rep && Math.round(rep.height)})`);
   check(await p.locator('.defs dt', {hasText: "Where it's used"}).count() === 1, 'the feedback shows where the term is used');
   await p.keyboard.press('4'); await p.locator('#rateBtn').click(); await p.waitForTimeout(500);       // Easy: graduates, off its learning steps
   const shownId = (await api(p, 'next?deck=argus-code')).card.id;      // the card the page shows next
