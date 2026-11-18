@@ -1,5 +1,9 @@
 # Changelog
 
+## 4.54.2 – 2026-11-17
+Chiron gets his medallion.
+- **Chiron** shows the owner's pick of the 2026-11-17 drafts (round 2, draft 8 with the far arm fixed): a bearded, broad-shouldered centaur with a chestnut horse body and black hooves, curling a gold dumbbell, in the same frame as the other medallions (silver rim, a thin moss ring, a dark glow). It replaces the lettered C placeholder; source `themes/leafy-realm/gods/chiron.svg`.
+
 ## 4.54.1 – 2026-11-17
 Daedalus gets his medallion.
 - **Controllers (Daedalus)** shows the owner's pick of the 2026-11-17 drafts: a game pad with a gold wing on each side, in the same frame as the other medallions (silver rim, a thin amber ring, a dark glow). It replaces the lettered D placeholder; source `themes/leafy-realm/gods/daedalus.svg`.
