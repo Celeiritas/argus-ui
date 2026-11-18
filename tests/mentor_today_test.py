@@ -250,6 +250,34 @@ class WithGames(Base):
             with open(os.path.join(m.INBOX, mid + '.json'), 'w', encoding='utf-8') as fh: json.dump(doc, fh)
         m.scan_inbox(self.db)
 
+class Export(WithGames):
+    """4.57, Hermes: lesson files as imported, each once, names only; the shelf's lessons listed for the picker."""
+    def test_all_has_every_file_once_and_no_folders(self):
+        r = m.export_bundle(self.db, [DECKS])
+        self.assertEqual(r['format'], 'mentor-export/1'); self.assertEqual(r['scope'], 'all')
+        names = [f['file'] for f in r['files']]
+        self.assertEqual(len(names), len(set(names)), 'each file once')
+        self.assertTrue({'mod1.json', 'g1.json', 'g2.json', LESSON + '.json', 'ux-hci.json'} <= set(names), names)
+        self.assertFalse(any(os.sep in n or '/' in n for n in names), 'names only, never folders')
+        self.assertNotIn(self.tmp, json.dumps(r))
+        g1 = next(f for f in r['files'] if f['file'] == 'g1.json')
+        self.assertEqual(g1['doc']['metadata']['project'], 'GAME_RESEARCH › Games'); self.assertEqual(g1['tracks'], ['group:GAME_RESEARCH'])
+
+    def test_topic_group_lesson_and_deck(self):
+        self.assertEqual({f['file'] for f in m.export_bundle(self.db, [DECKS], 'group:GAME_RESEARCH › Games')['files']}, {'g1.json', 'g2.json'})
+        self.assertEqual([f['file'] for f in m.export_bundle(self.db, [DECKS], 'mod1')['files']], ['mod1.json'])
+        self.assertEqual([f['file'] for f in m.export_bundle(self.db, [DECKS], 'ux-hci')['files']], ['ux-hci.json'])
+        self.assertEqual(m.export_bundle(self.db, [DECKS], 'group:nothing')['files'], [])
+
+    def test_shelf_marked_and_missing_named(self):
+        m.set_settings(self.db, {'shelved': ['group:GAME_RESEARCH']})
+        self.assertEqual(m.shelved_decks(self.db), ['g1', 'g2', 'mod1'])
+        r = m.export_bundle(self.db, [DECKS], 'group:GAME_RESEARCH')
+        self.assertTrue(all(f['shelved'] for f in r['files']))
+        os.remove(os.path.join(m.INBOX, 'g2.json'))
+        r = m.export_bundle(self.db, [DECKS], 'group:GAME_RESEARCH')
+        self.assertEqual(r['missing'], ['g2.json']); self.assertNotIn('g2.json', [f['file'] for f in r['files']])
+
 class Focus(WithGames):
     """4.56: a focus is an explicit lesson list studied as one track ('focus'), apart from the project groups."""
     def decks(self, n=40, **kw):

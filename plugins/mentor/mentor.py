@@ -1829,6 +1829,45 @@ def export(db, out):
         out.write(json.dumps(d) + '\n'); n += 1
     return n
 
+def shelved_decks(db):
+    """4.57: every deck and lesson id whose track is on the shelf (the Topic picker leaves them out)."""
+    sh = set(settings(db)['shelved'])
+    return sorted(d for d, t in track_map(db).items() if t in sh)
+
+def export_bundle(db, folders, deck=None, now=None):
+    """4.57, Hermes on the Learn page: the lesson files as Mentor imported them, to hand on and import again later
+    (docs/mentor.md "Export"). deck: a deck, lesson or group id (the Topic picker's choice); None = every file. A file is
+    in the bundle once (a course file once for all its lessons); only its name travels, never its folder. A file that is
+    gone from disk is named in "missing". No answers, schedules or settings go in."""
+    ids = group_ids(db, deck) if deck else None
+    if deck and ids is None: ids = [deck]
+    tm, sh, srcs = track_map(db), set(settings(db)['shelved']), {}
+    if ids != []:
+        q = "SELECT id, source, built_in FROM modules" + ("" if ids is None else f" WHERE id IN ({','.join('?' * len(ids))})")
+        for r in db.execute(q, ids or []):
+            if not r['source']: continue         # a lesson row keeps its file's name only: the inbox, else a deck folder
+            where = ([] if r['built_in'] else [INBOX]) + list(folders) or [INBOX]
+            path = next((os.path.join(d, r['source']) for d in where if os.path.isfile(os.path.join(d, r['source']))),
+                        os.path.join(where[0], r['source']))
+            srcs.setdefault(path, set()).add(track_of(tm, r['id']))
+    for folder in folders:                       # plain decks (cards only) have no lesson row: their own files
+        for f in sorted(glob.glob(os.path.join(folder, '*.json'))):
+            try:
+                with open(f, encoding='utf-8') as fh: d = json.load(fh)
+            except (OSError, ValueError): continue
+            if isinstance(d, dict) and d.get('id') and isinstance(d.get('cards'), list) and not is_module(d) and not is_course(d) \
+                    and (ids is None or d['id'] in ids):
+                srcs.setdefault(f, set()).add(track_of(tm, d['id']))
+    files, missing = [], []
+    for path in sorted(srcs, key=lambda p: os.path.basename(p).lower()):
+        try:
+            with open(path, encoding='utf-8') as fh: doc = json.load(fh)
+        except (OSError, ValueError): missing.append(os.path.basename(path)); continue
+        ts = sorted(srcs[path])
+        files.append({'file': os.path.basename(path), 'tracks': ts, 'shelved': all(t in sh for t in ts), 'doc': doc})
+    return {'format': 'mentor-export/1', 'exported': time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime(now or time.time())),
+            'scope': deck or 'all', 'files': files, 'missing': missing}
+
 if __name__ == '__main__':
     import sys
     if len(sys.argv) < 2 or sys.argv[1] != 'export':

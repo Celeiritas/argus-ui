@@ -148,16 +148,23 @@
     const learning = m => m.locked ? ' (locked)' : m.to_learn ? ` (learning ${m.learn.length - m.to_learn}/${m.learn.length})` : '';
     // Submenus (4.22.0): a lesson whose project reads "MENU › Sub" goes in its own group, which starts with "Study all of
     // it" (and the menu gets one "Study all" for every submenu under it); other lessons stay in Lessons, as before.
-    const SEP = ' \u203a ';
-    const plain = M.modules.filter(m => !(m.project || '').includes(SEP));
-    const subs = [...new Set(M.modules.map(m => m.project || '').filter(p => p.includes(SEP)))].sort();
+    // 4.57: lessons on the shelf stay out (the chosen one stays, so the picker never lies); a plain project gets its own
+    // group too, "Study all" first, and lessons go in number order ("2. \u2026" before "10. \u2026"), named without the project.
+    const SEP = ' \u203a ', off = new Set((M.stats || {}).shelved || []), byName = (a, b) => a.name.localeCompare(b.name, undefined, {numeric: true});
+    const mods = M.modules.filter(m => !off.has(m.id) || m.id === M.deck).sort(byName);
+    const plain = mods.filter(m => !(m.project || '').includes(SEP));
+    const subs = [...new Set(mods.map(m => m.project || '').filter(p => p.includes(SEP)))].sort();
     const roots = [...new Set(subs.map(p => p.split(SEP)[0]))];
+    const projects = [...new Set(plain.map(m => m.project).filter(Boolean))].sort((a, b) => a.localeCompare(b, undefined, {numeric: true}));
+    const loose = plain.filter(m => !m.project), decks = M.decks.filter(d => !off.has(d.id) || d.id === M.deck);
     $('#mdeck').innerHTML = opt('', 'Everything, mixed') +
       roots.map(r => `<optgroup label="${esc(r)}">${opt('group:' + r, 'Study all of ' + r)}</optgroup>` +
         subs.filter(p => p.split(SEP)[0] === r).map(p => `<optgroup label="${esc(p)}">${opt('group:' + p, 'Study all: ' + p.split(SEP).slice(1).join(SEP))}` +
-          M.modules.filter(m => m.project === p).map(m => opt(m.id, m.name + learning(m))).join('') + '</optgroup>').join('')).join('') +
-      (plain.length ? `<optgroup label="Lessons">${plain.map(m => opt(m.id, (m.project ? m.project + ': ' : '') + m.name + learning(m))).join('')}</optgroup>` : '') +
-      (M.decks.length ? `<optgroup label="Decks">${M.decks.map(d => opt(d.id, d.name)).join('')}</optgroup>` : '');
+          mods.filter(m => m.project === p).map(m => opt(m.id, m.name + learning(m))).join('') + '</optgroup>').join('')).join('') +
+      projects.map(p => { const ls = plain.filter(m => m.project === p);
+        return `<optgroup label="${esc(p)}">${ls.length > 1 ? opt('group:' + p, 'Study all of ' + p) : ''}${ls.map(m => opt(m.id, m.name + learning(m))).join('')}</optgroup>`; }).join('') +
+      (loose.length ? `<optgroup label="Lessons">${loose.map(m => opt(m.id, m.name + learning(m))).join('')}</optgroup>` : '') +
+      (decks.length ? `<optgroup label="Decks">${decks.map(d => opt(d.id, d.name)).join('')}</optgroup>` : '');
   }
   // "Who is studying? Owner One · change": the owner picks any person in the people file (remembered on this device);
   // a learner sees her own name and no picker; with nobody but the owner (no people file) the line is left out
@@ -755,7 +762,8 @@
     const change = async (body, msg, sel, id) => {
       let r; try { r = await send('settings', body); } catch (e) { r = {ok: false}; }
       if (!r.ok) return toast(r.msg || "Couldn't save that. Check that the server is on, then try again.");
-      toast(msg); await todayView(); keep(sel, id);
+      toast(msg); try { M.stats.shelved = (await get('stats')).shelved; fillPicker(); } catch (e) { /* the picker catches up on the next visit */ }
+      await todayView(); keep(sel, id);
     };
     const name = id => (t.tracks.find(x => x.id === id) || {}).name || id;
     $$('#mpanel [data-pin]').forEach(b => b.onclick = () => change({pinned: [...t.pinned, b.dataset.pin]}, `${name(b.dataset.pin)} is pinned to Today.`, 'data-unpin', b.dataset.pin));
@@ -928,6 +936,9 @@
             ${files.length ? `<details class="srcs"><summary>Where these lessons come from (${files.length})</summary><ul>${files.map(f => `<li>${esc(f)}</li>`).join('')}</ul></details>` : ''}</section>`; }).join('')
           : `<div class="empty"><b>No lessons here</b>${owner ? 'Add one with the steps under "About Mentor and adding a lesson". ' : ''}Your questions are on Today.<div class="row"><button type="button" id="toToday2">Go to Today</button></div></div>`}
         ${imp.length ? `<p class="label">Inbox files that need a look</p><ul class="ideas">${imp.map(i => `<li class="${i.ok ? 'hit' : 'miss'}"><code>${esc(i.path)}</code>: ${esc(i.msg)}</li>`).join('')}</ul>` : ''}
+        ${owner ? `<section class="mexport" aria-labelledby="mx-h"><img src="${url('static/icons/hermes.png')}" alt=""><div><h2 id="mx-h">Hand lessons on</h2>
+          <p class="meta">Hermes downloads the lesson files as one file, to import again later. Your answers and schedules stay here.</p>
+          <div class="row">${M.deck ? `<button type="button" data-export="topic">Download this topic</button>` : ''}<button type="button" data-export="all">Download all lessons</button></div></div></section>` : ''}
         ${owner ? `<details class="about"><summary>About Mentor and adding a lesson</summary>
           <p class="coach">Each lesson breaks down real work from your projects. You learn first (an overview, the terms, worked examples, the ideas behind each bug hunt), then practise, and reviews come back when you're about to forget.</p>
           <p class="meta">Calibration: ${calText(s.calibration)}${s.labels ? ` · ${plural(s.labels, 'graded answer')} saved for the learning grader` : ''}</p><p class="meta" id="ailine">Local AI: retired from study (docs/mentor-ai.md)</p>
@@ -939,10 +950,25 @@
           : `<details class="about"><summary>About Mentor</summary><p class="coach">Questions come first; the lesson behind each one comes with the answer. Reviews come back when you are about to forget.</p></details>`}
       </div>`;
       const tt = $('#toToday2'); if (tt) tt.onclick = () => setView('today');
+      $$('[data-export]').forEach(b => b.onclick = () => exportLessons(b.dataset.export === 'all'));
       $$('[data-study]').forEach(b => b.onclick = () => { M.deck = b.dataset.study; save('mentor-deck', M.deck); fillPicker(); setView('practice'); });
       const ra = $('#reviewAll'); if (ra) ra.onclick = () => { M.deck = null; save('mentor-deck', null); fillPicker(); setView('practice'); };
       $$('[data-read]').forEach(b => b.onclick = async () => { const {card} = await get('next?card=' + encodeURIComponent(b.dataset.read)); if (card) { M.card = card; M.result = null; learnCard(card, true); } });
     });
+  }
+
+  // 4.57, Hermes: the lesson files of this topic (or all of them) as one JSON download, format mentor-export/1 (docs/mentor.md "Export")
+  async function exportLessons(all) {
+    const deck = all ? null : M.deck; let r;
+    try { r = await get('export' + (deck ? '?deck=' + encodeURIComponent(deck) : '')); } catch (e) { r = null; }
+    if (!r || !Array.isArray(r.files)) return toast((r && r.msg) || "Couldn't make the download. Check that the server is on, then try again.");
+    if (!r.files.length) return toast('This topic has no lesson files to download.');
+    const d = new Date(), two = n => String(n).padStart(2, '0');
+    const slug = (deck || 'all-lessons').replace(/^group:/, '').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase().slice(0, 40) || 'topic';
+    const name = `mentor-${slug}-${d.getFullYear()}${two(d.getMonth() + 1)}${two(d.getDate())}-${two(d.getHours())}${two(d.getMinutes())}.json`;
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(r, null, 2)], {type: 'application/json'})); a.download = name;
+    document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    toast(`Hermes packed ${plural(r.files.length, 'lesson file')} into ${name}.` + (r.missing.length ? ` ${plural(r.missing.length, 'file')} could not be read.` : ''));
   }
 
   // text boxes typed into since they were drawn: only those have an undo of their own when they are empty
