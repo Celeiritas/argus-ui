@@ -1,5 +1,13 @@
 # Changelog
 
+## 4.59.0 – 2026-11-18
+Mentor: a clean slate for the owner's collection, and lessons that publish only through a gate (docs/mentor.md "Clean slate and publication (4.59)", docs/mentor-authoring-policy.md).
+- **Clean-slate reset.** `scripts/mentor-clean-slate-v2.py` (dry run by default) first turns the theme's decks, your own deck folder and the old inbox off in `~/.config/argus-ui/mentor.json` and retires the old files by fingerprint, then moves the owner's database, inbox and deck files into one `.set-aside-<stamp>-mentor-clean-slate/` folder with a manifest written as each file moves, and starts a fresh collection. It reads the service's own paths, refuses a second reset, a service that does not stop, and a Mentor older than 4.59, and leaves the service stopped if anything fails part-way. Other learners, config and the research library are left alone.
+- **Publication gate.** Lessons in `~/.local/share/argus-ui/lessons/` import only with evidence (`mentor-evidence/1`) bound to the file's sha256 and the policy id: every item ready with eight checks passed, sources with revisions, clinical review where needed (any form of a clinical word counts), no timestamp names or duplicates, a reason for every correction, and a dry import whose every practice card must come from a checked item (an item without an id, or in a legacy list, is held). Held lessons are recorded with their reasons. `scripts/mentor-publish-v1.py` runs the same gate before sending.
+- **Revisions.** Each card has a revision; every attempt stores the one it saw, and changes are logged with a reason. *Report a problem with this question* adds **The question was unclear**, on every card; *Mentor's grade was wrong* still appears only when something was graded.
+- **Context for /mentor.** `GET api/mentor/context` (owner only) and `scripts/mentor-context-v1.py` give the collection, policy, published and held lessons and the latest flags. No model is called in study.
+- `docs/mentor-command.md` is now the revised /mentor command.
+
 ## 4.58.0 – 2026-11-18
 Mentor: the download where you can see it, and a shelf that empties the picker (docs/mentor.md "Export" and "Menus and submenus").
 - **Hand lessons on is at the top of Lessons.** Hermes's download is a slim row above the first lesson group (on a phone it was several screens down, below every lesson). Shorter line: *One file to import again later. Answers stay here.* It is left out when there are no lessons.

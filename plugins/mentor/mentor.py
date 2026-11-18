@@ -43,7 +43,45 @@ compare = _ilu.module_from_spec(_cs); _cs.loader.exec_module(compare)     # exac
 
 DB_LOCK = threading.Lock()
 INBOX = os.path.expanduser(os.environ.get('ARGUS_MENTOR_INBOX', '~/.local/share/argus-ui/inbox'))
-TIER = {'term': 3, 'drill': 1, 'explain': 2, 'define': 3, 'orientation': 0, 'teach': 0, 'level0': 0, 'preread': 0,
+_ps = _ilu.spec_from_file_location('leafy_mentor_publish', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'publish.py'))
+publish = _ilu.module_from_spec(_ps); _ps.loader.exec_module(publish)     # 4.59: the publication gate, loaded by path
+
+# ---------- 4.59: the owner's collection (docs/mentor.md "Clean slate and publication") ----------
+# ~/.config/argus-ui/mentor.json (or ARGUS_MENTOR_CONFIG) says which sources feed the owner's collection. Without the file
+# every source works as before. scripts/mentor-clean-slate-v2.py writes it: the theme's decks, your own deck folder and the old inbox off, and
+# every file and lesson id it retired listed, so a copy put back is refused instead of bringing the old decks back.
+# Published lessons arrive in LESSONS, each with its evidence file; only lessons that pass the gate (publish.py) import.
+CONFIG_FILE = os.path.expanduser(os.environ.get('ARGUS_MENTOR_CONFIG', '~/.config/argus-ui/mentor.json'))
+LESSONS = os.path.expanduser(os.environ.get('ARGUS_MENTOR_LESSONS', '~/.local/share/argus-ui/lessons'))
+_coll = [None, None]       # mentor.json's mtime when last read, and what it said
+
+def collection():
+    """The collection settings: {'id', 'theme_decks', 'own_decks', 'legacy_inbox', 'retired_files' (sha256 set), 'retired_decks' (id set)}.
+    A missing file means every source on, as before 4.59. A broken file turns the old sources OFF (a reset is never undone
+    by a typo) and is reported in 'problem'."""
+    try: mt = os.stat(CONFIG_FILE).st_mtime
+    except OSError: return {'id': None, 'theme_decks': True, 'own_decks': True, 'legacy_inbox': True, 'retired_files': set(), 'retired_decks': set(), 'problem': ''}
+    if _coll[0] != mt:
+        try:
+            with open(CONFIG_FILE, encoding='utf-8') as fh: doc = json.load(fh)
+            if not isinstance(doc, dict) or doc.get('format') != 'mentor-collection/1': raise ValueError('not "format": "mentor-collection/1"')
+            ret = doc.get('retired') if isinstance(doc.get('retired'), dict) else {}
+            c = {'id': str(doc.get('collection') or '') or None, 'theme_decks': doc.get('theme_decks') is not False,
+                 'own_decks': doc.get('own_decks') is not False, 'legacy_inbox': doc.get('legacy_inbox') is not False,
+                 'retired_files': {str(f.get('sha256')) for f in as_list(ret.get('files')) if isinstance(f, dict) and f.get('sha256')},
+                 'retired_decks': {str(x) for x in as_list(ret.get('decks'))}, 'problem': ''}
+        except (OSError, ValueError) as x:
+            c = {'id': None, 'theme_decks': False, 'own_decks': False, 'legacy_inbox': False, 'retired_files': set(), 'retired_decks': set(),
+                 'problem': f'{os.path.basename(CONFIG_FILE)} could not be read ({str(x)[:120]}); the old sources stay off'}
+        _coll[:] = [mt, c]
+    return _coll[1]
+
+def retired(c, raw=None, deck=None):
+    """Why this file or lesson id is refused by the clean-slate reset, or '' when it is not."""
+    if raw is not None and publish.sha256(raw) in c['retired_files']: return 'retired in the clean-slate reset (same file)'
+    if deck and deck in c['retired_decks']: return f'retired in the clean-slate reset (lesson id {deck})'
+    return ''
+TIER ={'term': 3, 'drill': 1, 'explain': 2, 'define': 3, 'orientation': 0, 'teach': 0, 'level0': 0, 'preread': 0,
         'predict': 2, 'trace': 2, 'parsons': 1, 'write': 1}
 # new cards in a lesson unlock in this order; a practice card also waits for its own Learn card (cards.learn_of).
 # 4.32: reading code (predict, trace) comes before writing it (parsons, write), as Xie et al. (2019) order them
@@ -128,6 +166,10 @@ CREATE TABLE IF NOT EXISTS notes(
 -- 4.29: study settings chosen on the page (bury siblings); one row per key, JSON values
 CREATE TABLE IF NOT EXISTS settings(
   key TEXT PRIMARY KEY, value TEXT);
+-- 4.59: every revision a card had (rev = a hash of what the learner sees and is graded against), and why it changed.
+-- An attempt stores the rev it was answered against (attempts.card_rev), so a later fix never rewrites what was seen.
+CREATE TABLE IF NOT EXISTS card_revs(
+  card_id TEXT, rev TEXT, prev_rev TEXT, at REAL, reason TEXT, source TEXT, PRIMARY KEY(card_id, rev));
 """
 # columns added after 4.5 (older databases get them on start; nothing is lost)
 ADDED = [('cards', 'data', "TEXT DEFAULT '{}'"), ('cards', 'ord', 'INTEGER DEFAULT 0'),
@@ -148,7 +190,14 @@ ADDED = [('cards', 'data', "TEXT DEFAULT '{}'"), ('cards', 'ord', 'INTEGER DEFAU
          ('sched', 'step', 'INTEGER'), ('sched', 'relearn', 'INTEGER DEFAULT 0'),
          ('attempts', 'prev_json', 'TEXT'), ('attempts', 'undone', 'INTEGER DEFAULT 0'),
          # 4.32: a course lesson's `requires` (the lesson ids in its course that unlock it), JSON
-         ('modules', 'requires', "TEXT DEFAULT '[]'")]
+         ('modules', 'requires', "TEXT DEFAULT '[]'"),
+         # 4.59: revision binding (a card's rev, the rev an attempt saw), "the question was unclear", a published file's gate
+         ('cards', 'rev', 'TEXT'), ('attempts', 'card_rev', 'TEXT'), ('attempts', 'flag', 'TEXT'),
+         ('imports', 'sha', 'TEXT'), ('imports', 'good_sha', 'TEXT')]
+# 4.59: every insert into attempts (there are several) stores the card's rev at that moment
+REV_TRIGGER = ("CREATE TRIGGER IF NOT EXISTS attempt_card_rev AFTER INSERT ON attempts BEGIN "
+               "UPDATE attempts SET card_rev=(SELECT rev FROM cards WHERE id=NEW.card_id) WHERE id=NEW.id; END")
+_rev_note = {'reason': 'unrecorded', 'source': ''}     # why the cards being written now changed (set by a publication)
 LOOSE = 'loose'          # the course every lesson in the old format belongs to, one module per project
 # card roles (spec section 5) and the card kind that runs each; `make` (tasks and the capstone) comes later
 ROLE_KIND = {'term': ('term',), 'recall': ('define', 'term'), 'explain': ('explain',), 'find-bug': ('explain',),
@@ -169,17 +218,40 @@ def connect(path, inbox=True):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     db = sqlite3.connect(path, check_same_thread=False, factory=Conn)
     db.own_inbox = bool(inbox)
+    prepare(db)
+    if inbox:
+        c = collection()
+        if c['id'] and meta(db, 'collection') is None: set_meta(db, 'collection', c['id'])     # a fresh collection names itself
+        if c['legacy_inbox']:
+            try: os.makedirs(INBOX, exist_ok=True)
+            except OSError: pass
+    return db
+
+def prepare(db):
+    """Create or upgrade the tables on one connection (a database file, or a throwaway one in memory)."""
     db.row_factory = sqlite3.Row
     db.executescript(SCHEMA)
     for table, col, decl in ADDED:
         if col not in {r[1] for r in db.execute(f"PRAGMA table_info({table})")}:
             db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
+    db.execute(REV_TRIGGER)
     ensure_loose(db)
     db.commit()
-    if inbox:
-        try: os.makedirs(INBOX, exist_ok=True)
-        except OSError: pass
-    return db
+
+def dry_import(doc, mid, checked=()):
+    """The content contract, checked by the importer itself: import the lesson into a throwaway database in memory.
+    Returns (practice cards, notes about anything skipped, practice card ids not made from one of the `checked` item
+    ids), so the gate covers the cards the importer really makes, not only the items it can see listed.
+    Raises ValueError/KeyError/TypeError on a broken lesson."""
+    db = sqlite3.connect(':memory:', factory=Conn)
+    try:
+        prepare(db)
+        if not is_module(doc): raise ValueError('only a lesson (tier lists or cta_summary) can be published; a course goes through its lessons')
+        n, notes = import_module(db, doc, mid, mid + '.json', False)
+        ok = {f'{mid}:{slug(i)}' for i in checked}
+        made = [r[0] for r in db.execute(f"SELECT id FROM cards WHERE deck=? AND kind NOT IN ({','.join('?' * len(LEARN))}) ORDER BY id", (mid, *LEARN))]
+        return n, notes, [c for c in made if c not in ok]
+    finally: db.close()
 
 def loose_module(project):
     return f'{LOOSE}/{slug(project or "lessons")}'
@@ -197,12 +269,21 @@ def ensure_loose(db):
                    "name=excluded.name, ord=excluded.ord", (cm, LOOSE, name, i))
 
 def load_decks(db, folder):
-    """Upsert every deck JSON file in folder (plain decks and built-in code modules). History stays."""
+    """Upsert every deck JSON file in folder (plain decks and built-in code modules). History stays.
+    4.59: in the owner's database, a file or lesson id the clean-slate reset retired is skipped."""
     n = 0
+    coll = collection() if getattr(db, 'own_inbox', True) else None
     for f in sorted(glob.glob(os.path.join(folder, '*.json'))):
         try:
-            with open(f, encoding='utf-8') as fh: deck = json.load(fh)
+            with open(f, 'rb') as fh: raw = fh.read()
+            deck = json.loads(raw.decode('utf-8'))
         except Exception:
+            continue
+        if not isinstance(deck, dict): continue
+        # the id each kind is stored under: a course as import_course slugs it, a lesson by its file name, a plain deck as is
+        did = (slug(deck.get('id') or os.path.basename(f)[:-5]) if is_course(deck) else
+               slug(os.path.basename(f)[:-5]) if is_module(deck) else deck.get('id'))
+        if coll and retired(coll, raw, did):
             continue
         if is_course(deck):
             try:
@@ -220,7 +301,16 @@ def load_decks(db, folder):
     db.commit()
     return n
 
+def card_rev(kind, prompt, answer, points, data):
+    """A card's revision: a short hash of what the learner sees and is graded against (never its schedule or order)."""
+    return publish.sha256(json.dumps([kind, prompt, answer, points, data], sort_keys=True, ensure_ascii=False).encode('utf-8'))[:16]
+
 def upsert_card(db, cid, deck, kind, prompt, answer, points, data, tags, ord_, learn_of=None, lo=None, note=None, role=None, is_check=0):
+    rev = card_rev(kind, prompt, answer, points, data)
+    old = db.execute("SELECT rev FROM cards WHERE id=?", (cid,)).fetchone()
+    if not old or old[0] != rev:     # a new card, or one whose wording changed: one row saying why (4.59)
+        db.execute("INSERT INTO card_revs(card_id,rev,prev_rev,at,reason,source) VALUES(?,?,?,?,?,?) ON CONFLICT(card_id,rev) DO NOTHING",
+                   (cid, rev, old[0] if old else None, time.time(), _rev_note['reason'] if old and old[0] else ('baseline' if old else 'new'), _rev_note['source']))
     db.execute("INSERT INTO cards(id,deck,kind,prompt,answer,points,tags,updated,data,ord,learn_of,lo,note,role,is_check) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
                "ON CONFLICT(id) DO UPDATE SET deck=excluded.deck,kind=excluded.kind,prompt=excluded.prompt,"
                "answer=excluded.answer,points=excluded.points,tags=excluded.tags,updated=excluded.updated,"
@@ -228,6 +318,7 @@ def upsert_card(db, cid, deck, kind, prompt, answer, points, data, tags, ord_, l
                "role=excluded.role,is_check=excluded.is_check",
                (cid, deck, kind, prompt, answer, json.dumps(points), json.dumps(tags), time.time(), json.dumps(data), ord_, learn_of,
                 lo, note, role, is_check))
+    db.execute("UPDATE cards SET rev=? WHERE id=?", (rev, cid))
 
 def deck_list(folder):
     """Plain decks only; code modules are listed by stats() (they also come from the inbox)."""
@@ -519,8 +610,23 @@ def stamp(iso, mid):
     return time.time()
 
 def scan_inbox(db):
-    """Import new or changed files from the inbox. Cheap when nothing changed (one directory listing)."""
+    """Import new or changed files from the inbox, and published lessons that pass the gate (4.59). Cheap when nothing
+    changed (one directory listing each). 4.59: with the old inbox turned off by the clean-slate reset (mentor.json), the
+    inbox is not read at all; a retired file is refused either way."""
     if not getattr(db, 'own_inbox', True): return
+    coll = collection()
+    if coll['legacy_inbox']: _scan_inbox(db, coll)
+    scan_lessons(db, coll)
+
+def _record(db, key, mtime, size, ok, msg, mid, sha=None, good=False):
+    with DB_LOCK:
+        db.execute("INSERT INTO imports(path,mtime,size,ok,msg,module,at,sha,good_sha) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(path) DO UPDATE SET "
+                   "mtime=excluded.mtime,size=excluded.size,ok=excluded.ok,msg=excluded.msg,module=excluded.module,at=excluded.at,"
+                   "sha=excluded.sha,good_sha=COALESCE(excluded.good_sha, imports.good_sha)",
+                   (key, mtime, size, ok, msg, mid, time.time(), sha, sha if good else None))
+        db.commit()
+
+def _scan_inbox(db, coll):
     try: entries = [e for e in os.scandir(INBOX) if e.name.endswith('.json') and e.is_file()]
     except OSError: return
     seen = {r['path']: r for r in db.execute("SELECT path, mtime, size FROM imports")}
@@ -529,7 +635,10 @@ def scan_inbox(db):
         if old and old['mtime'] == st.st_mtime and old['size'] == st.st_size: continue
         mid, ok, msg = slug(e.name[:-5]), 0, ''
         try:
-            with open(e.path, encoding='utf-8') as fh: doc = json.load(fh)
+            with open(e.path, 'rb') as fh: raw = fh.read()
+            doc = json.loads(raw.decode('utf-8'))
+            why = retired(coll, raw, slug(doc.get('id') or e.name[:-5]) if is_course(doc) else mid)
+            if why: raise ValueError(why)
             if is_course(doc):
                 with DB_LOCK:
                     n, notes = import_course(db, doc, e.path, False)
@@ -543,13 +652,81 @@ def scan_inbox(db):
             ok, msg = (1 if n else 0), (f'{n} card{"s" if n != 1 else ""}{where}' + (f'; skipped: {"; ".join(notes[:6])}' if notes else ''))
         except json.JSONDecodeError as x:
             msg = f'not valid JSON (line {x.lineno}: {x.msg})'
-        except (ValueError, KeyError, TypeError) as x:
+        except UnicodeDecodeError:
+            msg = 'not UTF-8 text'
+        except (ValueError, KeyError, TypeError, AttributeError) as x:
             msg = str(x)[:200]
-        with DB_LOCK:
-            db.execute("INSERT INTO imports(path,mtime,size,ok,msg,module,at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(path) DO UPDATE SET "
-                       "mtime=excluded.mtime,size=excluded.size,ok=excluded.ok,msg=excluded.msg,module=excluded.module,at=excluded.at",
-                       (e.name, st.st_mtime, st.st_size, ok, msg, mid, time.time()))
-            db.commit()
+        _record(db, e.name, st.st_mtime, st.st_size, ok, msg, mid)
+
+def published(db):
+    """The lessons published through the gate: {lesson id: module name}, for the novelty check."""
+    return {r['id']: r['name'] for r in db.execute("SELECT m.id, m.name FROM modules m JOIN imports i ON i.module=m.id "
+                                                   "WHERE i.path LIKE 'lessons/%' AND i.good_sha IS NOT NULL")}
+
+def scan_lessons(db, coll=None):
+    """4.59 publication: LESSONS holds <id>.json with its <id>.evidence.json (publish.py). A lesson imports only when the
+    gate passes on the exact bytes now in the folder; a refused one is recorded with its reasons and the revision before it
+    stays in use. A lesson whose cards changed needs a correction reason, stored with each changed card."""
+    coll = coll or collection()
+    try: entries = [e for e in os.scandir(LESSONS) if e.name.endswith('.json') and not e.name.endswith('.evidence.json') and e.is_file()]
+    except OSError: return
+    seen = {r['path']: r for r in db.execute("SELECT path, mtime, size, good_sha FROM imports WHERE path LIKE 'lessons/%'")}
+    for e in entries:
+        key, mid = 'lessons/' + e.name, slug(e.name[:-5])
+        ev_path = e.path[:-5] + '.evidence.json'
+        try: st, est = e.stat(), os.stat(ev_path)
+        except OSError: st, est = e.stat(), None
+        mtime, size = max(st.st_mtime, est.st_mtime if est else 0), st.st_size + (est.st_size if est else 0)
+        old = seen.get(key)
+        if old and old['mtime'] == mtime and old['size'] == size: continue
+        sha, ok, msg = None, 0, ''
+        try:
+            with open(e.path, 'rb') as fh: raw = fh.read()
+            sha = publish.sha256(raw)
+            if est is None: raise publish.Held([f'no {os.path.basename(ev_path)} next to it: nothing was checked'])
+            with open(ev_path, encoding='utf-8') as fh: evidence = json.load(fh)
+            others = {k: v for k, v in published(db).items() if k != mid}
+            gate = publish.check(raw, evidence, mid, previous=old['good_sha'] if old else None, published=others,
+                                 why_retired=lambda raw_, deck: retired(coll, raw_, deck), contract=dry_import)
+            doc = json.loads(raw.decode('utf-8'))
+            with DB_LOCK:
+                _rev_note.update(reason=gate['reason'], source=f"{e.name} {gate['revision']}")
+                try: n, notes = import_module(db, doc, mid, e.path, False)
+                finally: _rev_note.update(reason='unrecorded', source='')
+            ok, msg = 1, f'published revision {gate["revision"]}: {n} card{"s" if n != 1 else ""}' + (f'; skipped: {"; ".join(notes[:6])}' if notes else '')
+        except publish.Held as x:
+            msg = 'held: ' + '; '.join(x.reasons)[:400]
+        except (ValueError, KeyError, TypeError, AttributeError) as x:
+            msg = 'held: ' + str(x)[:300]
+        _record(db, key, mtime, size, ok, msg, mid, sha, good=bool(ok))
+
+def context_packet(db, limit=30):
+    """4.59: the small context packet the /mentor command reads before writing (GET api/mentor/context, the owner only):
+    the collection, the study goal, the policy version, the published lessons with their revisions, what the gate held
+    and why, and the latest explicit flags (grade was wrong, question unclear) with the card revision each one saw.
+    Nothing here calls a model; the packet is what a capture starts from, never the whole history."""
+    st, coll = settings(db), collection()
+    lessons = [{'id': r['module'], 'file': r['path'][len('lessons/'):], 'name': r['name'], 'ok': bool(r['ok']), 'msg': r['msg'],
+                'published_sha256': r['good_sha']}
+               for r in db.execute("SELECT i.*, m.name FROM imports i LEFT JOIN modules m ON m.id=i.module WHERE i.path LIKE 'lessons/%' ORDER BY i.path")]
+    flags = []
+    for r in db.execute("SELECT a.id, a.card_id, a.at, a.answer, a.grade_wrong, a.flag, a.card_rev, c.rev, c.deck, c.prompt FROM attempts a "
+                        "LEFT JOIN cards c ON c.id=a.card_id WHERE a.grade_wrong=1 OR a.flag IS NOT NULL ORDER BY a.id DESC LIMIT ?", (limit,)):
+        flags.append({'attempt': r['id'], 'card': r['card_id'], 'lesson': r['deck'], 'at': r['at'],
+                      'flag': r['flag'] or 'grade-wrong', 'grade_wrong': bool(r['grade_wrong']), 'seen_rev': r['card_rev'], 'current_rev': r['rev'],
+                      'revised_since': bool(r['rev'] and r['card_rev'] and r['rev'] != r['card_rev']),
+                      'prompt': (r['prompt'] or '')[:300], 'answer': (r['answer'] or '')[:300]})
+    return {'format': 'mentor-context/1', 'collection': meta(db, 'collection') or coll['id'], 'policy': publish.policy().get('id'),
+            'focus': st.get('focus'), 'goal': st.get('goal'), 'pinned': st.get('pinned'),
+            'sources': {'theme_decks': coll['theme_decks'], 'own_decks': coll['own_decks'], 'legacy_inbox': coll['legacy_inbox'], 'problem': coll['problem']},
+            'lessons': lessons, 'flags': flags,
+            'cards': db.execute("SELECT COUNT(*) FROM cards").fetchone()[0], 'attempts': db.execute("SELECT COUNT(*) FROM attempts").fetchone()[0]}
+
+def flag_attempt(db, attempt_id, flag):
+    """4.59: the learner says the question was unclear (or wrong): stored with the attempt and the card revision it saw."""
+    if flag not in ('unclear', 'wrong'): return
+    with DB_LOCK:
+        db.execute("UPDATE attempts SET flag=? WHERE id=?", (flag, attempt_id)); db.commit()
 
 # ---------- A: rubric grader (typed explanations) ----------
 STOP = set('a an the of to in on for and or is are be it its that this with as by from at your you their they them can'.split())

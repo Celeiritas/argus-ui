@@ -57,7 +57,10 @@ def init(ctx):
 def book_for(person):
     """The Book of the person studying (learners.studying()); None = the owner, as before people existed. A learner's
     lesson folder is (re)loaded by fresh(), under the Book's lock."""
-    if person is None or person['owner_db']: path, dirs, inbox = owner_path(), DECK_DIRS, True
+    if person is None or person['owner_db']:     # 4.59: after the clean-slate reset the theme's decks no longer feed the owner
+        path, inbox = owner_path(), True
+        c = mentor.collection()     # own_decks off: your deck folder has no evidence either, so only the gated lessons folder feeds it
+        dirs = [d for d in DECK_DIRS if (d != THEME_DECKS or c['theme_decks']) and (d == THEME_DECKS or c['own_decks'])]
     else:
         path = os.path.join(os.path.dirname(owner_path()) or '.', f"mentor-{person['id']}.db")
         dirs, inbox = [os.path.join(SHARE, f"decks-{person['id']}")], False      # their own lessons only
@@ -157,6 +160,8 @@ def _get(b, person, path, query):
     if path == 'decks':
         decks = []
         for d in b.dirs: decks += mentor.deck_list(d)
+        if not b.reload:             # 4.59: the owner's list never shows a deck the clean-slate reset retired
+            gone = mentor.collection()['retired_decks']; decks = [d for d in decks if d['id'] not in gone]
         return 200, {'decks': decks}
     if path == 'next':
         if query.get('replay'):                  # one practice card asked again (replaying the session's mistakes)
@@ -176,6 +181,9 @@ def _get(b, person, path, query):
     if path == 'export':                         # 4.57: Hermes hands the lesson files on (the owner only)
         if person['my_role'] != 'owner': return 403, {'ok': False, 'msg': 'Only the owner can export lessons.'}
         return 200, mentor.export_bundle(db, b.dirs, deck)
+    if path == 'context':                        # 4.59: the /mentor command's small context packet (the owner only)
+        if person['my_role'] != 'owner': return 403, {'ok': False, 'msg': 'Only the owner can read the authoring context.'}
+        return 200, mentor.context_packet(db)
     if path == 'session': return 200, {'session': mentor.load_session(db), 'seen': mentor.last_attempt(db)}     # 4.56: "Continue where you stopped"
     if path == 'today': return 200,{**mentor.today(db, deck_names(b)), 'learner': {k: person[k] for k in ('id', 'name', 'role')}}
     if path == 'track':                          # Preview: one track's size, history and a few questions; nothing is scheduled
@@ -201,6 +209,7 @@ def _post(b, person, path, body):
                               taught=body.get('taught') is True)
         elif path == 'rate':
             r = mentor.rate(db, int(body.get('attempt') or 0), int(body.get('rating') or 0), bool(body.get('grade_wrong')))
+            if r is not None and body.get('unclear') is True: mentor.flag_attempt(db, int(body.get('attempt') or 0), 'unclear')
         elif path == 'undo':                          # Ctrl+Z: the page's last rating this session; {'undone': False} if not undoable
             r = mentor.undo(db, int(body.get('attempt') or 0))
         elif path == 'settings':                      # known keys with the right type only; a track's goal is the owner's to set

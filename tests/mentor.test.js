@@ -53,7 +53,7 @@ run(async b => {
   check(/Compare with the reference/.test(await p.locator('#rhead').textContent()) && !/Correct|Partly right|Not quite/.test(await p.locator('#rpanel').textContent()), '4.55: an explanation is compared with the reference, never marked Correct');
   check(await p.locator('#rpanel .ideas.plain li').count() > 0 && await p.locator('#rpanel .ideas .hit, #rpanel .ideas .miss').count() === 0, 'its key ideas are listed to compare, nothing ticked or crossed');
   check(/I couldn't recall it/.test(await p.locator('.seg.rates label').nth(0).textContent()) && /Right on my own/.test(await p.locator('.seg.rates label').nth(2).textContent()), 'each rating says what it means');
-  check(await p.locator('details.report').count() === 0, 'no "grading problem" report when nothing was graded');
+  check(await p.locator('#gw').count() === 0 && await p.locator('details.report #unclear').count() === 1, 'no "grade was wrong" report when nothing was graded; "The question was unclear" is still offered (4.59)');
   check(/In 1 min/.test(await p.locator('.seg.rates label').nth(0).textContent()) && /In 6 min/.test(await p.locator('.seg.rates label').nth(1).textContent())
     && /In 10 min/.test(await p.locator('.seg.rates label').nth(2).textContent()) && /In \d+ days/.test(await p.locator('.seg.rates label').nth(3).textContent()),
     'a new card shows its learning steps on the buttons: 1 min, 6 min, 10 min, then days for Easy');
@@ -141,7 +141,7 @@ run(async b => {
   check(await p.locator('.verdict.ok').count() === 1 && /Correct · context manager/.test(await p.locator('#rhead').textContent()) && /3 hints used/.test(await p.locator('#rpanel .deckname').first().textContent()), 'a right term is confirmed (Correct, in green, with a tick) and the hints used are shown');
   check(await p.locator('input[name=rate]:checked').first().inputValue() === '2', 'rung 3 caps the suggested rating at Hard');
   const rep = await p.locator('details.report summary').boundingBox();
-  check(rep && rep.height >= 44, `a graded term card offers "Report a grading problem" as a 44 px target (${rep && Math.round(rep.height)})`);
+  check(rep && rep.height >= 44, `a graded term card offers "Report a problem with this question" as a 44 px target (${rep && Math.round(rep.height)})`);
   check(await p.locator('.defs dt', {hasText: "Where it's used"}).count() === 1, 'the feedback shows where the term is used');
   await p.keyboard.press('4'); await p.locator('#rateBtn').click(); await p.waitForTimeout(500);       // Easy: graduates, off its learning steps
   const shownId = (await api(p, 'next?deck=argus-code')).card.id;      // the card the page shows next

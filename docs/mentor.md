@@ -189,7 +189,7 @@ Anki's study behaviours, on top of FSRS (spec section 7):
    - **Whole bodies** are parsed with Python's `ast` (never run). Same structure as the model = full marks; otherwise you see both versions, how alike they are, and Python's own syntax error with its line number.
    - **Terms** allow small typos; part of a multi-word term counts as close.
    - **Explanations** use the key-idea rubric (below).
-3. The result comes in one band under the question, the same place every time: **Correct** (green, a tick), **Partly right** (amber, a minus), **Not quite** (red, a cross) or **Answer shown**, always with the word and the icon, never colour alone, and the coach line saying why or where to look. Key ideas are marked "✓ Got it" / "✕ Missing"; a long model answer shows its first paragraph, with the rest (evidence, notes, sources) behind *Show the full answer and sources*. Then pick how well you knew it, in Anki's order: **1 Again · 2 Hard · 3 Good · 4 Easy**, each showing when the card comes back (keys 1–4, Enter saves, Ctrl+Z takes the last rating back; a Learn card has no rating: *Next card* marks it read). If Mentor's grade was off, *Report a grading problem* holds the "grade was wrong" flag ([FSRS-4.5](https://github.com/open-spaced-repetition/fsrs4anki/wiki/The-Algorithm); stored as 1–4).
+3. The result comes in one band under the question, the same place every time: **Correct** (green, a tick), **Partly right** (amber, a minus), **Not quite** (red, a cross) or **Answer shown**, always with the word and the icon, never colour alone, and the coach line saying why or where to look. Key ideas are marked "✓ Got it" / "✕ Missing"; a long model answer shows its first paragraph, with the rest (evidence, notes, sources) behind *Show the full answer and sources*. Then pick how well you knew it, in Anki's order: **1 Again · 2 Hard · 3 Good · 4 Easy**, each showing when the card comes back (keys 1–4, Enter saves, Ctrl+Z takes the last rating back; a Learn card has no rating: *Next card* marks it read). If something was off, *Report a problem with this question* holds the "grade was wrong" flag and (4.59) **The question was unclear**, stored with the card revision you saw ([FSRS-4.5](https://github.com/open-spaced-repetition/fsrs4anki/wiki/The-Algorithm); stored as 1–4).
 4. If Mentor's grade was off, tick **Mentor's grade was wrong**. That flag is training data for the learning grader.
 
 The stats line also tracks **calibration**: how your confidence compares with what you actually got right.
@@ -212,6 +212,30 @@ Mentor marks an answer only when it can really check it. Matching key words cann
 The local AI (stage B, 4.17–4.54) is retired from study: see `docs/mentor-ai.md`. A grader that learns from your ratings (Bv2) is still possible later from the export.
 
 Every attempt is stored in `~/.local/share/argus-ui/mentor.db` (`attempts` table): answer, confidence, time taken, card kind and drill level, grader features (rubric hits; blanks right; syntax ok, same structure, token similarity), the highest hint rung reached and the reflections typed, the stuck signal if any, whether a Learn card was skipped, and the suggested and final rating. Older databases gain the new columns on start; nothing is lost.
+
+## Clean slate and publication (4.59)
+**A fresh collection.** `scripts/mentor-clean-slate-v2.py` gives the owner's collection a clean start, on the host where Mentor runs. A dry run is the default and changes nothing; `--apply` stops the `argus-ui` user service (and refuses unless it really stopped), then:
+1. **Disable the old sources, first**: writes `~/.config/argus-ui/mentor.json` (`"format": "mentor-collection/1"`): the theme's decks, your own deck folder and the old inbox off, and every retired file (sha256) and lesson id listed, so a copy put back anywhere Mentor reads is refused instead of bringing the old decks back. A broken `mentor.json` keeps the old sources off.
+2. **Snapshot**: moves (never deletes) the owner's `mentor.db` (cards, attempts, schedules, settings) and every inbox and deck-folder file into one folder, `~/.local/share/argus-ui/.set-aside-<YYYYMMDD-HHMM>-mentor-clean-slate/`, which Mentor never reads. `manifest.json` there is rewritten after every move: each file with its sha256 and how to put it back; the moved database is checked with `PRAGMA quick_check`.
+3. **Fresh start**: the owner's database is created empty on the next start, named by a new collection id. No old-to-new mapping, mastery or due review is carried over. Only the gated lessons folder feeds it.
+
+If anything fails part-way, the service is **left stopped** on purpose, with a plain message: the old sources are already off and the manifest lists what moved (`"complete": false`). The paths come from the service's own `Environment=` first (`ARGUS_MENTOR_DB`, `ARGUS_MENTOR_INBOX`, `ARGUS_DECKS`, `ARGUS_STATIC`, `ARGUS_MENTOR_LESSONS`, `ARGUS_MENTOR_CONFIG`), then the shell's. It refuses when `mentor.json` already names a collection (a second reset would retire lessons published since), and while the installed Mentor is older than 4.59 (older code would load the theme's decks into the fresh database), so deploy first.
+
+Left as they are: other learners (`mentor-<id>.db`, `decks-<id>/`), the people file, `mentor-ai.json` and other config, the installed code, and the research library. Without `mentor.json` everything works as before.
+
+**Publication.** New lessons arrive in `~/.local/share/argus-ui/lessons/`: `<id>.json` (the lesson format below) with `<id>.evidence.json` (`"format": "mentor-evidence/1"`, documented at the top of `plugins/mentor/publish.py`). Mentor imports a lesson only when the gate passes on the exact bytes in the folder:
+- the evidence names the installed authoring policy (`plugins/mentor/policy.json`, `docs/mentor-authoring-policy.md`) and the sha256 of the lesson file, so a "verified" flag alone is not enough;
+- every item is listed as `ready` with all eight checks passed (answerability, alignment, leakage, prerequisites, support, solution, novelty, contract); an item on hold stays in the draft;
+- sources each have a locator and the revision checked; clinical or regulated material needs a qualified person's review, and routine material that mentions clinical words is held;
+- a file named by a timestamp, or a second lesson with the name of a published one, is held (revise the lesson instead);
+- replacing a published revision needs `correction.reason`;
+- the importer itself must accept it (a dry import into a throwaway database).
+
+A held lesson is recorded with every reason (`imports.msg`, the context packet) and the revision before it stays in use. `scripts/mentor-publish-v1.py --check <lesson>` runs the same gate before sending; `--ssh <host>` sends it. Publication does not make cards due: published cards are new cards, under the daily new limit.
+
+**Revisions.** Each card has a revision (a short hash of what you see and are graded against). Every attempt stores the revision it saw (`attempts.card_rev`), and each change is logged in `card_revs` with its reason and source (`<file> <revision>`). An attempt can carry a flag: *The question was unclear* stores `unclear`.
+
+**Context for `/mentor`.** `GET api/mentor/context` (owner only) and `scripts/mentor-context-v1.py` (read-only, on the host) return `mentor-context/1`: the collection, the policy id, focus and goal, the published lessons and what the gate held, and the latest flags with the revision seen and whether the card changed since. No model is called anywhere in study.
 
 ## Formats
 ### Lesson (what `/mentor` writes)

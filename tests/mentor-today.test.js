@@ -92,7 +92,7 @@ run(async b => {
     check(await p.locator('#ans').count() === 0, 'and back to think it');
     await p.keyboard.press('Space'); await p.waitForTimeout(600);
     const hit = async sel => Math.round((await p.locator(sel).first().boundingBox() || {height: 0}).height);
-    check(await hit('#rateBtn') >= 44 && await p.locator('details.report').count() === 0, `the save button is a 44 px target (${await hit('#rateBtn')}); a self-rated card has no "grade was wrong" (4.55: nothing was graded)`);
+    check(await hit('#rateBtn') >= 44 && await p.locator('#gw').count() === 0 && await p.locator('details.report #unclear').count() === 1, `the save button is a 44 px target (${await hit('#rateBtn')}); a self-rated card has no "grade was wrong" (4.55: nothing was graded), only "The question was unclear" (4.59)`);
     check(/Here is the answer/.test(await p.locator('#rhead').textContent()) && await p.locator('input[name=rate]:checked').count() === 0, 'Space reveals the answer; nothing is graded, so nothing is preselected');
     await p.locator('#rateBtn').click(); await p.waitForTimeout(300);
     check(/Pick how well you knew it/.test(await p.locator('#toastText').textContent()), 'saving without a rating says what to do');
