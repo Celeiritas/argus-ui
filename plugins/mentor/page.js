@@ -198,13 +198,16 @@
     if (!studying()) return;
     clearIdle(); if (M.view === 'practice') stats();
     const seq = M.seq = (M.seq || 0) + 1;         // two quick picker changes: only the last request may draw
+    const S = M.view === 'session' ? M.timed : null;
+    const back = S && M.restore; M.restore = null;    // 4.56: a resumed session first asks its saved card again
+    if (back && !M.again) { let r = {}; try { r = await get('next?replay=' + encodeURIComponent(back.card)); } catch (e) {}
+      if (seq !== M.seq || !studying()) return; if (r.card) { M.again = r.card; M.typed = back.text; } }
     const again = M.again; M.again = null;
     const replaying = !again && M.replay.length > 0;
-    const S = M.view === 'session' ? M.timed : null;
     // a timed session ends between cards: the time is up (the card on screen was finished) and no "5 more" are left
     if (S && !again && !replaying && S.done && S.more <= 0) return summary();
     const r = again ? {card: again} : replaying ? await get('next?replay=' + encodeURIComponent(M.replay.shift()))
-      : S ? await get('next?session=1' + (S.early ? '&extra=1' : ''))
+      : S ? await get('next?session=1' + (S.early ? '&extra=1' : '') + (S.reviewOnly ? '&reviews=1' : ''))
       : await get('next?' + (M.deck ? 'deck=' + encodeURIComponent(M.deck) + '&' : '') + (extra ? 'extra=1' : ''));
     if (seq !== M.seq || !studying()) return;
     if (S && !r.card) return summary(true);
@@ -226,7 +229,7 @@
       $('#ahead').onclick = () => next(true); $('#toMods').onclick = () => setView('modules'); return;
     }
     const c = M.card;
-    if (isLearn(c)) return learnCard(c);
+    if (isLearn(c)) { if (S) saveSession(); return learnCard(c); }
     if (!replaying && !again) M.count++;
     const mod = moduleOf(c.deck), big = mod && mod.summary && mod.summary.schematic_mental_model;
     c.think = REVEAL.includes(c.kind) && answerMode() === 'think';
@@ -292,6 +295,12 @@
     $('#mpanel').innerHTML = `<form class="panel enter" id="qform" novalidate>${head}${body}${conf}${go}</form>`;
     M.t0 = performance.now();
     wireAsk(c);
+    if (M.typed) {                            // 4.56: put back what was typed before the reload (blanks: one line each)
+      const b = $$('#qform input.blank'), ta = $('#qform textarea#ans'), parts = M.typed.split('\n');
+      if (b.length) b.forEach((i, k) => { i.value = k < b.length - 1 ? parts[k] || '' : parts.slice(k).join('\n'); }); else if (ta) ta.value = M.typed;
+      M.typed = null;
+    }
+    if (S) saveSession();
   }
   // "Teach me first": the card's lesson card (or its lesson's orientation), short, above the question
   async function teachFirst(c) {
@@ -683,27 +692,44 @@
   async function todayView() {
     if (M.view !== 'today') return;
     const seq = M.seq = (M.seq || 0) + 1;
-    let t; try { t = await get('today'); } catch (e) { t = null; }
+    let t, saved = null; try { [t, saved] = await Promise.all([get('today'), get('session').then(r => r.session).catch(() => null)]); } catch (e) { t = null; }
     if (seq !== M.seq || M.view !== 'today') return;
     if (!t || !t.tracks) { $('#mpanel').innerHTML = `<div class="panel"><p class="coach">Couldn't reach Mentor. Check that the server is on, then try again.</p></div>`; return; }
     M.today = t;
+    const F = t.focus, P = F && F.plan;
     const pins = t.tracks.filter(x => x.pinned), shelf = t.tracks.filter(x => x.shelved), rest = t.tracks.filter(x => !x.pinned && !x.shelved);
     const waiting = [t.due ? `${t.due} due` : '', t.new_left ? `${t.new_left} new` : ''].filter(Boolean).join(' · ');
     const total = t.week.reduce((a, d) => a + d.minutes, 0);
     const row = x => `<li class="trow"><div class="tname"><h4>${esc(x.name)}</h4><p class="meta">${plural(x.cards, 'question')}${x.lessons > 1 ? ` in ${x.lessons} lessons` : ''} · ${x.learned} started${x.last ? ` · studied ${esc(ago(x.last))}` : ''}</p></div>
-        <div class="tacts">${x.pinned ? `<button type="button" data-unpin="${esc(x.id)}">Unpin<span class="sr"> ${esc(x.name)}</span></button>` : `<button type="button" data-pin="${esc(x.id)}">Pin<span class="sr"> ${esc(x.name)}</span></button>`}
-          ${x.shelved ? `<button type="button" data-unshelve="${esc(x.id)}">Take off the shelf<span class="sr">: ${esc(x.name)}</span></button>` : `<button type="button" data-shelve="${esc(x.id)}">Shelve<span class="sr"> ${esc(x.name)}</span></button>`}
+        <div class="tacts">${x.id === 'focus' ? '' : x.pinned ? `<button type="button" data-unpin="${esc(x.id)}">Unpin<span class="sr"> ${esc(x.name)}</span></button>` : `<button type="button" data-pin="${esc(x.id)}">Pin<span class="sr"> ${esc(x.name)}</span></button>`}
+          ${x.id === 'focus' ? '' : x.shelved ? `<button type="button" data-unshelve="${esc(x.id)}">Take off the shelf<span class="sr">: ${esc(x.name)}</span></button>` : `<button type="button" data-shelve="${esc(x.id)}">Shelve<span class="sr"> ${esc(x.name)}</span></button>`}
           <button type="button" data-preview="${esc(x.id)}" aria-expanded="false" aria-controls="pv-${esc(x.id)}">Preview<span class="sr"> ${esc(x.name)}</span></button></div>
         <div class="pview" id="pv-${esc(x.id)}" hidden></div></li>`;
     // everything done (4.38): "for now" while a card comes back later today, "for today" when nothing more is due today; "Study a little more" really asks for
     // the next cards early (next?extra=1), so it is offered only when some card is scheduled
-    const go = waiting ? `<section class="go" aria-labelledby="go-h"><h2 id="go-h" class="sr">Study now</h2>
-        <button type="button" class="primary gobtn" id="go10">Study ${t.minutes} minutes</button>
+    // 4.56: a session left halfway comes back first ("Continue where you stopped"); with a focus, the top is its goal, a short
+    // plan and one Continue; without one, the 4.55 top plus a quiet "Set a focus"
+    const resume = saved ? `<button type="button" class="primary gobtn" id="goResume">Continue where you stopped</button>
+        <p class="help">${saved.card ? 'The same card, with what you had typed.' : `${plural(saved.answered, 'card')} answered so far.`}</p>` : '';
+    const fresh = saved ? `<button type="button" class="link" id="goFresh">Start a new session</button>` : '';
+    const focusBtn = `<button type="button" class="link" id="${F ? 'editFocus' : 'setFocus'}" aria-expanded="false" aria-controls="focusBox">${F ? 'Edit focus' : 'Set a focus'}</button>`;
+    const planLine = [P && P.reviews ? plural(P.reviews, 'review') : '', P && P.new ? `${P.new} new` : ''].filter(Boolean).join(' · ')
+      || (P && P.later ? `All done for now. ${plural(P.later, 'card')} come${P.later === 1 ? 's' : ''} back later today.` : P && P.tomorrow ? `All done for today. Next: tomorrow, ${plural(P.tomorrow, 'review')}.` : 'All done for today.');
+    const go = F ? `<section class="go focus" aria-labelledby="go-h"><p class="kicker">Your focus</p><h2 id="go-h" class="lesson-title" tabindex="-1">${esc(F.goal || 'Your focus')}</h2>
+        <p class="meta" id="golist">${esc(planLine)}</p>
+        ${F.missing ? `<p class="help" id="fmissing">${F.lessons ? `${plural(F.missing, 'lesson')} in your focus ${F.missing === 1 ? 'is' : 'are'} no longer on the server.` : 'None of the lessons in your focus are on the server any more. Edit the focus to choose others.'}</p>` : ''}
+        ${resume || (P.reviews || P.new ? `<button type="button" class="primary gobtn" id="goCont">Continue</button>` : '')}
+        <p class="links">${fresh}${!saved && P.reviews ? `<button type="button" class="link" id="goRev">Review only</button>` : ''}${focusBtn}</p>
+        <div id="focusBox" hidden></div></section>`
+      : waiting ? `<section class="go" aria-labelledby="go-h"><h2 id="go-h" class="sr" tabindex="-1">Study now</h2>
+        ${resume || `<button type="button" class="primary gobtn" id="go10">Study ${t.minutes} minutes</button>`}
         <p class="meta" id="golist">${esc(waiting)}${pins.length ? ', from your pinned tracks first' : ''}</p>
-        ${pins.length ? '' : `<p class="help">Nothing is pinned yet, so a session mixes every track that is not on the shelf, with ${plural(t.new_left, 'new card')} at most today. Pin up to ${t.pin_max} tracks under Shelf to choose what you study.</p>`}</section>`
-      : `<section class="go done" aria-labelledby="go-h"><h2 id="go-h" class="lesson-title">${t.later ? 'All done for now.' : 'All done for today.'}</h2>
+        ${pins.length ? '' : `<p class="help">Nothing is pinned yet, so a session mixes every track that is not on the shelf, with ${plural(t.new_left, 'new card')} at most today. Pin up to ${t.pin_max} tracks under Shelf to choose what you study.</p>`}
+        <p class="links">${fresh}${focusBtn}</p><div id="focusBox" hidden></div></section>`
+      : `<section class="go done" aria-labelledby="go-h"><h2 id="go-h" class="lesson-title" tabindex="-1">${t.later ? 'All done for now.' : 'All done for today.'}</h2>
         <p class="meta" id="golist">${t.later ? `${plural(t.later, 'card')} come${t.later === 1 ? 's' : ''} back later today. ` : ''}${t.next_due ? `Next: ${esc(when(t.next_due))}.` : 'Nothing is scheduled to come back yet.'}</p>
-        ${t.next_due ? `<button type="button" id="goMore" aria-describedby="morehelp">Study a little more</button><p class="help" id="morehelp">Brings the next cards forward instead of waiting for them.</p>` : ''}</section>`;
+        ${resume}${t.next_due ? `<button type="button" id="goMore" aria-describedby="morehelp">Study a little more</button><p class="help" id="morehelp">Brings the next cards forward instead of waiting for them.</p>` : ''}
+        <p class="links">${fresh}${focusBtn}</p><div id="focusBox" hidden></div></section>`;
     $('#mpanel').innerHTML = `<div class="today enter">
       ${go}
       ${pins.length ? `<section class="pins" aria-label="Pinned tracks">${pins.map(x => { const pct = Math.round(100 * x.progress);
@@ -719,8 +745,10 @@
         ${rest.length ? `<h3 class="label">Not pinned</h3><ul class="tlist">${rest.map(row).join('')}</ul>` : ''}
         ${shelf.length ? `<h3 class="label">On the shelf</h3><ul class="tlist">${shelf.map(row).join('')}</ul>` : ''}
         ${t.tracks.length ? '' : `<p class="coach">No tracks yet. Lessons appear here once they are copied to the server.</p>`}</details></div>`;
-    const g10 = $('#go10'), gm = $('#goMore');
-    if (g10) g10.onclick = () => startSession(false); if (gm) gm.onclick = () => startSession(true);
+    const on = (id, f) => { const b = $('#' + id); if (b) b.onclick = f; };
+    on('go10', () => startSession(false)); on('goMore', () => startSession(true)); on('goCont', () => startSession(false));
+    on('goRev', () => startSession(false, {reviewOnly: true})); on('goResume', () => resumeSession(saved)); on('goFresh', () => startSession(false));
+    const fb = $('#editFocus') || $('#setFocus'); if (fb) fb.onclick = () => focusForm(fb);
     $('#shelf').ontoggle = e => M.shelfOpen = e.target.open;
     $$('#mpanel [data-study]').forEach(b => b.onclick = () => { M.deck = b.dataset.study; save('mentor-deck', M.deck); fillPicker(); setView('practice'); });
     const keep = (sel, id) => { const b = $(`#mpanel [${sel}="${CSS.escape(id)}"]`); if (b) b.focus(); else $('#shelf summary').focus(); };
@@ -746,11 +774,66 @@
 
   /* ----- "Study 10 minutes": a mixed session from the pinned tracks with a thin bar that fills over the time; when the time
      is up the card on screen is finished, then a summary. A client timer: nothing about it is stored on the server ----- */
+  // Edit focus / Set a focus (4.56): the goal, the lessons (grouped by project), new questions a day; Save, Clear, Cancel
+  function focusForm(btn) {
+    const box = $('#focusBox'), F = (M.today || {}).focus;
+    if (!box.hidden) { box.hidden = true; btn.setAttribute('aria-expanded', 'false'); return; }
+    const ids = new Set(F ? F.ids : []), groups = {};
+    M.modules.forEach(m => (groups[m.project || 'Lessons'] = groups[m.project || 'Lessons'] || []).push([m.id, m.name]));
+    const plainDecks = M.decks.filter(d => !M.modules.some(m => m.id === d.id));
+    if (plainDecks.length) groups.Decks = plainDecks.map(d => [d.id, d.name]);
+    box.innerHTML = `<form class="focusform" id="focusForm" novalidate>
+      <div class="field"><label for="fgoal">Goal</label><input type="text" id="fgoal" maxlength="140" autocomplete="off" value="${esc(F ? F.goal : '')}" aria-describedby="fgoalhelp"><p class="help" id="fgoalhelp">One line: what you want to be able to do.</p></div>
+      <fieldset aria-describedby="flhelp"><legend>Lessons</legend><p class="help" id="flhelp">Continue studies only these. Everything else stays in Lessons and Study.</p>
+        ${Object.entries(groups).map(([g, ls]) => `<p class="label">${esc(g)}</p><ul class="flist">${ls.map(([id, n]) => `<li><label class="check"><input type="checkbox" name="flesson" value="${esc(id)}" ${ids.has(id) ? 'checked' : ''}> ${esc(n)}</label></li>`).join('')}</ul>`).join('')
+          || '<p class="coach">No lessons yet. Lessons appear here once they are copied to the server.</p>'}</fieldset>
+      <div class="field"><label for="fnew">New questions a day</label><input type="number" id="fnew" min="0" max="20" step="1" inputmode="numeric" value="${F ? F.new_per_day : 2}" aria-describedby="fnewhelp"><p class="help" id="fnewhelp">From 0 to 20. Reviews always come first.</p></div>
+      <p class="needmsg" id="ferr" role="alert" hidden></p>
+      <div class="row"><button type="submit" class="primary">Save focus</button>${F ? '<button type="button" id="clearFocus">Clear focus</button>' : ''}<button type="button" id="cancelFocus">Cancel</button></div></form>`;
+    box.hidden = false; btn.setAttribute('aria-expanded', 'true'); $('#fgoal').focus();
+    const done = async (focus, msg) => {
+      let r; try { r = await send('settings', {focus}); } catch (e) { r = {ok: false}; }
+      if (!r.ok) return toast(r.msg || "Couldn't save the focus. Check that the server is on, then try again.");
+      toast(msg); await todayView(); const h = $('#go-h'); if (h) h.focus();
+    };
+    $('#focusForm').onsubmit = e => { e.preventDefault();
+      const lessons = $$('#focusForm input[name=flesson]:checked').map(i => i.value), raw = $('#fnew').value.trim(), n = Number(raw), err = $('#ferr');
+      const bad = !lessons.length ? 'Choose at least one lesson.' : lessons.length > 50 ? 'Choose 50 lessons at most.'
+        : !raw || !Number.isInteger(n) || n < 0 || n > 20 ? 'New questions a day: a whole number from 0 to 20.' : '';
+      if (bad) { err.textContent = bad; err.hidden = false; return (!lessons.length || lessons.length > 50 ? $('#focusForm input[name=flesson]') : $('#fnew')).focus(); }
+      done({goal: $('#fgoal').value, lessons, new_per_day: n}, 'Focus saved. Continue now studies only those lessons.');
+    };
+    const cf = $('#clearFocus'); if (cf) cf.onclick = () => done({}, 'Focus cleared. Today mixes your tracks again.');
+    $('#cancelFocus').onclick = () => { box.hidden = true; btn.setAttribute('aria-expanded', 'false'); btn.focus(); };
+  }
+
+  /* ----- the session resumes (4.56): the page keeps the running session on the server (the card on screen, the answer
+     being typed, the tally) so a reload, a locked phone or a closed tab brings it back on Today. Saved when it starts, on
+     every card, and 800 ms after the last keystroke; cleared on Finish ----- */
+  const typedText = () => { const b = $$('#qform input.blank'); return b.length ? b.map(i => i.value).join('\n') : ($('#qform textarea#ans') || {value: ''}).value; };
+  function saveSession() {
+    clearTimeout(M.saveT); M.saveT = null;
+    const T = M.timed; if (!T || M.view !== 'session') return;
+    const s = {started: T.start / 1000, review_only: !!T.reviewOnly, card: M.card ? M.card.id : null, text: M.card && !isLearn(M.card) ? typedText().slice(0, 2000) : '',
+               shown: !!M.result, answered: T.cards, right: T.right, missed: T.missed.filter(Boolean).slice(-50), at: Date.now() / 1000};
+    send('session', {session: s}).catch(() => {});      // best effort: a lost save only loses the place, never an answer
+  }
+  const forgetSession = () => { clearTimeout(M.saveT); M.saveT = null; send('session', {session: null}).catch(() => {}); };
+  addEventListener('input', e => { if (M.view === 'session' && M.timed && e.target.closest && e.target.closest('#qform')) { clearTimeout(M.saveT); M.saveT = setTimeout(saveSession, 800); } }, true);
+  function resumeSession(s) {
+    const mins = (M.today && M.today.minutes) || 10, ms = mins * 60000;
+    const left = Math.max(2 * 60000, ms - Math.max(0, (s.at - s.started) * 1000));     // the minutes left, at least 2
+    M.timed = {start: Date.now() - (ms - left), ms, mins, done: false, more: 0, cards: s.answered || 0, right: s.right || 0, missed: [...(s.missed || [])],
+               early: false, reviewOnly: !!s.review_only};
+    M.replay = []; M.card = null; M.restore = s.card ? {card: s.card, text: s.text || ''} : null;
+    setView('session'); startTimer();
+  }
   let TICK = null;
-  function startSession(early) {
+  function startSession(early, opts) {
     const mins = (M.today && M.today.minutes) || 10;
-    M.timed = {start: Date.now(), ms: mins * 60000, mins, done: false, more: 0, cards: 0, right: 0, missed: [], early: early === true};
-    M.replay = []; M.again = null; M.card = null;
+    M.timed = {start: Date.now(), ms: mins * 60000, mins, done: false, more: 0, cards: 0, right: 0, missed: [], early: early === true,
+               reviewOnly: !!(opts && opts.reviewOnly)};
+    M.replay = []; M.again = null; M.card = null; M.restore = null;
     setView('session'); startTimer();
   }
   function startTimer() {
@@ -767,15 +850,25 @@
   function stopTimer() { clearInterval(TICK); TICK = null; const box = $('#mtime'); if (box) { box.hidden = true; box.classList.remove('full'); } }
   async function summary(empty) {
     const T = M.timed; if (!T) return setView('today');
-    stopTimer(); M.card = null; M.result = null;
+    stopTimer(); M.card = null; M.result = null; forgetSession();      // finished: nothing to continue on Today
     let t = null; try { t = await get('today'); M.today = t; } catch (e) {}
-    const miss = [...new Set(T.missed)];
+    const miss = [...new Set(T.missed.filter(Boolean))];
+    const F = t && t.focus, P = F && F.plan;
+    if (F) {                                  // 4.56: with a focus, one plain line of what happened, what is next, and Finish
+      const nx = P.reviews ? `Still due now: ${plural(P.reviews, 'review')}.` : P.tomorrow ? `Next: ${plural(P.tomorrow, 'review')} tomorrow.`
+        : F.new_per_day && F.lessons ? `Next: ${plural(F.new_per_day, 'new question')} tomorrow.` : 'Nothing is scheduled to come back yet.';
+      $('#mpanel').innerHTML = `<div class="panel done summary" id="spanel"><p class="kicker">${esc(F.goal || 'Your focus')}</p>
+        <h2 class="lesson-title" id="shead" tabindex="-1">${T.cards ? `You practised ${plural(T.cards, 'card')} · ${T.right} right` : 'No cards answered this time.'}</h2>
+        <p class="coach">${esc(nx)}</p>
+        <div class="row"><button type="button" class="primary" id="toToday">Finish</button>${miss.length ? `<button type="button" id="replay">Replay my ${plural(miss.length, 'mistake')}</button>` : ''}${empty ? '' : `<button type="button" id="more5">Keep going 5 more</button>`}</div></div>`;
+    } else {
     const nextLine = !t ? '' : [t.due ? `Still due now: ${t.due}.` : '', t.later ? `${t.later} come${t.later === 1 ? 's' : ''} back later today.` : '',
       t.tomorrow ? `Next: tomorrow, ${t.tomorrow} due.` : !t.due && !t.later && t.next_due ? `Next: ${when(t.next_due)}.` : ''].filter(Boolean).join(' ') || 'Nothing is scheduled to come back yet.';
     $('#mpanel').innerHTML = `<div class="panel done summary" id="spanel"><p class="kicker">${empty ? 'All done for now' : "Time's up"}</p>
       <h2 class="lesson-title" id="shead" tabindex="-1">${T.cards ? `${plural(T.cards, 'card')}, ${T.right} right.` : 'No cards answered this time.'}</h2>
       <p class="coach">${esc(nextLine)} ${T.cards ? 'Stopping here is a good choice: spacing reviews out is what makes them stick.' : ''}</p>
       <div class="row">${empty ? '' : `<button type="button" class="primary" id="more5">Keep going 5 more</button>`}${miss.length ? `<button type="button" ${empty ? 'class="primary"' : ''} id="replay">Replay my ${plural(miss.length, 'mistake')}</button>` : ''}<button type="button" id="toToday">Back to Today</button></div></div>`;
+    }
     $('#shead').focus();
     if (ARGUS && T.cards && T.right === T.cards) ARGUS.react('nod');
     const m5 = $('#more5'); if (m5) m5.onclick = () => { T.done = true; T.more = 5; next(); };

@@ -96,6 +96,12 @@ run(async b => {
     await p.locator('#more5').click(); await p.waitForTimeout(800);
     check(await p.locator('#qform').count() === 1 || /All done for now/.test(await p.locator('#mpanel').textContent()), 'Keep going serves more cards');
     await p.unroute('**/api/mentor/today*');
+    // 4.56: a session left halfway is kept on the server; Today offers it back first, as the one primary button
+    await p.goto(BASE + 'mentor'); await p.waitForTimeout(900);
+    check(await p.locator('#goResume').textContent() === 'Continue where you stopped' && await p.locator('#mpanel .primary').count() === 1 && await p.locator('#goFresh').count() === 1,
+      'a session left halfway: Continue where you stopped (the one primary), and Start a new session');
+    await api(p, 'session', {learner: 'learner-two', session: null});
+    check((await api(p, 'session?' + L)).session === null, 'POST session null forgets it');
     check(p.errors.length === 0, 'no page errors ' + p.errors.join(' | '));
 
     // everything done today (4.38): no false promise and no big button; "Study a little more" brings cards forward
@@ -117,6 +123,15 @@ run(async b => {
     await w.goto(BASE + 'mentor'); await w.waitForTimeout(900);
     await w.locator('#goMore').click(); await w.waitForTimeout(800);
     check(await w.locator('#qform').count() === 1 && await w.locator('#ans').count() === 1, 'Study a little more serves a card, and on a wide screen the answer is typed');
+    // 4.56: a reload in the middle of typing brings back the same card with the same text
+    const asked = (await w.locator('#qprompt').textContent()).trim();
+    await w.locator('#ans').fill('spread over several sessions'); await w.waitForTimeout(1300);      // saved 800 ms after the last keystroke
+    await w.reload(); await w.waitForTimeout(1000);
+    check(await w.locator('#goResume').count() === 1, 'after a reload Today offers Continue where you stopped');
+    await w.locator('#goResume').click(); await w.waitForTimeout(1000);
+    check((await w.locator('#qprompt').textContent()).trim() === asked && await w.locator('#ans').inputValue() === 'spread over several sessions' && await w.locator('#mtime').isVisible(),
+      'Continue where you stopped: the same card, the text typed so far, and the time bar');
+    await api(w, 'session', {learner: 'learner-two', session: null});
 
     // Lessons: an owner studying as Learner Two sees her real folder; an empty Lessons view points to Today
     await p.locator('[data-view=modules]').click(); await p.waitForTimeout(900);
@@ -157,5 +172,26 @@ run(async b => {
     check(parseFloat(await rm.locator('.tfill span').evaluate(e => getComputedStyle(e).transitionDuration)) <= .01 &&await rm.locator('.today').evaluate(e => getComputedStyle(e).animationName) === 'none', 'reduced motion: no slide-in, no gliding bar');
     // a learner herself (the server says who, later): the page shows her name and no picker; here, a person picked by the owner
     check(await rm.locator('#mwho b').textContent() === 'Learner Two', 'the picked person is remembered on this device');
+
+    // 4.56: one focus. Set a focus opens a form under the card; Save needs a lesson; then Today shows the goal and Continue
+    await rm.locator('#setFocus').click(); await rm.waitForTimeout(300);
+    check(await rm.locator('#focusBox').isVisible() && await rm.evaluate(() => document.activeElement.id) === 'fgoal' && await rm.locator('#setFocus').getAttribute('aria-expanded') === 'true',
+      'Set a focus opens the form, focus in Goal');
+    await rm.locator('#fgoal').fill('Read the study-skills terms'); await rm.locator('#focusForm button[type=submit]').click(); await rm.waitForTimeout(300);
+    check(/Choose at least one lesson/.test(await rm.locator('#ferr').textContent()) && await rm.evaluate(() => document.activeElement.name) === 'flesson', 'Save without a lesson says what to do and moves focus to the list');
+    check(await noOverflow(rm), 'the focus form fits 375 px without sideways scrolling');
+    check((await small(rm, '#focusBox button, #focusBox label.check')).length === 0, 'the form\'s buttons and lesson rows are 44 px targets');
+    await rm.locator('input[name=flesson][value="study-skills"]').check(); await rm.locator('#focusForm button[type=submit]').click(); await rm.waitForTimeout(1000);
+    check(await rm.locator('.go.focus h2').textContent() === 'Read the study-skills terms' && await rm.locator('#editFocus').count() === 1, 'saved: Today shows the goal and Edit focus');
+    check((await rm.locator('#golist').textContent()).trim().length > 0, 'a plan line under the goal: ' + (await rm.locator('#golist').textContent()).trim());
+    check((await small(rm, '.go.focus button')).length === 0, 'Continue, Review only and Edit focus are 44 px targets: ' + (await small(rm, '.go.focus button')).join(' | '));
+    check(await noOverflow(rm), 'the focus card fits 375 px without sideways scrolling');
+    await shot(rm, 'mentor-focus-375');
+    check(!(await rm.locator('[data-pin="focus"], [data-shelve="focus"]').count()), 'the focus track has no Pin or Shelve');
+    await rm.locator('#editFocus').click(); await rm.waitForTimeout(300);
+    check(await rm.locator('input[name=flesson][value="study-skills"]').isChecked() && await rm.locator('#fgoal').inputValue() === 'Read the study-skills terms', 'Edit focus opens with what was saved');
+    await rm.locator('#clearFocus').click(); await rm.waitForTimeout(1000);
+    check(await rm.locator('#setFocus').count() === 1 && await rm.locator('.go.focus').count() === 0, 'Clear focus: back to the usual Today');
+    check(rm.errors.length === 0, 'no page errors ' + rm.errors.join(' | '));
   } finally { fs.rmSync(PEOPLE, {force: true}); }
 });
