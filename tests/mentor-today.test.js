@@ -58,8 +58,18 @@ run(async b => {
     check(await p.evaluate(() => document.activeElement.dataset.unpin) === 'study-skills', 'focus stays on the track: on its Unpin button');
     await p.locator('[data-preview="study-skills"]').click(); await p.waitForTimeout(500);
     check(/Define: spaced practice/.test(await p.locator('#pv-study-skills').textContent()) && !/Spreading study/.test(await p.locator('#pv-study-skills').textContent()), 'Preview shows the first questions, never an answer');
+    // 4.58: the chosen topic goes on the shelf -> the picker moves to Everything, mixed (Study this chooses it first)
+    await p.locator('.tcard [data-study]').click(); await p.waitForTimeout(700);
+    check(await p.locator('#mdeck').inputValue() === 'study-skills', 'Study this chooses the track in the picker');
+    await p.locator('.views button', {hasText: 'Today'}).click(); await p.waitForTimeout(700);
+    if (!(await p.locator('#shelf').evaluate(d => d.open))) await p.locator('#shelf summary').click();
     await p.locator('[data-shelve="study-skills"]').click(); await p.waitForTimeout(700);
     check(/Shelf: 1 track/.test(await p.locator('#shelf summary').textContent()) && await p.locator('.tcard').count() === 0, 'Shelve takes it off Today and onto the shelf');
+    check(await p.locator('#mdeck').inputValue() === '' && await p.evaluate(() => localStorage.getItem('mentor-deck')) === null, 'shelving the chosen topic moves the picker to Everything, mixed');
+    // ... and a shelved topic remembered on this device (shelved elsewhere since the last visit) is let go on the next visit
+    await p.evaluate(() => localStorage.setItem('mentor-deck', 'study-skills')); await p.reload(); await p.waitForTimeout(1200);
+    check(await p.locator('#mdeck').inputValue() === '' && await p.evaluate(() => localStorage.getItem('mentor-deck')) === null, 'a remembered topic that is on the shelf is let go on load');
+    if (!(await p.locator('#shelf').evaluate(d => d.open))) await p.locator('#shelf summary').click();
     check((await api(p, 'stats?' + L)).new === 0 && (await api(p, 'next?' + L)).card === null, 'a shelved track is never served and never counted');
     await p.locator('[data-unshelve="study-skills"]').click(); await p.waitForTimeout(700);
     await p.locator('[data-pin="study-skills"]').click(); await p.waitForTimeout(700);

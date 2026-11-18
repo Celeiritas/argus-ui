@@ -94,6 +94,17 @@
     m.textContent = msg; el.focus(); el.oninput = (f => e => { m.remove(); el.oninput = f; if (f) f(e); })(el.oninput); };
   const sourceName = c => c.module || (M.decks.find(d => d.id === c.deck) || {}).name || c.deck;
   const moduleOf = id => M.modules.find(m => m.id === id);
+  // 4.58: the chosen topic went on the shelf (here on Today, or elsewhere since the last visit): study Everything, mixed,
+  // so the picker drops the shelf's lessons instead of keeping one of them (and its group headings) in view.
+  // A group counts as shelved when every lesson in it (and in its submenus) is.
+  function onShelf(id) {
+    const off = new Set((M.stats || {}).shelved || []);
+    if (!id || off.has(id)) return !!id;
+    if (!id.startsWith('group:')) return false;
+    const g = id.slice(6), ms = M.modules.filter(m => m.project === g || (m.project || '').startsWith(g + ' › '));
+    return ms.length > 0 && ms.every(m => off.has(m.id));
+  }
+  function leaveShelf() { if (onShelf(M.deck)) { M.deck = null; save('mentor-deck', null); } }
   const isLearn = c => LEARN.includes(c.kind);
   const LEAVES = {colors: ['#9BAA6A', '#B7C47E', '#7E8C52'], shape: 'leaf', n: 9, spread: 34, size: [4, 7], fall: 12, ms: 650};   // Athena's olive
 
@@ -110,6 +121,7 @@
     const [{decks}, s] = await Promise.all([get('decks'), get('stats')]);
     M.decks = decks; M.stats = s; M.modules = s.modules || [];
     if (M.deck && !decks.some(d => d.id === M.deck) && !moduleOf(M.deck)) M.deck = null;
+    leaveShelf();
     ROOT.innerHTML = `<section class="persona practice mentor" aria-label="Mentor">
       <div class="who" id="mwho"></div>
       <div class="mbar"><div class="views" role="group" aria-label="View">
@@ -148,7 +160,8 @@
     const learning = m => m.locked ? ' (locked)' : m.to_learn ? ` (learning ${m.learn.length - m.to_learn}/${m.learn.length})` : '';
     // Submenus (4.22.0): a lesson whose project reads "MENU › Sub" goes in its own group, which starts with "Study all of
     // it" (and the menu gets one "Study all" for every submenu under it); other lessons stay in Lessons, as before.
-    // 4.57: lessons on the shelf stay out (the chosen one stays, so the picker never lies); a plain project gets its own
+    // 4.57: lessons on the shelf stay out (the chosen one stays, so the picker never lies; since 4.58 leaveShelf() moves a
+    // chosen topic that went on the shelf to Everything, so that is only a lesson opened from Lessons); a plain project gets its own
     // group too, "Study all" first, and lessons go in number order ("2. \u2026" before "10. \u2026"), named without the project.
     const SEP = ' \u203a ', off = new Set((M.stats || {}).shelved || []), byName = (a, b) => a.name.localeCompare(b.name, undefined, {numeric: true});
     const mods = M.modules.filter(m => !off.has(m.id) || m.id === M.deck).sort(byName);
@@ -762,7 +775,7 @@
     const change = async (body, msg, sel, id) => {
       let r; try { r = await send('settings', body); } catch (e) { r = {ok: false}; }
       if (!r.ok) return toast(r.msg || "Couldn't save that. Check that the server is on, then try again.");
-      toast(msg); try { M.stats.shelved = (await get('stats')).shelved; fillPicker(); } catch (e) { /* the picker catches up on the next visit */ }
+      toast(msg); try { M.stats.shelved = (await get('stats')).shelved; leaveShelf(); fillPicker(); } catch (e) { /* the picker catches up on the next visit */ }
       await todayView(); keep(sel, id);
     };
     const name = id => (t.tracks.find(x => x.id === id) || {}).name || id;
@@ -930,15 +943,15 @@
         ${cont ? `<section class="cont" aria-labelledby="cont-h"><div><p class="kicker">Continue where you left off</p><h2 id="cont-h">${esc(cont.name)}</h2><p class="meta">${cont.to_learn ? `${cont.to_learn} lesson cards still to read` : `${Math.round(100 * tally(cont).seen / (tally(cont).n || 1))}% practised`}</p></div>
           <button type="button" class="primary" data-study="${esc(cont.id)}">Continue the lesson</button></section>` : ''}
         ${s.due ? `<section class="duebar" aria-labelledby="due-h"><div><h2 id="due-h">${plural(s.due, 'card')} due for review</h2><p class="meta">From all your lessons, mixed</p></div><button type="button" id="reviewAll">Review ${plural(s.due, 'card')}</button></section>` : ''}
+        ${owner && mods.length ? `<section class="mexport" aria-labelledby="mx-h"><img src="${url('static/icons/hermes.png')}" alt=""><div><h2 id="mx-h">Hand lessons on</h2>
+          <p class="meta">One file to import again later. Answers stay here.</p></div>
+          <div class="row">${M.deck ? `<button type="button" data-export="topic">Download this topic</button>` : ''}<button type="button" data-export="all">Download all lessons</button></div></section>` : ''}
         ${mods.length ? groups.map((g, gi) => { const ms = mods.filter(m => (m.project || 'Lessons') === g), files = [...new Set(ms.flatMap(m => m.files))];
           return `<section class="group" aria-labelledby="g-${gi}"><div class="ghead"><h2 id="g-${gi}">${esc(g)}</h2>${ms.length > 1 && g !== 'Lessons' ? `<button type="button" class="link" data-study="group:${esc(g)}">Study all ${ms.length}</button>` : ''}</div>
             ${courseOf(ms) ? courseOf(ms).modules.map(md => cmod(md, ms, row)).join('') : `<ul class="course-list">${ms.map(row).join('')}</ul>`}
             ${files.length ? `<details class="srcs"><summary>Where these lessons come from (${files.length})</summary><ul>${files.map(f => `<li>${esc(f)}</li>`).join('')}</ul></details>` : ''}</section>`; }).join('')
           : `<div class="empty"><b>No lessons here</b>${owner ? 'Add one with the steps under "About Mentor and adding a lesson". ' : ''}Your questions are on Today.<div class="row"><button type="button" id="toToday2">Go to Today</button></div></div>`}
         ${imp.length ? `<p class="label">Inbox files that need a look</p><ul class="ideas">${imp.map(i => `<li class="${i.ok ? 'hit' : 'miss'}"><code>${esc(i.path)}</code>: ${esc(i.msg)}</li>`).join('')}</ul>` : ''}
-        ${owner ? `<section class="mexport" aria-labelledby="mx-h"><img src="${url('static/icons/hermes.png')}" alt=""><div><h2 id="mx-h">Hand lessons on</h2>
-          <p class="meta">Hermes downloads the lesson files as one file, to import again later. Your answers and schedules stay here.</p>
-          <div class="row">${M.deck ? `<button type="button" data-export="topic">Download this topic</button>` : ''}<button type="button" data-export="all">Download all lessons</button></div></div></section>` : ''}
         ${owner ? `<details class="about"><summary>About Mentor and adding a lesson</summary>
           <p class="coach">Each lesson breaks down real work from your projects. You learn first (an overview, the terms, worked examples, the ideas behind each bug hunt), then practise, and reviews come back when you're about to forget.</p>
           <p class="meta">Calibration: ${calText(s.calibration)}${s.labels ? ` · ${plural(s.labels, 'graded answer')} saved for the learning grader` : ''}</p><p class="meta" id="ailine">Local AI: retired from study (docs/mentor-ai.md)</p>

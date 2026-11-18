@@ -1,5 +1,10 @@
 # Changelog
 
+## 4.58.0 – 2026-11-18
+Mentor: the download where you can see it, and a shelf that empties the picker (docs/mentor.md "Export" and "Menus and submenus").
+- **Hand lessons on is at the top of Lessons.** Hermes's download is a slim row above the first lesson group (on a phone it was several screens down, below every lesson). Shorter line: *One file to import again later. Answers stay here.* It is left out when there are no lessons.
+- **Shelving the chosen topic moves the picker to Everything, mixed.** Before, the picker kept the shelved lesson you were on, so its group headings stayed in the Topic list. It also happens on the next visit when the topic went on the shelf somewhere else.
+
 ## 4.57.0 – 2026-11-18
 Mentor: Hermes hands lessons on, and a Topic list you can find things in (docs/mentor.md "Export" and "Menus and submenus").
 - **Download this topic / Download all lessons.** The owner's Lessons view has a Hermes card that saves the lesson files (as imported, by name, never their folders) as one JSON file, `mentor-export/1`, to hand on and import again later. No answers or schedules go in; a learner gets 403.

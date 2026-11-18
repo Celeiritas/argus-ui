@@ -112,10 +112,13 @@
 .modules .cont,.modules .duebar{display:flex;flex-wrap:wrap;gap:var(--s3) var(--s6);align-items:center;justify-content:space-between;padding:var(--s4) var(--s6);background:var(--card);border:1px solid var(--line);border-radius:12px}
 .modules .cont{border-color:var(--teal)}
 .modules .cont .kicker{margin-top:0}
-.modules .mexport{display:flex;gap:var(--s4);align-items:flex-start;padding:var(--s4) var(--s6);background:var(--card);border:1px solid var(--line);border-radius:12px}
-.modules .mexport img{width:48px;height:48px;flex:none}
+/* 4.58: a slim row at the top of Lessons (it was a card at the bottom, below every lesson); the buttons wrap under the text on a phone */
+.modules .mexport{display:flex;flex-wrap:wrap;gap:var(--s3) var(--s4);align-items:center;padding:var(--s3) var(--s4);background:var(--card);border:1px solid var(--line);border-radius:12px}
+.modules .mexport img{width:32px;height:32px;flex:none}
+.modules .mexport>div{flex:1 1 12em;min-width:0}
 .modules .mexport h2{font-size:16px;margin:0}
-.modules .mexport .row{display:flex;flex-wrap:wrap;gap:var(--s3);margin-top:var(--s3)}
+.modules .mexport .meta{margin:0}
+.modules .mexport .row{display:flex;flex-wrap:wrap;gap:var(--s3)}
 .modules .mexport button{min-height:44px}
 .modules .ghead{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);margin:var(--s2) 0}
 .modules button.link{background:none;border:0;color:var(--powder);text-decoration:underline;min-height:var(--hit);padding:0 var(--s2)}

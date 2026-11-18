@@ -240,6 +240,7 @@ run(async b => {
   // 4.57: Hermes downloads the lesson files; the picker gives a plain project its own group, names without the project
   check(/static\/icons\/hermes\.png$/.test(await p.locator('.mexport img').getAttribute('src')) && await p.locator('[data-export=all]').isVisible(), "Hermes's download sits in Lessons");
   check((await p.locator('.mexport button').evaluateAll(bs => bs.every(b => b.getBoundingClientRect().height >= 44))), 'the download buttons are 44 px high');
+  check(await p.evaluate(() => { const x = document.querySelector('.mexport'), g = document.querySelector('.modules .group'); return !!(x && g && (x.compareDocumentPosition(g) & Node.DOCUMENT_POSITION_FOLLOWING)); }), "4.58: Hermes's row comes before the first lesson group");
   const [dl] = await Promise.all([p.waitForEvent('download'), p.locator('[data-export=all]').click()]);
   const bundle = JSON.parse(fs.readFileSync(await dl.path(), 'utf8'));
   check(/^mentor-all-lessons-\d{8}-\d{4}\.json$/.test(dl.suggestedFilename()) && bundle.format === 'mentor-export/1', 'the download is named by scope and time');
