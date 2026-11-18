@@ -544,11 +544,32 @@ class Roles(Base):
         self.assertEqual(sorted(got), sorted(want)); self.assertNotEqual(got, want, 'the lines come mixed, never in their right order')
         self.assertEqual(got, self.card('loops--write:z-1')['lines'], 'the same order while the card is on screen')
 
-    def test_grade_predict_by_key_ideas(self):
-        self.assertEqual(self.ans('loops--read:p-1', 'It prints 6')['coverage'], 1)
+    def test_grade_predict_exactly(self):
+        # 4.55: an output is compared exactly (layout aside), never by counting words
+        self.assertEqual(self.ans('loops--read:p-1', '6')['coverage'], 1)
         r = self.ans('loops--read:p-1', '7')
         self.assertEqual((r['coverage'], r['missed']), (0, ['it prints 6'])); self.assertIn('total = 0', r['code'])
+        self.assertEqual(self.ans('loops--read:p-1', 'It prints 6 and then 7')['coverage'], 0, 'extra words are not the output')
         self.assertEqual(self.ans('loops--read:p-2', '1\n2\n3')['coverage'], 1)
+        self.assertEqual(self.ans('loops--read:p-2', '3\n2\n1')['coverage'], 0, 'order counts')
+        self.assertEqual(self.db.execute("SELECT grader FROM attempts ORDER BY id DESC LIMIT 1").fetchone()[0], 'predict-exact')
+
+    def test_predict_minus_twelve(self):
+        k = dict(self.doc['modules'][0]['lessons'][0]['code_cards'][0], id='p-neg', answer='-12', accept=['- 12'],
+                 eval_rubric=[{'idea': 'it prints -12', 'any': ['-12']}])
+        prompt, ans, pts, data = m.code_card(k, 'predict')
+        with m.DB_LOCK:
+            self.db.execute("INSERT INTO cards(id,deck,kind,prompt,answer,points,data) VALUES('x:neg','x','predict',?,?,?,?)",
+                            (prompt, ans, json.dumps(pts), json.dumps(data))); self.db.commit()
+        self.assertEqual(self.ans('x:neg', '12')['coverage'], 0, '12 is not -12')
+        self.assertEqual(self.ans('x:neg', '-12')['coverage'], 1)
+        self.assertEqual(self.ans('x:neg', '- 12')['coverage'], 1, 'an accepted wording')
+
+    def test_trace_reversed(self):
+        self.assertEqual(self.ans('loops--read:t-2', ['3', '6', '5'])['coverage'], 1)
+        self.assertEqual(self.ans('loops--read:t-2', ['x=3', 'x = 6', ' x =5'])['coverage'], 1, 'spaces around = do not matter')
+        self.assertEqual(self.ans('loops--read:t-2', ['3', '6', '-5'])['coverage'], 0.67, '-5 is not 5')
+        self.assertEqual(self.ans('loops--read:t-2', ['x is 3', '6', '5'])['coverage'], 0.67, 'words around a value are not the value')
 
     def test_grade_trace_per_step(self):
         r = self.ans('loops--read:t-1', ['total = 0', '2', 'total = 6'])

@@ -37,6 +37,9 @@ Scheduling: FSRS-4.5 (Free Spaced Repetition Scheduler) with its published defau
 """
 import ast, io, json, math, os, re, sqlite3, textwrap, threading, time, glob, tokenize
 from difflib import SequenceMatcher
+import importlib.util as _ilu
+_cs = _ilu.spec_from_file_location('leafy_mentor_compare', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'compare.py'))
+compare = _ilu.module_from_spec(_cs); _cs.loader.exec_module(compare)     # exact answers (4.55), loaded by path like plugin.py's
 
 DB_LOCK = threading.Lock()
 INBOX = os.path.expanduser(os.environ.get('ARGUS_MENTOR_INBOX', '~/.local/share/argus-ui/inbox'))
@@ -266,6 +269,7 @@ def code_card(k, role):
         if not pts and role == 'write': return 'needs eval_rubric key ideas (how a written answer is graded)'
         pts = pts or [{'idea': ans.strip(), 'any': [ans.strip()]}]      # a predict card without key ideas: its output as one
         if role == 'write': data['starter'] = str(k.get('starter') or '')
+        if role == 'predict' and k.get('accept'): data['accept'] = [str(a) for a in as_list(k['accept'])]     # other exact wordings (4.55)
         return prompt, ans, pts, data
     if role == 'trace':
         n, steps = len(code.split('\n')), []
@@ -701,11 +705,11 @@ def typed_list(text, n):
     return got[:max(n, 0) or None] + [''] * max(0, n - len(got))
 
 def grade_trace(card, text):
-    """A trace card: the value after each step's line, each step graded on its own by the key-idea grader (its state, or an
-    accepted wording). Returns coverage, features, one row per step."""
+    """A trace card: the value after each step's line, each step compared exactly with its state or an accepted wording
+    (4.55: signs, operators and order count; only layout is forgiven). Returns coverage, features, one row per step."""
     pts, data = json.loads(card['points'] or '[]'), json.loads(card['data'] or '{}')
     typed = typed_list(text, len(pts))
-    per = [{'n': i + 1, 'line': ln, 'ok': bool(typed[i].strip()) and point_hit(p, set(code_tokens_words(typed[i])), code_tokens_words), 'typed': typed[i],
+    per = [{'n': i + 1, 'line': ln, 'ok': compare.same_value(typed[i], p['any']), 'typed': typed[i],
             'expected': p['any'][0]} for i, (p, ln) in enumerate(zip(pts, data.get('steps') or [0] * len(pts)))]
     cov = sum(p['ok'] for p in per) / (len(per) or 1)
     return cov, {'steps': len(per), 'right': sum(p['ok'] for p in per)}, per
@@ -1309,6 +1313,15 @@ def answer(db, card_id, text, confidence, ms, hints=0, reflections=None, skipped
         grader = c['kind'] + '-A'
         extra = {'breadcrumb': data.get('breadcrumb', ''), 'rows': per}
         if c['kind'] == 'trace': extra['code'] = data.get('code', '')
+    elif c['kind'] == 'predict' and not any('auto' in p for p in json.loads(c['points'] or '[]')):
+        # 4.55: an output has one right value. Compared exactly with the model answer, its key-idea wordings and `accept`
+        pts = json.loads(c['points'] or '[]')
+        accepted = [c['answer'], *[a for p in pts for a in p.get('any', [])], *as_list(data.get('accept'))]
+        cov = 1.0 if compare.same_value(text, accepted) else 0.0
+        ideas = [p['idea'] for p in pts] or [c['answer']]
+        hits, missed = (ideas, []) if cov else ([], ideas)
+        feats, grader = {'coverage': cov, 'words': len(text.split())}, 'predict-exact'
+        extra = {'breadcrumb': data.get('breadcrumb', ''), 'code': data.get('code', '')}
     else:
         cov, hits, missed, feats = grade(c, text, code_tokens_words if c['kind'] in CODE_KINDS else tokens)
         grader = 'rubric-A-auto' if feats.get('auto_points') else 'rubric-A'
