@@ -559,7 +559,8 @@ GENERIC = set('key causal mechanism mention must should explain explanation conc
               'consequence system mechanic python hci 1 2 3'.split())
 
 def norm(s):
-    return re.sub(r"[^a-z0-9\s]", " ", s.lower().replace("'", ''))
+    # 4.55: Unicode-safe. casefold() and \w keep every script's letters and digits (猫, é, ß); only punctuation goes
+    return re.sub(r"[^\w\s]|_", " ", s.casefold().replace("'", ''))
 
 def stem(w):
     for suf in ('ingly', 'edly', 'ing', 'ed', 'es', 's', 'ly'):
@@ -1292,6 +1293,9 @@ def answer(db, card_id, text, confidence, ms, hints=0, reflections=None, skipped
     level, per, extra = None, None, {}
     hints = max(0, min(4, int(hints or 0)))
     if hints == 4: text = ''                       # the answer was shown: this attempt counts as a blank one
+    if c['kind'] == 'drill' and card_level(c, c['level']) == 3 and data.get('lang', 'python') != 'python':
+        # 4.55: a whole body in a language Mentor can't parse is compared and self-checked, never scored as Python
+        return compare_answer(db, c, data, text, confidence, ms, hints, reflections, taught)
     if c['kind'] == 'drill':
         level = card_level(c, c['level'])
         cov, feats, per = grade_drill(c, level, text)
@@ -1400,7 +1404,7 @@ def compare_answer(db, c, data, text, confidence, ms, hints, reflections, taught
     number an older Mentor still reads) so the slip and stuck rules, which need a graded attempt, leave it alone. Python
     code is still parsed, never run, and its syntax error shown; any other language says "self-checked".'''
     now, extra = time.time(), {}
-    lang = data.get('lang', 'python') if c['kind'] == 'write' else None
+    lang = data.get('lang', 'python') if c['kind'] in ('write', 'drill') else None
     if lang == 'python' and text.strip():
         extra['problem'] = syntax_problem(textwrap.dedent(text))
     elif lang:

@@ -615,6 +615,20 @@ class Roles(Base):
         r = self.ans('x:rs', 'fn main() { let x = 1 }')
         self.assertEqual((r['evaluator'], 'problem' in r), ('self-checked', False), 'no Python check on Rust')
 
+    def test_term_kanji(self):
+        # 4.55: an answer in another script is kept, not stripped to nothing
+        self.assertEqual(m.grade_term({'answer': '猫'}, '猫'), 1.0)
+        self.assertEqual(m.grade_term({'answer': 'Straße'}, 'STRASSE'), 1.0, 'casefold: ß matches ss')
+        self.assertEqual(m.grade_term({'answer': '猫'}, '犬'), 0.0)
+
+    def test_rust_drill_level3_self_checked(self):
+        fades = {'3': {'code': 'fn double(x: i32) -> i32 {\n    {{BLANK_1}}\n}', 'answers': ['x * 2']}}
+        with m.DB_LOCK:
+            self.db.execute("INSERT INTO cards(id,deck,kind,prompt,answer,points,data) VALUES('x:rd','x','drill','Write the body','x * 2','[]',?)",
+                            (json.dumps({'lang': 'rust', 'fades': fades}),)); self.db.commit()
+        r = self.ans('x:rd', 'x * 2')
+        self.assertEqual((r['evaluator'], 'problem' in r, r['compare'], r['suggested']), ('self-checked', False, True, 0), 'a Rust body is never parsed as Python')
+
     def test_explain_negation_not_correct(self):
         with m.DB_LOCK:
             self.db.execute("INSERT INTO cards(id,deck,kind,prompt,answer,points,data) VALUES('x:neg','x','explain','Why?',?,?,'{}')",

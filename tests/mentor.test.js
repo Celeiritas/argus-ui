@@ -127,19 +127,19 @@ run(async b => {
   check(t2 && t2.kind === 'term', 'the terms come once every teach card is read');
   await p.selectOption('#mdeck', ''); await p.selectOption('#mdeck', 'argus-code'); await p.waitForTimeout(600);
 
-  // the hint ladder on a term card: nudge -> expert's move -> near example -> answer; a reflection before each next rung
+  // the hint ladder on a term card: nudge -> expert's move -> near example -> answer; the reflection box is optional (4.55)
   check(await p.locator('#hintBtn').count() === 1, 'a practice card has a Hint button');
   await p.locator('#hintBtn').click(); await p.waitForTimeout(500);
   check(/Hint 1 of 4/.test(await p.locator('#hints').textContent()) && await p.locator('#hints textarea').count() === 0, 'the first rung is a nudge, with nothing to type (4.38)');
   await p.locator('#hintBtn').click(); await p.waitForTimeout(500);
   check(/expert's first move/.test(await p.locator('#hints').textContent()), 'rung 2, the expert\'s first move, comes straight after');
   check(await p.locator('#hints textarea').count() === 1, 'from the second hint on, it asks what the hint told you');
-  await p.locator('#hintBtn').click(); await p.waitForTimeout(300);
-  check(await p.locator('#hints .hint').count() === 2 && /three words/.test(await p.locator('#toastText').textContent()), 'the third rung waits for a three-word reflection');
-  await p.locator('#hints textarea').last().fill('it is the with block');
+  check(/optional/.test(await p.locator('#hints label').last().textContent()), 'the reflection says it is optional');
+  await p.locator('#hintBtn').click(); await p.waitForTimeout(500);
+  check(await p.locator('#hints .hint').count() === 3 && /Hint 3 of 4/.test(await p.locator('#hints').textContent()), '4.55: an empty reflection never holds back the next hint');
   await p.locator('#ans').fill('context manager'); await p.keyboard.press('Enter'); await p.waitForTimeout(600);
-  check(await p.locator('.verdict.ok').count() === 1 && /Correct · context manager/.test(await p.locator('#rhead').textContent()) && /2 hints used/.test(await p.locator('#rpanel .deckname').first().textContent()), 'a right term is confirmed (Correct, in green, with a tick) and the hints used are shown');
-  check(await p.locator('input[name=rate]:checked').first().inputValue() === '3', 'rung 2 caps the suggested rating at Good');
+  check(await p.locator('.verdict.ok').count() === 1 && /Correct · context manager/.test(await p.locator('#rhead').textContent()) && /3 hints used/.test(await p.locator('#rpanel .deckname').first().textContent()), 'a right term is confirmed (Correct, in green, with a tick) and the hints used are shown');
+  check(await p.locator('input[name=rate]:checked').first().inputValue() === '2', 'rung 3 caps the suggested rating at Hard');
   check(await p.locator('.defs dt', {hasText: "Where it's used"}).count() === 1, 'the feedback shows where the term is used');
   await p.keyboard.press('4'); await p.locator('#rateBtn').click(); await p.waitForTimeout(500);       // Easy: graduates, off its learning steps
   const shownId = (await api(p, 'next?deck=argus-code')).card.id;      // the card the page shows next
@@ -162,15 +162,13 @@ run(async b => {
   const ta2 = await api(p, 'answer', {card: shownId, text: tAgain ? tAgain.term : '', confidence: 4, ms: 2000});
   await api(p, 'rate', {attempt: ta2.attempt, rating: 4, grade_wrong: false});
 
-  // worked example (level 0) before the first drill: one annotation at a time, the why after three typed words, then a self-explanation
+  // worked example (level 0) before the first drill: one annotation at a time, the why optional (4.55), then a self-explanation
   const l0 = await skip(p, 'argus-code', 'term', 8);
   check(l0 && l0.kind === 'level0', 'worked examples come once every term has been seen');
   await p.selectOption('#mdeck', ''); await p.selectOption('#mdeck', 'argus-code'); await p.waitForTimeout(600);
   check(await p.locator('#annot .callout').count() === 1 && await p.locator('#worked .ln.hi').count() === 1, 'level 0 shows annotation 1 and highlights its line');
-  await p.locator('#goBtn').click(); await p.waitForTimeout(200);
-  check(await p.locator('.needmsg').count() === 1 && await p.locator('#call0 p:not(.needmsg)').count() === 0, 'the note waits for three typed words, and says so');
-  await p.locator('#why0').fill('so only one request fetches'); await p.keyboard.press('Enter'); await p.waitForTimeout(300);
-  check(/Two requests can arrive at once/.test(await p.locator('#call0').textContent()), 'typing reveals the annotation\'s why');
+  await p.locator('#goBtn').click(); await p.waitForTimeout(300);
+  check(await p.locator('.needmsg').count() === 0 && /Two requests can arrive at once/.test(await p.locator('#call0').textContent()), '4.55: Show the note works with the why left empty');
   await shot(p, 'mentor-level0');
   for (let k = 1; k < 6; k++) { await p.locator('#goBtn').click(); await p.waitForTimeout(150); await p.locator(`#why${k}`).fill('because of this reason'); await p.keyboard.press('Enter'); await p.waitForTimeout(150); }
   await p.locator('#goBtn').click(); await p.waitForTimeout(300);

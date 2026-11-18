@@ -49,7 +49,7 @@
   const back = d => d < 1 / 24 ? `${Math.max(1, Math.round(d * 1440))} min` : d < 1 ? `${Math.round(d * 24)} hour${Math.round(d * 24) === 1 ? '' : 's'}` : `${Math.round(d)} day${Math.round(d) === 1 ? '' : 's'}`;
   const verb = (v, previews) => v === 1 && previews && previews[1] != null ? `Run again in ${back(previews[1])}` : 'Save and continue';     // Again's time from the server: 1 min on a new card, 10 min after a lapse
   const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
-  const words = s => (s.match(/[A-Za-z0-9_']+/g) || []).length;
+  const words = s => (s.match(/[\p{L}\p{N}_']+/gu) || []).length;      /* 4.55: any script's letters count */
   const typing = el => !!el && (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && /^(text|search|number|email|url)$/.test(el.type)) || el.isContentEditable);
   // a time in the past, in words ("5 min ago", "yesterday", "Mon, Nov 9")
   function ago(ts) { if (!ts) return ''; const m = (Date.now() - ts * 1000) / 60000, d = new Date(ts * 1000), y = new Date(); y.setDate(y.getDate() - 1);
@@ -371,18 +371,17 @@
   async function hint(rung) {
     const c = M.card; if (!c || M.result || M.hints >= 4) return;
     const open = $('#hints .hint:not(.offer):last-child textarea');
-    if (open && words(open.value) < 3 && !rung) { open.focus(); return toast('Say what that hint told you (three words or more) before the next one.'); }
-    if (open) M.reflections.push(open.value.trim().slice(0, 300));
+    if (open && open.value.trim()) M.reflections.push(open.value.trim().slice(0, 300));      /* 4.55: optional, never a gate */
     const want = rung || (M.hints + 1);
     let r; try { r = await send('answer', {card: c.id, hint: want}); } catch (e) { r = {ok: false}; }
     if (!r.ok) return toast("Couldn't reach Mentor for a hint. Check that the server is on, then try again.");
     M.hints = r.rung; $('#hintBtn').classList.remove('pulse'); clearIdle();
     $$('#hints .hint textarea').forEach(t => t.disabled = true);
     const last = r.rung === 4;
-    // fewer steps (4.38): the first hint is free; from the second on, say in three words what it told you before the next
+    // the first hint is free; from the second on, a box asks what it told you (4.55: optional, the next hint never waits)
     const reflect = !last && r.rung >= 2;
     $('#hints').insertAdjacentHTML('beforeend', `<div class="hint" id="rung${r.rung}"><p class="label">Hint ${r.rung} of 4 · ${esc(r.name)}</p><div class="model">${rich(r.text)}</div>
-      ${reflect ? `<label for="refl${r.rung}">What did that tell you?</label><textarea id="refl${r.rung}" rows="2" maxlength="300" placeholder="Three words or more"></textarea>` : ''}</div>`);
+      ${reflect ? `<label for="refl${r.rung}">What did that tell you? (optional)</label><textarea id="refl${r.rung}" rows="2" maxlength="300"></textarea>` : ''}</div>`);
     const hb = $('#hintBtn'), cb = $('#checkBtn');
     if (last) { hb.hidden = true; cb.textContent = 'Rate it'; $$('#qform input.blank, #qform textarea#ans').forEach(i => i.disabled = true); cb.focus(); }
     else { hb.textContent = r.next === 4 ? 'Show the answer' : 'Next hint'; (reflect ? $(`#refl${r.rung}`) : $('#qform input.blank:not([disabled]), #qform textarea#ans') || hb).focus(); }
@@ -411,7 +410,7 @@
         : `<p class="label">Model answer</p>${answerBlock(r.reference)}`;
     } else if (r.compare) {                   // 4.55: an explanation or written code: compared side by side, rated by you, never marked
       kind = 'shown'; head = shown ? 'The answer was shown' : 'Compare with the reference';
-      const code = c.kind === 'write' || c.kind === 'predict';
+      const code = c.kind === 'write' || c.kind === 'predict' || c.kind === 'drill';
       detail = `${r.problem ? `<p class="coach">Python says: <code>${esc(r.problem)}</code></p>` : ''}${r.evaluator === 'self-checked' ? '<p class="coach">Self-checked: Mentor does not check this language. Compare it yourself.</p>' : ''}
         <div class="pair">${text ? `<div><p class="label">${code ? 'Yours' : 'You wrote'}</p>${code ? `<pre class="code"><code>${esc(text)}</code></pre>` : `<p class="model mine">${esc(text)}</p>`}</div>` : ''}
         <div><p class="label">${c.kind === 'predict' ? 'What it prints' : 'Reference'}</p>${code ? `<pre class="code"><code>${esc(r.reference)}</code></pre>` : answerBlock(r.reference)}</div></div>${ideasToCompare(r.points)}`;
@@ -550,7 +549,7 @@
       body = `${title(c.context || 'Read the code, one line at a time', 'Read the code, one line at a time')}
         <pre class="code worked" id="worked"><code>${lines.map((l, i) => `<span class="ln" data-line="${i + 1}">${esc(l) || ' '}</span>`).join('\n')}</code></pre>
         <div id="annot"></div>
-        <p class="help" id="annhelp">${readOnly ? 'Every note is shown.' : `Annotation <span id="step">1</span> of ${ann.length}. Say why the line is there (three words or more), then <kbd>Enter</kbd> shows the note.`}</p>`;
+        <p class="help" id="annhelp">${readOnly ? 'Every note is shown.' : `Annotation <span id="step">1</span> of ${ann.length}. Say why the line is there if you can (optional), then <kbd>Enter</kbd> shows the note.`}</p>`;
       go = readOnly ? done : `<button type="button" class="primary" id="goBtn">Show the note</button>${skip}`;
     } else {          // preread
       body = `<h3>Before you hunt the bug: the ideas it rests on</h3>${tried}
@@ -574,7 +573,7 @@
     M.t0 = performance.now();
     const form = $('#qform'), ta = $('#guess'), go = $('#tryBtn'), sk = $('#skipBtn');
     ta.focus();
-    form.onsubmit = e => { e.preventDefault(); if (!words(ta.value)) return need(ta, 'Type a guess first: a word or two is enough. It isn\'t graded.'); M.guess = {id: c.id, text: ta.value.trim()}; learnCard(c); };
+    form.onsubmit = e => { e.preventDefault(); if (!ta.value.trim()) return need(ta, 'Type a guess first: a word or two is enough. It isn\'t graded.'); M.guess = {id: c.id, text: ta.value.trim()}; learnCard(c); };
     form.onkeydown = e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); form.requestSubmit(); } };
     if (sk) sk.onclick = async () => { if (await learnSend(c, '', true, go)) rate(0); };
   }
@@ -621,12 +620,12 @@
       (inp || go).focus();
     }
   }
-  // level 0: one annotation at a time; the "why" waits until three words are typed
+  // level 0: one annotation at a time; the "why" is asked for, never required (4.55)
   function stepAnnotation(c, go, advance) {
     const ann = c.annotations || [], k = M.step, box = $('#annot');
     if (advance) {
-      const ta = $(`#why${k}`); if (ta && !ta.disabled && words(ta.value) < 3) return need(ta, 'Say why the line is there, in three words or more.');
-      if (ta && !ta.disabled) { M.notes.push(ta.value.trim().slice(0, 120)); ta.disabled = true; $(`#call${k}`).insertAdjacentHTML('beforeend', `<p>${inline(esc(ann[k].why))}</p>`); go.textContent = k + 1 < ann.length ? 'Go to the next line' : 'Explain it'; return go.focus(); }
+      const ta = $(`#why${k}`);
+      if (ta && !ta.disabled) { if (ta.value.trim()) M.notes.push(ta.value.trim().slice(0, 120)); ta.disabled = true; $(`#call${k}`).insertAdjacentHTML('beforeend', `<p>${inline(esc(ann[k].why))}</p>`); go.textContent = k + 1 < ann.length ? 'Go to the next line' : 'Explain it'; return go.focus(); }
       if (k + 1 < ann.length) M.step++;
       else return selfExplain(c, go);
     }
@@ -634,7 +633,7 @@
     $$('#worked .ln').forEach(l => l.classList.toggle('hi', +l.dataset.line === a.line));
     const line = $(`#worked .ln[data-line="${a.line}"]`); if (line) line.scrollIntoView({block: 'nearest'});
     box.insertAdjacentHTML('beforeend', `<div class="callout" id="call${M.step}"><b>${M.step + 1}. Line ${a.line}${a.note ? ': ' + inline(esc(a.note)) : ''}</b>
-      <label for="why${M.step}">Why is this line here?</label><input id="why${M.step}" class="blank wide" autocomplete="off" maxlength="120"></div>`);
+      <label for="why${M.step}">Why is this line here? (optional)</label><input id="why${M.step}" class="blank wide" autocomplete="off" maxlength="120"></div>`);
     $('#step').textContent = M.step + 1;
     const ta = $(`#why${M.step}`); ta.focus(); go.textContent = 'Show the note';
     ta.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); go.click(); } };
@@ -644,7 +643,7 @@
     $('#annhelp').textContent = 'Last step: explain it in your own words.';
     const ta = $('#ans'); ta.focus(); go.textContent = 'Check my explanation';
     const finish = async () => {
-      if (words(ta.value) < 3) return need(ta, 'Explain it in three words or more first.');
+      if (!ta.value.trim()) return need(ta, 'Explain it first: any length, in your own words.');
       go.disabled = true;
       let r; try { r = await send('answer', {card: c.id, text: JSON.stringify({reflections: M.notes, explain: ta.value.trim().slice(0, 1500)}), ms: Math.round(performance.now() - M.t0)}); } catch (e) { r = {ok: false}; }
       if (!r.ok) { go.disabled = false; return toast("Couldn't reach Mentor. Check that the server is on, then try again."); }
