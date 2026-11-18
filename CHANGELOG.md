@@ -1,5 +1,10 @@
 # Changelog
 
+## 4.54.1 – 2026-11-17
+Daedalus gets his medallion.
+- **Controllers (Daedalus)** shows the owner's pick of the 2026-11-17 drafts: a game pad with a gold wing on each side, in the same frame as the other medallions (silver rim, a thin amber ring, a dark glow). It replaces the lettered D placeholder; source `themes/leafy-realm/gods/daedalus.svg`.
+- Spartamelee's and Ariad-Node's new marks (picked the same day) ship from their own plugins' `icon` field, not from this theme.
+
 ## 4.54.0 – 2026-11-17
 One way to each place (the owner's decisions of 2026-11-16, docs/home.md "One way to each place"): the bars go places, Today says what needs you.
 - **Today has no Open list, no Sections tiles and no Edit Today**, at every width. It is one reading column (at most 880 px) on a computer too: what needs you, the devices line, then one line per section with news (*Mentor · 6 cards due*), each ending in a chevron so it reads as a link.
