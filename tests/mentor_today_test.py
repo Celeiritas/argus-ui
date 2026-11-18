@@ -239,5 +239,174 @@ class TodayNumbers(Base):
         self.assertEqual((t['goal'], t['ask_confidence']), ('Know the words of HCI', True))
         self.assertTrue(m.next_card(self.db, 'ux-hci')[0]['ask_confidence'])
 
+class WithGames(Base):
+    """The theme's decks plus three inbox lessons: mod1 under GAME_RESEARCH › Topics, g1 and g2 under GAME_RESEARCH › Games."""
+    def setUp(self):
+        super().setUp()
+        os.makedirs(m.INBOX, exist_ok=True)
+        with open(os.path.join(DECKS, LESSON + '.json'), encoding='utf-8') as fh: doc = json.load(fh)
+        for mid, project in (('mod1', 'GAME_RESEARCH › Topics'), ('g1', 'GAME_RESEARCH › Games'), ('g2', 'GAME_RESEARCH › Games')):
+            doc['metadata']['project'] = project
+            with open(os.path.join(m.INBOX, mid + '.json'), 'w', encoding='utf-8') as fh: json.dump(doc, fh)
+        m.scan_inbox(self.db)
+
+class Focus(WithGames):
+    """4.56: a focus is an explicit lesson list studied as one track ('focus'), apart from the project groups."""
+    def decks(self, n=40, **kw):
+        out = []
+        for _ in range(n):
+            c, _ = m.next_card(self.db, **kw)
+            if not c: break
+            out.append(c['id'].split(':', 1)[0]); self.rate(c['id'], 0 if c['kind'] in m.LEARN else 4)
+        return out
+
+    def test_focus_excludes_game_research(self):
+        self.assertEqual(m.track_map(self.db)['mod1'], 'group:GAME_RESEARCH', 'without a focus it shares the group track')
+        m.set_settings(self.db, {'focus': {'goal': 'Read a Rust call', 'lessons': ['mod1']}})
+        self.assertEqual(m.track_map(self.db)['mod1'], m.FOCUS)
+        t = m.today(self.db)
+        self.assertEqual(t['scope'], [m.FOCUS])
+        self.assertEqual((t['tracks'][0]['id'], t['tracks'][0]['name']), (m.FOCUS, 'Focus'))
+        self.assertEqual(t['focus']['goal'], 'Read a Rust call')
+        served = self.decks(session=True)
+        self.assertTrue(served); self.assertEqual(set(served), {'mod1'})
+
+    def test_focus_new_limit_two(self):
+        m.set_settings(self.db, {'focus': {'lessons': ['mod1']}})
+        self.assertEqual(m.today(self.db)['focus']['plan']['new'], 2)
+        new = 0
+        for _ in range(20):
+            c, _ = m.next_card(self.db, session=True)
+            if not c: break
+            if not c['reps'] and c['kind'] not in m.LEARN: new += 1
+            self.rate(c['id'], 4)
+        self.assertEqual(new, 2)
+        self.assertEqual(m.today(self.db)['focus']['plan']['new'], 0)
+        self.assertEqual(m.today(self.db)['new_left'], 0, "Today's total is the focus's")
+
+    def test_focus_editable(self):
+        m.set_settings(self.db, {'focus': {'goal': 'Read a Rust call', 'lessons': ['mod1'], 'new_per_day': 3}})
+        m.set_settings(self.db, {'focus': {'goal': '  Read   two calls ', 'lessons': ['mod1', 'g1'], 'new_per_day': 3}})
+        f = m.today(self.db)['focus']
+        self.assertEqual((f['goal'], f['lessons'], f['ids'], f['new_per_day']), ('Read two calls', 2, ['mod1', 'g1'], 3))
+        m.set_settings(self.db, {'focus': {}})
+        t = m.today(self.db)
+        self.assertIsNone(t['focus'])
+        self.assertEqual(set(t['scope']), {'ai-coding', 'psych-design', 'ux-hci', TRACK, 'group:GAME_RESEARCH'})
+
+    def test_focus_missing_lesson(self):
+        m.set_settings(self.db, {'focus': {'lessons': ['mod1', 'gone']}})
+        f = m.today(self.db)['focus']
+        self.assertEqual((f['lessons'], f['missing']), (1, 1))
+        m.set_settings(self.db, {'focus': {'lessons': ['gone']}})
+        t = m.today(self.db)
+        self.assertEqual((t['focus']['lessons'], t['focus']['missing'], t['scope']), (0, 1, [m.FOCUS]))
+        self.assertEqual(m.next_card(self.db, session=True)[0], None, 'nothing outside the focus is served instead')
+
+    def test_focus_beats_shelf(self):
+        m.set_settings(self.db, {'shelved': ['group:GAME_RESEARCH', m.FOCUS], 'pinned': [m.FOCUS]})
+        self.assertEqual(m.settings(self.db)['shelved'], ['group:GAME_RESEARCH'], 'the focus is never shelved or pinned')
+        self.assertEqual(m.settings(self.db)['pinned'], [])
+        m.set_settings(self.db, {'focus': {'lessons': ['mod1']}})
+        self.assertEqual(set(self.decks(session=True)), {'mod1'})
+        self.assertEqual(m.next_card(self.db, 'g1')[0], None, 'the rest of the group stays on the shelf')
+
+    def test_focus_bad_input_ignored(self):
+        m.set_settings(self.db, {'focus': {'lessons': ['mod1']}})
+        for bad in ({'lessons': 'mod1'}, {'lessons': ['x%d' % i for i in range(51)]}, {'lessons': ['mod1'], 'new_per_day': 21},
+                    {'lessons': ['mod1'], 'goal': 5}, ['mod1']):
+            m.set_settings(self.db, {'focus': bad})
+            self.assertEqual(m.settings(self.db)['focus'], {'goal': '', 'lessons': ['mod1'], 'new_per_day': 2}, bad)
+
+    def test_review_only_serves_no_new(self):
+        m.set_settings(self.db, {'focus': {'lessons': ['mod1']}})
+        self.assertEqual(m.next_card(self.db, session=True, reviews_only=True)[0], None)
+        c, _ = m.next_card(self.db, session=True); self.rate(c['id'], 3)
+        self.db.execute("UPDATE sched SET due=? WHERE card_id=?", (time.time() - 60, c['id'])); self.db.commit()
+        self.assertEqual(m.next_card(self.db, session=True, reviews_only=True)[0]['id'], c['id'])
+
+class Session(WithGames):
+    """4.56: a session stopped halfway is kept (per person) and comes back with the card and the half-typed answer."""
+    def saved(self, **kw):
+        s = {'used': 120, 'review_only': False, 'early': False, 'card': 'ux-hci:affordance', 'text': 'half an answer',
+             'seen': m.last_attempt(self.db), 'answered': 2, 'right': 1, 'missed': ['ux-hci:mental-model']}
+        s.update(kw); return s
+
+    def test_session_round_trip(self):
+        self.assertIsNone(m.load_session(self.db))
+        s = m.save_session(self.db, self.saved())
+        self.assertEqual(m.load_session(self.db), s)
+        self.assertEqual((s['card'], s['text'], s['answered'], s['right']), ('ux-hci:affordance', 'half an answer', 2, 1))
+        m.clear_session(self.db)
+        self.assertIsNone(m.load_session(self.db))
+
+    def test_session_skips_missing_card(self):
+        m.save_session(self.db, self.saved(card='gone:card'))
+        s = m.load_session(self.db)
+        self.assertEqual((s['card'], s['text'], s['answered']), (None, '', 2), 'the tally is kept, the card and its text are not')
+        m.save_session(self.db, self.saved())
+        m.set_settings(self.db, {'shelved': ['ux-hci']})
+        self.assertIsNone(m.load_session(self.db)['card'], 'a card on the shelf is not reopened')
+        m.set_settings(self.db, {'shelved': [], 'focus': {'lessons': ['mod1']}})
+        self.assertIsNone(m.load_session(self.db)['card'], 'a card outside the focus is not reopened')
+
+    def test_session_expires_after_12h(self):
+        s = m.save_session(self.db, self.saved(at=1.0))
+        self.assertGreater(s['at'], time.time() - 5, "the server stamps the time; the page's clock is never used")
+        m.set_meta(self.db, 'session', {**s, 'at': time.time() - 13 * 3600})
+        self.assertIsNone(m.load_session(self.db))
+
+    def test_session_keeps_what_resume_needs(self):
+        s = m.save_session(self.db, self.saved(early=True, review_only=True, used=300))
+        self.assertEqual((s['early'], s['review_only'], s['used']), (True, True, 300.0), '"Study a little more" resumes as itself')
+        self.assertNotIn('shown', s)
+
+    def test_session_stale_save_ignored(self):
+        seen = m.last_attempt(self.db)
+        first = m.save_session(self.db, self.saved(seen=seen))
+        a = self.rate('ux-hci:affordance', 3)        # the card is rated; a typing save sent before that arrives late
+        self.assertIsNone(m.save_session(self.db, self.saved(text='late keystrokes', seen=seen)))
+        self.assertEqual(m.load_session(self.db)['text'], first['text'])
+        self.assertIsNotNone(m.save_session(self.db, self.saved(card='ux-hci:mental-model', text='', seen=a['attempt'])), 'the next card saves')
+        self.assertIsNotNone(m.save_session(self.db, self.saved(seen=a['attempt'])), 'the same card served again after its rating saves')
+
+    def test_session_second_tab_cannot_bring_back_a_rated_card(self):
+        # Review Focus 4: two tabs on the same card; tab A rates it and moves on; tab B (older) types and saves "now"
+        both = m.last_attempt(self.db)
+        m.save_session(self.db, self.saved(seen=both))
+        a = self.rate('ux-hci:affordance', 3)
+        m.save_session(self.db, self.saved(card='ux-hci:accessible-name', text='', seen=a['attempt']))     # tab A, next card
+        self.assertIsNone(m.save_session(self.db, self.saved(text='tab B types', seen=both)))              # tab B, stale
+        self.assertEqual(m.load_session(self.db)['card'], 'ux-hci:accessible-name')
+        m.undo(self.db, a['attempt'])                # an undone rating no longer makes the card stale
+        self.assertIsNotNone(m.save_session(self.db, self.saved(text='tab B types', seen=both)))
+
+    def test_session_bad_seen_refused(self):
+        for bad in (-1, True, '3', 1.5):
+            with self.assertRaises(TypeError): m.save_session(self.db, self.saved(seen=bad))
+
+    def test_focus_plan_counts_unseen_new(self):
+        m.set_settings(self.db, {'focus': {'lessons': ['ux-hci'], 'new_per_day': 2}})
+        p = m.today(self.db)['focus']['plan']
+        n = self.db.execute("SELECT COUNT(*) FROM cards WHERE deck='ux-hci' AND kind NOT IN ('learn')").fetchone()[0]
+        self.assertGreater(p['unseen'], p['new'], 'unseen counts every new question, not only today\'s')
+        self.assertLessEqual(p['unseen'], n)
+
+    def test_focus_drops_pin_of_a_track_it_took_in(self):
+        m.set_settings(self.db, {'pinned': ['ux-hci', 'psych-design']})
+        m.set_settings(self.db, {'focus': {'lessons': ['ux-hci']}})
+        self.assertEqual(m.settings(self.db)['pinned'], ['psych-design'], 'no invisible pin counts toward the 3')
+        m.set_settings(self.db, {'shelved': ['ai-coding']}); m.set_settings(self.db, {'focus': {'lessons': ['mod1']}})
+        self.assertEqual(m.settings(self.db)['shelved'], ['ai-coding'], 'a track the focus did not take stays where it was')
+
+    def test_session_text_capped(self):
+        s = m.save_session(self.db, self.saved(text='x' * 2500, missed=['ux-hci:affordance'] * 80))
+        self.assertEqual((len(s['text']), len(s['missed'])), (2000, 50))
+
+    def test_session_bad_input_ignored(self):
+        for bad in (None, [], 'x', {'used': 'soon'}, self.saved(answered=-1), self.saved(card=5)):
+            with self.assertRaises((TypeError, ValueError)): m.save_session(self.db, bad)
+        self.assertIsNone(m.load_session(self.db))
+
 if __name__ == '__main__':
     unittest.main(verbosity=1 if '-v' not in sys.argv else 2)

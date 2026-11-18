@@ -197,6 +197,38 @@ class People(unittest.TestCase):
         self.assertEqual([(x['id'], x['goal'], x['pinned']) for x in t['tracks']], [('own-deck', 'Pass the exam', True)])
         self.assertEqual(self.get('today', OWNER)[1]['pinned'], [], "her pins are not his")
 
+    def test_session_is_per_person(self):
+        self.start()
+        s = {'used': 60, 'card': 'own-deck:x', 'text': 'half', 'seen': 0, 'answered': 1, 'right': 1, 'missed': []}
+        code, r = self.post('session', {'session': s}, LEARNER)
+        self.assertEqual((code, r['saved'], r['session']['text']), (200, True, 'half'))
+        self.assertIsNone(self.get('session', OWNER)[1]['session'], "her session is not his")
+        self.assertEqual(self.get('session', LEARNER)[1]['session']['answered'], 1)
+        self.assertIsInstance(self.get('session', LEARNER)[1]['seen'], int)
+        self.assertEqual(self.post('session', {'session': {'used': 'soon'}}, LEARNER)[0], 400)
+        self.assertEqual(self.post('session', {'session': None}, LEARNER)[1]['session'], None)
+        self.assertIsNone(self.get('session', LEARNER)[1]['session'])
+
+    def test_manifest_opens_every_study_path_to_a_learner(self):
+        # PR #70 review 1: plugin.get/post above skip the server's gate, so this reads plugin.json the way the server does
+        # (identity.plugin_roles, argus_ui.plugin_need): an unlisted path is the owner's and a learner gets 403
+        spec = importlib.util.spec_from_file_location('identity_under_test', os.path.join(R, 'server', 'identity.py'))
+        idn = importlib.util.module_from_spec(spec); spec.loader.exec_module(idn)
+        with open(os.path.join(R, 'plugins', 'mentor', 'plugin.json'), encoding='utf-8') as f: man = json.load(f)
+        roles = idn.plugin_roles(man.get('roles'))
+        with open(os.path.join(R, 'plugins', 'mentor', 'page.js'), encoding='utf-8') as f: page = f.read()
+        import re
+        for verb, fn in (('get', 'get'), ('post', 'send')):
+            used = set(re.findall(r"\b%s\('([a-z]+)" % fn, page))
+            self.assertTrue(used, verb)
+            self.assertEqual(sorted(p for p in used if roles[verb].get(p) != 'learner'), [], f'{verb} paths the page calls but a learner may not')
+        # review 2: the largest session save the page can send fits the POST limit (4096 bytes unless max_body says more)
+        worst = {'session': {'used': 599.999, 'review_only': True, 'early': True, 'card': 'c' * 200, 'text': '\x01' * 2000,
+                             'seen': 2 ** 53, 'answered': 10 ** 6, 'right': 10 ** 6, 'missed': ['m' * 200] * 50}}
+        body = len(json.dumps(worst).encode('utf-8'))
+        self.assertGreater(body, 4096)
+        self.assertGreaterEqual(man.get('max_body', 4096), body)
+
     def test_new_learner_deck_without_restart(self):
         self.start()
         self.assertEqual(self.get('stats', LEARNER)[1]['cards'], 2)

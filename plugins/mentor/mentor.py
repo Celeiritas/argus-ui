@@ -756,6 +756,7 @@ def init_d(g):
 # Learning steps (Anki's behaviour on FSRS, spec section 7): a new card comes back after 1 min, then 10 min, before FSRS
 # schedules it in days; a lapsed card (Again on a review) relearns with one 10 min step. Seconds.
 LEARN_STEPS, RELEARN_STEPS = (60, 600), (600,)
+FIRST_EASY_MAX_DAYS = 5          # 4.56: a new card's first Easy comes back within 5 days (Good graduates at about 4)
 
 def hard_delay(steps, i):
     """Hard on a learning step: on the first of two or more steps, halfway between the first two (whole minutes, so the
@@ -795,8 +796,11 @@ def schedule(row, g, now):
     if g == 2: return s, d, now + hard_delay(steps, i), reps, lapses, i, relearn
     if g == 3 and i + 1 < len(steps): return s, d, now + steps[i + 1], reps, lapses, i + 1, relearn
     # graduate: Good on the last step, or Easy on any step. Easy is a day longer than Good would be from the same memory,
-    # except on a new card, whose memory Easy already set (FSRS's own first Easy interval)
+    # except on a new card, whose memory Easy already set (FSRS's own first Easy interval, 14 days with the default weights)
+    # 4.56: that first wait is capped at FIRST_EASY_MAX_DAYS (the owner found 10 minutes vs 14 days too far apart); the
+    # memory itself stays FSRS's, so only this one due date is earlier.
     days = interval_days(s) + (1 if g == 4 and not new else 0)
+    if g == 4 and new: days = min(days, FIRST_EASY_MAX_DAYS)
     return s, d, now + days * DAY, reps, lapses, None, 0
 
 # Expertise reversal (Kalyuga et al. 2003): blanks that help a beginner slow down someone who knows the code.
@@ -947,13 +951,16 @@ def deck_where(db, deck):
 # submenus included: "GAME_RESEARCH › Topics" and "GAME_RESEARCH › Games" are one track), or a lesson without a project
 # (its own id). The ids are ones deck_where() already takes, so a track is studied like any choice in the picker.
 def track_map(db):
-    """{deck or lesson id: track id} for every card's deck in this database."""
+    """{deck or lesson id: track id} for every card's deck in this database. 4.56: the lessons of the focus are the track
+    FOCUS, whatever their project (the focus is an explicit list, so a modding lesson leaves the game decks' group)."""
     out = {}
     for r in db.execute("SELECT id, project FROM modules"):
         root = (r['project'] or '').split(GROUP_SEP)[0].strip()
         out[r['id']] = 'group:' + root if root else r['id']
     for (d,) in db.execute("SELECT DISTINCT deck FROM cards"):
         out.setdefault(d, d)
+    for d in settings(db)['focus'].get('lessons', []):
+        if d in out: out[d] = FOCUS
     return out
 
 def tracks(db, names=None):
@@ -963,11 +970,12 @@ def tracks(db, names=None):
     for d, t in tm.items(): by.setdefault(t, []).append(d)
     out = []
     for t, ds in by.items():
-        if t.startswith('group:'): name = fill(mods[ds[0]]['name']) if len(ds) == 1 else fill(t[6:])
+        if t == FOCUS: name = 'Focus'
+        elif t.startswith('group:'): name = fill(mods[ds[0]]['name']) if len(ds) == 1 else fill(t[6:])
         elif t in mods: name = fill(mods[t]['name'])
         else: name = fill((names or {}).get(t) or t)
         out.append({'id': t, 'name': name, 'lessons': sorted(ds)})
-    return sorted(out, key=lambda x: (x['name'].lower(), x['id']))
+    return sorted(out, key=lambda x: (x['id'] != FOCUS, x['name'].lower(), x['id']))
 
 def track_of(tm, deck):
     return tm.get(deck, deck)
@@ -988,6 +996,7 @@ def new_today(db, tm, now):
     return out
 
 def new_limit(st, track):
+    if track == FOCUS: return st['focus'].get('new_per_day', FOCUS_NEW)
     lim = st['new_per_day']
     return lim[track] if track in lim else lim.get('*', NEW_PER_DAY)
 
@@ -1001,9 +1010,15 @@ def unpinned_room(st, made):
 # card (4.38: off; a practice card comes first and its teaching is the feedback). pinned: up to PIN_MAX tracks on Today;
 # shelved: tracks hidden from study and from every count, history kept. new_per_day: {track: n} ("*" = every track),
 # NEW_PER_DAY when not set. goal: {track: one line}, the owner's words. ask_confidence: tracks that ask "How sure?" on
-# every card (others ask on every CONF_EVERY-th card).
-SETTINGS = {'bury': True, 'teach_first': False, 'pinned': [], 'shelved': [], 'new_per_day': {}, 'goal': {}, 'ask_confidence': []}
+# every card (others ask on every CONF_EVERY-th card). focus (4.56): {goal, lessons, new_per_day} or {} = no focus; while
+# its lesson list is not empty a session (Continue) studies those lessons only, as the track FOCUS (never pinned or shelved).
+SETTINGS = {'bury': True, 'teach_first': False, 'pinned': [], 'shelved': [], 'new_per_day': {}, 'goal': {}, 'ask_confidence': [],
+            'focus': {}}
 PIN_MAX, NEW_PER_DAY, CONF_EVERY = 3, 10, 5
+FOCUS, FOCUS_NEW, FOCUS_MAX = 'focus', 2, 50     # the focus track's id, its default new questions a day, its most lessons
+
+def focus_on(st):
+    return bool(st['focus'].get('lessons'))
 
 class Refusal(ValueError):
     """A setting Mentor will not save, with the sentence that says what to do instead."""
@@ -1033,6 +1048,15 @@ def _goal(x):
     if not isinstance(x, str): raise TypeError
     return ' '.join(x.split())[:140]
 
+def _focus(v):
+    """The focus is replaced whole: {} clears it; otherwise goal (one line), lessons (ids) and new questions a day (0-20)."""
+    if not isinstance(v, dict) or set(v) - {'goal', 'lessons', 'new_per_day'}: raise TypeError
+    if not v: return {}
+    lessons = _ids(v.get('lessons', []))
+    n = _count(v.get('new_per_day', FOCUS_NEW))
+    if len(lessons) > FOCUS_MAX or n > 20: raise TypeError
+    return {'goal': _goal(v.get('goal', '')), 'lessons': lessons, 'new_per_day': n}
+
 def settings(db):
     out = {k: (list(v) if isinstance(v, list) else dict(v) if isinstance(v, dict) else v) for k, v in SETTINGS.items()}
     for r in db.execute("SELECT key, value FROM settings"):
@@ -1059,20 +1083,29 @@ def set_settings(db, changes):
     changes = {k: v for k, v in (changes or {}).items() if k in SETTINGS}
     with DB_LOCK:
         cur = settings(db); new = {}
+        before = set(track_map(db).values()) if 'focus' in changes else set()
         for k, v in changes.items():
             try:
                 if k in ('pinned', 'shelved', 'ask_confidence'): new[k] = _ids(v)
                 elif k == 'new_per_day': new[k] = _merge(cur[k], v, _count)
                 elif k == 'goal': new[k] = _merge(cur[k], v, _goal)
+                elif k == 'focus': new[k] = _focus(v)
                 elif isinstance(v, type(SETTINGS[k])): new[k] = v
             except TypeError: pass              # a wrong type is ignored, as for every setting
+        for k in ('pinned', 'shelved'):         # the focus track is studied by Continue, never pinned or put on the shelf
+            if k in new: new[k] = [x for x in new[k] if x != FOCUS]
         if 'pinned' in new and len(new['pinned']) > PIN_MAX:
             raise Refusal(f'You can pin {PIN_MAX} tracks. Unpin one first: open the shelf on Today and choose Unpin on the track you need least.')
         # a track is pinned or shelved, never both: the list sent in this request wins
         if 'shelved' in new: new['pinned'] = [x for x in new.get('pinned', cur['pinned']) if x not in new['shelved']]
         if 'pinned' in new: new['shelved'] = [x for x in new.get('shelved', cur['shelved']) if x not in new['pinned']]
-        for k, v in new.items():
-            db.execute("INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (k, json.dumps(v)))
+        put = lambda k, v: db.execute("INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (k, json.dumps(v)))
+        for k, v in new.items(): put(k, v)
+        if 'focus' in new:                      # a pinned or shelved track that the focus took in no longer exists: drop it,
+            gone = before - set(track_map(db).values())     # so it never counts as one of the 3 pins without being seen
+            after = settings(db)
+            for k in ('pinned', 'shelved'):
+                if any(x in gone for x in after[k]): put(k, [x for x in after[k] if x not in gone])
         db.commit()
     return settings(db)
 
@@ -1171,18 +1204,21 @@ def locked_reason(db, deck):
     if not x or not x['locked']: return None
     return f"This lesson unlocks when you have answered {round(PASS * 100)}% of the cards right in: {', '.join(x['waiting_on'])}."
 
-def next_card(db, deck=None, extra=False, session=False, out=None):
+def next_card(db, deck=None, extra=False, session=False, out=None, reviews_only=False):
     """The next card to study: a Learn card sent back first, then reviews due, a module's check, then new cards.
     4.38: a track on the shelf is never served. Question first (unless the teach_first setting is on): a lesson's new
     practice cards come without their Learn cards in front, and the teaching arrives as feedback (answer()); a Learn card
     is served on its own only in a lesson that has nothing else, or when stuck detection sends it back. New practice cards
     stop at each track's daily limit (new_per_day). session=True (Study 10 minutes): reviews of the pinned tracks first,
     then other reviews, then new cards from the pinned tracks only (every track off the shelf while nothing is pinned).
-    out (a dict) gets 'held': how many new cards the daily limit holds back for this choice."""
+    out (a dict) gets 'held': how many new cards the daily limit holds back for this choice. 4.56: with a focus set, a
+    session serves the focus's cards only (no other reviews, no other new cards); reviews_only: no new card at all."""
     scan_inbox(db)
     now = time.time()
     st, tm = settings(db), track_map(db)
     shelf, pins, first = set(st['shelved']), set(st['pinned']), st['teach_first']
+    focus = session and focus_on(st)
+    if focus: shelf, pins = {t for t in set(tm.values()) if t != FOCUS}, set()     # everything else waits
     q, args = CARD_Q, []
     w, wargs = deck_where(db, deck)
     if w: q += " WHERE " + w; args += wargs
@@ -1218,11 +1254,12 @@ def next_card(db, deck=None, extra=False, session=False, out=None):
         mine = lambda r: track_of(tm, r['deck']) in pins
         due = [r for r in due if mine(r)] or due
         new = [r for r in new if mine(r)]
-    elif session and not unpinned_room(st, made):
+    elif session and not focus and not unpinned_room(st, made):
         new = [r for r in new if r['kind'] in LEARN]          # nothing pinned: today's one shared limit is used up
+    if reviews_only: new = []
     # a module's check, once all its lessons are mastered: after the reviews due, before new cards (mastery leaves out an
     # item buried today, so the course map counts the same)
-    checks = sorted((r for r in every if r['id'] in info['checks'] and r['kind'] not in LEARN), key=order)
+    checks = [] if reviews_only else sorted((r for r in every if r['id'] in info['checks'] and r['kind'] not in LEARN), key=order)
     pool = due or checks or new
     if pool: c = interleave(pool)
     elif extra and [r for r in rows if r['due']]: c = min((r for r in rows if r['due']), key=lambda r: r['due'])   # practise ahead
@@ -1689,9 +1726,17 @@ def today(db, names=None):
                      'due': t['due'], 'new': t['new'], 'new_per_day': lim, 'new_today': made.get(tid, 0),
                      'new_left': min(t['new'], max(0, lim - made.get(tid, 0))), 'later': t['later'], 'tomorrow': t['tomorrow'], 'last': last.get(tid),
                      'pinned': tid in pins, 'shelved': tid in shelf, 'ask_confidence': tid in st['ask_confidence']})
-    rows.sort(key=lambda r: (not r['pinned'], pins.index(r['id']) if r['pinned'] else 0, r['shelved'], r['name'].lower()))
+    rows.sort(key=lambda r: (r['id'] != FOCUS, not r['pinned'], pins.index(r['id']) if r['pinned'] else 0, r['shelved'], r['name'].lower()))
     live = [r for r in rows if not r['shelved']]
     scope = [r for r in live if r['pinned']] or live           # nothing pinned yet: every track off the shelf
+    focus = None
+    if focus_on(st):                                            # 4.56: Continue studies the focus only
+        f = next((r for r in rows if r['id'] == FOCUS), None) or {'id': FOCUS, 'due': 0, 'new': 0, 'new_left': 0, 'later': 0, 'tomorrow': 0}
+        ids = [d for d in st['focus']['lessons'] if tm.get(d) == FOCUS]
+        focus = {'goal': st['focus'].get('goal', ''), 'ids': ids, 'lessons': len(ids), 'missing': len(st['focus']['lessons']) - len(ids),
+                 'new_per_day': new_limit(st, FOCUS), 'plan': {'reviews': f['due'], 'new': f['new_left'], 'unseen': f['new'],
+                                                               'later': f['later'], 'tomorrow': f['tomorrow']}}
+        scope = [f]
     week = []
     for i in range(6, -1, -1):
         d0 = day_start(day0 - i * DAY + 3600); d1 = day_start(d0 + 1.5 * DAY)
@@ -1700,10 +1745,59 @@ def today(db, names=None):
     nxt = db.execute("SELECT c.deck, s.due FROM sched s JOIN cards c ON c.id=s.card_id WHERE s.due>? ORDER BY s.due", (now,)).fetchall()
     nxt = next((r['due'] for r in nxt if track_of(tm, r['deck']) not in shelf), None)
     return {'tracks': rows, 'pinned': pins, 'pin_max': PIN_MAX, 'shelf': len([r for r in rows if r['shelved']]),
-            'due': sum(r['due'] for r in live), 'scope': [r['id'] for r in scope],
-            'new_left': sum(r['new_left'] for r in scope) if pins else min(sum(r['new_left'] for r in scope), unpinned_room(st, made)),
+            'due': sum(r['due'] for r in (scope if focus else live)), 'scope': [r['id'] for r in scope], 'focus': focus,
+            'new_left': sum(r['new_left'] for r in scope) if pins or focus else min(sum(r['new_left'] for r in scope), unpinned_room(st, made)),
             'later': sum(r['later'] for r in live), 'tomorrow': sum(r['tomorrow'] for r in live), 'next_due': nxt, 'week': week, 'minutes': SESSION_MIN,
             'confidence_every': CONF_EVERY, 'teach_first': st['teach_first']}
+
+# ---------- a session that resumes (4.56) ----------
+# The page saves the running session (the card on screen, the half-typed answer, the tally) as it goes, in this person's
+# database; leaving the page or reloading brings it back on Today as "Continue where you stopped". Kept 12 hours.
+SESSION_KEEP, SESSION_TEXT, SESSION_MISSED = 12 * 3600, 2000, 50
+
+def _secs(x):
+    if isinstance(x, bool) or not isinstance(x, (int, float)) or not 0 <= x < 1e6: raise TypeError
+    return float(x)
+
+def last_attempt(db):
+    """The newest attempt id in this database (0 when there is none): the page sends it back as 'seen' with each save."""
+    return db.execute("SELECT COALESCE(MAX(id), 0) FROM attempts").fetchone()[0]
+
+def save_session(db, s):
+    """Store the session the page sends; returns what was stored. The server stamps the time (the phone's clock is never
+    compared with ours). seen: the newest attempt id the page knew of when it sent the save (last_attempt() on Today, then
+    each answer's id). A save whose card has a rating on an attempt newer than that is stale: a typing save that arrives
+    after the rating, or a second tab still showing a card the first tab rated. It is ignored: None, and the stored session
+    stays as it was. A save without 'seen' (the page could not learn it) is not checked."""
+    if not isinstance(s, dict): raise TypeError
+    card, seen = s.get('card'), s.get('seen')
+    if card is not None and (not isinstance(card, str) or not 0 < len(card) <= 200): raise TypeError
+    if seen is not None and (isinstance(seen, bool) or not isinstance(seen, int) or seen < 0): raise TypeError
+    text, missed = s.get('text', ''), s.get('missed', [])
+    if not isinstance(text, str) or not isinstance(missed, list) or not all(isinstance(x, str) and 0 < len(x) <= 200 for x in missed): raise TypeError
+    out = {'used': _secs(s.get('used', 0)), 'review_only': s.get('review_only') is True, 'early': s.get('early') is True,
+           'card': card, 'text': text[:SESSION_TEXT], 'answered': _count(s.get('answered', 0)), 'right': _count(s.get('right', 0)),
+           'missed': missed[-SESSION_MISSED:], 'at': time.time()}
+    if card and seen is not None and db.execute(
+            "SELECT 1 FROM attempts WHERE card_id=? AND rating>0 AND COALESCE(undone, 0)=0 AND id>?", (card, seen)).fetchone():
+        return None
+    set_meta(db, 'session', out)
+    return out
+
+def load_session(db):
+    """The stored session, or None when there is none or it is older than 12 hours. Its card (and the text typed for it)
+    is left out when the card is gone, its track is on the shelf, or a focus is set that the card is not part of."""
+    s = meta(db, 'session')
+    if not isinstance(s, dict) or not isinstance(s.get('at'), (int, float)) or time.time() - s['at'] > SESSION_KEEP: return None
+    c = s.get('card') and db.execute("SELECT deck FROM cards WHERE id=?", (s['card'],)).fetchone()
+    if s.get('card'):
+        st = settings(db); t = c and track_of(track_map(db), c['deck'])
+        if not c or t in st['shelved'] or (focus_on(st) and t != FOCUS): s = {**s, 'card': None, 'text': ''}
+    return s
+
+def clear_session(db):
+    with DB_LOCK:
+        db.execute("DELETE FROM settings WHERE key='_session'"); db.commit()
 
 def track_preview(db, tid, names=None):
     """Preview on the shelf: a track's size, its history, and its first few questions (never an answer). Changes nothing."""

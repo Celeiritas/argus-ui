@@ -82,6 +82,8 @@
 
 ## PR B — 4.56.0: one Rust path, one Continue (Increment 2)
 
+> Planned in detail and built in `docs/plans/2026-11-18-mentor-pr-b-focus.md` (focus, Review only, the session that resumes, first Easy within 5 days); the Rust content (B5) is drafted outside git.
+
 ### Task B1: focus track (lesson allowlist)
 **Files:** Modify `mentor.py` (`settings`/`set_settings` 1030–1071, `track_map` 943, `deck_where` 932, `today` 1611), `plugin.py` routes; Test `tests/mentor_today_test.py`.
 

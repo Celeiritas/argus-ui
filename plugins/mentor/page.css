@@ -234,6 +234,22 @@
 .mentor .today .go.done{border-color:var(--line)}
 .mentor .today .go.done .lesson-title{margin:0}
 .mentor .today .go.done button{min-height:var(--hit)}
+/* 4.56: the focus card and its form */
+.mentor .today .go.focus .kicker{margin:0}
+.mentor .today .go.focus .lesson-title{margin:0;overflow-wrap:anywhere}
+.mentor .today .go .links{margin:0}
+.mentor .today #focusBox{align-self:stretch}
+.mentor .focusform{display:flex;flex-direction:column;gap:var(--s3);margin-top:var(--s2);padding-top:var(--s3);border-top:1px solid var(--line)}
+.mentor .focusform .field{margin:0}
+.mentor .focusform input[type=text],.mentor .focusform input[type=number]{display:block;width:100%;max-width:32rem;box-sizing:border-box;min-height:var(--hit);padding:0 var(--s3);font:inherit;font-size:var(--fs-body);color:var(--snow);background:#1a1f25;border:1px solid var(--line);border-radius:8px}
+.mentor .focusform input[type=number]{max-width:8rem}
+.mentor .focusform input:focus-visible{outline:2px solid var(--powder);outline-offset:2px}
+.mentor .focusform fieldset{margin:0;padding:0;border:0;min-width:0}
+.mentor .focusform .label{margin:var(--s2) 0 0}
+.mentor .flist{list-style:none;margin:0;padding:0}
+.mentor .flist label.check{display:flex;align-items:center;gap:var(--s2);min-height:var(--hit);cursor:pointer;overflow-wrap:anywhere}
+.mentor .flist label.check input{width:20px;height:20px;flex:none;margin:0}
+.mentor .focusform .row{display:flex;flex-wrap:wrap;gap:var(--s2)}
 .mentor #rateBtn,.mentor #replayNext{min-height:var(--hit)}
 .mentor details.report label.check{display:flex;align-items:center;gap:var(--s2);min-height:var(--hit);cursor:pointer}
 .mentor details.report label.check input{width:20px;height:20px;flex:none}

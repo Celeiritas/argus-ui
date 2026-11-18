@@ -300,7 +300,7 @@ class Steps(Card):
         self.assertEqual(m.schedule(None, 1, now)[2] - now, 60, 'Again on a new card: 1 min')
         self.assertEqual(m.schedule(None, 2, now)[2] - now, 360, 'Hard on step 1: between 1 and 10 min (6 min)')
         e = m.schedule(None, 4, now)
-        self.assertEqual((e[2] - now, e[5]), (m.interval_days(m.W[3]) * m.DAY, None), 'Easy graduates at once')
+        self.assertEqual((e[2] - now, e[5]), (m.FIRST_EASY_MAX_DAYS * m.DAY, None), 'Easy graduates at once (capped, 4.56)')
         self.assertEqual(m.schedule(None, 1, now)[4], 0, 'Again on a new card is not a lapse')
 
     def test_timeline_lapse_relearns(self):
@@ -317,9 +317,24 @@ class Steps(Card):
     def test_previews_are_what_rating_does(self):
         a = self.answer()
         self.assertEqual({g: round(v * m.DAY) for g, v in a['previews'].items() if g < 4}, {1: 60, 2: 360, 3: 600})
-        self.assertEqual(round(a['previews'][4]), m.interval_days(m.W[3]))
+        self.assertEqual(round(a['previews'][4]), m.FIRST_EASY_MAX_DAYS)
         r = m.rate(self.db, a['attempt'], 3, False)
         self.assertAlmostEqual(r['days'] * m.DAY, 600, delta=2); self.assertEqual(r['step'], 1)
+
+    def test_first_easy_capped(self):
+        # 4.56: FSRS's own first Easy is 14 days (W[3]); a new card waits at most 5, its memory is still FSRS's
+        self.assertGreater(m.interval_days(m.W[3]), 5)
+        now = time.time()
+        s, d, due, reps, lapses, step, relearn = m.schedule(None, 4, now)
+        self.assertEqual((round((due - now) / m.DAY), s, step), (5, m.W[3], None))
+        a = self.answer(); r = m.rate(self.db, a['attempt'], 4, False)
+        self.assertEqual(round(r['days']), 5)
+
+    def test_review_easy_not_capped(self):
+        now = time.time()
+        row = {'reps': 3, 'step': None, 'stability': 30.0, 'difficulty': 5.0, 'last': now - 30 * m.DAY, 'lapses': 0, 'relearn': 0}
+        due = m.schedule(row, 4, now)[2]
+        self.assertGreater((due - now) / m.DAY, 30, 'a review card follows FSRS')
 
     def test_step_card_served_and_counted_when_due(self):
         self.go(3); self.go(3, 'd:hick')
