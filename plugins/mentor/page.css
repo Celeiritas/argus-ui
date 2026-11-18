@@ -10,6 +10,8 @@
 .pick select:focus-visible{outline:2px solid var(--powder);outline-offset:2px}
 .mentor .kind{color:var(--powder);font-size:var(--fs-meta);font-weight:600;margin:0 0 var(--s1)}
 .mentor .crumb{display:flex;flex-wrap:wrap;gap:0 var(--s1);color:var(--frost);font-size:var(--fs-meta);margin:0 0 var(--s3);font-family:var(--mono)}
+.mentor details.where{margin:0 0 var(--s3)}.mentor .crumb+details.where{margin-top:calc(-1 * var(--s3))}.mentor details.where>summary{min-height:var(--hit);display:inline-flex;align-items:center;cursor:pointer;color:var(--powder);font-size:var(--fs-meta)}
+.mentor details.where ol.path{display:flex;flex-wrap:wrap;gap:0 var(--s1);list-style:none;margin:0;padding:0;color:var(--frost);font-size:var(--fs-meta);overflow-wrap:anywhere}.mentor details.where ol.path li+li::before{content:"›";margin-right:var(--s1)}.mentor details.where code{font-size:inherit}
 .mentor .big{margin:0 0 var(--s3)}.mentor .big p{color:var(--powder);margin:0 0 var(--s2)}
 .mentor code{font-family:var(--mono);font-size:.9em;background:#1a1f25;border-radius:4px;padding:0 var(--s1)}
 .mentor pre.code{white-space:pre;word-break:normal;overflow:auto;max-height:none;font-family:var(--mono);font-size:var(--fs-sec);line-height:1.6;color:var(--snow);background:#1a1f25;border:1px solid var(--line);border-radius:8px;padding:var(--s3);margin:0 0 var(--s4);tab-size:4}

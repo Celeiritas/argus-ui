@@ -62,7 +62,12 @@
   const rich = t => esc(t).split(/```[\w-]*\n?([\s\S]*?)```/).map((part, i) => i % 2 ? `<pre class="code"><code>${part.replace(/\n$/, '')}</code></pre>`
     : part.split(/\n{2,}/).filter(p => p.trim()).map(p => `<p>${inline(p.trim()).replace(/\n/g, '<br>')}</p>`).join('')).join('');
   // where the code is: only its last part (the function), never folders or file names; the Lessons view lists the files
-  const crumb = s => { const x = (s || '').split(/\s*(?:->|→|›)\s*/).filter(Boolean).pop(); return x && !/\.(?:py|js|mjs|ts|css|json|sh|md|html|ya?ml|toml|txt)$/i.test(x) ? `<p class="crumb"><span class="sr">Where in the code: </span><span>${inline(esc(x))}</span></p>` : ''; };
+  // the function on the card; the whole path (folder, file, function) waits in a closed "In your project" drawer (4.55)
+  const crumb = s => {
+    const parts = (s || '').split(/\s*(?:->|→|›)\s*/).filter(Boolean), x = parts[parts.length - 1];
+    const fn = x && !/\.(?:py|js|mjs|ts|rs|css|json|sh|md|html|ya?ml|toml|txt)$/i.test(x) ? `<p class="crumb"><span class="sr">Where in the code: </span><span>${inline(esc(x))}</span></p>` : '';
+    return fn + (parts.length ? `<details class="where"><summary>In your project</summary><ol class="path">${parts.map(p => `<li><code>${esc(p)}</code></li>`).join('')}</ol></details>` : '');
+  };
   // code to read with its line numbers (predict and trace cards name lines); lines wrap and keep their indent
   const codeLines = code => `<ol class="lines static" aria-label="The code, ${plural(code.split('\n').length, 'line')}">${code.split('\n').map((l, i) => `<li><span class="line"><span class="n" aria-hidden="true">${i + 1}</span><code>${esc(l) || ' '}</code></span></li>`).join('')}</ol>`;
   // one Parsons line: its code, then Up and Down (44 px each); k is its place in the card's mixed list, never its right place

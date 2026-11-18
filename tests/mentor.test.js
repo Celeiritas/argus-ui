@@ -183,6 +183,9 @@ run(async b => {
   await p.selectOption('#mdeck', ''); await p.selectOption('#mdeck', 'argus-code'); await p.waitForTimeout(600);
   check(await p.locator('pre.code input.blank').count() === 2, 'a level 1 drill has two blanks in the code');
   check((await p.locator('.crumb').textContent()).replace('Where in the code: ', '') === 'current()', 'the card says which function, not which folder or file');
+  const where = p.locator('#mpanel details.where');
+  check(await where.count() === 1 && !(await where.evaluate(d => d.open)) && /In your project/.test(await where.locator('summary').textContent()), '4.55: the whole path waits in a closed "In your project" drawer');
+  check(JSON.stringify(await where.locator('ol.path li').allTextContents()) === JSON.stringify(['server', 'sky.py', 'current()']), 'the drawer lists folder, file and function in order');
   await shot(p, 'mentor-drill-ask');
   await p.locator('input.blank').nth(0).fill('_mem'); await p.keyboard.press('Enter');
   check(await p.evaluate(() => document.activeElement.dataset.n) === '2', 'Enter moves to the next blank');
