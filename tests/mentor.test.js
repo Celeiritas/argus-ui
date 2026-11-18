@@ -88,7 +88,7 @@ run(async b => {
   check(/Hint 4 of 4/.test(await p.locator('#hints').textContent()) && await p.locator('#checkBtn').textContent() === 'Rate it', 'Space with nothing typed shows the answer');
   await p.keyboard.press(' '); await p.waitForTimeout(600);
   check(/The answer was shown/.test(await p.locator('#rhead').textContent()), 'Space on Rate it (a button) presses it');
-  await p.locator('#rateBtn').click(); await p.waitForTimeout(700);
+  await p.keyboard.press('1'); await p.locator('#rateBtn').click(); await p.waitForTimeout(700);      /* 4.55: a shown answer suggests nothing; the learner picks */
   await p.locator('#ans').fill('cues you see instead of ones you remember'); await p.keyboard.press('Escape'); await p.keyboard.press(' '); await p.waitForTimeout(600);
   check(await p.locator('#rpanel .verdict').count() === 1 && /You wrote/.test(await p.locator('#rpanel').textContent()), 'Space with an answer typed checks it and shows the model answer');
 
