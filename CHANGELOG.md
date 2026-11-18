@@ -1,5 +1,12 @@
 # Changelog
 
+## 4.56.0 – 2026-11-18
+Mentor: one focus, one Continue, a session that resumes (docs/mentor.md "Focus" and "A session that resumes").
+- **One focus.** A goal in one line, the lessons that serve it and new questions a day (default 2). With a focus, Today shows the goal, a plan line (*3 reviews · 2 new*) and one **Continue** that studies only those lessons; **Review only** serves no new question; **Edit focus** opens a form under the card. Without one, Today is as before with a quiet **Set a focus**. The summary says *You practised N · M right*, what comes next, and **Finish**.
+- **Continue where you stopped.** The running session (the card on screen, what you typed, the tally) is kept on the server for 12 hours, so a reload or a locked phone brings back the same card, the same text and the minutes left.
+- **First Easy within 5 days.** A new card's first *Easy* came back in 14 days, far from *Good*'s 10 minutes; it now waits at most 5 days (FSRS's memory is unchanged).
+- The *Report a grading problem* target is checked at 44 px again in the browser tests.
+
 ## 4.55.0 – 2026-11-18
 Mentor grades only what it can check (docs/mentor.md "What Mentor checks, and what you check").
 - **Exact where there is one right value.** A *predict* card's output is compared exactly with the model answer and its listed wordings (only layout is forgiven: spaces, line breaks, spaces beside brackets, commas, `:` and `=`, and the Unicode form; signs, operators, case, quote style and order count). A key idea's wordings count as whole answers only when the card has one key idea. A *trace* step is the same.
