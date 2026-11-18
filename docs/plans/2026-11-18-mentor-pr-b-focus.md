@@ -89,5 +89,8 @@
 - [ ] With `/mentor` (writes `mentor_drafts/`), draft the brief's four starting outcomes: reading one function call; the registration path in the owner's hero-shade repo at a pinned commit; `.ok()` (Result → Option, Rust docs R4); build succeeded vs the game behaving. Plain Rust examples first, then the mod code. 12–20 practice items, `lang: "rust"` on every code card.
 - [ ] `python scripts/check-deck.py` on each; the owner reads them; copy the approved ones to the host inbox; set the focus to them with goal words the owner picks.
 
-### Not in this PR (owner to decide; asked 2026-11-18)
-- **The jump in review times.** New card today: Again 1 min, Hard 6 min, Good 10 min, Easy 14 days (FSRS-4.5's default first Easy memory, `W[3]` = 13.8 days, at 90% retention); Good after the 10-minute step gives 4 days (`W[2]` = 3.7). Cheap option (one constant + two tests): cap a new card's first Easy at Good's interval + 1 day (4 → 5 days). Bigger option: fit FSRS's weights to the owner's own rating history (an optimiser; needs a few hundred reviews to be worth it).
+### Task B6: a new card's first Easy waits at most 5 days (owner's choice, 2026-11-18)
+Why: a new card today shows Again 1 min, Hard 6 min, Good 10 min, Easy 14 days (FSRS-4.5's default first Easy memory `W[3]` = 13.8 days at 90% retention); Good after the 10-minute step gives 4 days (`W[2]` = 3.7). The owner found the jump too big. Fitting FSRS's weights to his own history is later work.
+**Files:** `plugins/mentor/mentor.py` (`schedule` 797–800, new constant `FIRST_EASY_MAX_DAYS = 5` next to `LEARN_STEPS`); Test `tests/mentor_model_test.py`.
+- [ ] Tests: `test_first_easy_capped` (new card, Easy → due in 5 days; the button preview for Easy says 5 days); `test_review_easy_not_capped` (a review card's Easy still follows FSRS, e.g. > 5 days for a strong memory). The stored stability stays FSRS's (only the first due date is capped), so later reviews are not distorted beyond that one shorter wait.
+- [ ] Implement; run the Python Mentor suite; commit `feat(mentor): a new card's first Easy comes back within 5 days`.

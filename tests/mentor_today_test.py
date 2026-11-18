@@ -239,5 +239,88 @@ class TodayNumbers(Base):
         self.assertEqual((t['goal'], t['ask_confidence']), ('Know the words of HCI', True))
         self.assertTrue(m.next_card(self.db, 'ux-hci')[0]['ask_confidence'])
 
+class Focus(Base):
+    """4.56: a focus is an explicit lesson list studied as one track ('focus'), apart from the project groups."""
+    def setUp(self):
+        super().setUp()
+        os.makedirs(m.INBOX, exist_ok=True)
+        with open(os.path.join(DECKS, LESSON + '.json'), encoding='utf-8') as fh: doc = json.load(fh)
+        for mid, project in (('mod1', 'GAME_RESEARCH › Topics'), ('g1', 'GAME_RESEARCH › Games'), ('g2', 'GAME_RESEARCH › Games')):
+            doc['metadata']['project'] = project
+            with open(os.path.join(m.INBOX, mid + '.json'), 'w', encoding='utf-8') as fh: json.dump(doc, fh)
+        m.scan_inbox(self.db)
+    def decks(self, n=40, **kw):
+        out = []
+        for _ in range(n):
+            c, _ = m.next_card(self.db, **kw)
+            if not c: break
+            out.append(c['id'].split(':', 1)[0]); self.rate(c['id'], 0 if c['kind'] in m.LEARN else 4)
+        return out
+
+    def test_focus_excludes_game_research(self):
+        self.assertEqual(m.track_map(self.db)['mod1'], 'group:GAME_RESEARCH', 'without a focus it shares the group track')
+        m.set_settings(self.db, {'focus': {'goal': 'Read a Rust call', 'lessons': ['mod1']}})
+        self.assertEqual(m.track_map(self.db)['mod1'], m.FOCUS)
+        t = m.today(self.db)
+        self.assertEqual(t['scope'], [m.FOCUS])
+        self.assertEqual((t['tracks'][0]['id'], t['tracks'][0]['name']), (m.FOCUS, 'Focus'))
+        self.assertEqual(t['focus']['goal'], 'Read a Rust call')
+        served = self.decks(session=True)
+        self.assertTrue(served); self.assertEqual(set(served), {'mod1'})
+
+    def test_focus_new_limit_two(self):
+        m.set_settings(self.db, {'focus': {'lessons': ['mod1']}})
+        self.assertEqual(m.today(self.db)['focus']['plan']['new'], 2)
+        new = 0
+        for _ in range(20):
+            c, _ = m.next_card(self.db, session=True)
+            if not c: break
+            if not c['reps'] and c['kind'] not in m.LEARN: new += 1
+            self.rate(c['id'], 4)
+        self.assertEqual(new, 2)
+        self.assertEqual(m.today(self.db)['focus']['plan']['new'], 0)
+        self.assertEqual(m.today(self.db)['new_left'], 0, "Today's total is the focus's")
+
+    def test_focus_editable(self):
+        m.set_settings(self.db, {'focus': {'goal': 'Read a Rust call', 'lessons': ['mod1'], 'new_per_day': 3}})
+        m.set_settings(self.db, {'focus': {'goal': '  Read   two calls ', 'lessons': ['mod1', 'g1'], 'new_per_day': 3}})
+        f = m.today(self.db)['focus']
+        self.assertEqual((f['goal'], f['lessons'], f['ids'], f['new_per_day']), ('Read two calls', 2, ['mod1', 'g1'], 3))
+        m.set_settings(self.db, {'focus': {}})
+        t = m.today(self.db)
+        self.assertIsNone(t['focus'])
+        self.assertEqual(set(t['scope']), {'ai-coding', 'psych-design', 'ux-hci', TRACK, 'group:GAME_RESEARCH'})
+
+    def test_focus_missing_lesson(self):
+        m.set_settings(self.db, {'focus': {'lessons': ['mod1', 'gone']}})
+        f = m.today(self.db)['focus']
+        self.assertEqual((f['lessons'], f['missing']), (1, 1))
+        m.set_settings(self.db, {'focus': {'lessons': ['gone']}})
+        t = m.today(self.db)
+        self.assertEqual((t['focus']['lessons'], t['focus']['missing'], t['scope']), (0, 1, [m.FOCUS]))
+        self.assertEqual(m.next_card(self.db, session=True)[0], None, 'nothing outside the focus is served instead')
+
+    def test_focus_beats_shelf(self):
+        m.set_settings(self.db, {'shelved': ['group:GAME_RESEARCH', m.FOCUS], 'pinned': [m.FOCUS]})
+        self.assertEqual(m.settings(self.db)['shelved'], ['group:GAME_RESEARCH'], 'the focus is never shelved or pinned')
+        self.assertEqual(m.settings(self.db)['pinned'], [])
+        m.set_settings(self.db, {'focus': {'lessons': ['mod1']}})
+        self.assertEqual(set(self.decks(session=True)), {'mod1'})
+        self.assertEqual(m.next_card(self.db, 'g1')[0], None, 'the rest of the group stays on the shelf')
+
+    def test_focus_bad_input_ignored(self):
+        m.set_settings(self.db, {'focus': {'lessons': ['mod1']}})
+        for bad in ({'lessons': 'mod1'}, {'lessons': ['x%d' % i for i in range(51)]}, {'lessons': ['mod1'], 'new_per_day': 21},
+                    {'lessons': ['mod1'], 'goal': 5}, ['mod1']):
+            m.set_settings(self.db, {'focus': bad})
+            self.assertEqual(m.settings(self.db)['focus'], {'goal': '', 'lessons': ['mod1'], 'new_per_day': 2}, bad)
+
+    def test_review_only_serves_no_new(self):
+        m.set_settings(self.db, {'focus': {'lessons': ['mod1']}})
+        self.assertEqual(m.next_card(self.db, session=True, reviews_only=True)[0], None)
+        c, _ = m.next_card(self.db, session=True); self.rate(c['id'], 3)
+        self.db.execute("UPDATE sched SET due=? WHERE card_id=?", (time.time() - 60, c['id'])); self.db.commit()
+        self.assertEqual(m.next_card(self.db, session=True, reviews_only=True)[0]['id'], c['id'])
+
 if __name__ == '__main__':
     unittest.main(verbosity=1 if '-v' not in sys.argv else 2)

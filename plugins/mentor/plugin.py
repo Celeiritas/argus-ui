@@ -164,7 +164,8 @@ def _get(b, person, path, query):
         if query.get('card'):                    # one Learn card to read again (Lessons view, Teach me first); never a practice card
             return 200, {'card': mentor.one_card(db, query['card'][0])}
         session = (query.get('session') or ['0'])[0] == '1'     # Study 10 minutes: due first, new cards from the pinned tracks
-        card, next_due = mentor.next_card(db, deck, (query.get('extra') or ['0'])[0] == '1', session=session)
+        card, next_due = mentor.next_card(db, deck, (query.get('extra') or ['0'])[0] == '1', session=session,
+                                          reviews_only=(query.get('reviews') or ['0'])[0] == '1')     # 4.56: Review only
         # a course lesson that waits for others (4.32), or a track on the shelf, says why instead of "nothing due"
         return 200, {'card': card, 'next_due': next_due, 'locked': None if card else mentor.locked_reason(db, deck)}
     if path == 'stats':          # a learner's own lesson folder, for the owner's "adding a lesson" line (never shown to a learner)
