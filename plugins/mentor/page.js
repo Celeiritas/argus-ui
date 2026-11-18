@@ -801,7 +801,7 @@
       const bad = !lessons.length ? 'Choose at least one lesson.' : lessons.length > 50 ? 'Choose 50 lessons at most.'
         : !raw || !Number.isInteger(n) || n < 0 || n > 20 ? 'New questions a day: a whole number from 0 to 20.' : '';
       if (bad) { err.textContent = bad; err.hidden = false; return ((!lessons.length || lessons.length > 50 ? $('#focusForm input[name=flesson]') : $('#fnew')) || $('#cancelFocus')).focus(); }
-      done({goal: $('#fgoal').value, lessons, new_per_day: n}, 'Focus saved. Continue now studies only those lessons.');
+      done({goal: $('#fgoal').value, lessons, new_per_day: n}, 'Focus saved. Study now covers only these lessons.');
     };
     const cf = $('#clearFocus'); if (cf) cf.onclick = () => done({}, 'Focus cleared. Today mixes your tracks again.');
     $('#cancelFocus').onclick = () => { box.hidden = true; btn.setAttribute('aria-expanded', 'false'); btn.focus(); };
