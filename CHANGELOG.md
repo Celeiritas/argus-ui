@@ -1,5 +1,14 @@
 # Changelog
 
+## 4.55.0 – 2026-11-18
+Mentor grades only what it can check (docs/mentor.md "What Mentor checks, and what you check").
+- **Exact where there is one right value.** A *predict* card's output is compared exactly with the model answer and its listed wordings (only layout is forgiven: spaces and line breaks; signs, operators, case and order count). A *trace* step is the same.
+- **Explanations and written code are compared, not marked.** No more *Correct* from shared key words: *A does not prevent B* used to score like *A prevents B*. The page shows yours beside the reference and its key ideas as a plain list, and you rate it; nothing is suggested, no leaves or streak. Python code is still parsed (never run) and its syntax error shown; Rust and any other language say *Self-checked*. A level-3 drill in another language is self-checked too.
+- **The ratings say what they mean**: Again *I couldn't recall it*, Hard *Right, but hard*, Good *Right on my own*, Easy *Effortless*. Lessons say *practised* (rated Good or Easy), not *mastered*.
+- **The local AI is retired from study.** An answer never sends a request to a model server; the owl and *Meaning match* are gone; the Lessons view says *Local AI: retired from study*. `assist.py` stays, unused, as the record (docs/mentor-ai.md).
+- **No word-count gates.** The reflection after a hint and the *why* before a line's note are optional; a guess or an explanation needs any text, in any script. Answers keep non-English letters (`猫`, `é`, `ß`) instead of being stripped to nothing.
+- **In your project**: the card still names the function; the folder and file wait in a closed drawer under it.
+
 ## 4.54.2 – 2026-11-17
 Chiron gets his medallion.
 - **Chiron** shows the owner's pick of the 2026-11-17 drafts (round 2, draft 8 with the far arm fixed): a bearded, broad-shouldered centaur with a chestnut horse body and black hooves, curling a gold dumbbell, in the same frame as the other medallions (silver rim, a thin moss ring, a dark glow). It replaces the lettered C placeholder; source `themes/leafy-realm/gods/chiron.svg`.
