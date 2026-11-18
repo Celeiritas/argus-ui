@@ -53,7 +53,7 @@ run(async b => {
   check(/Compare with the reference/.test(await p.locator('#rhead').textContent()) && !/Correct|Partly right|Not quite/.test(await p.locator('#rpanel').textContent()), '4.55: an explanation is compared with the reference, never marked Correct');
   check(await p.locator('#rpanel .ideas.plain li').count() > 0 && await p.locator('#rpanel .ideas .hit, #rpanel .ideas .miss').count() === 0, 'its key ideas are listed to compare, nothing ticked or crossed');
   check(/I couldn't recall it/.test(await p.locator('.seg.rates label').nth(0).textContent()) && /Right on my own/.test(await p.locator('.seg.rates label').nth(2).textContent()), 'each rating says what it means');
-  check(await p.locator('details.report').count() === 0, 'no "grading problem" report when nothing was graded');
+  check(await p.locator('#gw').count() === 0 && await p.locator('details.report #unclear').count() === 1, 'no "grade was wrong" report when nothing was graded; "The question was unclear" is still offered (4.59)');
   check(/In 1 min/.test(await p.locator('.seg.rates label').nth(0).textContent()) && /In 6 min/.test(await p.locator('.seg.rates label').nth(1).textContent())
     && /In 10 min/.test(await p.locator('.seg.rates label').nth(2).textContent()) && /In \d+ days/.test(await p.locator('.seg.rates label').nth(3).textContent()),
     'a new card shows its learning steps on the buttons: 1 min, 6 min, 10 min, then days for Easy');
