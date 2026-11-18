@@ -1258,9 +1258,9 @@ def learn_answer(db, c, text, ms, skipped):
         except (ValueError, RecursionError): parts = {}
         if not isinstance(parts, dict): parts = {}
         explain = str(parts.get('explain') or '')
-        if json.loads(c['points'] or '[]') and explain.strip():
-            cov, hits, missed, f = grade(c, explain); feats.update(f)
-        extra = {'reflections': [str(x)[:300] for x in as_list(parts.get('reflections'))][:8]}
+        # 4.55: compared, never marked: the key ideas are shown beside what was written (no word counting)
+        extra = {'reflections': [str(x)[:300] for x in as_list(parts.get('reflections'))][:8],
+                 'points': [p['idea'] for p in json.loads(c['points'] or '[]')] if explain.strip() else []}
     elif kind == 'preread':
         extra = {'answer': c['answer']}
     if skipped: feats['skipped'] = True
@@ -1272,7 +1272,7 @@ def learn_answer(db, c, text, ms, skipped):
     n = len(hits) + len(missed)
     if skipped: coach = 'Skipped. If the practice card goes wrong, this one comes back.'
     elif 'spot_ok' in extra: coach = f"That's it: {extra['why']}" if extra['spot_ok'] else f"It's on line {extra['line']}: {extra['why']}"
-    elif n: coach = f"All {n} key ideas." if cov >= 0.99 else f"{round(cov * n)} of {n} key ideas. Read the model answer, then say the missing part in your own words."
+    elif extra.get('points'): coach = 'Compare yours with the key ideas. Anything missing? Say it once in your own words, then move on.'
     else: coach = 'Read it once more, then move on: the practice card will show what stuck.'
     return {'attempt': cur.lastrowid, 'kind': kind, 'coverage': cov, 'hits': hits, 'missed': missed, 'reference': c['answer'],
             'suggested': 0, 'previews': {}, 'level_after': None, 'coach': coach, 'learn': True, **extra}
@@ -1323,20 +1323,14 @@ def answer(db, card_id, text, confidence, ms, hints=0, reflections=None, skipped
         feats, grader = {'coverage': cov, 'words': len(text.split())}, 'predict-exact'
         extra = {'breadcrumb': data.get('breadcrumb', ''), 'code': data.get('code', '')}
     else:
-        cov, hits, missed, feats = grade(c, text, code_tokens_words if c['kind'] in CODE_KINDS else tokens)
-        grader = 'rubric-A-auto' if feats.get('auto_points') else 'rubric-A'
-        extra = {'breadcrumb': data.get('breadcrumb', ''), 'rough': bool(feats.get('auto_points'))}
-        if c['kind'] == 'predict': extra['code'] = data.get('code', '')
-        if c['kind'] == 'write' and data.get('lang', 'python') == 'python' and text.strip():
-            # parsed, never run: Python's own syntax error is shown with the key ideas (it does not change the grade)
-            extra['problem'] = syntax_problem(textwrap.dedent(text)); feats['syntax_ok'] = extra['problem'] is None
+        return compare_answer(db, c, data, text, confidence, ms, hints, reflections, taught)
     extra['move'] = data.get('move') or MOVE.get(c['kind'], MOVE['define'])
     # slip or mistake (Norman): a blank that was right before, or the same card right at another time, is a slip
     prev = db.execute("SELECT * FROM attempts WHERE card_id=? AND kind=? ORDER BY id DESC LIMIT 1", (card_id, c['kind'])).fetchone()
-    extra['slip'] = bool(prev and prev['grader'] != 'self' and cov < 0.99 and (prev['coverage'] or 0) >= 0.99)
+    extra['slip'] = bool(prev and prev['grader'] not in ('self', 'compare') and cov < 0.99 and (prev['coverage'] or 0) >= 0.99)
     # stuck: wrong twice in a row within a session -> the lesson's Learn card comes back before the next try
     stuck = None
-    if cov < 0.5 and prev and prev['grader'] != 'self' and (prev['coverage'] or 0) < 0.5 and time.time() - prev['at'] < STUCK_WINDOW:
+    if cov < 0.5 and prev and prev['grader'] not in ('self', 'compare') and (prev['coverage'] or 0) < 0.5 and time.time() - prev['at'] < STUCK_WINDOW:
         stuck = 'repeat'
     elif cov < 0.5 and c['learn_of']:
         la = db.execute("SELECT skipped FROM attempts WHERE card_id=? ORDER BY id DESC LIMIT 1", (c['learn_of'],)).fetchone()
@@ -1398,6 +1392,40 @@ def think_answer(db, c, confidence, ms, hints, reflections, taught=False):
             'coach': 'Compare it with what you thought, then say how well you knew it.', 'breadcrumb': data.get('breadcrumb', ''),
             'code': data.get('code', '') if c['kind'] == 'predict' else '', 'slip': False,
             'move': data.get('move') or MOVE.get(c['kind'], MOVE['define']), 'teach': teach, 'teach_new': teach_new}
+
+def compare_answer(db, c, data, text, confidence, ms, hints, reflections, taught=False):
+    '''4.55: an explanation, a definition or written code has no single right wording, and counting its words cannot tell
+    "prevents" from "does not prevent". So Mentor marks nothing: it shows the reference and its key ideas beside what was
+    written, and the learner rates it (grader "compare", no suggestion). Stored like a "think it" attempt (coverage 0.0, a
+    number an older Mentor still reads) so the slip and stuck rules, which need a graded attempt, leave it alone. Python
+    code is still parsed, never run, and its syntax error shown; any other language says "self-checked".'''
+    now, extra = time.time(), {}
+    lang = data.get('lang', 'python') if c['kind'] == 'write' else None
+    if lang == 'python' and text.strip():
+        extra['problem'] = syntax_problem(textwrap.dedent(text))
+    elif lang:
+        extra['evaluator'] = 'self-checked'
+    feats = {'compare': True, 'confidence': confidence, 'ms': ms, 'kind': c['kind'], 'hints': hints,
+             'words': len(text.split()), **({'taught': True} if taught else {}), **({'syntax_ok': extra['problem'] is None} if 'problem' in extra else {})}
+    with DB_LOCK:
+        cur = db.execute("INSERT INTO attempts(card_id,at,answer,confidence,ms,coverage,hits,missed,features,suggested,grader,kind,level,hints,reflections) "
+                         "VALUES(?,?,?,?,?,0.0,'[]','[]',?,0,'compare',?,NULL,?,?)", (c['id'], now, text, confidence, ms, json.dumps(feats), c['kind'],
+                         hints, json.dumps([str(x)[:300] for x in as_list(reflections)][:4])))
+        db.commit()
+    att = db.execute("SELECT * FROM attempts WHERE id=?", (cur.lastrowid,)).fetchone()
+    if c['is_check']: previews = {}
+    else:
+        srow = db.execute("SELECT * FROM sched WHERE card_id=?", (c['id'],)).fetchone()
+        previews = {g: round((plan(db, c, srow, att, g, now)[2] - now) / DAY, 6) for g in (1, 2, 3, 4)}
+    teach, teach_new = teaching(db, c, now)
+    pts = json.loads(c['points'] or '[]')
+    coach = 'Compare yours with the reference and its key ideas, then say how well you knew it.'
+    if extra.get('problem'): coach = "Python can't read it yet (shown below). " + coach
+    return {'attempt': cur.lastrowid, 'kind': c['kind'], 'coverage': None, 'hits': [], 'missed': [], 'compare': True,
+            'points': [p['idea'] for p in pts], 'previews': previews, 'level_after': None, 'reference': c['answer'],
+            'suggested': 0, 'hints': hints, 'stuck': None, 'check': bool(c['is_check']), 'taught': bool(taught), 'coach': coach,
+            'breadcrumb': data.get('breadcrumb', ''), 'code': data.get('code', '') if c['kind'] == 'predict' else '', 'slip': False,
+            'move': data.get('move') or MOVE.get(c['kind'], MOVE['define']), 'teach': teach, 'teach_new': teach_new, **extra}
 
 def coach_line(kind, cov, conf, n, extra):
     """At most two sentences: what the result was, then the expert's first move and one place to look (Hattie &
@@ -1594,7 +1622,7 @@ def stats(db, deck=None):
     aw = ("WHERE " + " OR ".join("a.card_id LIKE ?" for _ in pats)) if pats else ("WHERE 0" if ids is not None else "")
     att = db.execute(f"SELECT a.* FROM attempts a {aw} ORDER BY a.id DESC LIMIT 500", pats).fetchall()
     rated = [a for a in att if a['rating'] and not a['undone']]
-    graded = [a for a in rated if a['grader'] != 'self']     # a self-rated ("think it") attempt was never graded (coverage 0.0)
+    graded = [a for a in rated if a['grader'] not in ('self', 'compare')]     # self-rated attempts were never graded (coverage 0.0)
     conf = [a for a in graded if a['confidence']]
     # calibration: confidence (1-4 -> 0..1) minus coverage; positive = overconfident
     cal = round(sum((a['confidence'] - 1) / 3 - a['coverage'] for a in conf) / len(conf), 2) if conf else None

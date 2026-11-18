@@ -37,7 +37,7 @@
     return rich(head.join('\n\n')) + `<details class="more"><summary>More</summary>${rich(w > n ? s : paras.slice(head.length).join('\n\n'))}</details>`;
   };
   // shown in Anki's order, keys 1-4 left to right; value = FSRS rating (1 Again ... 4 Easy)
-  const RATES = [[1, 'Again', "Didn't know it"], [2, 'Hard', 'Got there with effort'], [3, 'Good', 'Took some thought'], [4, 'Easy', 'Quick and sure']];
+  const RATES = [[1, 'Again', "I couldn't recall it"], [2, 'Hard', 'Right, but hard'], [3, 'Good', 'Right on my own'], [4, 'Easy', 'Effortless']];
   const CONF = [[1, 'Guessing'], [2, 'Unsure'], [3, 'Fairly sure'], [4, 'Certain']];
   const TYPES = {'pre-mortem': 'Find the bug', 'trade-off': 'Why this design', 'hci-bridge': 'Human factors link'};
   const SUMMARY = [['schematic_mental_model', 'The big picture'], ['design_rules_heuristics', "Why it's built this way"], ['hard_rules_invariants', 'Rules that must always hold'], ['hci_human_factors_bridge', 'Human factors link']];
@@ -390,6 +390,7 @@
 
   /* ----- one card: check and give feedback ----- */
   const keyIdeas = r => (r.hits.length + r.missed.length) ? `<ul class="ideas marked">${r.hits.map(h => `<li class="hit"><b>✓ Got it</b><span>${esc(h)}</span></li>`).join('')}${r.missed.map(h => `<li class="miss"><b>✕ Missing</b><span>${esc(h)}</span></li>`).join('')}</ul>` : '';
+  const ideasToCompare = pts => pts && pts.length ? `<p class="label">Key ideas to look for</p><ul class="ideas plain">${pts.map(t => `<li><span>${esc(t)}</span></li>`).join('')}</ul>` : '';
   async function check() {
     const c = M.card, boxes = $$('#qform input.blank'), ta = $('#qform textarea#ans');
     const text = M.hints === 4 || c.think ? '' : c.kind === 'drill' && c.level < 3 ? JSON.stringify([...boxes].sort((a, b) => a.dataset.n - b.dataset.n).map(b => b.value))
@@ -408,6 +409,12 @@
       kind = 'shown'; head = 'Here is the answer';
       detail = c.kind === 'predict' || c.kind === 'write' ? `<p class="label">${c.kind === 'write' ? 'Model answer' : 'What it prints'}</p><pre class="code"><code>${esc(r.reference)}</code></pre>`
         : `<p class="label">Model answer</p>${answerBlock(r.reference)}`;
+    } else if (r.compare) {                   // 4.55: an explanation or written code: compared side by side, rated by you, never marked
+      kind = 'shown'; head = shown ? 'The answer was shown' : 'Compare with the reference';
+      const code = c.kind === 'write' || c.kind === 'predict';
+      detail = `${r.problem ? `<p class="coach">Python says: <code>${esc(r.problem)}</code></p>` : ''}${r.evaluator === 'self-checked' ? '<p class="coach">Self-checked: Mentor does not check this language. Compare it yourself.</p>' : ''}
+        <div class="pair">${text ? `<div><p class="label">${code ? 'Yours' : 'You wrote'}</p>${code ? `<pre class="code"><code>${esc(text)}</code></pre>` : `<p class="model mine">${esc(text)}</p>`}</div>` : ''}
+        <div><p class="label">${c.kind === 'predict' ? 'What it prints' : 'Reference'}</p>${code ? `<pre class="code"><code>${esc(r.reference)}</code></pre>` : answerBlock(r.reference)}</div></div>${ideasToCompare(r.points)}`;
     } else if (c.kind === 'drill' && c.level < 3) {
       head = shown ? 'The answer was shown' : `${r.hits.length} of ${plural(n, 'blank')} right`;
       detail = `<ul class="ideas marked">${r.blanks.map(b => b.ok ? `<li class="hit"><b>✓ Right</b><span>Blank ${b.n}: <code>${esc(b.expected)}</code></span></li>`
@@ -456,7 +463,7 @@
         <div class="seg rates">${RATES.map(([v, nm, d], i) => `<label><input type="radio" name="rate" value="${v}" ${v === r.suggested ? 'checked' : ''}><span><b>${i + 1}. ${nm}</b><small>${d}</small>${r.previews && r.previews[v] != null ? `<small class="when">In ${back(r.previews[v])}${lvl(v)}</small>` : ''}${v === r.suggested ? '<em class="tag">Mentor suggests</em>' : ''}</span></label>`).join('')}</div>
         <p class="help">${r.suggested ? `The suggestion comes from what you got right${M.hints ? ' and the hints you used' : ''}; pick what feels true.` : 'Compare it with what you thought, then pick one.'} Keys <kbd>1</kbd>–<kbd>4</kbd> choose, <kbd>Enter</kbd> saves, <kbd>Ctrl</kbd>+<kbd>Z</kbd> takes the last rating back.</p></fieldset>
       <div class="row"><button type="button" class="primary" id="rateBtn">${verb(r.suggested, r.previews)}</button></div>
-      <details class="report"><summary>Report a grading problem</summary><label class="check"><input type="checkbox" id="gw"> Mentor's grade was wrong: my answer was better or worse than it scored</label></details></div>`}`;
+      ${r.compare || r.think ? '' : `<details class="report"><summary>Report a grading problem</summary><label class="check"><input type="checkbox" id="gw"> Mentor's grade was wrong: my answer was better or worse than it scored</label></details>`}</div>`}`;
     if (c.replaying) { $('#rhead').focus(); $('#replayNext').onclick = () => { M.result = null; next(); }; return; }
     $('#rhead').focus();
     if (r.ai_pending) aiLater(r.attempt);
@@ -472,7 +479,7 @@
       if (streak >= 3) $('#rpanel .deckname').append(` · ${streak} in a row`);
       const hero = $('#hero'); if (FX && streak && streak % 3 === 0 && hero && !hero.hidden && hero.offsetWidth) FX.motes($('#rhead'), hero, {color: '#B7C47E', n: 26, ms: 1100, lift: 90});
     }
-    $('#gw').onchange = e => M.grade_wrong = e.target.checked;
+    if ($('#gw')) $('#gw').onchange = e => M.grade_wrong = e.target.checked;
     const pick = () => +($('input[name=rate]:checked')?.value || 0);
     $$('input[name=rate]').forEach(i => i.onchange = () => $('#rateBtn').textContent = verb(pick(), r.previews));
     $('#rateBtn').onclick = () => pick() ? rate(pick()) : toast('Pick how well you knew it first: Again, Hard, Good or Easy.');
@@ -484,7 +491,7 @@
     if (s.learn) { toast(r.skipped ? 'Skipped. It comes back if the practice card goes wrong.' : 'Read. On to the next card.'); return next(); }
     if (s.check) { M.last = {attempt: r.attempt, card: M.card && M.card.id, right: s.right, check: true};
       toast(`Saved for the module check: ${s.right ? 'counted as right' : 'counted as missed'}.`, {label: 'Undo', fn: undo}); return next(); }
-    const right = r.think ? v >= 3 : r.coverage >= .99 && !r.shown && v > 1;
+    const right = r.think || r.compare ? v >= 3 : r.coverage >= .99 && !r.shown && v > 1;
     M.session.answered++; if (right) M.session.right++; else M.session.missed.push(M.card && M.card.id);
     const T = M.view === 'session' && M.timed; if (T) { T.cards++; if (right) T.right++; else T.missed.push(M.card && M.card.id); }
     M.last = {attempt: r.attempt, card: M.card && M.card.id, right};
@@ -656,9 +663,8 @@
       band += `<ol class="lines">${lines.map((l, i) => { const n = i + 1, right = n === r.line, wrong = n === picked && !r.spot_ok;
         return `<li><span class="line${right ? ' right' : wrong ? ' wrong' : ''}"><span class="n">${n}</span><code>${esc(l) || ' '}</code>${right ? '<b class="mark">✓ The line</b>' : wrong ? '<b class="mark">✕ Your pick</b>' : ''}</span></li>`; }).join('')}</ol>`;
     } else if (c.kind === 'level0') {
-      const n = r.hits.length + r.missed.length;
-      band = verdict(n ? tone(r.coverage) : 'ok', n ? (r.coverage >= .99 ? `All ${plural(n, 'key idea')}` : `${r.hits.length} of ${plural(n, 'key idea')}`) : 'Explained', `<p class="coach">${inline(esc(r.coach))}</p>`)
-        + `${text ? `<p class="label">You wrote</p><p class="model mine">${esc(text)}</p>` : ''}${keyIdeas(r)}`;
+      band = verdict('shown', r.points && r.points.length ? 'Compare with the key ideas' : 'Explained', `<p class="coach">${inline(esc(r.coach))}</p>`)
+        + `${text ? `<p class="label">You wrote</p><p class="model mine">${esc(text)}</p>` : ''}${ideasToCompare(r.points)}`;
     } else {
       band = `<h3 tabindex="-1" id="rhead">${inline(esc(c.near ? c.near.ask : 'Read'))}</h3>${text ? `<p class="label">You wrote</p><p class="model mine">${esc(text)}</p>` : ''}${r.answer ? `<p class="label">Answer</p>${answerBlock(r.answer)}` : ''}<p class="coach">${inline(esc(r.coach))}</p>`;
     }
@@ -796,7 +802,7 @@
     : a.answering === false ? `Local AI: on (${a.embed_model}), but its server is not answering` : `Local AI: on (${a.embed_model}${a.feedback ? `, feedback by ${a.chat_model}` : ''}), not used for ratings yet`;
   // a course's module in the map (4.32): its lock, lessons mastered, share answered right, and its check, then its lessons
   const courseOf = ms => ((M.stats || {}).courses || []).find(c => !c.loose && c.modules.some(md => md.lessons.includes(ms[0].id)));
-  const checkText = k => !k || k.state === 'none' ? '' : k.state === 'waiting' ? `Module check (${plural(k.items, 'question')}) once every lesson is mastered`
+  const checkText = k => !k || k.state === 'none' ? '' : k.state === 'waiting' ? `Module check (${plural(k.items, 'question')}) once every lesson is practised`
     : k.state === 'ready' ? `Module check ready: ${k.now ? `${plural(k.now, 'question')} to answer` : ''}${k.now && k.later ? ', ' : ''}${k.later ? `${plural(k.later, 'question')} tomorrow (cards from the same notes were practised today)` : ''}`
     : k.state === 'passed' ? `Module check passed: ${k.right} of ${k.items} right`
     : `Module check not passed yet: ${k.right} of ${k.items} right; ${k.now ? `${plural(k.now, 'question')} to answer again` : 'the missed questions come back tomorrow'}${k.now && k.later ? `, ${k.later} tomorrow` : ''}`;
@@ -805,7 +811,7 @@
     const pct = Math.round(100 * (md.progress || 0)), w = md.waiting_on || [], ct = checkText(md.check);
     return `<section class="cmod${md.locked ? ' locked' : ''}" aria-labelledby="cm-${esc(md.id)}"><div class="cmhead"><div class="cmname">
         <h3 id="cm-${esc(md.id)}">${md.locked ? LOCK : ''}<span>${esc(md.name)}</span></h3>
-        <p class="meta">${md.locked ? `Locked: opens when ${esc(w.join(', '))} ${w.length === 1 ? 'is' : 'are'} mastered` : `${md.done || 0} of ${plural(les.length, 'lesson')} mastered`}${ct ? ' · ' + esc(ct) : ''}</p></div>
+        <p class="meta">${md.locked ? `Locked: opens when ${esc(w.join(', '))} ${w.length === 1 ? 'is' : 'are'} practised` : `${md.done || 0} of ${plural(les.length, 'lesson')} practised`}${ct ? ' · ' + esc(ct) : ''}</p></div>
         <div class="mprog"><span class="lpbar" role="progressbar" aria-label="${esc(md.name)}: answered right" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="width:${pct}%"></span></span><small>${pct}% right</small></div></div>
       <ul class="course-list">${les.map(row).join('')}</ul></section>`;
   }
@@ -822,10 +828,10 @@
       const groups = [...new Set(mods.map(m => m.project || 'Lessons'))];
       const passPct = Math.round(100 * (s.pass || .8));
       const row = m => { const t = tally(m), course = m.progress != null, pct = course ? Math.round(100 * m.progress) : t.n ? Math.round(100 * t.seen / t.n) : 0;
-        const prog = course ? (m.mastered ? `${pct}% right · mastered` : t.seen ? `${pct}% right` : 'Not started') : t.seen ? `${pct}% practised` : 'Not started';
+        const prog = course ? (m.mastered ? `${pct}% rated Good or Easy · practised` : t.seen ? `${pct}% rated Good or Easy` : 'Not started') : t.seen ? `${pct}% practised` : 'Not started';
         return `<li class="module${m.locked ? ' locked' : ''}"><div class="mrow">
           <div class="mname"><h4 id="mh-${esc(m.id)}">${esc(m.name)}</h4><p class="meta">${m.locked ? `Opens at ${passPct}% right in: ${esc((m.waiting_on || []).join(', '))}` : `${plural(t.n, 'card')}${m.to_learn ? ` · ${m.to_learn} lesson cards to read` : ''}${m.built_in ? ' · comes with Argus' : ''}`}</p></div>
-          <div class="mprog"><span class="lpbar" role="progressbar" aria-label="${esc(m.name)}: ${course ? 'cards answered right' : 'cards practised'}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="width:${pct}%"></span></span><small>${prog}</small></div>
+          <div class="mprog"><span class="lpbar" role="progressbar" aria-label="${esc(m.name)}: ${course ? 'cards rated Good or Easy' : 'cards practised'}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="width:${pct}%"></span></span><small>${prog}</small></div>
           ${m.locked ? `<p class="locktag" id="lk-${esc(m.id)}">${LOCK}<span>Locked</span></p>` : `<button type="button" data-study="${esc(m.id)}" aria-describedby="mh-${esc(m.id)}">${action(m)}</button>`}</div>
           <div class="mmore">${SUMMARY.some(([k]) => m.summary[k]) || (m.summary.lint || []).length ? `<details><summary>About this lesson</summary><dl class="defs">${SUMMARY.filter(([k]) => m.summary[k]).map(([k, n]) => `<dt>${n}</dt><dd>${rich(m.summary[k])}</dd>`).join('')}</dl>${(m.summary.lint || []).length ? `<p class="meta">Notes from the lesson's author: ${m.summary.lint.map(esc).join('; ')}</p>` : ''}</details>` : ''}
           ${m.learn.length ? `<details><summary>Read the lesson again</summary><ul class="learnlist">${m.learn.map(l => `<li><button type="button" data-read="${esc(l.id)}"><span>${esc(l.title)}</span><small>${l.seen ? 'read' : 'not yet'}</small></button></li>`).join('')}</ul></details>` : ''}</div></li>`; };
