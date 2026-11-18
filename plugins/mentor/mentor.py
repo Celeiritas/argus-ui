@@ -756,6 +756,7 @@ def init_d(g):
 # Learning steps (Anki's behaviour on FSRS, spec section 7): a new card comes back after 1 min, then 10 min, before FSRS
 # schedules it in days; a lapsed card (Again on a review) relearns with one 10 min step. Seconds.
 LEARN_STEPS, RELEARN_STEPS = (60, 600), (600,)
+FIRST_EASY_MAX_DAYS = 5          # 4.56: a new card's first Easy comes back within 5 days (Good graduates at about 4)
 
 def hard_delay(steps, i):
     """Hard on a learning step: on the first of two or more steps, halfway between the first two (whole minutes, so the
@@ -795,8 +796,11 @@ def schedule(row, g, now):
     if g == 2: return s, d, now + hard_delay(steps, i), reps, lapses, i, relearn
     if g == 3 and i + 1 < len(steps): return s, d, now + steps[i + 1], reps, lapses, i + 1, relearn
     # graduate: Good on the last step, or Easy on any step. Easy is a day longer than Good would be from the same memory,
-    # except on a new card, whose memory Easy already set (FSRS's own first Easy interval)
+    # except on a new card, whose memory Easy already set (FSRS's own first Easy interval, 14 days with the default weights)
+    # 4.56: that first wait is capped at FIRST_EASY_MAX_DAYS (the owner found 10 minutes vs 14 days too far apart); the
+    # memory itself stays FSRS's, so only this one due date is earlier.
     days = interval_days(s) + (1 if g == 4 and not new else 0)
+    if g == 4 and new: days = min(days, FIRST_EASY_MAX_DAYS)
     return s, d, now + days * DAY, reps, lapses, None, 0
 
 # Expertise reversal (Kalyuga et al. 2003): blanks that help a beginner slow down someone who knows the code.
