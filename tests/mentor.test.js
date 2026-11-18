@@ -260,7 +260,7 @@ run(async b => {
   await p.keyboard.press('Control+Enter'); await p.waitForTimeout(600);
   check(/Compare with the reference/.test(await p.locator('#rhead').textContent()) && !/Correct|key ideas$/.test(await p.locator('#rhead').textContent()), '4.55: a wrong explanation that shares the key words is not marked right');
   check(await p.locator('#fx > .p').count() === 0 && await p.locator('.mentor').getAttribute('data-streak') !== '3', 'no leaves and no streak for a compared answer: nothing was checked');
-  await p.keyboard.press('1'); await p.keyboard.press('Enter'); await p.waitForTimeout(500);
+  await p.keyboard.press('4'); await p.keyboard.press('Enter'); await p.waitForTimeout(500);      /* Easy, as skip() rates: Again would make it the soonest due card and Practise ahead would bring it back before the drill */
 
   // level 3: write the whole body (auto-indent); Python reads it, never runs it
   await skip(p, 'argus-code', 'explain', 8);
