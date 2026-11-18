@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+<defs><radialGradient id="bg-daedalus-04" cx="50%" cy="45%" r="60%"><stop offset="0" stop-color="#4A3818"/><stop offset="1" stop-color="#1C2127"/></radialGradient>
+<clipPath id="c-daedalus-04"><circle cx="64" cy="64" r="57"/></clipPath></defs>
+<circle cx="64" cy="64" r="61.6" fill="#1C2127" stroke="#A7B6C4" stroke-width="4"/>
+<circle cx="64" cy="64" r="57.4" fill="url(#bg-daedalus-04)"/>
+<circle cx="64" cy="64" r="57.4" fill="none" stroke="#E0A84A" stroke-width="1.8"/>
+<g clip-path="url(#c-daedalus-04)">
+ <g transform="translate(76 62) rotate(-12) scale(0.8 0.8)">
+ <path d="M0 0 Q14 -16 40 -20 L54 -20 Q50 -14 44 -13 L52 -10 Q48 -5 41 -6 L47 -1 Q42 3 35 0 L39 6 Q33 9 27 4 L28 11 Q21 12 17 6 Q14 12 9 10 Q4 8 0 4 Z" fill="#E7C35A"/>
+ <path d="M4 3 Q20 -10 46 -16" stroke="#B8862F" stroke-width="1.6" fill="none" stroke-linecap="round"/></g><g transform="translate(52 62) rotate(-12) scale(-0.8 0.8)">
+ <path d="M0 0 Q14 -16 40 -20 L54 -20 Q50 -14 44 -13 L52 -10 Q48 -5 41 -6 L47 -1 Q42 3 35 0 L39 6 Q33 9 27 4 L28 11 Q21 12 17 6 Q14 12 9 10 Q4 8 0 4 Z" fill="#E7C35A"/>
+ <path d="M4 3 Q20 -10 46 -16" stroke="#B8862F" stroke-width="1.6" fill="none" stroke-linecap="round"/></g>
+ <g transform="translate(64 68) rotate(0) scale(1.35)">
+ <path d="M-13 -9 H13 Q20 -9 21.5 -1 L23 9 Q23.5 15 18 13.5 L11.5 6 H-11.5 L-18 13.5 Q-23.5 15 -23 9 L-21.5 -1 Q-20 -9 -13 -9 Z" fill="#F4F6F8"/>
+ <path d="M-15 -2 h7 M-11.5 -5.5 v7" stroke="#1C2127" stroke-width="2.6" stroke-linecap="round"/>
+ <circle cx="9" cy="-4" r="1.9" fill="#1C2127"/><circle cx="14" cy="0" r="1.9" fill="#1C2127"/>
+ <circle cx="-5" cy="3.5" r="2.6" fill="none" stroke="#1C2127" stroke-width="1.6"/><circle cx="5" cy="3.5" r="2.6" fill="none" stroke="#1C2127" stroke-width="1.6"/></g>
+ <g fill="#FFE27A"><path d="M64 26 l2 5 5 2 -5 2 -2 5 -2 -5 -5 -2 5 -2 Z"/></g>
+</g></svg>
