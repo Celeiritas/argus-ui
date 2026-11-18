@@ -160,8 +160,9 @@ class Rollback(Base):
             a = m.answer(self.db, cid, '', 4, 2000, think=True); m.rate(self.db, a['attempt'], 3, False)
         self.assertEqual(self.count("SELECT COUNT(*) FROM attempts WHERE coverage IS NULL"), 0, 'no NULL coverage anywhere')
         self.assertEqual(self.count("SELECT COUNT(*) FROM attempts WHERE grader='self' AND coverage=0.0"), 3)
+        self.assertEqual(self.count("SELECT COUNT(*) FROM attempts WHERE grader='compare' AND coverage=0.0"), 1, '4.55: a typed explanation is compared, stored like a self-rated one')
         st = m.stats(self.db)
-        self.assertEqual(st['avg_coverage'], round(g['coverage'], 2), 'self-rated rows are not graded coverage')
+        self.assertIsNone(st['avg_coverage'], 'self-rated and compared rows are not graded coverage')
         self.assertEqual(st['labels'], 4)
         # the two sums of the Mentor before 4.38 (mentor.py:1382 and :1393 at 4.34.0), over every rated attempt
         att = self.db.execute("SELECT * FROM attempts ORDER BY id DESC LIMIT 500").fetchall()

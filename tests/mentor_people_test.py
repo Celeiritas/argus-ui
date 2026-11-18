@@ -58,9 +58,6 @@ class People(unittest.TestCase):
             except FileNotFoundError: pass
         self.p = load_plugin(); self.p.learners._cache[:] = [None, None]
     def tearDown(self):
-        for _ in range(50):                  # an AI thread still running holds a lock; wait for it, then close every database
-            if not self.p.PENDING: break
-            time.sleep(.1)
         for b in self.p.BOOKS.values(): b.db.close()
     def people(self, obj=PEOPLE):
         write(os.environ['ARGUS_PEOPLE'], obj); self.p.learners._cache[:] = [None, None]
@@ -168,22 +165,27 @@ class People(unittest.TestCase):
         self.study(OWNER, learner='learner-two', n=1)
         self.assertEqual(snapshot(OWNER_DB), after, "a learner's study never touches the owner's database")
 
-    def test_ai_fence(self):
-        write(os.environ['ARGUS_MENTOR_AI'], {'enabled': True, 'url': 'http://127.0.0.1:9', 'embed_model': 'fake-embed', 'timeout_s': 2})
-        self.start()
-        lcard = self.get('next', LEARNER)[1]['card']
-        code, r = self.post('answer', {'card': lcard['id'], 'text': 'the first placeholder'}, LEARNER)
-        self.assertEqual(code, 200); self.assertNotIn('ai_pending', r, "a learner's answer never starts the AI")
-        code, r = self.post('answer', {'card': lcard['id'], 'text': 'the first placeholder', 'learner': 'learner-two'}, OWNER)
-        self.assertNotIn('ai_pending', r, 'the owner studying as a learner: no AI either')
-        self.assertEqual(self.get('ai', LEARNER)[1]['enabled'], False)
-        ocard = self.get('next', OWNER, deck='ux-hci')[1]['card']
-        code, r = self.post('answer', {'card': ocard['id'], 'text': 'people and the tools they use'}, OWNER)
-        self.assertTrue(r.get('ai_pending'), "the owner's own answer: the AI part is started (the config is untouched)")
-        for _ in range(50):
-            if not self.p.PENDING: break
-            time.sleep(.1)
-        self.assertFalse(self.p.PENDING)
+    def test_answer_sends_no_model_request(self):
+        # 4.55: the local AI is retired from study. A model server running and a config that turns it on change nothing.
+        import http.server, threading
+        hits = []
+        class Model(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *a): pass
+            def do_GET(self): hits.append(self.path); self.send_error(404)
+            def do_POST(self): hits.append(self.path); self.send_error(404)
+        srv = http.server.HTTPServer(('127.0.0.1', 0), Model); threading.Thread(target=srv.serve_forever, daemon=True).start()
+        try:
+            write(os.environ['ARGUS_MENTOR_AI'], {'enabled': True, 'url': f'http://127.0.0.1:{srv.server_port}', 'embed_model': 'fake-embed', 'timeout_s': 2})
+            self.start()
+            ocard = self.get('next', OWNER, deck='ux-hci')[1]['card']
+            code, r = self.post('answer', {'card': ocard['id'], 'text': 'people and the tools they use'}, OWNER)
+            self.assertEqual(code, 200); self.assertNotIn('ai_pending', r)
+            self.assertEqual(self.get('ai', OWNER, attempt=str(r['attempt']))[1], {'state': 'none'})
+            self.assertEqual(self.get('ai', OWNER)[1]['retired'], True)
+            self.assertEqual(self.get('ai', LEARNER)[1]['enabled'], False)
+            time.sleep(.3); self.assertEqual(hits, [], 'no request ever reaches the model server')
+            self.assertFalse(hasattr(self.p, 'assist'), 'plugin.py no longer loads assist.py')
+        finally: srv.shutdown(); srv.server_close()
 
     def test_goal_is_the_owners(self):
         self.start()
@@ -331,7 +333,6 @@ class People(unittest.TestCase):
             code, r = self.post('settings', {'bury': False}, OWNER)
             self.assertEqual(code, 503); self.assertIn('people.json', r['msg']); self.assertNotIn(HOME, r['msg'])
             self.assertEqual(self.answers(OWNER_DB), before, "nothing was written into the owner's database")
-            self.assertFalse(self.p.PENDING)
         finally: os.replace(aside, os.environ['ARGUS_PEOPLE']); self.p.learners._cache[:] = [None, None]
         self.assertEqual(self.get('today', LEARNER)[1]['learner']['id'], 'learner-two', 'the file back: she is herself again')
 

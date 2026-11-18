@@ -1,4 +1,6 @@
-# Mentor with a local AI
+# Mentor with a local AI (retired from study in 4.55)
+
+> **Retired.** Since 4.55 no answer is sent to a model server, whatever `mentor-ai.json` says: the judge thread is gone, `GET api/mentor/ai` returns `{"enabled": false, "retired": true}`, `GET api/mentor/ai?attempt=N` returns `{"state": "none"}` (an older page may still ask), and the Lessons view says *Local AI: retired from study*. `plugins/mentor/assist.py` stays, loaded by nothing, as the record of what 4.17–4.54 did; `attempts.ai` keeps what it stored. Why: a meaning score cannot tell an answer from its negation either, and Mentor now compares explanations instead of marking them (docs/mentor.md "What Mentor checks, and what you check"). The rest of this page describes the retired feature.
 
 Mentor grades with a rubric (stage A in `plugins/mentor/mentor.py`). A local model can add to it **on your own machine**, with nothing sent anywhere else. The groundwork is in (4.17): turn it on with one config file once you have a model server running. Until then Mentor works exactly as before.
 
@@ -37,9 +39,9 @@ Only for an **owner** studying as an owner: a learner's answer (or an owner's an
 
 ## How it fits together
 - `plugins/mentor/assist.py`: reads the config and talks to the model server, using the standard library only.
-- `plugins/mentor/plugin.py`: after the rubric answers (`POST answer`), it starts the AI's part in a thread and replies `ai_pending: true`. Only one attempt goes to the model at a time. `GET api/mentor/ai?attempt=N` returns `pending`, `done` (with `similarity`, `feedback`, `model`, `ms`), `error` or `none`. `GET api/mentor/ai` alone returns the status.
-- `plugins/mentor/page.js` asks every 1.5 s for up to about a minute, then shows the owl's box or quietly gives up.
-- Tests: `tests/mentor-ai.test.js` runs against `tests/fixtures/fake_model.py`, a stand-in server with both APIs that `tests/run.sh` starts on `MODEL_PORT` (8098).
+- (4.17–4.54) `plugins/mentor/plugin.py`: after the rubric answers (`POST answer`), it starts the AI's part in a thread and replies `ai_pending: true`. Only one attempt goes to the model at a time. `GET api/mentor/ai?attempt=N` returns `pending`, `done` (with `similarity`, `feedback`, `model`, `ms`), `error` or `none`. `GET api/mentor/ai` alone returns the status.
+- (4.17–4.54) `plugins/mentor/page.js` asks every 1.5 s for up to about a minute, then shows the owl's box or quietly gives up.
+- Tests (4.55): `tests/mentor-ai.test.js` turns the AI on against `tests/fixtures/fake_model.py` and checks that no AI part is started or shown; `tests/mentor_people_test.py` `test_answer_sends_no_model_request` counts the requests reaching a stand-in server (none). `fake_model.py` is a stand-in server with both APIs that `tests/run.sh` starts on `MODEL_PORT` (8098).
 
 ## Hardware notes (the home server)
 A Ryzen 7 6800H with 24 GB of memory shared with a Radeon 680M integrated GPU, and Podman installed:

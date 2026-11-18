@@ -37,7 +37,7 @@
     return rich(head.join('\n\n')) + `<details class="more"><summary>More</summary>${rich(w > n ? s : paras.slice(head.length).join('\n\n'))}</details>`;
   };
   // shown in Anki's order, keys 1-4 left to right; value = FSRS rating (1 Again ... 4 Easy)
-  const RATES = [[1, 'Again', "Didn't know it"], [2, 'Hard', 'Got there with effort'], [3, 'Good', 'Took some thought'], [4, 'Easy', 'Quick and sure']];
+  const RATES = [[1, 'Again', "I couldn't recall it"], [2, 'Hard', 'Right, but hard'], [3, 'Good', 'Right on my own'], [4, 'Easy', 'Effortless']];
   const CONF = [[1, 'Guessing'], [2, 'Unsure'], [3, 'Fairly sure'], [4, 'Certain']];
   const TYPES = {'pre-mortem': 'Find the bug', 'trade-off': 'Why this design', 'hci-bridge': 'Human factors link'};
   const SUMMARY = [['schematic_mental_model', 'The big picture'], ['design_rules_heuristics', "Why it's built this way"], ['hard_rules_invariants', 'Rules that must always hold'], ['hci_human_factors_bridge', 'Human factors link']];
@@ -49,7 +49,7 @@
   const back = d => d < 1 / 24 ? `${Math.max(1, Math.round(d * 1440))} min` : d < 1 ? `${Math.round(d * 24)} hour${Math.round(d * 24) === 1 ? '' : 's'}` : `${Math.round(d)} day${Math.round(d) === 1 ? '' : 's'}`;
   const verb = (v, previews) => v === 1 && previews && previews[1] != null ? `Run again in ${back(previews[1])}` : 'Save and continue';     // Again's time from the server: 1 min on a new card, 10 min after a lapse
   const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
-  const words = s => (s.match(/[A-Za-z0-9_']+/g) || []).length;
+  const words = s => (s.match(/[\p{L}\p{N}_']+/gu) || []).length;      /* 4.55: any script's letters count */
   const typing = el => !!el && (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && /^(text|search|number|email|url)$/.test(el.type)) || el.isContentEditable);
   // a time in the past, in words ("5 min ago", "yesterday", "Mon, Nov 9")
   function ago(ts) { if (!ts) return ''; const m = (Date.now() - ts * 1000) / 60000, d = new Date(ts * 1000), y = new Date(); y.setDate(y.getDate() - 1);
@@ -62,7 +62,12 @@
   const rich = t => esc(t).split(/```[\w-]*\n?([\s\S]*?)```/).map((part, i) => i % 2 ? `<pre class="code"><code>${part.replace(/\n$/, '')}</code></pre>`
     : part.split(/\n{2,}/).filter(p => p.trim()).map(p => `<p>${inline(p.trim()).replace(/\n/g, '<br>')}</p>`).join('')).join('');
   // where the code is: only its last part (the function), never folders or file names; the Lessons view lists the files
-  const crumb = s => { const x = (s || '').split(/\s*(?:->|→|›)\s*/).filter(Boolean).pop(); return x && !/\.(?:py|js|mjs|ts|css|json|sh|md|html|ya?ml|toml|txt)$/i.test(x) ? `<p class="crumb"><span class="sr">Where in the code: </span><span>${inline(esc(x))}</span></p>` : ''; };
+  // the function on the card; the whole path (folder, file, function) waits in a closed "In your project" drawer (4.55)
+  const crumb = s => {
+    const parts = (s || '').split(/\s*(?:->|→|›)\s*/).filter(Boolean), x = parts[parts.length - 1];
+    const fn = x && !/\.(?:py|js|mjs|ts|rs|css|json|sh|md|html|ya?ml|toml|txt)$/i.test(x) ? `<p class="crumb"><span class="sr">Where in the code: </span><span>${inline(esc(x))}</span></p>` : '';
+    return fn + (parts.length > 1 ? `<details class="where"><summary>In your project</summary><ol class="path">${parts.map(p => `<li><code>${inline(esc(p))}</code></li>`).join('')}</ol></details>` : '');
+  };
   // code to read with its line numbers (predict and trace cards name lines); lines wrap and keep their indent
   const codeLines = code => `<ol class="lines static" aria-label="The code, ${plural(code.split('\n').length, 'line')}">${code.split('\n').map((l, i) => `<li><span class="line"><span class="n" aria-hidden="true">${i + 1}</span><code>${esc(l) || ' '}</code></span></li>`).join('')}</ol>`;
   // one Parsons line: its code, then Up and Down (44 px each); k is its place in the card's mixed list, never its right place
@@ -371,18 +376,17 @@
   async function hint(rung) {
     const c = M.card; if (!c || M.result || M.hints >= 4) return;
     const open = $('#hints .hint:not(.offer):last-child textarea');
-    if (open && words(open.value) < 3 && !rung) { open.focus(); return toast('Say what that hint told you (three words or more) before the next one.'); }
-    if (open) M.reflections.push(open.value.trim().slice(0, 300));
+    if (open && open.value.trim()) M.reflections.push(open.value.trim().slice(0, 300));      /* 4.55: optional, never a gate */
     const want = rung || (M.hints + 1);
     let r; try { r = await send('answer', {card: c.id, hint: want}); } catch (e) { r = {ok: false}; }
     if (!r.ok) return toast("Couldn't reach Mentor for a hint. Check that the server is on, then try again.");
     M.hints = r.rung; $('#hintBtn').classList.remove('pulse'); clearIdle();
     $$('#hints .hint textarea').forEach(t => t.disabled = true);
     const last = r.rung === 4;
-    // fewer steps (4.38): the first hint is free; from the second on, say in three words what it told you before the next
+    // the first hint is free; from the second on, a box asks what it told you (4.55: optional, the next hint never waits)
     const reflect = !last && r.rung >= 2;
     $('#hints').insertAdjacentHTML('beforeend', `<div class="hint" id="rung${r.rung}"><p class="label">Hint ${r.rung} of 4 · ${esc(r.name)}</p><div class="model">${rich(r.text)}</div>
-      ${reflect ? `<label for="refl${r.rung}">What did that tell you?</label><textarea id="refl${r.rung}" rows="2" maxlength="300" placeholder="Three words or more"></textarea>` : ''}</div>`);
+      ${reflect ? `<label for="refl${r.rung}">What did that tell you? (optional)</label><textarea id="refl${r.rung}" rows="2" maxlength="300"></textarea>` : ''}</div>`);
     const hb = $('#hintBtn'), cb = $('#checkBtn');
     if (last) { hb.hidden = true; cb.textContent = 'Rate it'; $$('#qform input.blank, #qform textarea#ans').forEach(i => i.disabled = true); cb.focus(); }
     else { hb.textContent = r.next === 4 ? 'Show the answer' : 'Next hint'; (reflect ? $(`#refl${r.rung}`) : $('#qform input.blank:not([disabled]), #qform textarea#ans') || hb).focus(); }
@@ -390,6 +394,7 @@
 
   /* ----- one card: check and give feedback ----- */
   const keyIdeas = r => (r.hits.length + r.missed.length) ? `<ul class="ideas marked">${r.hits.map(h => `<li class="hit"><b>✓ Got it</b><span>${esc(h)}</span></li>`).join('')}${r.missed.map(h => `<li class="miss"><b>✕ Missing</b><span>${esc(h)}</span></li>`).join('')}</ul>` : '';
+  const ideasToCompare = pts => pts && pts.length ? `<p class="label">Key ideas to look for</p><ul class="ideas plain">${pts.map(t => `<li><span>${esc(t)}</span></li>`).join('')}</ul>` : '';
   async function check() {
     const c = M.card, boxes = $$('#qform input.blank'), ta = $('#qform textarea#ans');
     const text = M.hints === 4 || c.think ? '' : c.kind === 'drill' && c.level < 3 ? JSON.stringify([...boxes].sort((a, b) => a.dataset.n - b.dataset.n).map(b => b.value))
@@ -408,6 +413,12 @@
       kind = 'shown'; head = 'Here is the answer';
       detail = c.kind === 'predict' || c.kind === 'write' ? `<p class="label">${c.kind === 'write' ? 'Model answer' : 'What it prints'}</p><pre class="code"><code>${esc(r.reference)}</code></pre>`
         : `<p class="label">Model answer</p>${answerBlock(r.reference)}`;
+    } else if (r.compare) {                   // 4.55: an explanation or written code: compared side by side, rated by you, never marked
+      kind = 'shown'; head = shown ? 'The answer was shown' : 'Compare with the reference';
+      const code = c.kind === 'write' || c.kind === 'predict' || c.kind === 'drill';
+      detail = `${r.problem ? `<p class="coach">Python says: <code>${esc(r.problem)}</code></p>` : ''}${r.evaluator === 'self-checked' ? '<p class="coach">Self-checked: Mentor does not check this language. Compare it yourself.</p>' : ''}
+        <div class="pair">${text ? `<div><p class="label">${code ? 'Yours' : 'You wrote'}</p>${code ? `<pre class="code"><code>${esc(text)}</code></pre>` : `<p class="model mine">${esc(text)}</p>`}</div>` : ''}
+        <div><p class="label">${c.kind === 'predict' ? 'What it prints' : 'Reference'}</p>${code ? `<pre class="code"><code>${esc(r.reference)}</code></pre>` : answerBlock(r.reference)}</div></div>${ideasToCompare(r.points)}`;
     } else if (c.kind === 'drill' && c.level < 3) {
       head = shown ? 'The answer was shown' : `${r.hits.length} of ${plural(n, 'blank')} right`;
       detail = `<ul class="ideas marked">${r.blanks.map(b => b.ok ? `<li class="hit"><b>✓ Right</b><span>Blank ${b.n}: <code>${esc(b.expected)}</code></span></li>`
@@ -456,10 +467,9 @@
         <div class="seg rates">${RATES.map(([v, nm, d], i) => `<label><input type="radio" name="rate" value="${v}" ${v === r.suggested ? 'checked' : ''}><span><b>${i + 1}. ${nm}</b><small>${d}</small>${r.previews && r.previews[v] != null ? `<small class="when">In ${back(r.previews[v])}${lvl(v)}</small>` : ''}${v === r.suggested ? '<em class="tag">Mentor suggests</em>' : ''}</span></label>`).join('')}</div>
         <p class="help">${r.suggested ? `The suggestion comes from what you got right${M.hints ? ' and the hints you used' : ''}; pick what feels true.` : 'Compare it with what you thought, then pick one.'} Keys <kbd>1</kbd>–<kbd>4</kbd> choose, <kbd>Enter</kbd> saves, <kbd>Ctrl</kbd>+<kbd>Z</kbd> takes the last rating back.</p></fieldset>
       <div class="row"><button type="button" class="primary" id="rateBtn">${verb(r.suggested, r.previews)}</button></div>
-      <details class="report"><summary>Report a grading problem</summary><label class="check"><input type="checkbox" id="gw"> Mentor's grade was wrong: my answer was better or worse than it scored</label></details></div>`}`;
+      ${r.compare || r.think ? '' : `<details class="report"><summary>Report a grading problem</summary><label class="check"><input type="checkbox" id="gw"> Mentor's grade was wrong: my answer was better or worse than it scored</label></details>`}</div>`}`;
     if (c.replaying) { $('#rhead').focus(); $('#replayNext').onclick = () => { M.result = null; next(); }; return; }
     $('#rhead').focus();
-    if (r.ai_pending) aiLater(r.attempt);
     // each key idea you got: a few olive leaves from its tick (reduced motion: the tick alone)
     if (FX) $$('#rpanel .ideas .hit').forEach((li, i) => setTimeout(() => { const b = li.getBoundingClientRect(); if (li.isConnected) FX.burst([b.left + 8, b.top + b.height / 2], LEAVES); }, 120 * i));
     // every key idea there: Mentor nods. Nothing for a miss: a wrong answer is part of learning, not something to flinch at
@@ -472,7 +482,7 @@
       if (streak >= 3) $('#rpanel .deckname').append(` · ${streak} in a row`);
       const hero = $('#hero'); if (FX && streak && streak % 3 === 0 && hero && !hero.hidden && hero.offsetWidth) FX.motes($('#rhead'), hero, {color: '#B7C47E', n: 26, ms: 1100, lift: 90});
     }
-    $('#gw').onchange = e => M.grade_wrong = e.target.checked;
+    if ($('#gw')) $('#gw').onchange = e => M.grade_wrong = e.target.checked;
     const pick = () => +($('input[name=rate]:checked')?.value || 0);
     $$('input[name=rate]').forEach(i => i.onchange = () => $('#rateBtn').textContent = verb(pick(), r.previews));
     $('#rateBtn').onclick = () => pick() ? rate(pick()) : toast('Pick how well you knew it first: Again, Hard, Good or Easy.');
@@ -484,7 +494,7 @@
     if (s.learn) { toast(r.skipped ? 'Skipped. It comes back if the practice card goes wrong.' : 'Read. On to the next card.'); return next(); }
     if (s.check) { M.last = {attempt: r.attempt, card: M.card && M.card.id, right: s.right, check: true};
       toast(`Saved for the module check: ${s.right ? 'counted as right' : 'counted as missed'}.`, {label: 'Undo', fn: undo}); return next(); }
-    const right = r.think ? v >= 3 : r.coverage >= .99 && !r.shown && v > 1;
+    const right = r.think || r.compare ? v >= 3 && !r.shown && (M.hints || 0) <= 2 : r.coverage >= .99 && !r.shown && v > 1;   /* as right_answer() on the server: no hint above rung 2 */
     M.session.answered++; if (right) M.session.right++; else M.session.missed.push(M.card && M.card.id);
     const T = M.view === 'session' && M.timed; if (T) { T.cards++; if (right) T.right++; else T.missed.push(M.card && M.card.id); }
     M.last = {attempt: r.attempt, card: M.card && M.card.id, right};
@@ -544,7 +554,7 @@
       body = `${title(c.context || 'Read the code, one line at a time', 'Read the code, one line at a time')}
         <pre class="code worked" id="worked"><code>${lines.map((l, i) => `<span class="ln" data-line="${i + 1}">${esc(l) || ' '}</span>`).join('\n')}</code></pre>
         <div id="annot"></div>
-        <p class="help" id="annhelp">${readOnly ? 'Every note is shown.' : `Annotation <span id="step">1</span> of ${ann.length}. Say why the line is there (three words or more), then <kbd>Enter</kbd> shows the note.`}</p>`;
+        <p class="help" id="annhelp">${readOnly ? 'Every note is shown.' : `Annotation <span id="step">1</span> of ${ann.length}. Say why the line is there if you can (optional), then <kbd>Enter</kbd> shows the note.`}</p>`;
       go = readOnly ? done : `<button type="button" class="primary" id="goBtn">Show the note</button>${skip}`;
     } else {          // preread
       body = `<h3>Before you hunt the bug: the ideas it rests on</h3>${tried}
@@ -568,7 +578,7 @@
     M.t0 = performance.now();
     const form = $('#qform'), ta = $('#guess'), go = $('#tryBtn'), sk = $('#skipBtn');
     ta.focus();
-    form.onsubmit = e => { e.preventDefault(); if (!words(ta.value)) return need(ta, 'Type a guess first: a word or two is enough. It isn\'t graded.'); M.guess = {id: c.id, text: ta.value.trim()}; learnCard(c); };
+    form.onsubmit = e => { e.preventDefault(); if (!ta.value.trim()) return need(ta, 'Type a guess first: a word or two is enough. It isn\'t graded.'); M.guess = {id: c.id, text: ta.value.trim()}; learnCard(c); };
     form.onkeydown = e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); form.requestSubmit(); } };
     if (sk) sk.onclick = async () => { if (await learnSend(c, '', true, go)) rate(0); };
   }
@@ -615,12 +625,12 @@
       (inp || go).focus();
     }
   }
-  // level 0: one annotation at a time; the "why" waits until three words are typed
+  // level 0: one annotation at a time; the "why" is asked for, never required (4.55)
   function stepAnnotation(c, go, advance) {
     const ann = c.annotations || [], k = M.step, box = $('#annot');
     if (advance) {
-      const ta = $(`#why${k}`); if (ta && !ta.disabled && words(ta.value) < 3) return need(ta, 'Say why the line is there, in three words or more.');
-      if (ta && !ta.disabled) { M.notes.push(ta.value.trim().slice(0, 120)); ta.disabled = true; $(`#call${k}`).insertAdjacentHTML('beforeend', `<p>${inline(esc(ann[k].why))}</p>`); go.textContent = k + 1 < ann.length ? 'Go to the next line' : 'Explain it'; return go.focus(); }
+      const ta = $(`#why${k}`);
+      if (ta && !ta.disabled) { if (ta.value.trim()) M.notes.push(ta.value.trim().slice(0, 120)); ta.disabled = true; $(`#call${k}`).insertAdjacentHTML('beforeend', `<p>${inline(esc(ann[k].why))}</p>`); go.textContent = k + 1 < ann.length ? 'Go to the next line' : 'Explain it'; return go.focus(); }
       if (k + 1 < ann.length) M.step++;
       else return selfExplain(c, go);
     }
@@ -628,7 +638,7 @@
     $$('#worked .ln').forEach(l => l.classList.toggle('hi', +l.dataset.line === a.line));
     const line = $(`#worked .ln[data-line="${a.line}"]`); if (line) line.scrollIntoView({block: 'nearest'});
     box.insertAdjacentHTML('beforeend', `<div class="callout" id="call${M.step}"><b>${M.step + 1}. Line ${a.line}${a.note ? ': ' + inline(esc(a.note)) : ''}</b>
-      <label for="why${M.step}">Why is this line here?</label><input id="why${M.step}" class="blank wide" autocomplete="off" maxlength="120"></div>`);
+      <label for="why${M.step}">Why is this line here? (optional)</label><input id="why${M.step}" class="blank wide" autocomplete="off" maxlength="120"></div>`);
     $('#step').textContent = M.step + 1;
     const ta = $(`#why${M.step}`); ta.focus(); go.textContent = 'Show the note';
     ta.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); go.click(); } };
@@ -638,7 +648,7 @@
     $('#annhelp').textContent = 'Last step: explain it in your own words.';
     const ta = $('#ans'); ta.focus(); go.textContent = 'Check my explanation';
     const finish = async () => {
-      if (words(ta.value) < 3) return need(ta, 'Explain it in three words or more first.');
+      if (!ta.value.trim()) return need(ta, 'Explain it first: any length, in your own words.');
       go.disabled = true;
       let r; try { r = await send('answer', {card: c.id, text: JSON.stringify({reflections: M.notes, explain: ta.value.trim().slice(0, 1500)}), ms: Math.round(performance.now() - M.t0)}); } catch (e) { r = {ok: false}; }
       if (!r.ok) { go.disabled = false; return toast("Couldn't reach Mentor. Check that the server is on, then try again."); }
@@ -656,9 +666,8 @@
       band += `<ol class="lines">${lines.map((l, i) => { const n = i + 1, right = n === r.line, wrong = n === picked && !r.spot_ok;
         return `<li><span class="line${right ? ' right' : wrong ? ' wrong' : ''}"><span class="n">${n}</span><code>${esc(l) || ' '}</code>${right ? '<b class="mark">✓ The line</b>' : wrong ? '<b class="mark">✕ Your pick</b>' : ''}</span></li>`; }).join('')}</ol>`;
     } else if (c.kind === 'level0') {
-      const n = r.hits.length + r.missed.length;
-      band = verdict(n ? tone(r.coverage) : 'ok', n ? (r.coverage >= .99 ? `All ${plural(n, 'key idea')}` : `${r.hits.length} of ${plural(n, 'key idea')}`) : 'Explained', `<p class="coach">${inline(esc(r.coach))}</p>`)
-        + `${text ? `<p class="label">You wrote</p><p class="model mine">${esc(text)}</p>` : ''}${keyIdeas(r)}`;
+      band = verdict('shown', r.points && r.points.length ? 'Compare with the key ideas' : 'Explained', `<p class="coach">${inline(esc(r.coach))}</p>`)
+        + `${text ? `<p class="label">You wrote</p><p class="model mine">${esc(text)}</p>` : ''}${ideasToCompare(r.points)}`;
     } else {
       band = `<h3 tabindex="-1" id="rhead">${inline(esc(c.near ? c.near.ask : 'Read'))}</h3>${text ? `<p class="label">You wrote</p><p class="model mine">${esc(text)}</p>` : ''}${r.answer ? `<p class="label">Answer</p>${answerBlock(r.answer)}` : ''}<p class="coach">${inline(esc(r.coach))}</p>`;
     }
@@ -775,28 +784,9 @@
   }
 
   /* ----- lessons: the CTA summaries, progress, the Learn cards to read again, how to add one ----- */
-  /* ----- the local AI's part (docs/mentor-ai.md): Athena's owl brings it when it arrives; the rubric's grade never waits ----- */
-  const OWL = '<svg viewBox="22 20 56 66" aria-hidden="true"><path d="M34 40 L35 24 L44 34 Z M66 40 L65 24 L56 34 Z" fill="#8a7a5a"/><ellipse cx="50" cy="56" rx="19" ry="23" fill="#8a7a5a"/><ellipse cx="50" cy="63" rx="11" ry="14" fill="#d9c9a3"/><circle cx="42" cy="44" r="8.5" fill="#efe3c4"/><circle cx="58" cy="44" r="8.5" fill="#efe3c4"/><circle cx="42" cy="44" r="5" fill="#E7C35A"/><circle cx="58" cy="44" r="5" fill="#E7C35A"/><circle cx="42" cy="44" r="2.4" fill="#1C2127"/><circle cx="58" cy="44" r="2.4" fill="#1C2127"/><path d="M50 48 L47 52 L50 56 L53 52 Z" fill="#C9A36A"/></svg>';
-  async function aiLater(attempt) {
-    const panel = $('#rpanel'); if (!panel) return;
-    const box = document.createElement('div'); box.className = 'aiowl'; box.setAttribute('aria-live', 'polite');
-    box.innerHTML = `${OWL}<p><small>Local AI</small>Reading your answer…</p>`; $('.coach', panel).after(box);
-    for (let i = 0; i < 40; i++) {                 // up to about a minute; give up quietly after that
-      await wait(1500); if (!box.isConnected) return;
-      let a; try { a = await get('ai?attempt=' + attempt); } catch (e) { continue; }
-      if (a.state === 'pending') continue;
-      if (a.state !== 'done') { box.remove(); return; }       // off or not answering: the rubric's grade stands alone
-      box.innerHTML = `${OWL}<p><small>Local AI · ${esc(a.chat_model || a.model)} · not used for the rating</small>
-        Meaning match: <b>${Math.round(a.similarity * 100)}%</b>${a.feedback ? `<span class="fb">${esc(a.feedback)}</span>` : ''}</p>`;
-      return;
-    }
-    box.remove();
-  }
-  const aiLine = a => !a || !a.enabled ? 'Local AI: off (docs/mentor-ai.md says how to turn it on)' : a.problem ? `Local AI: off, the config has a problem: ${a.problem}`
-    : a.answering === false ? `Local AI: on (${a.embed_model}), but its server is not answering` : `Local AI: on (${a.embed_model}${a.feedback ? `, feedback by ${a.chat_model}` : ''}), not used for ratings yet`;
   // a course's module in the map (4.32): its lock, lessons mastered, share answered right, and its check, then its lessons
   const courseOf = ms => ((M.stats || {}).courses || []).find(c => !c.loose && c.modules.some(md => md.lessons.includes(ms[0].id)));
-  const checkText = k => !k || k.state === 'none' ? '' : k.state === 'waiting' ? `Module check (${plural(k.items, 'question')}) once every lesson is mastered`
+  const checkText = k => !k || k.state === 'none' ? '' : k.state === 'waiting' ? `Module check (${plural(k.items, 'question')}) once every lesson is practised`
     : k.state === 'ready' ? `Module check ready: ${k.now ? `${plural(k.now, 'question')} to answer` : ''}${k.now && k.later ? ', ' : ''}${k.later ? `${plural(k.later, 'question')} tomorrow (cards from the same notes were practised today)` : ''}`
     : k.state === 'passed' ? `Module check passed: ${k.right} of ${k.items} right`
     : `Module check not passed yet: ${k.right} of ${k.items} right; ${k.now ? `${plural(k.now, 'question')} to answer again` : 'the missed questions come back tomorrow'}${k.now && k.later ? `, ${k.later} tomorrow` : ''}`;
@@ -805,7 +795,7 @@
     const pct = Math.round(100 * (md.progress || 0)), w = md.waiting_on || [], ct = checkText(md.check);
     return `<section class="cmod${md.locked ? ' locked' : ''}" aria-labelledby="cm-${esc(md.id)}"><div class="cmhead"><div class="cmname">
         <h3 id="cm-${esc(md.id)}">${md.locked ? LOCK : ''}<span>${esc(md.name)}</span></h3>
-        <p class="meta">${md.locked ? `Locked: opens when ${esc(w.join(', '))} ${w.length === 1 ? 'is' : 'are'} mastered` : `${md.done || 0} of ${plural(les.length, 'lesson')} mastered`}${ct ? ' · ' + esc(ct) : ''}</p></div>
+        <p class="meta">${md.locked ? `Locked: opens when ${esc(w.join(', '))} ${w.length === 1 ? 'is' : 'are'} practised` : `${md.done || 0} of ${plural(les.length, 'lesson')} practised`}${ct ? ' · ' + esc(ct) : ''}</p></div>
         <div class="mprog"><span class="lpbar" role="progressbar" aria-label="${esc(md.name)}: answered right" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="width:${pct}%"></span></span><small>${pct}% right</small></div></div>
       <ul class="course-list">${les.map(row).join('')}</ul></section>`;
   }
@@ -822,10 +812,10 @@
       const groups = [...new Set(mods.map(m => m.project || 'Lessons'))];
       const passPct = Math.round(100 * (s.pass || .8));
       const row = m => { const t = tally(m), course = m.progress != null, pct = course ? Math.round(100 * m.progress) : t.n ? Math.round(100 * t.seen / t.n) : 0;
-        const prog = course ? (m.mastered ? `${pct}% right · mastered` : t.seen ? `${pct}% right` : 'Not started') : t.seen ? `${pct}% practised` : 'Not started';
+        const prog = course ? (m.mastered ? `${pct}% rated Good or Easy · practised` : t.seen ? `${pct}% rated Good or Easy` : 'Not started') : t.seen ? `${pct}% practised` : 'Not started';
         return `<li class="module${m.locked ? ' locked' : ''}"><div class="mrow">
           <div class="mname"><h4 id="mh-${esc(m.id)}">${esc(m.name)}</h4><p class="meta">${m.locked ? `Opens at ${passPct}% right in: ${esc((m.waiting_on || []).join(', '))}` : `${plural(t.n, 'card')}${m.to_learn ? ` · ${m.to_learn} lesson cards to read` : ''}${m.built_in ? ' · comes with Argus' : ''}`}</p></div>
-          <div class="mprog"><span class="lpbar" role="progressbar" aria-label="${esc(m.name)}: ${course ? 'cards answered right' : 'cards practised'}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="width:${pct}%"></span></span><small>${prog}</small></div>
+          <div class="mprog"><span class="lpbar" role="progressbar" aria-label="${esc(m.name)}: ${course ? 'cards rated Good or Easy' : 'cards practised'}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="width:${pct}%"></span></span><small>${prog}</small></div>
           ${m.locked ? `<p class="locktag" id="lk-${esc(m.id)}">${LOCK}<span>Locked</span></p>` : `<button type="button" data-study="${esc(m.id)}" aria-describedby="mh-${esc(m.id)}">${action(m)}</button>`}</div>
           <div class="mmore">${SUMMARY.some(([k]) => m.summary[k]) || (m.summary.lint || []).length ? `<details><summary>About this lesson</summary><dl class="defs">${SUMMARY.filter(([k]) => m.summary[k]).map(([k, n]) => `<dt>${n}</dt><dd>${rich(m.summary[k])}</dd>`).join('')}</dl>${(m.summary.lint || []).length ? `<p class="meta">Notes from the lesson's author: ${m.summary.lint.map(esc).join('; ')}</p>` : ''}</details>` : ''}
           ${m.learn.length ? `<details><summary>Read the lesson again</summary><ul class="learnlist">${m.learn.map(l => `<li><button type="button" data-read="${esc(l.id)}"><span>${esc(l.title)}</span><small>${l.seen ? 'read' : 'not yet'}</small></button></li>`).join('')}</ul></details>` : ''}</div></li>`; };
@@ -841,7 +831,7 @@
         ${imp.length ? `<p class="label">Inbox files that need a look</p><ul class="ideas">${imp.map(i => `<li class="${i.ok ? 'hit' : 'miss'}"><code>${esc(i.path)}</code>: ${esc(i.msg)}</li>`).join('')}</ul>` : ''}
         ${owner ? `<details class="about"><summary>About Mentor and adding a lesson</summary>
           <p class="coach">Each lesson breaks down real work from your projects. You learn first (an overview, the terms, worked examples, the ideas behind each bug hunt), then practise, and reviews come back when you're about to forget.</p>
-          <p class="meta">Calibration: ${calText(s.calibration)}${s.labels ? ` · ${plural(s.labels, 'graded answer')} saved for the learning grader` : ''}</p><p class="meta" id="ailine">Local AI: checking…</p>
+          <p class="meta">Calibration: ${calText(s.calibration)}${s.labels ? ` · ${plural(s.labels, 'graded answer')} saved for the learning grader` : ''}</p><p class="meta" id="ailine">Local AI: retired from study (docs/mentor-ai.md)</p>
           ${s.inbox ? `<ol class="steps">
             <li>In Claude Code, right after building something, run <code>/mentor</code> (or <code>/mentor</code> plus a file or function name). It writes a JSON file to the project's <code>mentor_inbox</code> folder.</li>
             <li>Copy that file to <code>${esc(s.inbox)}</code> on the machine that runs Argus.</li>
@@ -849,7 +839,6 @@
           : `<p class="coach">This person's lessons are the files in <code>${esc(s.deck_folder || '')}</code> on the machine that runs Argus. Copy a lesson or deck file there; it shows up on the next visit.</p>`}</details>`
           : `<details class="about"><summary>About Mentor</summary><p class="coach">Questions come first; the lesson behind each one comes with the answer. Reviews come back when you are about to forget.</p></details>`}
       </div>`;
-      if (owner) get('ai').then(a => { const p = $('#ailine'); if (p) p.textContent = aiLine(a); }).catch(() => {});   // after the panel is drawn
       const tt = $('#toToday2'); if (tt) tt.onclick = () => setView('today');
       $$('[data-study]').forEach(b => b.onclick = () => { M.deck = b.dataset.study; save('mentor-deck', M.deck); fillPicker(); setView('practice'); });
       const ra = $('#reviewAll'); if (ra) ra.onclick = () => { M.deck = null; save('mentor-deck', null); fillPicker(); setView('practice'); };

@@ -544,11 +544,44 @@ class Roles(Base):
         self.assertEqual(sorted(got), sorted(want)); self.assertNotEqual(got, want, 'the lines come mixed, never in their right order')
         self.assertEqual(got, self.card('loops--write:z-1')['lines'], 'the same order while the card is on screen')
 
-    def test_grade_predict_by_key_ideas(self):
-        self.assertEqual(self.ans('loops--read:p-1', 'It prints 6')['coverage'], 1)
+    def test_grade_predict_exactly(self):
+        # 4.55: an output is compared exactly (layout aside), never by counting words
+        self.assertEqual(self.ans('loops--read:p-1', '6')['coverage'], 1)
         r = self.ans('loops--read:p-1', '7')
         self.assertEqual((r['coverage'], r['missed']), (0, ['it prints 6'])); self.assertIn('total = 0', r['code'])
+        self.assertEqual(self.ans('loops--read:p-1', 'It prints 6 and then 7')['coverage'], 0, 'extra words are not the output')
         self.assertEqual(self.ans('loops--read:p-2', '1\n2\n3')['coverage'], 1)
+        self.assertEqual(self.ans('loops--read:p-2', '3\n2\n1')['coverage'], 0, 'order counts')
+        self.assertEqual(self.db.execute("SELECT grader FROM attempts ORDER BY id DESC LIMIT 1").fetchone()[0], 'predict-exact')
+
+    def test_predict_minus_twelve(self):
+        k = dict(self.doc['modules'][0]['lessons'][0]['code_cards'][0], id='p-neg', answer='-12', accept=['- 12'],
+                 eval_rubric=[{'idea': 'it prints -12', 'any': ['-12']}])
+        prompt, ans, pts, data = m.code_card(k, 'predict')
+        with m.DB_LOCK:
+            self.db.execute("INSERT INTO cards(id,deck,kind,prompt,answer,points,data) VALUES('x:neg','x','predict',?,?,?,?)",
+                            (prompt, ans, json.dumps(pts), json.dumps(data))); self.db.commit()
+        self.assertEqual(self.ans('x:neg', '12')['coverage'], 0, '12 is not -12')
+        self.assertEqual(self.ans('x:neg', '-12')['coverage'], 1)
+        self.assertEqual(self.ans('x:neg', '- 12')['coverage'], 1, 'an accepted wording')
+
+    def test_predict_fragment_of_several_ideas_is_not_the_output(self):
+        # review of 4.55: with two key ideas, each idea's wordings are fragments, never the whole output
+        k = dict(self.doc['modules'][0]['lessons'][0]['code_cards'][0], id='p-two', answer='1\n2\n3',
+                 eval_rubric=[{'idea': 'starts at 1', 'any': ['1']}, {'idea': 'ends at 3', 'any': ['3']}])
+        prompt, ans, pts, data = m.code_card(k, 'predict')
+        with m.DB_LOCK:
+            self.db.execute("INSERT INTO cards(id,deck,kind,prompt,answer,points,data) VALUES('x:two','x','predict',?,?,?,?)",
+                            (prompt, ans, json.dumps(pts), json.dumps(data))); self.db.commit()
+        self.assertEqual(self.ans('x:two', '1')['coverage'], 0, 'one idea of two is not the output')
+        self.assertEqual(self.ans('x:two', '3')['coverage'], 0)
+        self.assertEqual(self.ans('x:two', '1 2 3')['coverage'], 1)
+
+    def test_trace_reversed(self):
+        self.assertEqual(self.ans('loops--read:t-2', ['3', '6', '5'])['coverage'], 1)
+        self.assertEqual(self.ans('loops--read:t-2', ['x=3', 'x = 6', ' x =5'])['coverage'], 1, 'spaces around = do not matter')
+        self.assertEqual(self.ans('loops--read:t-2', ['3', '6', '-5'])['coverage'], 0.67, '-5 is not 5')
+        self.assertEqual(self.ans('loops--read:t-2', ['x is 3', '6', '5'])['coverage'], 0.67, 'words around a value are not the value')
 
     def test_grade_trace_per_step(self):
         r = self.ans('loops--read:t-1', ['total = 0', '2', 'total = 6'])
@@ -577,14 +610,44 @@ class Roles(Base):
         self.assertEqual(m.typed_list('[["0"], "2"]', 3), ['[["0"], "2"]', '', ''], 'a list holding lists is one typed answer')
         self.assertEqual(m.typed_list('["0", 2]', 3), ['0', '2', ''])
 
-    def test_grade_write_by_key_ideas_parsed_never_run(self):
+    def test_write_compared_parsed_never_run(self):
+        # 4.55: written code is compared with the model answer and rated by the learner; Python is still parsed, never run
         model = self.doc['modules'][0]['lessons'][1]['code_cards'][3]['answer']
         r = self.ans('loops--write:w-1', model)
-        self.assertEqual((r['coverage'], r['problem']), (1, None))
+        self.assertEqual((r['coverage'], r['suggested'], r['problem'], r['compare']), (None, 0, None, True))
+        self.assertEqual(r['points'], ['loops over the items', 'doubles each item', 'returns the new list'])
         r = self.ans('loops--write:w-1', 'def double_all(items)\n    return [x * 2 for x in items]')
-        self.assertIn('line 1', r['problem']); self.assertEqual(r['coverage'], 1, 'the key ideas are graded as written; the syntax error is shown beside them')
-        self.assertIn("Python can't read", r['coach'])
-        self.assertIn('write', m.AI_KINDS, 'the local AI scores written code in shadow mode')
+        self.assertIn('line 1', r['problem']); self.assertIn("Python can't read", r['coach'])
+        self.assertEqual(self.db.execute("SELECT grader, coverage FROM attempts ORDER BY id DESC LIMIT 1").fetchone()[:], ('compare', 0.0))
+
+    def test_rust_write_self_checked(self):
+        with m.DB_LOCK:
+            self.db.execute("INSERT INTO cards(id,deck,kind,prompt,answer,points,data) VALUES('x:rs','x','write','Write it','fn main() {}','[]',?)",
+                            (json.dumps({'lang': 'rust'}),)); self.db.commit()
+        r = self.ans('x:rs', 'fn main() { let x = 1 }')
+        self.assertEqual((r['evaluator'], 'problem' in r), ('self-checked', False), 'no Python check on Rust')
+
+    def test_term_kanji(self):
+        # 4.55: an answer in another script is kept, not stripped to nothing
+        self.assertEqual(m.grade_term({'answer': '猫'}, '猫'), 1.0)
+        self.assertEqual(m.grade_term({'answer': 'Straße'}, 'STRASSE'), 1.0, 'casefold: ß matches ss')
+        self.assertEqual(m.grade_term({'answer': '猫'}, '犬'), 0.0)
+        self.assertEqual(m.grade_term({'answer': 'caf\u00e9'}, 'cafe\u0301'), 1.0, 'a decomposed accent equals the composed one (NFC)')
+
+    def test_rust_drill_level3_self_checked(self):
+        fades = {'3': {'code': 'fn double(x: i32) -> i32 {\n    {{BLANK_1}}\n}', 'answers': ['x * 2']}}
+        with m.DB_LOCK:
+            self.db.execute("INSERT INTO cards(id,deck,kind,prompt,answer,points,data) VALUES('x:rd','x','drill','Write the body','x * 2','[]',?)",
+                            (json.dumps({'lang': 'rust', 'fades': fades}),)); self.db.commit()
+        r = self.ans('x:rd', 'x * 2')
+        self.assertEqual((r['evaluator'], 'problem' in r, r['compare'], r['suggested']), ('self-checked', False, True, 0), 'a Rust body is never parsed as Python')
+
+    def test_explain_negation_not_correct(self):
+        with m.DB_LOCK:
+            self.db.execute("INSERT INTO cards(id,deck,kind,prompt,answer,points,data) VALUES('x:neg','x','explain','Why?',?,?,'{}')",
+                            ('A shared reference prevents mutation', json.dumps([{'idea': 'a shared reference prevents mutation', 'any': ['prevents mutation']}]))); self.db.commit()
+        r = self.ans('x:neg', 'A shared reference does not prevent mutation')
+        self.assertEqual((r['compare'], r['suggested'], r['coverage'], r['hits']), (True, 0, None, []), 'no keyword verdict either way')
 
     def test_hint_ladder_and_answer_rung(self):
         h = m.hint(self.db, 'loops--write:z-1', 4)

@@ -11,13 +11,12 @@ def _load(name, file):
     mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)      # by path: an old installed copy can't shadow it
     return mod
 mentor = _load('leafy_mentor', 'mentor.py')
-assist = _load('leafy_mentor_assist', 'assist.py')            # the optional local AI (docs/mentor-ai.md)
 learners = _load('leafy_mentor_learners', 'learners.py')      # who is studying (the people file)
 
 SHARE = os.path.expanduser('~/.local/share/argus-ui')
 DB, DECK_DIRS, THEME_DECKS = None, [], None
-AI = threading.Semaphore(1)           # the local model answers one attempt at a time; the rest wait their turn in their threads
-PENDING = set()                       # (database path, attempt) whose AI part is still being worked out
+# 4.55: the local AI is retired from study (docs/mentor-ai.md): an answer never sends a request to a model server.
+AI_RETIRED = {'enabled': False, 'retired': True, 'problem': ''}
 
 class Book:
     """One person's database and its lock. One request at a time on one SQLite connection: two at once (the page asks for
@@ -135,8 +134,8 @@ def get(path, query, ctx, who=None):
             h = holder(); return 200, learners.listing(who, h, h or stored())
         person = studying(who, (query.get('learner') or [None])[0])
     except learners.Refused as e: return refused(e)
-    if path == 'ai' and not query.get('attempt'):          # may ask the model server: outside the lock
-        return 200, assist.status() if person['role'] == 'owner' else {'enabled': False, 'owner_only': True, 'problem': ''}
+    if path == 'ai' and not query.get('attempt'):          # 4.55: retired from study; the model server is never asked
+        return 200, AI_RETIRED
     b = book_for(person)
     with b.lock:
         fresh(b)
@@ -150,22 +149,7 @@ def post(path, body, ctx, who=None):
     with b.lock:
         fresh(b)
         code, r = _post(b, person, path, body)
-    # the rubric has answered; the local AI's part (if it is on) follows in a thread and the page asks for it (GET ai?attempt=).
-    # Only when the person studying is an owner: a learner's answer never starts it (docs/mentor-ai.md, "Who it runs for")
-    if (code == 200 and path == 'answer' and r.get('attempt') and r.get('kind') in mentor.AI_KINDS and person['role'] == 'owner'
-            and str(body.get('text', '')).strip()):
-        c = assist.config()
-        if c['enabled'] and not c['problem']:
-            r['ai_pending'] = True; PENDING.add((b.path, r['attempt']))
-            threading.Thread(target=judge, args=(b, r['attempt'], str(body.get('card', '')), r.get('reference') or '', str(body.get('text', ''))[:2000]), daemon=True).start()
     return code, r
-
-def judge(b, attempt, card, reference, text):
-    try:
-        with b.lock: prompt = mentor.card_prompt(b.db, card)
-        with AI: res = assist.judge(prompt, reference, text)
-        with b.lock: mentor.set_ai(b.db, attempt, res)
-    finally: PENDING.discard((b.path, attempt))
 
 def _get(b, person, path, query):
     db = b.db
@@ -191,12 +175,8 @@ def _get(b, person, path, query):
     if path == 'track':                          # Preview: one track's size, history and a few questions; nothing is scheduled
         t = mentor.track_preview(db, (query.get('id') or [''])[0], deck_names(b))
         return (200, t) if t else (404, {'ok': False, 'msg': 'There is no track with that id here.'})
-    if path == 'ai':                             # one attempt's AI part: pending, done (similarity, feedback), error, or none
-        try: aid = int(query['attempt'][0])
-        except (ValueError, TypeError, KeyError): return 400, {'ok': False, 'msg': 'bad attempt'}
-        if (b.path, aid) in PENDING: return 200, {'state': 'pending'}
-        d = mentor.get_ai(db, aid)
-        return 200, {'state': 'none'} if not d else {'state': 'error', 'error': d['error']} if 'error' in d else {'state': 'done', **d}
+    if path == 'ai':                             # 4.55: an attempt's AI part is always none (an older page may still ask)
+        return 200, {'state': 'none'}
     if path == 'status':                         # LeafyGrove's Today card and Home: the line, "needs you", a verb-first action
         return 200, status(mentor.today(db, deck_names(b)))
     return 404, {'ok': False, 'msg': 'not found'}

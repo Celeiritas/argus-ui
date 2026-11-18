@@ -35,8 +35,11 @@ The server's routes are fixed (decks, next, stats, answer, rate, undo, settings)
 Scheduling: FSRS-4.5 (Free Spaced Repetition Scheduler) with its published default weights, plus Anki's behaviours on top
 (4.29): learning steps (1 min, 10 min; relearning 10 min), undo of the last rating, and bury siblings (same note, until tomorrow).
 """
-import ast, io, json, math, os, re, sqlite3, textwrap, threading, time, glob, tokenize
+import ast, io, json, math, os, re, sqlite3, textwrap, threading, time, glob, tokenize, unicodedata
 from difflib import SequenceMatcher
+import importlib.util as _ilu
+_cs = _ilu.spec_from_file_location('leafy_mentor_compare', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'compare.py'))
+compare = _ilu.module_from_spec(_cs); _cs.loader.exec_module(compare)     # exact answers (4.55), loaded by path like plugin.py's
 
 DB_LOCK = threading.Lock()
 INBOX = os.path.expanduser(os.environ.get('ARGUS_MENTOR_INBOX', '~/.local/share/argus-ui/inbox'))
@@ -133,7 +136,7 @@ ADDED = [('cards', 'data', "TEXT DEFAULT '{}'"), ('cards', 'ord', 'INTEGER DEFAU
          ('cards', 'learn_of', 'TEXT'), ('sched', 'refresh', 'INTEGER DEFAULT 0'),
          ('attempts', 'hints', 'INTEGER DEFAULT 0'), ('attempts', 'reflections', 'TEXT'), ('attempts', 'stuck', 'TEXT'),
          ('attempts', 'skipped', 'INTEGER DEFAULT 0'),
-         # 4.17: the local AI's part of an attempt (docs/mentor-ai.md), JSON; empty when it was off
+         # 4.17-4.54: the local AI's part of an attempt (docs/mentor-ai.md), JSON; never written since 4.55
          ('attempts', 'ai', 'TEXT'),
          # 4.26: courses; a lesson's place in one, a card's LO, note, role and whether it is a check item
          ('modules', 'course', 'TEXT'), ('modules', 'cmodule', 'TEXT'), ('modules', 'ord', 'INTEGER DEFAULT 0'),
@@ -251,7 +254,7 @@ def code_card(k, role):
     """One 4.32 code card (`code_cards` in a lesson, docs/mentor.md) -> (prompt, answer, points, data), or a string saying
     what is missing. predict: code + the model answer, graded by key ideas; trace: code + the value after each step's line,
     each step graded by key ideas; parsons: the lines in their right order, graded by position; write: the model code,
-    graded by key ideas (the local AI may add a meaning score in shadow mode, never the rating)."""
+    compared with the reference and rated by the learner (4.55; no model is asked)."""
     prompt = str(k.get('front_prompt') or '').strip()
     if not prompt: return 'needs a front_prompt'
     data = {'breadcrumb': str(k.get('file_breadcrumb') or ''), 'lang': str(k.get('lang') or 'python')}
@@ -266,6 +269,7 @@ def code_card(k, role):
         if not pts and role == 'write': return 'needs eval_rubric key ideas (how a written answer is graded)'
         pts = pts or [{'idea': ans.strip(), 'any': [ans.strip()]}]      # a predict card without key ideas: its output as one
         if role == 'write': data['starter'] = str(k.get('starter') or '')
+        if role == 'predict' and k.get('accept'): data['accept'] = [str(a) for a in as_list(k['accept'])]     # other exact wordings (4.55)
         return prompt, ans, pts, data
     if role == 'trace':
         n, steps = len(code.split('\n')), []
@@ -555,7 +559,9 @@ GENERIC = set('key causal mechanism mention must should explain explanation conc
               'consequence system mechanic python hci 1 2 3'.split())
 
 def norm(s):
-    return re.sub(r"[^a-z0-9\s]", " ", s.lower().replace("'", ''))
+    # 4.55: Unicode-safe. NFC first (a decomposed é from some keyboards equals the composed one), then casefold() and \w
+    # keep every script's letters and digits (猫, é, ß); only punctuation goes
+    return re.sub(r"[^\w\s]|_", " ", unicodedata.normalize('NFC', s).casefold().replace("'", ''))
 
 def stem(w):
     for suf in ('ingly', 'edly', 'ing', 'ed', 'es', 's', 'ly'):
@@ -701,11 +707,11 @@ def typed_list(text, n):
     return got[:max(n, 0) or None] + [''] * max(0, n - len(got))
 
 def grade_trace(card, text):
-    """A trace card: the value after each step's line, each step graded on its own by the key-idea grader (its state, or an
-    accepted wording). Returns coverage, features, one row per step."""
+    """A trace card: the value after each step's line, each step compared exactly with its state or an accepted wording
+    (4.55: signs, operators and order count; only layout is forgiven). Returns coverage, features, one row per step."""
     pts, data = json.loads(card['points'] or '[]'), json.loads(card['data'] or '{}')
     typed = typed_list(text, len(pts))
-    per = [{'n': i + 1, 'line': ln, 'ok': bool(typed[i].strip()) and point_hit(p, set(code_tokens_words(typed[i])), code_tokens_words), 'typed': typed[i],
+    per = [{'n': i + 1, 'line': ln, 'ok': compare.same_value(typed[i], p['any']), 'typed': typed[i],
             'expected': p['any'][0]} for i, (p, ln) in enumerate(zip(pts, data.get('steps') or [0] * len(pts)))]
     cov = sum(p['ok'] for p in per) / (len(per) or 1)
     return cov, {'steps': len(per), 'right': sum(p['ok'] for p in per)}, per
@@ -1254,9 +1260,9 @@ def learn_answer(db, c, text, ms, skipped):
         except (ValueError, RecursionError): parts = {}
         if not isinstance(parts, dict): parts = {}
         explain = str(parts.get('explain') or '')
-        if json.loads(c['points'] or '[]') and explain.strip():
-            cov, hits, missed, f = grade(c, explain); feats.update(f)
-        extra = {'reflections': [str(x)[:300] for x in as_list(parts.get('reflections'))][:8]}
+        # 4.55: compared, never marked: the key ideas are shown beside what was written (no word counting)
+        extra = {'reflections': [str(x)[:300] for x in as_list(parts.get('reflections'))][:8],
+                 'points': [p['idea'] for p in json.loads(c['points'] or '[]')] if explain.strip() else []}
     elif kind == 'preread':
         extra = {'answer': c['answer']}
     if skipped: feats['skipped'] = True
@@ -1268,7 +1274,7 @@ def learn_answer(db, c, text, ms, skipped):
     n = len(hits) + len(missed)
     if skipped: coach = 'Skipped. If the practice card goes wrong, this one comes back.'
     elif 'spot_ok' in extra: coach = f"That's it: {extra['why']}" if extra['spot_ok'] else f"It's on line {extra['line']}: {extra['why']}"
-    elif n: coach = f"All {n} key ideas." if cov >= 0.99 else f"{round(cov * n)} of {n} key ideas. Read the model answer, then say the missing part in your own words."
+    elif extra.get('points'): coach = 'Compare yours with the key ideas. Anything missing? Say it once in your own words, then move on.'
     else: coach = 'Read it once more, then move on: the practice card will show what stuck.'
     return {'attempt': cur.lastrowid, 'kind': kind, 'coverage': cov, 'hits': hits, 'missed': missed, 'reference': c['answer'],
             'suggested': 0, 'previews': {}, 'level_after': None, 'coach': coach, 'learn': True, **extra}
@@ -1288,6 +1294,9 @@ def answer(db, card_id, text, confidence, ms, hints=0, reflections=None, skipped
     level, per, extra = None, None, {}
     hints = max(0, min(4, int(hints or 0)))
     if hints == 4: text = ''                       # the answer was shown: this attempt counts as a blank one
+    if c['kind'] == 'drill' and card_level(c, c['level']) == 3 and data.get('lang', 'python') != 'python':
+        # 4.55: a whole body in a language Mentor can't parse is compared and self-checked, never scored as Python
+        return compare_answer(db, c, data, text, confidence, ms, hints, reflections, taught)
     if c['kind'] == 'drill':
         level = card_level(c, c['level'])
         cov, feats, per = grade_drill(c, level, text)
@@ -1309,21 +1318,25 @@ def answer(db, card_id, text, confidence, ms, hints=0, reflections=None, skipped
         grader = c['kind'] + '-A'
         extra = {'breadcrumb': data.get('breadcrumb', ''), 'rows': per}
         if c['kind'] == 'trace': extra['code'] = data.get('code', '')
+    elif c['kind'] == 'predict' and not any('auto' in p for p in json.loads(c['points'] or '[]')):
+        # 4.55: an output has one right value. Compared exactly with the model answer and `accept`; a key idea's `any`
+        # wordings count as whole answers only when there is one key idea (with several, each is only a fragment)
+        pts = json.loads(c['points'] or '[]')
+        accepted = [c['answer'], *(pts[0].get('any', []) if len(pts) == 1 else []), *as_list(data.get('accept'))]
+        cov = 1.0 if compare.same_value(text, accepted) else 0.0
+        ideas = [p['idea'] for p in pts] or [c['answer']]
+        hits, missed = (ideas, []) if cov else ([], ideas)
+        feats, grader = {'coverage': cov, 'words': len(text.split())}, 'predict-exact'
+        extra = {'breadcrumb': data.get('breadcrumb', ''), 'code': data.get('code', '')}
     else:
-        cov, hits, missed, feats = grade(c, text, code_tokens_words if c['kind'] in CODE_KINDS else tokens)
-        grader = 'rubric-A-auto' if feats.get('auto_points') else 'rubric-A'
-        extra = {'breadcrumb': data.get('breadcrumb', ''), 'rough': bool(feats.get('auto_points'))}
-        if c['kind'] == 'predict': extra['code'] = data.get('code', '')
-        if c['kind'] == 'write' and data.get('lang', 'python') == 'python' and text.strip():
-            # parsed, never run: Python's own syntax error is shown with the key ideas (it does not change the grade)
-            extra['problem'] = syntax_problem(textwrap.dedent(text)); feats['syntax_ok'] = extra['problem'] is None
+        return compare_answer(db, c, data, text, confidence, ms, hints, reflections, taught)
     extra['move'] = data.get('move') or MOVE.get(c['kind'], MOVE['define'])
     # slip or mistake (Norman): a blank that was right before, or the same card right at another time, is a slip
     prev = db.execute("SELECT * FROM attempts WHERE card_id=? AND kind=? ORDER BY id DESC LIMIT 1", (card_id, c['kind'])).fetchone()
-    extra['slip'] = bool(prev and prev['grader'] != 'self' and cov < 0.99 and (prev['coverage'] or 0) >= 0.99)
+    extra['slip'] = bool(prev and prev['grader'] not in ('self', 'compare') and cov < 0.99 and (prev['coverage'] or 0) >= 0.99)
     # stuck: wrong twice in a row within a session -> the lesson's Learn card comes back before the next try
     stuck = None
-    if cov < 0.5 and prev and prev['grader'] != 'self' and (prev['coverage'] or 0) < 0.5 and time.time() - prev['at'] < STUCK_WINDOW:
+    if cov < 0.5 and prev and prev['grader'] not in ('self', 'compare') and (prev['coverage'] or 0) < 0.5 and time.time() - prev['at'] < STUCK_WINDOW:
         stuck = 'repeat'
     elif cov < 0.5 and c['learn_of']:
         la = db.execute("SELECT skipped FROM attempts WHERE card_id=? ORDER BY id DESC LIMIT 1", (c['learn_of'],)).fetchone()
@@ -1385,6 +1398,40 @@ def think_answer(db, c, confidence, ms, hints, reflections, taught=False):
             'coach': 'Compare it with what you thought, then say how well you knew it.', 'breadcrumb': data.get('breadcrumb', ''),
             'code': data.get('code', '') if c['kind'] == 'predict' else '', 'slip': False,
             'move': data.get('move') or MOVE.get(c['kind'], MOVE['define']), 'teach': teach, 'teach_new': teach_new}
+
+def compare_answer(db, c, data, text, confidence, ms, hints, reflections, taught=False):
+    '''4.55: an explanation, a definition or written code has no single right wording, and counting its words cannot tell
+    "prevents" from "does not prevent". So Mentor marks nothing: it shows the reference and its key ideas beside what was
+    written, and the learner rates it (grader "compare", no suggestion). Stored like a "think it" attempt (coverage 0.0, a
+    number an older Mentor still reads) so the slip and stuck rules, which need a graded attempt, leave it alone. Python
+    code is still parsed, never run, and its syntax error shown; any other language says "self-checked".'''
+    now, extra = time.time(), {}
+    lang = data.get('lang', 'python') if c['kind'] in ('write', 'drill') else None
+    if lang == 'python' and text.strip():
+        extra['problem'] = syntax_problem(textwrap.dedent(text))
+    elif lang:
+        extra['evaluator'] = 'self-checked'
+    feats = {'compare': True, 'confidence': confidence, 'ms': ms, 'kind': c['kind'], 'hints': hints,
+             'words': len(text.split()), **({'taught': True} if taught else {}), **({'syntax_ok': extra['problem'] is None} if 'problem' in extra else {})}
+    with DB_LOCK:
+        cur = db.execute("INSERT INTO attempts(card_id,at,answer,confidence,ms,coverage,hits,missed,features,suggested,grader,kind,level,hints,reflections) "
+                         "VALUES(?,?,?,?,?,0.0,'[]','[]',?,0,'compare',?,NULL,?,?)", (c['id'], now, text, confidence, ms, json.dumps(feats), c['kind'],
+                         hints, json.dumps([str(x)[:300] for x in as_list(reflections)][:4])))
+        db.commit()
+    att = db.execute("SELECT * FROM attempts WHERE id=?", (cur.lastrowid,)).fetchone()
+    if c['is_check']: previews = {}
+    else:
+        srow = db.execute("SELECT * FROM sched WHERE card_id=?", (c['id'],)).fetchone()
+        previews = {g: round((plan(db, c, srow, att, g, now)[2] - now) / DAY, 6) for g in (1, 2, 3, 4)}
+    teach, teach_new = teaching(db, c, now)
+    pts = json.loads(c['points'] or '[]')
+    coach = 'Compare yours with the reference and its key ideas, then say how well you knew it.'
+    if extra.get('problem'): coach = "Python can't read it yet (shown below). " + coach
+    return {'attempt': cur.lastrowid, 'kind': c['kind'], 'coverage': None, 'hits': [], 'missed': [], 'compare': True,
+            'points': [p['idea'] for p in pts], 'previews': previews, 'level_after': None, 'reference': c['answer'],
+            'suggested': 0, 'hints': hints, 'stuck': None, 'check': bool(c['is_check']), 'taught': bool(taught), 'coach': coach,
+            'breadcrumb': data.get('breadcrumb', ''), 'code': data.get('code', '') if c['kind'] == 'predict' else '', 'slip': False,
+            'move': data.get('move') or MOVE.get(c['kind'], MOVE['define']), 'teach': teach, 'teach_new': teach_new, **extra}
 
 def coach_line(kind, cov, conf, n, extra):
     """At most two sentences: what the result was, then the expert's first move and one place to look (Hattie &
@@ -1581,7 +1628,7 @@ def stats(db, deck=None):
     aw = ("WHERE " + " OR ".join("a.card_id LIKE ?" for _ in pats)) if pats else ("WHERE 0" if ids is not None else "")
     att = db.execute(f"SELECT a.* FROM attempts a {aw} ORDER BY a.id DESC LIMIT 500", pats).fetchall()
     rated = [a for a in att if a['rating'] and not a['undone']]
-    graded = [a for a in rated if a['grader'] != 'self']     # a self-rated ("think it") attempt was never graded (coverage 0.0)
+    graded = [a for a in rated if a['grader'] not in ('self', 'compare')]     # self-rated attempts were never graded (coverage 0.0)
     conf = [a for a in graded if a['confidence']]
     # calibration: confidence (1-4 -> 0..1) minus coverage; positive = overconfident
     cal = round(sum((a['confidence'] - 1) / 3 - a['coverage'] for a in conf) / len(conf), 2) if conf else None
@@ -1677,21 +1724,6 @@ def track_preview(db, tid, names=None):
             'cards': sum(n for k, n in kinds.items() if k not in LEARN), 'reading': sum(n for k, n in kinds.items() if k in LEARN),
             'learned': learned, 'answers': att[0], 'last': att[1], 'questions': qs,
             'pinned': tid in st['pinned'], 'shelved': tid in st['shelved']}
-
-# ---------- the local AI's part (docs/mentor-ai.md): stored with the attempt, shown labelled, not used for the rating ----------
-AI_KINDS = ('explain', 'define', 'write')     # written answers (4.32: and written code); drills, terms, traces and Parsons are graded exactly
-
-def card_prompt(db, card_id):
-    c = db.execute("SELECT prompt FROM cards WHERE id=?", (card_id,)).fetchone()
-    return fill(c['prompt']) if c else ''
-
-def set_ai(db, attempt_id, d):
-    with DB_LOCK:
-        db.execute("UPDATE attempts SET ai=? WHERE id=?", (json.dumps(d), attempt_id)); db.commit()
-
-def get_ai(db, attempt_id):
-    r = db.execute("SELECT ai FROM attempts WHERE id=?", (attempt_id,)).fetchone()
-    return json.loads(r['ai']) if r and r['ai'] else None
 
 def export(db, out):
     """Every rated attempt as one JSON line: the training data for a grader that learns from you (stage Bv2).
