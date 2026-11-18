@@ -139,7 +139,18 @@ The full example, one lesson requiring another, is `tests/deck-fixtures/good-rol
 - `stats` returns `checks` and `pass`, each course module's `done`, `progress`, `mastered`, `locked`, `waiting_on` and `check`, and each course lesson's `progress`, `mastered`, `locked`, `waiting_on`; `next` returns `locked` (the sentence) when a chosen lesson waits. The database gained `modules.requires` (added on start, once; nothing else changes).
 
 ## Menus and submenus (4.22.0)
-A lesson's `metadata.project` names where it sits in the **Topic** picker on the Study page. A plain project (`Sound-Haptics-Lab`) puts the lesson under **Lessons** as "project: name". A project with the separator ` › ` (space, U+203A, space), such as `GAME_RESEARCH › Topics`, puts it in its own submenu; the picker offers **Study all** for that submenu and **Study all of GAME_RESEARCH** for the whole menu. Group choices travel as `group:<project>` (`next?deck=group:GAME_RESEARCH`) and take every lesson whose project is that name or lies under it.
+A lesson's `metadata.project` names where it sits in the **Topic** picker on the Study page. A plain project (`Sound-Haptics-Lab`) gets its own group named after it (4.57; before, every such lesson sat under **Lessons** as "project: name"), with **Study all of** it when it has more than one lesson; a lesson without a project sits under **Lessons**. Lessons are listed in number order (`2. …` before `10. …`), and a track on the shelf is left out of the picker (the one you are on stays). A project with the separator ` › ` (space, U+203A, space), such as `GAME_RESEARCH › Topics`, puts it in its own submenu; the picker offers **Study all** for that submenu and **Study all of GAME_RESEARCH** for the whole menu. Group choices travel as `group:<project>` (`next?deck=group:GAME_RESEARCH`) and take every lesson whose project is that name or lies under it.
+
+## Export: Hermes hands lessons on (4.57)
+The owner's Lessons view has **Hand lessons on** with Hermes's icon: **Download this topic** (what the Topic picker has chosen: a lesson, a group or a deck) and **Download all lessons**. The browser saves one JSON file, `mentor-<topic>-YYYYMMDD-HHMM.json`:
+
+```json
+{"format": "mentor-export/1", "exported": "2026-11-18T09:30:00", "scope": "group:GAME_RESEARCH",
+ "files": [{"file": "game_combat.json", "tracks": ["group:GAME_RESEARCH"], "shelved": false, "doc": {"...": "the file as imported"}}],
+ "missing": []}
+```
+
+Each lesson or deck file is in it once (a course file once for all its lessons), as it is on disk, under its name only, never its folder. A file that is gone from disk is named in `missing`. Nothing of the person's goes in: no answers, schedules or settings. To bring a lesson back, write each `doc` to the inbox under its `file` name (for now by hand or through Claude Code; an import button may come later). `GET api/mentor/export[?deck=…]` serves it; a learner gets 403.
 
 ## Placeholders: your machines, never in a lesson
 A lesson is meant to move between people (and to sit in a public repository), so it never names a real machine, path or account. It says `{{SERVER}}` instead, and Mentor fills that in every time it shows a card, from `~/.config/leafy/realm.json` on the machine that runs it (yours alone; never commit it). Every field a card shows is filled: prompts, answers, hints, snippets, the Lessons view. Grading compares your answer against the filled-in text, so you type your server's real name. The database keeps the `{{…}}` form, so editing `realm.json` takes effect on the next card, with no restart and no re-import.

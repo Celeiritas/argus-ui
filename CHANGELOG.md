@@ -1,5 +1,11 @@
 # Changelog
 
+## 4.57.0 – 2026-11-18
+Mentor: Hermes hands lessons on, and a Topic list you can find things in (docs/mentor.md "Export" and "Menus and submenus").
+- **Download this topic / Download all lessons.** The owner's Lessons view has a Hermes card that saves the lesson files (as imported, by name, never their folders) as one JSON file, `mentor-export/1`, to hand on and import again later. No answers or schedules go in; a learner gets 403.
+- **The Topic picker is shorter.** Lessons on the shelf are left out; each plain project has its own group (with *Study all of* it) instead of one long *Lessons* list of "project: name"; lessons go in number order, so *2.* comes before *10.*.
+- After a shelve or unshelve on Today, the picker updates at once.
+
 ## 4.56.0 – 2026-11-18
 Mentor: one focus, one Continue, a session that resumes (docs/mentor.md "Focus" and "A session that resumes").
 - **One focus.** A goal in one line, the lessons that serve it and new questions a day (default 2). With a focus, Today shows the goal, a plan line (*3 reviews · 2 new*) and one **Continue** that studies only those lessons; **Review only** serves no new question; **Edit focus** opens a form under the card. Without one, Today is as before with a quiet **Set a focus**. The summary says *You practised N · M right*, what comes next, and **Finish**.

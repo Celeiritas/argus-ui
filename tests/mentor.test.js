@@ -237,6 +237,15 @@ run(async b => {
   await p.locator('.module details summary').first().click();
   check(await p.locator('.module .defs dt', {hasText: 'The big picture'}).first().isVisible(), 'the breakdown opens');
   await shot(p, 'mentor-modules');
+  // 4.57: Hermes downloads the lesson files; the picker gives a plain project its own group, names without the project
+  check(/static\/icons\/hermes\.png$/.test(await p.locator('.mexport img').getAttribute('src')) && await p.locator('[data-export=all]').isVisible(), "Hermes's download sits in Lessons");
+  check((await p.locator('.mexport button').evaluateAll(bs => bs.every(b => b.getBoundingClientRect().height >= 44))), 'the download buttons are 44 px high');
+  const [dl] = await Promise.all([p.waitForEvent('download'), p.locator('[data-export=all]').click()]);
+  const bundle = JSON.parse(fs.readFileSync(await dl.path(), 'utf8'));
+  check(/^mentor-all-lessons-\d{8}-\d{4}\.json$/.test(dl.suggestedFilename()) && bundle.format === 'mentor-export/1', 'the download is named by scope and time');
+  check(bundle.files.some(f => f.file === '20261020_120000_inbox_test.json' && f.doc.metadata.module_name === 'inbox_test_module') && !JSON.stringify(bundle).includes(INBOX), 'it holds the inbox lesson as imported, by name only');
+  check(await p.locator('#mdeck optgroup[label="test-project"]').count() === 1 && await p.locator('#mdeck option', {hasText: 'test-project:'}).count() === 0, 'a plain project gets its own group in the picker');
+  check((await api(p, 'export')).ok !== false, 'the owner may export');
   await p.locator('.module', {hasText: 'inbox test module'}).locator('[data-study]').click(); await p.waitForTimeout(600);
   check(await p.locator('#mdeck').inputValue() === '20261020_120000_inbox_test' && /^Orientation/.test(await p.locator('.kind').textContent()), 'Start on a lesson row opens its orientation');
 

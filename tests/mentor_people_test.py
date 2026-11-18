@@ -127,6 +127,8 @@ class People(unittest.TestCase):
         r = self.get('learners', LEARNER)[1]
         self.assertEqual((r['me'], r['role'], [x['id'] for x in r['people']]), ('learner-two', 'learner', ['learner-two']), 'she sees only herself')
         self.assertEqual(self.get('next', {'person': 'stranger', 'role': 'none'})[0], 403)
+        self.assertEqual(self.get('export', LEARNER)[0], 403, '4.57: only the owner exports lessons')
+        self.assertEqual(self.get('export', OWNER)[1]['format'], 'mentor-export/1')
         code, msg = self.get('next', {'person': 'stranger', 'role': 'learner'})
         self.assertEqual(code, 403); self.assertIn('people file', msg['msg'])
 
@@ -218,10 +220,12 @@ class People(unittest.TestCase):
         roles = idn.plugin_roles(man.get('roles'))
         with open(os.path.join(R, 'plugins', 'mentor', 'page.js'), encoding='utf-8') as f: page = f.read()
         import re
+        owner_only = {'get': {'export'}, 'post': set()}      # 4.57: Hermes's download, shown to the owner only
         for verb, fn in (('get', 'get'), ('post', 'send')):
             used = set(re.findall(r"\b%s\('([a-z]+)" % fn, page))
             self.assertTrue(used, verb)
-            self.assertEqual(sorted(p for p in used if roles[verb].get(p) != 'learner'), [], f'{verb} paths the page calls but a learner may not')
+            self.assertEqual(sorted(p for p in used if roles[verb].get(p) != 'learner' and p not in owner_only[verb]), [], f'{verb} paths the page calls but a learner may not')
+            self.assertEqual(sorted(p for p in owner_only[verb] if roles[verb].get(p) == 'learner'), [], f'{verb} owner-only paths opened to a learner')
         # review 2: the largest session save the page can send fits the POST limit (4096 bytes unless max_body says more)
         worst = {'session': {'used': 599.999, 'review_only': True, 'early': True, 'card': 'c' * 200, 'text': '\x01' * 2000,
                              'seen': 2 ** 53, 'answered': 10 ** 6, 'right': 10 ** 6, 'missed': ['m' * 200] * 50}}

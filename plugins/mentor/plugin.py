@@ -171,7 +171,11 @@ def _get(b, person, path, query):
     if path == 'stats':          # a learner's own lesson folder, for the owner's "adding a lesson" line (never shown to a learner)
         r = mentor.stats(db, deck)
         if b.reload and person['my_role'] == 'owner': r['deck_folder'] = learners.shown(b.dirs[0])
+        r['shelved'] = mentor.shelved_decks(db)  # 4.57: the Topic picker leaves the shelf's lessons out
         return 200, r
+    if path == 'export':                         # 4.57: Hermes hands the lesson files on (the owner only)
+        if person['my_role'] != 'owner': return 403, {'ok': False, 'msg': 'Only the owner can export lessons.'}
+        return 200, mentor.export_bundle(db, b.dirs, deck)
     if path == 'session': return 200, {'session': mentor.load_session(db), 'seen': mentor.last_attempt(db)}     # 4.56: "Continue where you stopped"
     if path == 'today': return 200,{**mentor.today(db, deck_names(b)), 'learner': {k: person[k] for k in ('id', 'name', 'role')}}
     if path == 'track':                          # Preview: one track's size, history and a few questions; nothing is scheduled
