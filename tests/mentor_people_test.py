@@ -197,6 +197,17 @@ class People(unittest.TestCase):
         self.assertEqual([(x['id'], x['goal'], x['pinned']) for x in t['tracks']], [('own-deck', 'Pass the exam', True)])
         self.assertEqual(self.get('today', OWNER)[1]['pinned'], [], "her pins are not his")
 
+    def test_session_is_per_person(self):
+        self.start()
+        s = {'started': time.time() - 60, 'card': 'own-deck:x', 'text': 'half', 'answered': 1, 'right': 1, 'missed': [], 'at': time.time()}
+        code, r = self.post('session', {'session': s}, LEARNER)
+        self.assertEqual((code, r['saved'], r['session']['text']), (200, True, 'half'))
+        self.assertIsNone(self.get('session', OWNER)[1]['session'], "her session is not his")
+        self.assertEqual(self.get('session', LEARNER)[1]['session']['answered'], 1)
+        self.assertEqual(self.post('session', {'session': {'started': 'soon'}}, LEARNER)[0], 400)
+        self.assertEqual(self.post('session', {'session': None}, LEARNER)[1]['session'], None)
+        self.assertIsNone(self.get('session', LEARNER)[1]['session'])
+
     def test_new_learner_deck_without_restart(self):
         self.start()
         self.assertEqual(self.get('stats', LEARNER)[1]['cards'], 2)

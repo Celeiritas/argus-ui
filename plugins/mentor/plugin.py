@@ -172,7 +172,8 @@ def _get(b, person, path, query):
         r = mentor.stats(db, deck)
         if b.reload and person['my_role'] == 'owner': r['deck_folder'] = learners.shown(b.dirs[0])
         return 200, r
-    if path == 'today': return 200, {**mentor.today(db, deck_names(b)), 'learner': {k: person[k] for k in ('id', 'name', 'role')}}
+    if path == 'session': return 200, {'session': mentor.load_session(db)}     # 4.56: "Continue where you stopped"
+    if path == 'today': return 200,{**mentor.today(db, deck_names(b)), 'learner': {k: person[k] for k in ('id', 'name', 'role')}}
     if path == 'track':                          # Preview: one track's size, history and a few questions; nothing is scheduled
         t = mentor.track_preview(db, (query.get('id') or [''])[0], deck_names(b))
         return (200, t) if t else (404, {'ok': False, 'msg': 'There is no track with that id here.'})
@@ -201,6 +202,11 @@ def _post(b, person, path, body):
         elif path == 'settings':                      # known keys with the right type only; a track's goal is the owner's to set
             keys = set(mentor.SETTINGS) - ({'goal'} if person['my_role'] != 'owner' else set())
             r = {'settings': mentor.set_settings(db, {k: v for k, v in body.items() if k in keys})}
+        elif path == 'session':                       # 4.56: {session: {...}} saves the running session, {session: null} clears it
+            if body.get('session') is None: mentor.clear_session(db); r = {'saved': True, 'session': None}
+            else:
+                s = mentor.save_session(db, body['session'])     # None: a late save for a card already rated, ignored
+                r = {'saved': s is not None, 'session': s if s is not None else mentor.load_session(db)}
         else: return 404, {'ok': False, 'msg': 'not found'}
     except mentor.Refusal as e: return 400, {'ok': False, 'msg': str(e)}
     except (ValueError, TypeError): return 400, {'ok': False, 'msg': 'bad request'}

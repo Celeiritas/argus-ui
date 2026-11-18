@@ -1743,6 +1743,47 @@ def today(db, names=None):
             'later': sum(r['later'] for r in live), 'tomorrow': sum(r['tomorrow'] for r in live), 'next_due': nxt, 'week': week, 'minutes': SESSION_MIN,
             'confidence_every': CONF_EVERY, 'teach_first': st['teach_first']}
 
+# ---------- a session that resumes (4.56) ----------
+# The page saves the running session (the card on screen, the half-typed answer, the tally) as it goes, in this person's
+# database; leaving the page or reloading brings it back on Today as "Continue where you stopped". Kept 12 hours.
+SESSION_KEEP, SESSION_TEXT, SESSION_MISSED = 12 * 3600, 2000, 50
+
+def _when(x):
+    if isinstance(x, bool) or not isinstance(x, (int, float)) or not 0 < x < 1e11: raise TypeError
+    return float(x)
+
+def save_session(db, s):
+    """Store the session the page sends; returns what was stored. A late save for a card already rated after it was sent
+    (a typing save that arrives after the rating) is ignored: None, and the stored session stays as it was."""
+    if not isinstance(s, dict): raise TypeError
+    card = s.get('card')
+    if card is not None and (not isinstance(card, str) or not 0 < len(card) <= 200): raise TypeError
+    text, missed = s.get('text', ''), s.get('missed', [])
+    if not isinstance(text, str) or not isinstance(missed, list) or not all(isinstance(x, str) and 0 < len(x) <= 200 for x in missed): raise TypeError
+    out = {'started': _when(s.get('started')), 'review_only': s.get('review_only') is True, 'card': card, 'text': text[:SESSION_TEXT],
+           'shown': s.get('shown') is True, 'answered': _count(s.get('answered', 0)), 'right': _count(s.get('right', 0)),
+           'missed': missed[-SESSION_MISSED:], 'at': _when(s.get('at'))}
+    if card and db.execute("SELECT 1 FROM attempts WHERE card_id=? AND rating>0 AND COALESCE(undone, 0)=0 AND at>=? AND at>?",
+                           (card, out['started'], out['at'])).fetchone():
+        return None
+    set_meta(db, 'session', out)
+    return out
+
+def load_session(db):
+    """The stored session, or None when there is none or it is older than 12 hours. Its card (and the text typed for it)
+    is left out when the card is gone, its track is on the shelf, or a focus is set that the card is not part of."""
+    s = meta(db, 'session')
+    if not isinstance(s, dict) or not isinstance(s.get('at'), (int, float)) or time.time() - s['at'] > SESSION_KEEP: return None
+    c = s.get('card') and db.execute("SELECT deck FROM cards WHERE id=?", (s['card'],)).fetchone()
+    if s.get('card'):
+        st = settings(db); t = c and track_of(track_map(db), c['deck'])
+        if not c or t in st['shelved'] or (focus_on(st) and t != FOCUS): s = {**s, 'card': None, 'text': ''}
+    return s
+
+def clear_session(db):
+    with DB_LOCK:
+        db.execute("DELETE FROM settings WHERE key='_session'"); db.commit()
+
 def track_preview(db, tid, names=None):
     """Preview on the shelf: a track's size, its history, and its first few questions (never an answer). Changes nothing."""
     tr = next((t for t in tracks(db, names) if t['id'] == tid), None)

@@ -239,8 +239,8 @@ class TodayNumbers(Base):
         self.assertEqual((t['goal'], t['ask_confidence']), ('Know the words of HCI', True))
         self.assertTrue(m.next_card(self.db, 'ux-hci')[0]['ask_confidence'])
 
-class Focus(Base):
-    """4.56: a focus is an explicit lesson list studied as one track ('focus'), apart from the project groups."""
+class WithGames(Base):
+    """The theme's decks plus three inbox lessons: mod1 under GAME_RESEARCH › Topics, g1 and g2 under GAME_RESEARCH › Games."""
     def setUp(self):
         super().setUp()
         os.makedirs(m.INBOX, exist_ok=True)
@@ -249,6 +249,9 @@ class Focus(Base):
             doc['metadata']['project'] = project
             with open(os.path.join(m.INBOX, mid + '.json'), 'w', encoding='utf-8') as fh: json.dump(doc, fh)
         m.scan_inbox(self.db)
+
+class Focus(WithGames):
+    """4.56: a focus is an explicit lesson list studied as one track ('focus'), apart from the project groups."""
     def decks(self, n=40, **kw):
         out = []
         for _ in range(n):
@@ -321,6 +324,51 @@ class Focus(Base):
         c, _ = m.next_card(self.db, session=True); self.rate(c['id'], 3)
         self.db.execute("UPDATE sched SET due=? WHERE card_id=?", (time.time() - 60, c['id'])); self.db.commit()
         self.assertEqual(m.next_card(self.db, session=True, reviews_only=True)[0]['id'], c['id'])
+
+class Session(WithGames):
+    """4.56: a session stopped halfway is kept (per person) and comes back with the card and the half-typed answer."""
+    def saved(self, **kw):
+        s = {'started': time.time() - 120, 'review_only': False, 'card': 'ux-hci:affordance', 'text': 'half an answer', 'shown': False,
+             'answered': 2, 'right': 1, 'missed': ['ux-hci:mental-model'], 'at': time.time()}
+        s.update(kw); return s
+
+    def test_session_round_trip(self):
+        self.assertIsNone(m.load_session(self.db))
+        s = m.save_session(self.db, self.saved())
+        self.assertEqual(m.load_session(self.db), s)
+        self.assertEqual((s['card'], s['text'], s['answered'], s['right']), ('ux-hci:affordance', 'half an answer', 2, 1))
+        m.clear_session(self.db)
+        self.assertIsNone(m.load_session(self.db))
+
+    def test_session_skips_missing_card(self):
+        m.save_session(self.db, self.saved(card='gone:card'))
+        s = m.load_session(self.db)
+        self.assertEqual((s['card'], s['text'], s['answered']), (None, '', 2), 'the tally is kept, the card and its text are not')
+        m.save_session(self.db, self.saved())
+        m.set_settings(self.db, {'shelved': ['ux-hci']})
+        self.assertIsNone(m.load_session(self.db)['card'], 'a card on the shelf is not reopened')
+        m.set_settings(self.db, {'shelved': [], 'focus': {'lessons': ['mod1']}})
+        self.assertIsNone(m.load_session(self.db)['card'], 'a card outside the focus is not reopened')
+
+    def test_session_expires_after_12h(self):
+        m.save_session(self.db, self.saved(at=time.time() - 13 * 3600, started=time.time() - 13.5 * 3600))
+        self.assertIsNone(m.load_session(self.db))
+
+    def test_session_stale_save_ignored(self):
+        first = m.save_session(self.db, self.saved())
+        self.rate('ux-hci:affordance', 3)            # the card is rated; a typing save sent before that arrives late
+        self.assertIsNone(m.save_session(self.db, self.saved(text='late keystrokes', at=time.time() - 5)))
+        self.assertEqual(m.load_session(self.db), first)
+        self.assertIsNotNone(m.save_session(self.db, self.saved(card='ux-hci:mental-model', text='')), 'the next card saves')
+
+    def test_session_text_capped(self):
+        s = m.save_session(self.db, self.saved(text='x' * 2500, missed=['ux-hci:affordance'] * 80))
+        self.assertEqual((len(s['text']), len(s['missed'])), (2000, 50))
+
+    def test_session_bad_input_ignored(self):
+        for bad in (None, [], 'x', {'started': 'soon'}, self.saved(answered=-1), self.saved(card=5)):
+            with self.assertRaises((TypeError, ValueError)): m.save_session(self.db, bad)
+        self.assertIsNone(m.load_session(self.db))
 
 if __name__ == '__main__':
     unittest.main(verbosity=1 if '-v' not in sys.argv else 2)
