@@ -100,7 +100,7 @@ run(async b => {
     // something needs him: the server's line is a band of its own under the list, across Today, in the theme's colours
     for (const w of [412, 1440]) {
       const p = await today(b, w, 900, false, true);
-      const bd = await p.evaluate(() => { const n = document.querySelector('.home > p.now'), nm = n && n.querySelector('.nowname'), h = document.querySelector('.home'), s = document.querySelector('.home .needs');
+      const bd = await p.evaluate(() => { const n = document.querySelector('.home > .home-server'), nm = n && n.querySelector('.nowname'), h = document.querySelector('.home'), s = document.querySelector('.home .needs');
         if (!n || !nm) return null; const c = getComputedStyle(n), r = n.getBoundingClientRect();
         return {bg: c.backgroundColor, words: c.color, name: getComputedStyle(nm).color, text: n.textContent, under: r.top >= s.getBoundingClientRect().bottom - 1,
           dl: r.left - s.getBoundingClientRect().left, dw: r.width - h.getBoundingClientRect().width, cursor: c.cursor, role: n.getAttribute('role'), anim: c.animationName + ' ' + c.transitionDuration}; });

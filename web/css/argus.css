@@ -230,8 +230,9 @@ dialog .confirm{border-color:var(--danger);color:var(--danger)}
 .quiet{margin:0;padding:0 0 var(--s2);color:var(--powder)}
 /* the server's line on what it does now: a band across Today in the server's own colours (the theme's, 4.45.0), lined up with
    the panels below; its name in the name colour, the words in the words colour. Not a button: it does nothing when pressed. */
-.home>.now{grid-column:1 / -1;margin:0 0 var(--s4);padding:var(--s2) var(--s4);border:1px solid var(--server-border);border-radius:12px;background:var(--server-bg);color:var(--server-words);font-size:var(--fs-body);font-weight:400;line-height:1.4;overflow-wrap:anywhere}
-.home>.now .nowname{color:var(--server-name);font-weight:600}
+.home>.home-server{grid-column:1 / -1;margin:0 0 var(--s4);padding:var(--s2) var(--s4);border:1px solid var(--server-border);border-radius:12px;background:var(--server-bg);color:var(--server-words);font-size:var(--fs-body);font-weight:400;line-height:1.4;overflow-wrap:anywhere}
+.home-server>.now{margin:0;color:var(--server-words);font-size:var(--fs-body);line-height:1.4}
+.home-server .nowname{color:var(--server-name);font-weight:600}
 .home h2.state{font-size:var(--fs-h2);text-transform:none;letter-spacing:0;color:var(--snow);margin:var(--s2) 0}.home h2.state.bad{color:var(--snow)}
 /* a broken today.json (Edit Today, 4.50.0, today-edit.js, docs/home.md "Edit Today") is said in the people-file line's look */
 .home>.today-problem{grid-column:1 / -1;width:auto;margin:0 0 var(--s4)}
@@ -268,7 +269,7 @@ dialog .confirm{border-color:var(--danger);color:var(--danger)}
  .edrow.edlink{grid-template-areas:"m n v"}
  .home.edit>.edtop,.home.edit>.edend{padding:var(--s2) var(--s3);margin-bottom:var(--s3)}}
 @media (prefers-reduced-motion:reduce){.edswitch input,.edswitch input::before{transition:none}}
-@media (max-width:600px){.need{grid-template-columns:44px 1fr}.need .go{grid-column:1 / -1;justify-content:center}.home>section,.home>.now{padding:var(--s2) var(--s3);margin-bottom:var(--s3)}}
+@media (max-width:600px){.need{grid-template-columns:44px 1fr}.need .go{grid-column:1 / -1;justify-content:center}.home>section,.home>.home-server{padding:var(--s2) var(--s3);margin-bottom:var(--s3)}}
 @media (prefers-reduced-motion:reduce){.need{animation:none}}
 /* Screen sizes (docs/ui-plan.md §14). Today is one column at every width (4.54.0). Ultrawide (2:1 or wider, 1800px+): the sections
    bar becomes a rail down the left edge (scene.css, after the bar's own rules), and content may run wider. Short screens (a phone on its
@@ -363,7 +364,7 @@ dialog .confirm{border-color:var(--danger);color:var(--danger)}
 .home>.needs.first:has(.need.alert){border:1px solid var(--bad)}   /* something broke: it leads, framed as on Watch */
 .home>.needs.calm{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 var(--s2);padding:var(--s2) var(--s3);border:1px solid var(--server-border);background:var(--server-bg)}
 .needs.calm>h2.state{margin:0;font-size:var(--fs-body);line-height:1.4}
-.needs.calm>.now{flex:1 0 100%;margin:0;color:var(--server-words);font-size:var(--fs-body);line-height:1.4}   /* the server's line on a line of its own, no leading dot */
+.needs.calm>.home-server{flex:1 0 100%}   /* the server and its control on their own line */
 .needs.calm .nowname{color:var(--server-name);font-weight:600}
 .needs.calm>.needlist{flex:1 0 100%}.needs.calm>.needlist:empty{display:none}
 /* one line per section with news (home.js newsLines): its mark, its name with its line under it, the chevron; the whole row

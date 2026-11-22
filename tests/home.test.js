@@ -77,7 +77,7 @@ run(async b => {
   check(await p.locator('#moreMedia .srow').count() === 0 && await p.locator('#moreMediaH').evaluate(e => e.hidden), 'no media.json, no Media part');
 
   // one line on what the server is doing now (4.44.0), only from what it knows: a timer's run in progress, the game guard's record
-  const now = () => p.locator('.home > p.now').textContent().then(t => t.trim(), () => '');
+  const now = () => p.locator('.home > .home-server > p.now').textContent().then(t => t.trim(), () => '');
   check(await now() === 'The server: busy with Hermes media' && await p.locator('.home .quiet').count() === 0, `the server's line says what runs now ("${await now()}")`);
   // on its own, not inside the list's panel, where it read as one more thing to do (the review of the first draft); since 4.54.0
   // under the panel at every width (one reading column, docs/home.md "One way to each place"), as on a phone
