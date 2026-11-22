@@ -1,5 +1,9 @@
 # Changelog
 
+## 4.62.0 – 2026-11-22
+- Add a bounded, offline EPUB text importer with chapter order and source-member locations, plus an explicit Books filter. Search hits open the matching chapter in the reader; earlier revisions keep their chapter labels.
+- A staging CLI retains the original EPUB and produces an incomplete draft inventory for review, never publishing or retiring a collection automatically. Unsupported encrypted, fixed-layout, DTD, MathML/SVG or oversized content is refused. No new model or runtime dependency.
+
 ## 4.61.0 – 2026-11-22
 - Mnemosyne can read reviewed source text in place, with bounded previous/next sections and revision-pinned PDF page context. Text preserves line breaks and is never executed as markup.
 - SQLite catalog schema 2 retains exact reader text separately from overlapping search passages, preserves old revisions, and reads schema 1 catalogs without changing them.

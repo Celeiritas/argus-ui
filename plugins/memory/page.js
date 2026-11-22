@@ -46,12 +46,13 @@
     let request = 0, offset = 0, browsing = true;
     const params = () => new URLSearchParams({kind: $('#lib-kind').value, collection: $('#lib-collection').value});
     const status = msg => { $('#lib-status').textContent = msg; };
+    const chapterLabel = c => (c.label === `Chapter ${Number(c.number)}` ? c.label : `Chapter ${Number(c.number)}: ${c.label}`) + (c.linear === false ? ' (additional material)' : '');
     const label = r => `${r.kind === 'paper' ? 'Original paper' : r.kind} · ${r.collection}`;
     function item(r, passage) {
       const id = passage ? r.source_id : r.id;
-      return `<article class="lib-result"><h4>${e(r.title)}</h4><p class="lib-meta">${e(label(r))}${passage && r.pdf_page ? ` · PDF page ${Number(r.pdf_page)}` : ''}</p>
-        ${passage ? `<p class="lib-excerpt">${e(r.text.slice(0, 160))}${r.text.length > 160 ? '…' : ''}</p><details><summary>Read full passage</summary><p class="lib-full">${e(r.text)}</p><p class="lib-meta">${r.pdf_page ? `PDF page ${Number(r.pdf_page)}; printed page not recorded.` : 'No PDF page recorded.'} Keyword match, not a verified answer.</p></details>` : `<p class="lib-meta">${e(r.health === 'ready' ? 'Searchable' : r.health)}${r.diagnostic ? ' · ' + e(r.diagnostic) : ''}</p>`}
-        <details class="lib-source" data-source="${e(id)}" data-revision="${e(r.revision)}" data-page="${passage && r.pdf_page ? Number(r.pdf_page) : ''}"><summary>Read source and details</summary><div class="lib-source-body"></div></details></article>`;
+      return `<article class="lib-result"><h4>${e(r.title)}</h4><p class="lib-meta">${e(label(r))}${passage && r.pdf_page ? ` · PDF page ${Number(r.pdf_page)}` : ''}${r.chapter ? ` · ${e(chapterLabel(r.chapter))}` : ''}</p>
+        ${passage ? `<p class="lib-excerpt">${e(r.text.slice(0, 160))}${r.text.length > 160 ? '…' : ''}</p><details><summary>Read full passage</summary><p class="lib-full">${e(r.text)}</p><p class="lib-meta">${r.chapter ? e(chapterLabel(r.chapter)) + '.' : r.pdf_page ? `PDF page ${Number(r.pdf_page)}; printed page not recorded.` : 'Text source; no page number recorded.'} Keyword match, not a verified answer.</p></details>` : `<p class="lib-meta">${e(r.health === 'ready' ? 'Searchable' : r.health)}${r.diagnostic ? ' · ' + e(r.diagnostic) : ''}</p>`}
+        <details class="lib-source" data-source="${e(id)}" data-revision="${e(r.revision)}" data-page="${passage && r.pdf_page ? Number(r.pdf_page) : ''}" data-reader="${r.chapter ? Number(r.chapter.reader_offset) : ''}"><summary>Read source and details</summary><div class="lib-source-body"></div></details></article>`;
     }
     async function sourceDetail(details) {
       if (!details.open || details.dataset.loaded) return;
@@ -64,7 +65,7 @@
         <details class="lib-reader"><summary>Read source text</summary><div class="lib-reader-body"><p class="lib-reader-status" role="status" tabindex="-1"></p><p class="lib-reader-text lib-full"></p><div class="lib-reader-nav"><button type="button" class="lib-prev">Read previous section</button><button type="button" class="lib-next">Read next section</button></div></div></details>
         <details class="lib-file-details"><summary>View file details</summary><dl><dt>File format</dt><dd>${e(d.file_format || 'unknown')}</dd><dt>Authorship</dt><dd>${e(d.authorship)}</dd><dt>Source version</dt><dd>${e(d.source_version)}</dd><dt>Extraction</dt><dd>${e(d.health)} · ${e(d.extraction_version)}</dd><dt>Indexed</dt><dd>${e(d.indexed_at)}</dd><dt>Revision</dt><dd>${e(d.revision)}</dd></dl></details>
         ${d.url ? `<a href="${e(d.url)}" target="_blank" rel="noopener noreferrer">Open source website</a>` : ''}
-        ${d.original ? `<p class="lib-meta">Original: ${e(d.original.split('/').pop())}</p><button type="button" class="lib-original">Prepare original PDF</button><p class="lib-original-status" role="status"></p>` : '<p class="lib-meta">No local original PDF is connected yet.</p>'}`;
+        ${d.original ? `<p class="lib-meta">Original: ${e(d.original.split('/').pop())}</p><button type="button" class="lib-original">Prepare original PDF</button><p class="lib-original-status" role="status"></p>` : '<p class="lib-meta">No original file is connected to the viewer yet.</p>'}`;
       const reader = body.querySelector('.lib-reader'), readStatus = body.querySelector('.lib-reader-status');
       const text = body.querySelector('.lib-reader-text'), prev = body.querySelector('.lib-prev'), next = body.querySelector('.lib-next');
       let readOffset = 0, readTotal = 0, reading = false, loaded = false;
@@ -74,6 +75,7 @@
         reading = true; prev.disabled = true; next.disabled = true; readStatus.textContent = 'Loading text…';
         const params = new URLSearchParams({id:d.id, revision:d.revision, offset});
         if (initial && details.dataset.page) params.set('pdf_page', details.dataset.page);
+        if (initial && details.dataset.reader) params.set('offset', details.dataset.reader);
         const result = await api.get('library/read?' + params);
         if (!body.isConnected) return;
         reading = false;
@@ -86,7 +88,7 @@
         readOffset = data.offset; readTotal = data.total;
         const block = data.blocks[0];
         text.textContent = block.text || '(No extracted text on this page.)';
-        readStatus.textContent = `Section ${readOffset + 1} of ${readTotal}${block.pdf_page ? ` · PDF page ${block.pdf_page}; printed page not recorded` : ''}. Extracted text; check the original for layout.`;
+        readStatus.textContent = `Section ${readOffset + 1} of ${readTotal}${block.pdf_page ? ` · PDF page ${block.pdf_page}; printed page not recorded` : ''}${block.chapter ? ` · ${chapterLabel(block.chapter)}` : ''}. Extracted text; check the original for layout.`;
         prev.disabled = readOffset <= 0; next.disabled = readOffset + 1 >= readTotal;
         if (!initial) { readStatus.focus({preventScroll:true}); readStatus.scrollIntoView({block:'start'}); }
       }
@@ -181,7 +183,7 @@
           <h3 id="lib-heading">Find in your library</h3>
           <form id="lib-search" role="search"><label for="lib-query" class="sr">Search your sources</label><input id="lib-query" type="search" maxlength="300" placeholder="Search a topic or phrase"><button type="submit" class="primary">Search</button></form>
           <details class="lib-filters"><summary>Filter sources <span id="lib-scope">Original papers</span></summary>
-            <label>Source type<select id="lib-kind"><option value="paper">Original papers</option><option value="">All source types</option><option value="learning">Our learnings</option><option value="note">Notes</option><option value="summary">Summaries</option><option value="guide">Guides</option><option value="unknown">Unclassified</option></select></label>
+            <label>Source type<select id="lib-kind"><option value="paper">Original papers</option><option value="">All source types</option><option value="book">Books</option><option value="learning">Our learnings</option><option value="note">Notes</option><option value="summary">Summaries</option><option value="guide">Guides</option><option value="unknown">Unclassified</option></select></label>
             <label>Collection<select id="lib-collection"><option value="">All collections</option></select></label>
             <label>Availability (browse only)<select id="lib-health"><option value="">Any status</option><option value="ready">Searchable</option><option value="pending">Pending extraction</option><option value="failed">Failed extraction</option><option value="suspect">Needs text review</option><option value="catalog-only">Catalog only</option><option value="unknown">Unknown</option></select></label>
           </details>

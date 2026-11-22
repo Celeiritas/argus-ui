@@ -25,7 +25,7 @@ const backup = {summary:'Backups are fresh.',attention:false,folder:'fixtures',f
    if(at==='api/memory/library/catalog') return json({configured:true,sources:[source],total:1,totals:{ready:1},collections:['Research']});
    if(at==='api/memory/library/search') return failSearch?json({msg:'Library unavailable; results kept.'},503):json({configured:true,passages:[passage]});
    if(at==='api/memory/library/source') return json(source);
-   if(at==='api/memory/library/read') { assert.equal(u.searchParams.get('revision'),source.revision); if(failRead) return json({msg:'Reader temporarily unavailable.'},503); return json({available:true,offset:Number(u.searchParams.get('offset')),total:2,blocks:[{pdf_page:2,text:'Exact text <script>throw new Error(1)</script>\n  preserved lines'}]}); }
+   if(at==='api/memory/library/read') { assert.equal(u.searchParams.get('revision'),source.revision); if(failRead) return json({msg:'Reader temporarily unavailable.'},503); return json({available:true,offset:Number(u.searchParams.get('offset')),total:2,blocks:[{pdf_page:source.file_format==='epub'?null:2,chapter:source.file_format==='epub'?passage.chapter:null,text:'Exact text <script>throw new Error(1)</script>\n  preserved lines'}]}); }
    if(at==='api/memory/library/original') return json({base64:Buffer.from('%PDF-1.7\nfixture').toString('base64')});
    if(at.startsWith('api/')) return json({});
    let file;
@@ -66,6 +66,14 @@ const backup = {summary:'Backups are fresh.',attention:false,folder:'fixtures',f
   await p.screenshot({path:path.join(process.env.SHOTS||root,'library-phone.png'),fullPage:true});
   await p.locator('.lib-filters summary').click();await p.locator('#lib-kind').selectOption('learning');
   for(const width of [375,430,1440]) {await p.setViewportSize({width,height:900});assert(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`overflow at ${width}`);}
+  failSearch=false;source.kind='book';source.file_format='epub';source.original='';passage.kind='book';passage.pdf_page=null;
+  passage.chapter={number:2,label:'Ending',reader_offset:1,member:'OPS/ending.xhtml',linear:true};
+  await p.setViewportSize({width:375,height:812});await p.locator('#lib-kind').selectOption('book');
+  await p.locator('#lib-query').fill('conclusion');await p.locator('#lib-search button').click();
+  await p.getByText('Read source and details',{exact:true}).click();await p.getByText('Read source text',{exact:true}).click();
+  await p.getByText(/Section 2 of 2 · Chapter 2: Ending/).waitFor();
+  assert(!(await p.locator('.lib-reader-status').innerText()).includes('PDF page'));
+  await p.screenshot({path:path.join(process.env.SHOTS||root,'library-epub-phone.png'),fullPage:true});
   assert.deepEqual(errors,[]);console.log('PASS Today placement, green state, keyboard hold, five hidden routes, library expansion, original access, retained results, refresh, 375/430/1440 widths');
  } finally {await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});
