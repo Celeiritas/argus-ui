@@ -221,6 +221,24 @@ def publish(path, manifest, text_root):
     finally: c.close()
 
 
+def initialize(path, manifest, text_root, originals=None):
+    """Create a genuinely new CLI catalog without racing an existing publisher."""
+    scope, records = prepare(manifest, text_root)
+    _verify_originals(records, originals)
+    path = Path(path)
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    # O_EXCL also refuses a database created since the CLI's existence check.
+    with os.fdopen(os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600), 'wb'): pass
+    c = connect(path, create=True)
+    try:
+        schema(c)
+        with c:
+            c.execute('BEGIN IMMEDIATE')
+            result = _write_records(c, scope, records)
+        return dict(result, published=True)
+    finally: c.close()
+
+
 def _publication_plan(c, scope, records):
     if c.execute('PRAGMA user_version').fetchone()[0] != SCHEMA:
         raise ValueError('Reviewed updates require the current library schema')

@@ -42,7 +42,7 @@ def main():
             else:
                 scope, records = lib.prepare(manifest, args.text_root)
                 lib._verify_originals(records, args.original_root)
-                answer = lib.publish(args.db, manifest, args.text_root) if args.apply else dict(valid=True, sources=len(records), collections=scope, published=False)
+                answer = lib.initialize(args.db, manifest, args.text_root, args.original_root) if args.apply else dict(valid=True, sources=len(records), collections=scope, published=False)
         elif args.command == 'search': answer = lib.search(args.db, args.query, args.kind, args.collection)
         else: answer = lib.catalog(args.db, args.kind, args.collection)
         print(json.dumps(answer, ensure_ascii=False, indent=2))

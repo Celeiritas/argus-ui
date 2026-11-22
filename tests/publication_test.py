@@ -27,6 +27,14 @@ class PublicationTest(unittest.TestCase):
     def review(self):return lib.review_publication(self.db,self.m,self.root)
     def apply(self,plan,folder='backup'):
         return lib.publish_reviewed(self.db,self.m,self.root,plan,self.root/folder)
+    def test_initial_creation_refuses_existing_database_atomically(self):
+        before=self.db.read_bytes()
+        with self.assertRaises(FileExistsError):lib.initialize(self.db,self.m,self.root)
+        self.assertEqual(self.db.read_bytes(),before)
+        fresh=self.root/'fresh.sqlite'
+        self.assertTrue(lib.initialize(fresh,self.m,self.root)['published'])
+        self.assertEqual(lib.catalog(fresh)['total'],2)
+
     def test_review_is_read_only_and_diffs_all_categories(self):
         other=dict(schema='mnemosyne-manifest/1',complete=True,collections=['other'],sources=[self.record('outside','other')])
         lib.publish(self.db,other,self.root)
