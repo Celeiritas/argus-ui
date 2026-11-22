@@ -1,5 +1,10 @@
 # Changelog
 
+## 4.61.0 – 2026-11-22
+- Mnemosyne can read reviewed source text in place, with bounded previous/next sections and revision-pinned PDF page context. Text preserves line breaks and is never executed as markup.
+- SQLite catalog schema 2 retains exact reader text separately from overlapping search passages, preserves old revisions, and reads schema 1 catalogs without changing them.
+- Imports record explicit file formats and optional physical PDF page counts, reject mismatched page counts and invalid control/noncharacter glyphs before publication. No new model or conversion dependency.
+
 ## 4.60.0 – 2026-11-22
 - Desktop/Game moves beneath the server's status on Today only. The selected mode is green; owner checks, hold confirmation and switching feedback remain.
 - Mnemosyne gets a phone-friendly library: keyword search, collapsed source filters and passages, revision details and authenticated PDF preparation. Backup health stays visible, with controls and history folded unless attention is needed.

@@ -17,7 +17,9 @@ from urllib.parse import urlsplit
 KINDS = ('paper', 'summary', 'note', 'guide', 'learning', 'unknown')
 HEALTH = ('ready', 'pending', 'failed', 'suspect', 'catalog-only', 'unknown')
 MAX_BYTES = 12 * 1024 * 1024
-SCHEMA = 1
+SCHEMA = 2
+FORMATS = ('pdf', 'txt', 'md', 'epub', 'docx', 'html', 'other', 'unknown')
+READER_BLOCK = 12000
 
 
 def location(ctx):
@@ -43,7 +45,7 @@ def connect(path, create=False):
 
 def schema(c):
     v = c.execute('PRAGMA user_version').fetchone()[0]
-    if v not in (0, SCHEMA): raise ValueError('Unsupported library schema; keep the existing database.')
+    if v not in (0, 1, SCHEMA): raise ValueError('Unsupported library schema; keep the existing database.')
     if v == 0 and c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchone():
         raise ValueError('Use a new catalog database; the legacy index must stay unchanged')
     c.executescript('''
@@ -62,7 +64,10 @@ def schema(c):
     CREATE VIRTUAL TABLE IF NOT EXISTS passage_fts USING fts5(title, text, tokenize='unicode61');
     CREATE INDEX IF NOT EXISTS passage_revision ON passages(revision);
     CREATE INDEX IF NOT EXISTS source_collection ON sources(collection, active);
-    PRAGMA user_version=1;
+    CREATE TABLE IF NOT EXISTS reader_blocks (
+      revision TEXT NOT NULL REFERENCES revisions(id), ordinal INTEGER NOT NULL,
+      pdf_page INTEGER, text TEXT NOT NULL, PRIMARY KEY(revision, ordinal));
+    PRAGMA user_version=2;
     ''')
 
 
@@ -121,20 +126,32 @@ def prepare(manifest, text_root):
         original_hash = item.get('original_sha256', '')
         if original and not re.fullmatch('[0-9a-f]{64}', original_hash):
             raise ValueError('A local original requires its SHA-256 to bind the indexed revision')
-        pages, content_hash = [], ''
+        file_format = item.get('file_format', 'unknown')
+        if file_format not in FORMATS: raise ValueError('Unknown file format')
+        physical_pages = item.get('physical_pages')
+        if physical_pages is not None and (type(physical_pages) is not int or physical_pages < 1):
+            raise ValueError('Physical page count must be a positive integer')
+        scheme = item.get('page_scheme', 'none')
+        if scheme not in ('pdf', 'none'): raise ValueError('Page scheme must be pdf or none')
+        pages, blocks, content_hash = [], [], ''
         if item.get('text'):
             f = relative_file(text_root, item['text'])
             if f.stat().st_size > MAX_BYTES: raise ValueError('Extracted text exceeds the per-source limit')
             raw = f.read_bytes()
             text = raw.decode('utf-8-sig', errors='strict')
-            if '\ufffd' in text or '\x00' in text:
+            if any(c == '\ufffd' or (ord(c) < 32 and c not in '\n\r\t\f') or ord(c) % 65536 in (65534, 65535) or 0xFDD0 <= ord(c) <= 0xFDEF for c in text):
                 raise ValueError('Damaged extraction: repair text or publish catalog metadata with suspect health')
             content_hash = hashlib.sha256(raw).hexdigest()
             if health == 'ready' and not text.strip(): raise ValueError('Empty extraction cannot be ready')
-            scheme = item.get('page_scheme', 'none')
-            if scheme not in ('pdf', 'none'): raise ValueError('Page scheme must be pdf or none')
+            sections = text.split('\f') if scheme == 'pdf' else [text]
+            # Extractors commonly terminate the final physical page with one form feed.
+            if scheme == 'pdf' and len(sections) > 1 and not sections[-1].strip(): sections.pop()
+            if scheme == 'pdf' and physical_pages is not None and len(sections) != physical_pages:
+                raise ValueError('Extracted page count does not match the physical PDF')
             if health == 'ready':
-                for i, page in enumerate(text.split('\f'), 1):
+                for i, page in enumerate(sections, 1):
+                    for start in range(0, max(1, len(page)), READER_BLOCK):
+                        blocks.append((i if scheme == 'pdf' else None, page[start:start + READER_BLOCK]))
                     words = page.split()
                     for start in range(0, len(words), 180):
                         chunk = ' '.join(words[start:start + 220])
@@ -143,10 +160,11 @@ def prepare(manifest, text_root):
         meta = dict(collection=collection, key=key, title=title, kind=kind, authorship=authorship,
                     health=health, diagnostic=diagnostic, original=original, original_sha256=original_hash,
                     url=url, page_scheme=item.get('page_scheme', 'none'),
+                    file_format=file_format, physical_pages=physical_pages, reader_version=1,
                     extraction_version=str(item.get('extraction_version', 'unknown'))[:120],
                     source_version=str(item.get('source_version', 'unknown'))[:200])
         revision = hashlib.sha256((sid + content_hash + json.dumps(meta, sort_keys=True)).encode()).hexdigest()
-        prepared.append((sid, revision, content_hash, meta, pages))
+        prepared.append((sid, revision, content_hash, meta, pages, blocks))
     return scope, prepared
 
 
@@ -158,7 +176,7 @@ def publish(path, manifest, text_root):
         now = datetime.now(timezone.utc).isoformat()
         with c:
             for collection in scope: c.execute('UPDATE sources SET active=0 WHERE collection=?', (collection,))
-            for sid, rev, content_hash, meta, pages in records:
+            for sid, rev, content_hash, meta, pages, blocks in records:
                 values = (sid, meta['collection'], meta['key'], meta['title'], meta['kind'], meta['authorship'], rev,
                           meta['health'], meta['diagnostic'], 1, now)
                 c.execute('''INSERT INTO sources VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
@@ -166,6 +184,8 @@ def publish(path, manifest, text_root):
                   health=excluded.health,diagnostic=excluded.diagnostic,active=1,indexed_at=excluded.indexed_at''', values)
                 if c.execute('SELECT 1 FROM revisions WHERE id=?', (rev,)).fetchone(): continue
                 c.execute('INSERT INTO revisions VALUES(?,?,?,?,?)', (rev, sid, content_hash, json.dumps(meta), now))
+                c.executemany('INSERT INTO reader_blocks VALUES(?,?,?,?)',
+                              [(rev, n, page, text) for n, (page, text) in enumerate(blocks)])
                 for ordinal, (pdf_page, printed, text) in enumerate(pages):
                     pid = c.execute('INSERT INTO passages(revision,ordinal,pdf_page,printed_page,text) VALUES(?,?,?,?,?)',
                                     (rev, ordinal, pdf_page, printed, text)).lastrowid
@@ -237,6 +257,30 @@ def source(path, sid, revision=''):
     finally: c.close()
 
 
+
+def reader(path, sid, revision='', offset=0, pdf_page=None):
+    if type(offset) is not int or not 0 <= offset <= 100000: raise ValueError('Invalid reader position')
+    if pdf_page is not None and (type(pdf_page) is not int or pdf_page < 1): raise ValueError('Invalid PDF page')
+    d = source(path, sid, revision)
+    if not d: return None
+    answer = dict(source_id=sid, revision=d['revision'], title=d['title'], file_format=d.get('file_format', 'unknown'),
+                  available=False, blocks=[], total=0, offset=offset)
+    c = connect(path)
+    try:
+        if not c.execute("SELECT 1 FROM sqlite_master WHERE name='reader_blocks' AND type='table'").fetchone():
+            return dict(answer, reason='This revision predates the text reader. Reimport its reviewed extraction to read it here.')
+        total = c.execute('SELECT count(*) FROM reader_blocks WHERE revision=?', (d['revision'],)).fetchone()[0]
+        if not total: return dict(answer, reason='No reviewed readable text is stored for this revision. Check its extraction status or original.')
+        if pdf_page is not None:
+            row = c.execute('SELECT min(ordinal) FROM reader_blocks WHERE revision=? AND pdf_page=?', (d['revision'], pdf_page)).fetchone()
+            if row[0] is None: raise ValueError('PDF page is not available')
+            offset = row[0]
+        if offset >= total: raise ValueError('Reader position is outside this source')
+        rows = c.execute('SELECT ordinal,pdf_page,text FROM reader_blocks WHERE revision=? AND ordinal=?', (d['revision'], offset)).fetchall()
+        return dict(answer, available=True, blocks=[dict(r) for r in rows], total=total, offset=offset)
+    finally: c.close()
+
+
 def original(path, root, sid, revision=''):
     d = source(path, sid, revision)
     if not d or not d.get('original'): raise ValueError('No local original is available for this source')
@@ -261,6 +305,9 @@ def api(path, query, ctx):
             d = source(db, q('id'), q('revision'))
             if not d: return 404, {'msg': 'Source not found'}
             return 200, d
+        if path == 'library/read':
+            d = reader(db, q('id'), q('revision'), int(q('offset', '0')), int(q('pdf_page')) if q('pdf_page') else None)
+            return (200, d) if d else (404, {'msg': 'Source not found'})
         if path == 'library/original': return 200, original(db, roots(ctx), q('id'), q('revision'))
         if path == 'library/ask': return 410, {'msg': 'Generated answers are retired. Search the sources instead.'}
         return 404, {'msg': 'Not found'}

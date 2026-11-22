@@ -26,6 +26,59 @@ class LibraryTest(unittest.TestCase):
 
     def publish(self): return lib.publish(self.db, self.m, self.root)
 
+    def test_reader_preserves_exact_text_and_pinned_retired_revision(self):
+        text = '# Heading\n\n  Indented <script>alert(1)</script>\n' + 'x' * 13000
+        (self.root / 'note.txt').write_bytes(text.encode('utf-8'))
+        self.m['sources'][1]['file_format'] = 'md'
+        self.publish(); hit = lib.catalog(self.db, kind='learning')['sources'][0]
+        first = lib.reader(self.db, hit['id'])
+        self.assertEqual(first['file_format'], 'md'); self.assertEqual(first['total'], 2)
+        second = lib.reader(self.db, hit['id'], offset=1)
+        self.assertEqual(first['blocks'][0]['text'] + second['blocks'][0]['text'], text)
+        self.m['sources'] = []; self.publish()
+        self.assertIsNone(lib.reader(self.db, hit['id']))
+        self.assertEqual(lib.reader(self.db, hit['id'], hit['revision'])['blocks'], first['blocks'])
+
+    def test_reader_pdf_blank_page_and_verified_count(self):
+        (self.root / 'paper.txt').write_text('First\f\fLast\f', encoding='utf-8')
+        self.m['sources'][0].update(physical_pages=3, file_format='pdf')
+        self.publish(); sid = lib.catalog(self.db, kind='paper')['sources'][0]['id']
+        blank = lib.reader(self.db, sid, pdf_page=2)
+        self.assertEqual(blank['blocks'][0]['text'], '')
+        self.assertEqual(blank['total'], 3)
+        self.assertEqual(lib.reader(self.db, sid, pdf_page=3)['blocks'][0]['text'], 'Last')
+        with self.assertRaises(ValueError): lib.reader(self.db, sid, offset=3)
+        with self.assertRaises(ValueError): lib.reader(self.db, sid, pdf_page=4)
+
+    def test_bad_pdf_count_and_noncharacters_leave_catalog_unchanged(self):
+        self.publish(); before = lib.catalog(self.db)
+        self.m['sources'][0]['physical_pages'] = 3
+        with self.assertRaises(ValueError): self.publish()
+        self.m['sources'][0].pop('physical_pages')
+        for bad in ('\ufffe', '\ufdd0', '\x01', '\U0001ffff'):
+            (self.root / 'paper.txt').write_text('Corrupt ' + bad, encoding='utf-8')
+            with self.subTest(glyph=repr(bad)), self.assertRaises(ValueError): self.publish()
+        self.assertEqual(lib.catalog(self.db), before)
+
+    def test_schema_one_read_does_not_mutate_then_upgrades_on_publish(self):
+        self.publish()
+        with closing(sqlite3.connect(self.db)) as c:
+            c.execute('DROP TABLE reader_blocks'); c.execute('PRAGMA user_version=1'); c.commit()
+        sid = lib.catalog(self.db, kind='paper')['sources'][0]['id']
+        before = self.db.read_bytes()
+        self.assertFalse(lib.reader(self.db, sid)['available'])
+        self.assertEqual(before, self.db.read_bytes())
+        # Changed extraction identity creates a new revision with reader blocks.
+        self.m['sources'][0]['extraction_version'] = 'reviewed-v2'; self.publish()
+        self.assertTrue(lib.reader(self.db, sid)['available'])
+
+    def test_held_text_has_no_reader_and_format_is_explicit(self):
+        self.m['sources'][0]['health'] = 'suspect'; self.publish()
+        sid = lib.catalog(self.db, kind='paper')['sources'][0]['id']
+        self.assertFalse(lib.reader(self.db, sid)['available'])
+        self.m['sources'][0]['file_format'] = 'invented'
+        with self.assertRaises(ValueError): self.publish()
+
     def test_exact_search_needs_no_models_and_preserves_page_identity(self):
         self.publish(); result = lib.search(self.db, 'tactile timing')['passages']
         self.assertEqual(len(result), 1); self.assertEqual(result[0]['pdf_page'], 2)

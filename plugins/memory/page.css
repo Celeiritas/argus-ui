@@ -1,5 +1,5 @@
 /* Memory's own styles (the plugin's page.css). Shared pieces (.panel, .primary, .sr, the hold ring) are in argus.css.
-   The shelf is plain bars until the owner approves the mem-jar, shelf and vessel art (docs/ui-plan.md §13). */
+   The shelf is plain bars until the owner approves the mem-jar, shelf and vessel art (docs/ui-plan.md Â§13). */
 .memory{display:grid;gap:var(--s4);grid-template-columns:minmax(0,1fr);max-width:960px}
 .mem-backup-panels{display:grid;gap:var(--s4);margin-top:var(--s3)}
 @media (min-width:900px){.mem-backup-panels{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.memory .mem-where,.memory .mem-shelfp{grid-column:1/-1}}
@@ -65,3 +65,6 @@
 .mem-list{list-style:none;margin:0;padding:0}
 .mem-list li{display:flex;flex-wrap:wrap;gap:0 var(--s3);padding:var(--s2) 0;border-top:1px solid var(--line);font-size:var(--fs-sec)}
 .mem-list li span{color:var(--powder)}.mem-list .size{margin-left:auto}.mem-list small{font-size:var(--fs-meta);color:var(--frost)}
+
+.lib-reader-nav{display:flex;flex-wrap:wrap;gap:var(--s2)}
+.lib-reader-text{overflow-wrap:anywhere;tab-size:4}
