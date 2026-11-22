@@ -5,8 +5,12 @@
 # passwords and keys).
 # Since 1.1.0 each copy is told in one plain sentence (what it is, when it was last made, and what to do only when
 # something is not fine); docs/memory.md lists every sentence, and tests/memory_test.py checks each one word for word.
-import json, math, os, re, subprocess
+import json, math, os, re, subprocess, importlib.util
 from datetime import datetime
+
+_spec = importlib.util.spec_from_file_location('memory_library', os.path.join(os.path.dirname(__file__), 'library.py'))
+library = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(library)
 
 CONFIG = os.path.expanduser(os.environ.get('ARGUS_MEMORY_CONFIG', '~/.config/argus-ui/memory.json'))
 MNEMOSYNE = os.path.expanduser(os.environ.get('ARGUS_MNEMOSYNE', '~/.mnemosyne'))     # where <Server>-brain/ is looked for
@@ -321,7 +325,12 @@ def summary_line(v):
     return ''
 
 def get(path, query, ctx):
-    if path == 'state': return 200, view(ctx)
+    if path.startswith('library/'): return library.api(path, query, ctx)
+    if path == 'state':
+        v = view(ctx)
+        v['summary'] = today(v)
+        v['attention'] = status(v)['needs']
+        return 200, v
     if path == 'status': return 200, status(view(ctx))
     return 404, {'ok': False, 'msg': 'not found'}
 

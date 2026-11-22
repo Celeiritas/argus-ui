@@ -35,7 +35,7 @@ run(async b => {
   const hd = await t.evaluate(() => { const r = s => document.querySelector(s)?.getBoundingClientRect(), m = document.querySelector('#modes');
     return {h1: r('.title h1'), sub: r('#sub'), modes: m && !m.hidden ? r('#modes') : null}; });
   check(hd.sub.top >= hd.h1.bottom - 1, 'the greeting and date sit under the name');
-  if (hd.modes) check(Math.abs((hd.modes.top + hd.modes.bottom) / 2 - (hd.h1.top + hd.h1.bottom) / 2) < 16 && hd.modes.left > hd.h1.right, 'the Desktop/Game switch shares the name\'s line');
+  if (hd.modes) check(await t.locator('.home-server #modes').count() === 1 && hd.modes.top >= await t.locator('.home-server .now').evaluate(e => e.getBoundingClientRect().bottom), 'the Desktop/Game switch sits beneath the server status');
   // the visual review (2026-11-17): every row's picture and words start on one line, the broken row's red bar inside the card's
   // padding; the card is solid (the scene does not show through), its words 4.5:1 or more on it
   const al = await t.evaluate(() => { const s = document.querySelector('.home>.needs.first'), sl = s.getBoundingClientRect().left + s.clientLeft;

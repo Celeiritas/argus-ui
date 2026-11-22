@@ -1,4 +1,4 @@
-// Desktop / Game mode (4.46.0, docs/modes.md): the pill at the top of every section when the server's modes.json sets it up
+// Desktop / Game mode (docs/modes.md): the pill beneath the server on Today when modes.json sets it up
 // (tests/run.sh points ARGUS_MODES at tests/fixtures/modes.json: fake-desktop-shell, fake-game-session, fake-to-desktop,
 // fake-to-game). The current mode is lit in its colour; holding the other one starts its switch unit (the fake systemctl
 // writes each start to starts.log); when the fake units flip, the pill follows; when the switch unit fails, the note says so
@@ -41,7 +41,8 @@ run(async b => {
   const p = await page(b, 1440, 900);
   await p.goto(BASE); await p.waitForSelector('#modes:not([hidden])', {timeout: 8000}).catch(() => {});
   let s = await pill(p);
-  check(s.shown && s.inHeader && s.top < 200, `the pill shows in the header, at the top (top ${Math.round(s.top)} px)`);
+  check(s.shown && !s.inHeader && await p.locator('.home-server #modes').count() === 1, 'the pill belongs to the server on Today, outside the header');
+  check(await p.evaluate(() => document.querySelector('#modes').getBoundingClientRect().top >= document.querySelector('.home-server .now').getBoundingClientRect().bottom), 'the pill sits below the server status');
   check(s.role === 'group' && s.label === `${name} mode`, `a group named "${s.label}"`);
   check(s.segs.length === 2 && s.segs[0].mode === 'desktop' && s.segs[1].mode === 'game', 'two halves, in the order of the file');
   check(s.segs[0].on && s.segs[0].tag === 'SPAN' && s.segs[0].text === 'Desktop (current)' && s.segs[0].bg === 'rgb(40, 112, 67)' && s.segs[0].ink === 'rgb(255, 255, 255)',
@@ -53,9 +54,9 @@ run(async b => {
   await g.evaluate(b => b.click());                                  // a screen reader's click: no press behind it, so it arms the button
   check(await g.locator('.hold-label').textContent() === 'Click again to switch to Game', `armed, verb first: "${await g.locator('.hold-label').textContent()}"`);
   check(s.segs.every(x => x.h >= 44 && x.w >= 44), `44 px hit areas (${s.segs.map(x => `${Math.round(x.w)}x${Math.round(x.h)}`).join(', ')})`);
-  for (const at of ['argus', 'olympus', 'mentor', 'phone']) {
+  for (const at of ['argus', 'olympus', 'mentor', 'memory', 'phone']) {
     await p.goto(BASE + at); await p.waitForTimeout(500);
-    const t = await pill(p); check(t.shown && t.inHeader && t.segs.length === 2, `the pill is on ${at} too`);
+    const t = await pill(p); check(!t.shown && !t.inHeader, `the pill takes no space on ${at}`);
   }
   await p.goto(BASE); await p.waitForSelector('#modes:not([hidden])', {timeout: 8000}).catch(() => {});
 
@@ -86,8 +87,8 @@ run(async b => {
   set('inactive', 'active');
   check(await lit(p, 'game'), 'the switch is done: Game is lit');
   s = await pill(p);
-  check(s.segs[1].on && s.segs[1].bg === 'rgb(107, 70, 193)' && s.segs[1].text === 'Game (current)' && s.segs[0].tag === 'BUTTON' && !s.segs[0].disabled,
-    `Game in purple (${s.segs[1].bg}), Desktop now the button`);
+  check(s.segs[1].on && s.segs[1].bg === 'rgb(40, 112, 67)' && s.segs[1].text === 'Game (current)' && s.segs[0].tag === 'BUTTON' && !s.segs[0].disabled,
+    `Game in green (${s.segs[1].bg}), Desktop now the button`);
 
   // ---- the keyboard: hold Space on Desktop ----
   before = started().length;

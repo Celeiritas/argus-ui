@@ -1,5 +1,7 @@
 # Memory (Mnemosyne's backups)
 
+Since 4.60, this section starts with the [Mnemosyne library](mnemosyne-library.md). Backup health stays visible beneath it; backup controls and history sit in a disclosure that opens automatically when attention is needed. The backup behavior described below is unchanged.
+
 Memory (`<base>/memory`) answers **"are my backups fresh, and how many copies exist?"** It is a bundled server plugin (`plugins/memory/`, docs/leafy-plugin.md), built in 4.30.0 from docs/ui-plan.md §10. Mnemosyne has no repo and no status file, so the page reads what her jobs leave behind: the snapshot files and the task information LeafyGrove already collects (`ctx.jobs('mnemosyne-')`).
 
 ## What it shows

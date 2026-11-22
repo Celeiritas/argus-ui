@@ -243,20 +243,24 @@ async function askFix(id) {
 }
 function wireFixes() { $$('#main button[data-fix]:not(.hold)').forEach(b => holdConfirm(b, () => askFix(b.dataset.fix))); }
 
-/* ---------- Desktop / Game mode (docs/modes.md): the pill at the top of every section, when state.modes exists ---------- */
+/* ---------- Desktop / Game mode (docs/modes.md): beneath the server on Today ---------- */
 // The mode the server is in, lit in its colour; the other one is a button: press and hold (holdConfirm) to switch. While it
 // switches, both are off and the note says so; this page then asks every 2 s until the server is in that mode, 2 minutes at most.
 // A switch that failed (state.modes.failed, from the server) or never got there in that time: the note says so.
 let modeWait = null, modeStale = null;    // {to, until}: the switch this page started; modeStale: the mode it never reached in time
-function modeHues(list) {   // the colours (argus.css): Game purple, Desktop green; one other id gets the colour left, two others green then purple
+function modeHues(list) {   // stable mode classes; both selected segments are green on Today
   const h = list.map(x => x.id === 'game' || x.id === 'desktop' ? x.id : null), other = k => k === 'game' ? 'desktop' : 'game';
   if (h[0] === h[1]) return ['desktop', 'game'];
   return [h[0] || other(h[1]), h[1] || other(h[0])];
 }
+const modeControl = $('#modes');
 function drawModes() {
-  const box = $('#modes'), m = S?.modes, list = Array.isArray(m?.modes) ? m.modes : [];
+  const box = modeControl, m = S?.modes, list = Array.isArray(m?.modes) ? m.modes : [];
   if (!box) return;
-  if (!m || list.length !== 2 || role() !== 'owner') { box.hidden = true; put($('#modePill'), ''); $('#modeNote').textContent = ''; return; }
+  const slot = here === 'home' && !todayEdit.on() ? $('#home-mode-slot') : null;
+  const parent = slot || $('#modeParking');
+  if (box.parentNode !== parent) parent.append(box);
+  if (!slot || !m || list.length !== 2 || role() !== 'owner') { box.hidden = true; return; }
   const label = id => list.find(x => x.id === id)?.label || id;
   const failed = !m.switching && m.failed ? m.failed : null;          // the server saw that switch unit fail, less than 2 minutes ago
   const waiting = modeWait && m.current !== modeWait.to && failed !== modeWait.to ? modeWait.to : null;   // the server lost its note of the switch (a restart)

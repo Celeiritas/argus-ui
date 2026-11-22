@@ -37,8 +37,88 @@
     return html;
   }
 
+  const originalURLs = new Set();
+  function clearOriginals() { originalURLs.forEach(u => URL.revokeObjectURL(u)); originalURLs.clear(); }
+  function libraryUI(el, api) {
+    const $ = s => el.querySelector(s), e = api.esc;
+    const removed = new MutationObserver(() => { if (!el.isConnected) { clearOriginals(); removed.disconnect(); } });
+    removed.observe(document.getElementById('main'), {childList: true, subtree: true});
+    let request = 0, offset = 0, browsing = true;
+    const params = () => new URLSearchParams({kind: $('#lib-kind').value, collection: $('#lib-collection').value});
+    const status = msg => { $('#lib-status').textContent = msg; };
+    const label = r => `${r.kind === 'paper' ? 'Original paper' : r.kind} · ${r.collection}`;
+    function item(r, passage) {
+      const id = passage ? r.source_id : r.id;
+      return `<article class="lib-result"><h4>${e(r.title)}</h4><p class="lib-meta">${e(label(r))}${passage && r.pdf_page ? ` · PDF page ${Number(r.pdf_page)}` : ''}</p>
+        ${passage ? `<p class="lib-excerpt">${e(r.text.slice(0, 160))}${r.text.length > 160 ? '…' : ''}</p><details><summary>Read full passage</summary><p class="lib-full">${e(r.text)}</p><p class="lib-meta">${r.pdf_page ? `PDF page ${Number(r.pdf_page)}; printed page not recorded.` : 'No PDF page recorded.'} Keyword match, not a verified answer.</p></details>` : `<p class="lib-meta">${e(r.health === 'ready' ? 'Searchable' : r.health)}${r.diagnostic ? ' · ' + e(r.diagnostic) : ''}</p>`}
+        <details class="lib-source" data-source="${e(id)}" data-revision="${e(r.revision)}"><summary>Source details</summary><div class="lib-source-body"></div></details></article>`;
+    }
+    async function sourceDetail(details) {
+      if (!details.open || details.dataset.loaded) return;
+      const body = details.querySelector('.lib-source-body'); body.textContent = 'Loading source…';
+      const r = await api.get('library/source?id=' + encodeURIComponent(details.dataset.source) + '&revision=' + encodeURIComponent(details.dataset.revision));
+      if (!details.isConnected) return;
+      if (!r.ok) { body.textContent = r.data?.msg || 'Could not load the source. Close and reopen to retry.'; return; }
+      details.dataset.loaded = '1'; const d = r.data;
+      body.innerHTML = `<dl><dt>Authorship</dt><dd>${e(d.authorship)}</dd><dt>Source version</dt><dd>${e(d.source_version)}</dd><dt>Extraction</dt><dd>${e(d.health)} · ${e(d.extraction_version)}</dd><dt>Indexed</dt><dd>${e(d.indexed_at)}</dd><dt>Revision</dt><dd>${e(d.revision)}</dd></dl>
+        ${d.url ? `<a href="${e(d.url)}" target="_blank" rel="noopener noreferrer">Open source website</a>` : ''}
+        ${d.original ? `<p class="lib-meta">Original: ${e(d.original)}</p><button type="button" class="lib-original">Prepare original PDF</button><p class="lib-original-status" role="status"></p>` : '<p class="lib-meta">No local original PDF is connected yet.</p>'}`;
+      body.querySelector('.lib-original')?.addEventListener('click', async event => {
+        const button = event.currentTarget, msg = body.querySelector('.lib-original-status'); button.disabled = true; msg.textContent = 'Preparing PDF…';
+        const result = await api.get('library/original?id=' + encodeURIComponent(d.id) + '&revision=' + encodeURIComponent(d.revision));
+        if (!body.isConnected) return;
+        button.disabled = false;
+        if (!result.ok) { msg.textContent = result.data?.msg || 'The original is unavailable. Your search results are kept.'; return; }
+        try {
+          const bytes = Uint8Array.from(atob(result.data.base64), c => c.charCodeAt(0));
+          const url = URL.createObjectURL(new Blob([bytes], {type: 'application/pdf'})); originalURLs.add(url);
+          const link = document.createElement('a'); link.href = url; link.target = '_blank'; link.rel = 'noopener'; link.textContent = 'Open original PDF';
+          msg.replaceChildren(link); button.hidden = true;
+        } catch (_) { msg.textContent = 'The PDF could not be prepared. Try again.'; }
+      });
+    }
+    function wire() { el.querySelectorAll('.lib-source:not([data-wired])').forEach(d => { d.dataset.wired = '1'; d.addEventListener('toggle', () => sourceDetail(d)); }); }
+    async function load(browse, more = false) {
+      const seq = ++request, query = $('#lib-query').value.trim(); browsing = browse;
+      if (!more) offset = 0;
+      const p = params();
+      $('#lib-scope').textContent = $('#lib-kind').selectedOptions[0].textContent;
+      if (!browse && !query) { status('Enter a topic or phrase, or browse your sources.'); return; }
+      if (browse) { p.set('health', $('#lib-health').value); p.set('offset', offset); }
+      else p.set('q', query);
+      $('#lib-more').hidden = true; status(browse ? 'Loading sources…' : 'Searching your sources…');
+      const r = await api.get('library/' + (browse ? 'catalog' : 'search') + '?' + p);
+      if (seq !== request || !el.isConnected) return;
+      if (!r.ok) { status(r.data?.msg || 'The library did not answer. Your previous results are kept.'); return; }
+      const d = r.data, rows = browse ? d.sources : d.passages;
+      if (d.configured === false) { status('Your library has not been connected yet. Backups are available below.'); $('#lib-results').replaceChildren(); return; }
+      if (browse) {
+        const total = Object.values(d.totals).reduce((a, b) => a + b, 0);
+        $('#lib-totals').textContent = `${total} catalogued · ${d.totals.ready || 0} searchable`;
+        if (!$('#lib-collection').dataset.loaded) {
+          d.collections.forEach(c => { const o = document.createElement('option');o.value = c;o.textContent = c;$('#lib-collection').append(o); });
+          $('#lib-collection').dataset.loaded = '1';
+        }
+        status(d.total ? `${Math.min(offset + rows.length, d.total)} of ${d.total} sources in this view.` : 'No sources in this view. Try another filter.');
+        $('#lib-more').hidden = offset + rows.length >= d.total;
+      } else status(rows.length ? `${rows.length} matching passages. Open a passage to check its context.` : 'No matching passages in this scope. Try different words or source filters.');
+      const content = rows.map(r => item(r, !browse)).join('');
+      if (more) $('#lib-results').insertAdjacentHTML('beforeend', content); else { clearOriginals(); $('#lib-results').innerHTML = content; }
+      wire();
+    }
+    $('#lib-search').addEventListener('submit', event => { event.preventDefault(); load(false); });
+    $('#lib-browse').addEventListener('click', () => load(true));
+    $('#lib-more').addEventListener('click', () => { offset += 30; load(true, true); });
+    for (const id of ['#lib-kind', '#lib-collection', '#lib-health']) $(id).addEventListener('change', () => load(id === '#lib-health' ? true : browsing));
+    load(true);
+  }
+
   function fill(el, api, v) {
     const e = api.esc, $ = s => el.querySelector(s);
+    $('#mem-summary').textContent = v.summary || 'Backup status';
+    $('#mem-summary').classList.toggle('mem-warn', !!v.attention);
+    const backup = $('#mem-backups');
+    if (v.attention && !el.dataset.backupTouched) backup.open = true;
     $('#mem-where').innerHTML = !v.folder ? 'No snapshot folder found. Name it as <code>"folder"</code> in <code>~/.config/argus-ui/memory.json</code>.'
       : v.found ? `Reading the snapshot list in <code>${e(v.folder)}/</code>: names and sizes only, never what is inside.`
       : `Can't read <code>${e(v.folder)}/</code>: check that it exists.`;
@@ -59,13 +139,27 @@
 
   async function load(el, api) {
     const {ok, data} = await api.get('state');
-    if (!ok || !data) { el.querySelector('#mem-where').textContent = 'No answer from the server: the numbers below may be old.'; return null; }
+    if (!ok || !data) { el.querySelector('#mem-summary').textContent = 'No answer from the server: backup information may be old.'; el.querySelector('#mem-summary').classList.add('mem-warn'); return null; }
     fill(el, api, data); return data;
   }
 
   leafy.register('memory', {
     async show(el, api) {
+      clearOriginals(); delete el.dataset.backupTouched;
       el.innerHTML = `<div class="memory">
+        <section class="panel mem-library" aria-labelledby="lib-heading">
+          <h3 id="lib-heading">Find in your library</h3>
+          <form id="lib-search" role="search"><label for="lib-query" class="sr">Search your sources</label><input id="lib-query" type="search" maxlength="300" placeholder="Search a topic or phrase"><button type="submit" class="primary">Search</button></form>
+          <details class="lib-filters"><summary>Filter sources <span id="lib-scope">Original papers</span></summary>
+            <label>Source type<select id="lib-kind"><option value="paper">Original papers</option><option value="">All source types</option><option value="learning">Our learnings</option><option value="note">Notes</option><option value="summary">Summaries</option><option value="guide">Guides</option><option value="unknown">Unclassified</option></select></label>
+            <label>Collection<select id="lib-collection"><option value="">All collections</option></select></label>
+            <label>Availability (browse only)<select id="lib-health"><option value="">Any status</option><option value="ready">Searchable</option><option value="pending">Pending extraction</option><option value="failed">Failed extraction</option><option value="suspect">Needs text review</option><option value="catalog-only">Catalog only</option><option value="unknown">Unknown</option></select></label>
+          </details>
+          <div class="lib-tools"><button id="lib-browse" type="button">Browse sources</button><span id="lib-totals"></span></div>
+          <p id="lib-status" role="status" aria-live="polite"></p><div id="lib-results"></div><button id="lib-more" type="button" hidden>Show more sources</button>
+        </section>
+        <div class="mem-backup-summary"><h3>Backups</h3><p id="mem-summary" role="status">Checking backups…</p></div>
+        <details class="mem-backups" id="mem-backups"><summary>Backup controls and history</summary><div class="mem-backup-panels">
         <p class="mem-where" id="mem-where">Reading the snapshot folder…</p>
         <section class="panel mem-now" aria-labelledby="mem-now-h">
           <h3 id="mem-now-h">Latest snapshot</h3>
@@ -87,7 +181,10 @@
           <ol class="mem-shelf" id="mem-shelf" aria-label="Snapshots on the server, oldest first"></ol>
           <details class="mem-all" id="mem-all"><summary id="mem-all-s">All snapshots</summary><ul class="mem-list" id="mem-list"></ul></details>
         </section>
+        </div></details>
       </div>`;
+      el.querySelector('#mem-backups').addEventListener('click', e => { if (e.target.closest('summary')) el.dataset.backupTouched = '1'; });
+      libraryUI(el, api);
       const btn = el.querySelector('#mem-backup'), why = el.querySelector('#mem-why');
       api.holdConfirm(btn, async () => {
         const r = await api.post('backup', {});

@@ -1,7 +1,29 @@
 /* Memory's own styles (the plugin's page.css). Shared pieces (.panel, .primary, .sr, the hold ring) are in argus.css.
    The shelf is plain bars until the owner approves the mem-jar, shelf and vessel art (docs/ui-plan.md §13). */
 .memory{display:grid;gap:var(--s4);grid-template-columns:minmax(0,1fr);max-width:960px}
-@media (min-width:900px){.memory{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.memory .mem-where,.memory .mem-shelfp{grid-column:1/-1}}
+.mem-backup-panels{display:grid;gap:var(--s4);margin-top:var(--s3)}
+@media (min-width:900px){.mem-backup-panels{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.memory .mem-where,.memory .mem-shelfp{grid-column:1/-1}}
+.memory summary{min-height:44px;cursor:pointer;padding:10px 0;font-size:var(--fs-body)}
+.memory summary:focus-visible,.memory input:focus-visible,.memory select:focus-visible,.memory a:focus-visible{outline:2px solid var(--powder);outline-offset:3px}
+.mem-backup-summary h3{margin:0 0 var(--s2)}.mem-backup-summary p{margin:0;font-size:var(--fs-sec);line-height:1.5}
+.mem-library h3{margin:0 0 var(--s3)}
+#lib-search{display:flex;gap:var(--s2);margin:0 0 var(--s2)}
+#lib-search input{min-width:0;flex:1;width:100%;font:inherit;color:var(--snow);background:var(--bg,#1f252c);border:1px solid var(--frost);border-radius:8px;padding:10px;min-height:44px}
+.lib-filters{border-block:1px solid var(--line);margin:var(--s3) 0}
+.lib-filters summary span{display:inline-block;margin-left:var(--s2);font-size:var(--fs-meta);color:var(--powder)}
+.lib-filters label{display:grid;gap:var(--s1);font-size:var(--fs-sec);margin:var(--s2) 0 var(--s3)}
+.lib-filters select{width:100%;max-width:100%;min-height:44px;font:inherit;color:var(--snow);background:var(--bg,#1f252c);border:1px solid var(--frost);border-radius:6px;padding:8px}
+.lib-tools{display:flex;align-items:center;flex-wrap:wrap;gap:var(--s2)}
+#lib-totals,.lib-meta,#lib-status{font-size:var(--fs-sec);color:var(--powder);line-height:1.5}
+.lib-result{border-top:1px solid var(--line);padding:var(--s3) 0;overflow-wrap:anywhere}
+.lib-result h4{font-size:var(--fs-body);font-weight:600;margin:0}.lib-result p{margin:var(--s2) 0}
+.lib-result details{margin-top:var(--s1)}.lib-full{white-space:pre-wrap;line-height:1.65}
+.lib-source-body dl{display:grid;grid-template-columns:minmax(80px,1fr) minmax(0,3fr);gap:var(--s2);font-size:var(--fs-sec)}
+.lib-source-body dt{color:var(--powder)}.lib-source-body dd{margin:0;white-space:normal;overflow-wrap:anywhere;overflow:visible;text-overflow:clip}
+.mem-backups>summary{background:#232b32;border:1px solid var(--line);border-radius:8px;padding:12px}
+.lib-source-body a{display:inline-flex;align-items:center;min-height:44px;color:var(--stone)}
+.memory button{min-height:44px;max-width:100%}
+@media(max-width:420px){.memory .panel{padding:var(--s3)}#lib-search{flex-wrap:wrap}#lib-search input{flex-basis:100%}#lib-search button{width:100%}}
 .memory .panel{padding:var(--s4);min-width:0}
 .memory code{font-size:var(--fs-sec);background:#1a1f25;border-radius:4px;padding:0 var(--s1);overflow-wrap:anywhere}
 .mem-where{margin:0;color:var(--powder);font-size:var(--fs-sec);overflow-wrap:anywhere}

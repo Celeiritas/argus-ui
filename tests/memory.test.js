@@ -16,6 +16,10 @@ const KEYS = 'your passwords and keys are left out on purpose: you back those up
 const WATCH = 'look at its weekly job under Mnemosyne on the Argus page';
 const brain = () => JSON.parse(fs.readFileSync(path.join(process.env.FIXTURES, 'units.json')))[BRAIN];
 async function hold(p, btn, ms) { await btn.focus(); await p.keyboard.down('Space'); await p.waitForTimeout(ms); await p.keyboard.up('Space'); }
+async function openBackups(p) {
+  await p.locator('#mem-backups > summary').waitFor();
+  if (!(await p.locator('#mem-backups').evaluate(e => e.open))) await p.locator('#mem-backups > summary').click();
+}
 
 // times the way the server words them (plugin.py stamp()), from this machine's clock: the server runs in the same zone
 const pad = n => String(n).padStart(2, '0');
@@ -44,7 +48,7 @@ run(async b => {
     ExecMainExitTimestamp: 'Sun 2026-11-08 04:03:10 MST', timer: true, timer_on: true, timer_en: true, Description: 'Mnemosyne - weekly brain snapshot'}; });
   try {
     const p = await page(b);
-    await p.goto(BASE + 'memory'); await p.locator('.mem-shelf .mem-jar').first().waitFor({timeout: 5000});
+    await p.goto(BASE + 'memory'); await openBackups(p); await p.locator('.mem-shelf .mem-jar').first().waitFor({timeout: 5000});
     check(await p.locator('#realms a.realm[data-id="memory"] b').textContent() === 'Mnemosyne' && await p.locator('#realms a.realm', {hasText: 'Backups'}).count() === 0, 'a Mnemosyne pill in the section bar, her name its only title (4.45.0)');
     check(await p.locator('.title h1').textContent() === 'Mnemosyne' && /mnemosyne\.png$/.test(await p.locator('#hero').getAttribute('src')) && !(await p.locator('#hero').isHidden()), 'the page heading says Mnemosyne, under her medallion');
     check(/~\/\.mnemosyne\/Server-brain\//.test(await p.locator('#mem-where').textContent()), 'it says which folder it reads');
@@ -111,7 +115,7 @@ run(async b => {
     await p.close(); await h.close();              // their 15-second refreshes would only slow the checks below
 
     const ph = await page(b, 375, 760);
-    await ph.goto(BASE + 'memory'); await ph.locator('.mem-shelf .mem-jar').first().waitFor({timeout: 5000}); await ph.waitForTimeout(300);
+    await ph.goto(BASE + 'memory'); await openBackups(ph); await ph.locator('.mem-shelf .mem-jar').first().waitFor({timeout: 5000}); await ph.waitForTimeout(300);
     check(await noOverflow(ph), '375 px: no sideways scrolling');
     check((await ph.locator('#mem-backup').boundingBox()).height >= 44, '375 px: the button keeps its 44 px');
     check(await ph.locator('.mem-facts dd').evaluateAll(ds => ds.every(d => d.scrollWidth <= d.clientWidth + 1)), '375 px: no number is cut off');
@@ -146,7 +150,7 @@ run(async b => {
     for (const s of scenarios) {
       scenario(s);
       const q = await page(b, 412, 915);
-      await q.goto(BASE + 'memory'); await q.locator('.mem-copies li[data-key="server"]').waitFor({timeout: 5000}); await q.waitForTimeout(300);
+      await q.goto(BASE + 'memory'); await openBackups(q); await q.locator('.mem-copies li[data-key="server"]').waitFor({timeout: 5000}); await q.waitForTimeout(300);
       const got = {server: await say(q, 'server'), pc: await say(q, 'pc'), offsite: await say(q, 'offsite')};
       const bad = Object.keys(s.rows).filter(k => got[k] !== s.rows[k]);
       check(!bad.length, `${s.name}: each row says its sentence${bad.map(k => `\n        ${k}: ${got[k]}\n        want: ${s.rows[k]}`).join('')}`);
@@ -161,7 +165,7 @@ run(async b => {
       await q.close();
       for (const w of [360, 375]) {
         const n = await page(b, w, 800);
-        await n.goto(BASE + 'memory'); await n.locator('.mem-copies li[data-key="server"]').waitFor({timeout: 5000}); await n.waitForTimeout(300);
+        await n.goto(BASE + 'memory'); await openBackups(n); await n.locator('.mem-copies li[data-key="server"]').waitFor({timeout: 5000}); await n.waitForTimeout(300);
         const fits = await n.locator('.mem-copies li').evaluateAll(ls => ls.every(l => l.scrollWidth <= l.clientWidth + 1 && l.getBoundingClientRect().right <= innerWidth));
         check(await noOverflow(n) && fits, `${s.name}, ${w} px: no sideways scrolling, every sentence wraps inside its row`);
         await n.close();
