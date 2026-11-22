@@ -14,7 +14,7 @@ import sqlite3
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
-KINDS = ('paper', 'summary', 'note', 'guide', 'learning', 'unknown')
+KINDS = ('paper', 'book', 'summary', 'note', 'guide', 'learning', 'unknown')
 HEALTH = ('ready', 'pending', 'failed', 'suspect', 'catalog-only', 'unknown')
 MAX_BYTES = 12 * 1024 * 1024
 SCHEMA = 2
@@ -133,21 +133,36 @@ def prepare(manifest, text_root):
             raise ValueError('Physical page count must be a positive integer')
         scheme = item.get('page_scheme', 'none')
         if scheme not in ('pdf', 'none'): raise ValueError('Page scheme must be pdf or none')
-        pages, blocks, content_hash = [], [], ''
-        if item.get('text'):
-            f = relative_file(text_root, item['text'])
-            if f.stat().st_size > MAX_BYTES: raise ValueError('Extracted text exceeds the per-source limit')
-            raw = f.read_bytes()
-            text = raw.decode('utf-8-sig', errors='strict')
+        pages, blocks, content_hash, chapter_ranges = [], [], '', []
+        inputs = []
+        chapters = item.get('chapters')
+        if chapters is not None:
+            if file_format != 'epub' or scheme != 'none' or item.get('text') or not isinstance(chapters, list) or not 1 <= len(chapters) <= 2000:
+                raise ValueError('EPUB chapters require a bounded list and no competing text/page scheme')
+            seen_members = set()
+            for chapter in chapters:
+                if not isinstance(chapter, dict): raise ValueError('Invalid EPUB chapter')
+                member = word(chapter.get('member'), 'chapter member', 800)
+                relative_file(text_root, member)
+                if member in seen_members: raise ValueError('Duplicate EPUB chapter member')
+                seen_members.add(member)
+                if type(chapter.get('linear', True)) is not bool: raise ValueError('Invalid chapter reading-order flag')
+                inputs.append((chapter.get('text'), dict(member=member, label=word(chapter.get('label'), 'chapter label', 500), linear=chapter.get('linear', True))))
+        elif item.get('text'): inputs.append((item['text'], None))
+        hashes = []; byte_count = 0; has_text = False
+        for filename, chapter in inputs:
+            f = relative_file(text_root, filename)
+            byte_count += f.stat().st_size
+            if byte_count > MAX_BYTES: raise ValueError('Extracted text exceeds the per-source limit')
+            raw = f.read_bytes(); text = raw.decode('utf-8-sig', errors='strict')
             if any(c == '\ufffd' or (ord(c) < 32 and c not in '\n\r\t\f') or ord(c) % 65536 in (65534, 65535) or 0xFDD0 <= ord(c) <= 0xFDEF for c in text):
                 raise ValueError('Damaged extraction: repair text or publish catalog metadata with suspect health')
-            content_hash = hashlib.sha256(raw).hexdigest()
-            if health == 'ready' and not text.strip(): raise ValueError('Empty extraction cannot be ready')
+            hashes.append(hashlib.sha256(raw).hexdigest()); has_text = has_text or bool(text.strip())
             sections = text.split('\f') if scheme == 'pdf' else [text]
-            # Extractors commonly terminate the final physical page with one form feed.
             if scheme == 'pdf' and len(sections) > 1 and not sections[-1].strip(): sections.pop()
             if scheme == 'pdf' and physical_pages is not None and len(sections) != physical_pages:
                 raise ValueError('Extracted page count does not match the physical PDF')
+            reader_start, passage_start = len(blocks), len(pages)
             if health == 'ready':
                 for i, page in enumerate(sections, 1):
                     for start in range(0, max(1, len(page)), READER_BLOCK):
@@ -156,13 +171,18 @@ def prepare(manifest, text_root):
                     for start in range(0, len(words), 180):
                         chunk = ' '.join(words[start:start + 220])
                         if chunk: pages.append((i if scheme == 'pdf' else None, '', chunk))
-        elif health == 'ready': raise ValueError('Ready sources need extracted text')
+            if chapter:
+                chapter_ranges.append(dict(chapter, reader_start=reader_start, reader_count=len(blocks)-reader_start,
+                                           passage_start=passage_start, passage_count=len(pages)-passage_start))
+        if health == 'ready' and not has_text: raise ValueError('Ready sources need nonempty extracted text')
+        if hashes: content_hash = hashlib.sha256(json.dumps(hashes).encode()).hexdigest() if chapters is not None else hashes[0]
         meta = dict(collection=collection, key=key, title=title, kind=kind, authorship=authorship,
                     health=health, diagnostic=diagnostic, original=original, original_sha256=original_hash,
                     url=url, page_scheme=item.get('page_scheme', 'none'),
                     file_format=file_format, physical_pages=physical_pages, reader_version=1,
                     extraction_version=str(item.get('extraction_version', 'unknown'))[:120],
                     source_version=str(item.get('source_version', 'unknown'))[:200])
+        if chapters is not None: meta['chapter_ranges'] = chapter_ranges
         revision = hashlib.sha256((sid + content_hash + json.dumps(meta, sort_keys=True)).encode()).hexdigest()
         prepared.append((sid, revision, content_hash, meta, pages, blocks))
     return scope, prepared
@@ -238,6 +258,7 @@ def search(path, query, kind='paper', collection=''):
             if counts.get(sid, 0) >= 3: continue
             counts[sid] = counts.get(sid, 0) + 1
             d.update(page_scheme=meta['page_scheme'], source_version=meta['source_version'])
+            d.update(chapter=chapter_at(meta, d['ordinal'], 'passage'))
             results.append(d)
             if len(results) == 20: break
         return dict(passages=results, query=query, configured=True, mode='keyword', ranking='BM25, not confidence')
@@ -256,6 +277,13 @@ def source(path, sid, revision=''):
         d['indexed_at'] = d.pop('created_at');return d
     finally: c.close()
 
+
+
+def chapter_at(meta, ordinal, field):
+    for n, chapter in enumerate(meta.get('chapter_ranges', []), 1):
+        if chapter[field + '_start'] <= ordinal < chapter[field + '_start'] + chapter[field + '_count']:
+            return dict(number=n, label=chapter['label'], member=chapter['member'], linear=chapter['linear'], reader_offset=chapter['reader_start'])
+    return None
 
 
 def reader(path, sid, revision='', offset=0, pdf_page=None):
@@ -277,7 +305,7 @@ def reader(path, sid, revision='', offset=0, pdf_page=None):
             offset = row[0]
         if offset >= total: raise ValueError('Reader position is outside this source')
         rows = c.execute('SELECT ordinal,pdf_page,text FROM reader_blocks WHERE revision=? AND ordinal=?', (d['revision'], offset)).fetchall()
-        return dict(answer, available=True, blocks=[dict(r) for r in rows], total=total, offset=offset)
+        return dict(answer, available=True, blocks=[dict(r, chapter=chapter_at(d, r['ordinal'], 'reader')) for r in rows], total=total, offset=offset)
     finally: c.close()
 
 

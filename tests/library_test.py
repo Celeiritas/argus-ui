@@ -79,6 +79,30 @@ class LibraryTest(unittest.TestCase):
         self.m['sources'][0]['file_format'] = 'invented'
         with self.assertRaises(ValueError): self.publish()
 
+    def test_epub_chapters_search_and_reader_preserve_locations(self):
+        (self.root/'start.txt').write_text('Opening chapter.',encoding='utf-8')
+        (self.root/'ending.txt').write_text('Distinctive conclusion.',encoding='utf-8')
+        source=self.m['sources'][0];source.pop('text');source.update(kind='book',file_format='epub',page_scheme='none',
+            chapters=[dict(text='start.txt',label='Opening',member='OPS/start.xhtml'),dict(text='ending.txt',label='Ending',member='OPS/ending.xhtml',linear=False)])
+        self.publish()
+        self.assertEqual(lib.search(self.db,'Distinctive')['passages'],[])
+        hit=lib.search(self.db,'Distinctive',kind='book')['passages'][0]
+        self.assertEqual(hit['chapter']['number'],2);self.assertIsNone(hit['pdf_page'])
+        self.assertEqual(hit['chapter']['member'],'OPS/ending.xhtml')
+        read=lib.reader(self.db,hit['source_id'],hit['revision'],hit['chapter']['reader_offset'])
+        self.assertEqual(read['blocks'][0]['text'],'Distinctive conclusion.')
+        self.assertFalse(read['blocks'][0]['chapter']['linear'])
+        previous=hit['revision'];source['chapters'][1]['label']='Renamed ending';self.publish()
+        self.assertEqual(lib.reader(self.db,hit['source_id'],previous,1)['blocks'][0]['chapter']['label'],'Ending')
+
+    def test_chapter_conflicts_do_not_publish(self):
+        self.publish();before=lib.catalog(self.db)
+        source=self.m['sources'][0];source.update(file_format='epub',chapters=[dict(text='note.txt',label='One',member='one.xhtml')])
+        with self.assertRaises(ValueError):self.publish()
+        source.pop('text');source['page_scheme']='none';source['chapters'][0]['member']='../outside.xhtml'
+        with self.assertRaises(ValueError):self.publish()
+        self.assertEqual(before,lib.catalog(self.db))
+
     def test_exact_search_needs_no_models_and_preserves_page_identity(self):
         self.publish(); result = lib.search(self.db, 'tactile timing')['passages']
         self.assertEqual(len(result), 1); self.assertEqual(result[0]['pdf_page'], 2)
