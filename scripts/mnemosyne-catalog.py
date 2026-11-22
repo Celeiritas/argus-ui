@@ -20,6 +20,9 @@ def main():
     sub = p.add_subparsers(dest='command', required=True)
     pub = sub.add_parser('publish'); pub.add_argument('manifest'); pub.add_argument('--text-root', required=True)
     pub.add_argument('--apply', action='store_true', help='Publish after validation; default only validates')
+    pub.add_argument('--expect-plan', help='Exact token returned by review of an existing catalog')
+    pub.add_argument('--backup', type=Path, help='New recovery directory; never overwritten')
+    pub.add_argument('--original-root', type=Path, help='Serving root containing revision-bound PDF originals')
     for name in ('search', 'catalog'):
         cmd = sub.add_parser(name); cmd.add_argument('--kind', choices=('',) + lib.KINDS, default='paper' if name == 'search' else '')
         cmd.add_argument('--collection', default='')
@@ -28,8 +31,18 @@ def main():
     try:
         if args.command == 'publish':
             manifest = json.loads(Path(args.manifest).read_text(encoding='utf-8-sig'))
-            scope, records = lib.prepare(manifest, args.text_root)
-            answer = lib.publish(args.db, manifest, args.text_root) if args.apply else dict(valid=True, sources=len(records), collections=scope, published=False)
+            if args.apply and Path(args.db).exists():
+                if not args.expect_plan or not args.backup:
+                    raise ValueError('Existing catalog updates require --expect-plan and --backup from a fresh review')
+                answer = lib.publish_reviewed(args.db, manifest, args.text_root, args.expect_plan, args.backup, args.original_root)
+            elif args.expect_plan:
+                raise ValueError('The reviewed catalog is missing or --apply was omitted; review again')
+            elif Path(args.db).exists():
+                answer = lib.review_publication(args.db, manifest, args.text_root, args.original_root)
+            else:
+                scope, records = lib.prepare(manifest, args.text_root)
+                lib._verify_originals(records, args.original_root)
+                answer = lib.initialize(args.db, manifest, args.text_root, args.original_root) if args.apply else dict(valid=True, sources=len(records), collections=scope, published=False)
         elif args.command == 'search': answer = lib.search(args.db, args.query, args.kind, args.collection)
         else: answer = lib.catalog(args.db, args.kind, args.collection)
         print(json.dumps(answer, ensure_ascii=False, indent=2))
