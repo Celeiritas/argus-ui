@@ -36,6 +36,16 @@ class EpubTest(unittest.TestCase):
         again=subprocess.run(command,capture_output=True,text=True)
         self.assertNotEqual(again.returncode,0)
 
+    def test_configured_validator_failure_holds_original_without_ready_marker(self):
+        self.write();out=self.path.parent/'held'
+        cli=Path(__file__).resolve().parents[1]/'scripts/mnemosyne-epub.py'
+        result=subprocess.run([sys.executable,str(cli),str(self.path),'--output',str(out),'--collection','books','--key','fixture','--epubcheck-jar',str(self.path.parent/'missing.jar')],capture_output=True,text=True)
+        self.assertNotEqual(result.returncode,0)
+        self.assertTrue((out/'HELD-FOR-REVIEW.json').exists())
+        self.assertFalse((out/'READY-FOR-REVIEW.json').exists())
+        self.assertFalse((out/'draft-manifest.json').exists())
+        self.assertEqual((out/'original.epub').read_bytes(),self.path.read_bytes())
+
     def test_spine_order_inline_text_and_non_linear_content(self):
         self.write();r=epub.extract(self.path)
         self.assertEqual(r['title'],'Example book');self.assertEqual(r['authorship'],'Fixture author')

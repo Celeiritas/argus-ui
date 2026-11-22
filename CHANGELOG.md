@@ -2,6 +2,8 @@
 
 ## 4.63.0 — 2026-11-22
 
+- Integrate optional local EPUBCheck into EPUB staging. Configured validation must pass before extraction; reports, warnings and the original stay with the staged book. Failed validation or unsupported content produces a held marker, never an import-ready inventory. Java is used only during this optional import check.
+
 - Review repeat library imports before applying them: show additions, changed revisions, restorations, retirements and sources becoming unavailable for search. The review token pins source revisions and catalog state.
 - Existing-catalog CLI updates require the reviewed token and a new recovery folder. SQLite serializes writers while rechecking the plan, verifying provisioned originals, making an integrity-checked backup and atomically publishing prepared text. Stale plans and backup failures leave the catalog unchanged. No scheduler or model is enabled.
 

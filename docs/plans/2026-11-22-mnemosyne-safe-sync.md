@@ -20,3 +20,8 @@
 2. Refactor library.publish's writes into _write_records(connection, scope, records); retain its transaction for bootstrap/internal compatibility. Add review_publication(path, manifest, text_root, originals=None) and publish_reviewed(..., expected_plan, backup_dir, originals=None). Keep schema and reads unchanged.
 3. Extend mnemosyne-catalog.py repeat-publication review/apply options; existing databases require --expect-plan and --backup for --apply. Add the suite to tests/run.sh. Update VERSION/CHANGELOG and reconcile older EPUB documentation/checkmarks.
 4. Run publication/library/EPUB tests, privacy and build checks; inspect diff; push branch/open PR and wait for Linux CI. Record exact evidence and unfinished scheduler/phone work in the handoff. Merge/deploy requires the owner's release approval.
+
+
+## Owner-approved open-source integration
+
+The owner requested licensable utilities inside Mnemosyne. Add an optional EPUBCheck subprocess adapter to the staging CLI (explicit jar/Java paths, argument list, bounded archive, 512MB heap, 60-second timeout). Configured validation must fail closed. Preserve JSON/log/original and a held marker on failure; successful staging records validator version/warning count and retains the full report. Test malformed reports, errors despite zero exit, timeouts, unsafe ZIPs, and staging refusal; validate official licensed samples with the real tool. Retain complete upstream license/dependency notices. No Java needed for library reading and no host installation in this PR.
