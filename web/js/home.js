@@ -72,18 +72,19 @@ const home = (() => {
   // as before, so a line without that name (a learner, an older server) is drawn plain
   function nowBand(now) {
     const nm = typeof S.now_name === 'string' && S.now_name && now.startsWith(S.now_name + ': ') ? S.now_name : '';
-    return `<p class="now">${nm ? `<b class="nowname">${esc(nm)}</b>${esc(now.slice(nm.length))}` : esc(now)}</p>`;
+    return `<div class="home-server"><p class="now">${nm ? `<b class="nowname">${esc(nm)}</b>${esc(now.slice(nm.length))}` : esc(now)}</p><div id="home-mode-slot"></div></div>`;
   }
   let last = '';                           // the last page drawn: an unchanged page is not redrawn (focus and running fades stay)
   function draw() {
     if (here !== 'home' || todayEdit.on()) return;           // Edit Today has the page: the 15 s refresh must not draw over it
+    if (modeControl?.querySelector('.holding, .hold-armed, [aria-busy="true"]')) return;
     // Edit Today pressed in More on another page comes here as <base>/#edit: it opens once (the address loses the #edit)
     if (location.hash === '#edit') { history.replaceState(null, '', location.pathname + location.search); if (role() === 'owner') return todayEdit.start(); }
     const list = needs(), asking = PLUGINS.some(p => p.kind === 'server' && STATUS[p.id] === undefined);
     const total = list.reduce((t, n) => t + n.n, 0);              // every failed task and every alert counts, as on the bar
     const state = total ? `${plural(total, 'thing')} need${total === 1 ? 's' : ''} you` : asking ? 'Asking every section…' : 'Nothing needs you';
     const keys = new Set(list.map(n => n.key));
-    const now = role() === 'owner' && typeof S.now === 'string' ? S.now : '';   // what the server is doing (the server's own words)
+    const now = role() === 'owner' ? (typeof S.now === 'string' && S.now) || S.modes?.name || '' : '';
     const why = role() === 'owner' && typeof S.today_problem === 'string' ? S.today_problem : '';   // today.json cannot be used
     const problem = why ? `<p class="people-problem today-problem" role="status">${esc(why)}</p>` : '';
     const rows = `<ul class="needlist">${list.map((n, i) => row(n, seen && !seen.has(n.key), i === 0)).join('')}</ul>`;
@@ -95,10 +96,14 @@ const home = (() => {
     // rows listed while a section has not answered yet: say so under the lines (the heading says it when nothing is listed)
     const ask = asking && total ? '<p class="quiet asking">Asking every section…</p>' : '';
     const html = `<section class="home${PHONE.matches ? ' phone' : ''}" aria-label="Today">${problem}${needsPart}${devices.line()}${newsLines(list)}${ask}</section>`;
-    if (html.replace(/ fresh/g, '') === last) return;
+    if (html.replace(/ fresh/g, '') === last) { drawModes(); return; }
     const focused = document.activeElement?.closest?.('#main a')?.getAttribute('href');   // a redraw must not drop keyboard focus
     const gone = seen && !RM.matches ? $$('#main .need[data-key]').filter(li => !keys.has(li.dataset.key)).map(li => [li, [...li.parentNode.children].indexOf(li)]) : [];
+    const modeFocus = modeControl?.contains(document.activeElement) ? document.activeElement : null;
+    if (modeControl) $('#modeParking').append(modeControl);
     $('#main').innerHTML = html; last = html.replace(/ fresh/g, '');
+    drawModes();
+    if (modeFocus?.isConnected && !modeControl.hidden) modeFocus.focus({preventScroll: true});
     const ul = $('#main .needlist');       // a met need leaves with a short fade where it stood, then is gone
     gone.forEach(([li, i]) => { li.classList.remove('fresh'); li.classList.add('leaving'); li.setAttribute('aria-hidden', 'true'); li.inert = true;
       ul.insertBefore(li, ul.children[i] || null);

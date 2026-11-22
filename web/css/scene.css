@@ -163,5 +163,5 @@ button.srow:hover,a.srow:hover{background:#2b333c}
  body.today header{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"title argus";gap:var(--s2) var(--s3)}
  body.today .argus{width:56px}
  body.today .title{display:flex;flex-wrap:wrap;align-items:center;gap:0 var(--s2)}
- body.today .title .modes{order:2;margin:0 0 0 auto}body.today .title .sub{order:3;flex:1 0 100%}
+ body.today .title .sub{order:3;flex:1 0 100%}
  body.today .mode-seg{padding:0 var(--s2)}}

@@ -1,5 +1,10 @@
 # Changelog
 
+## 4.60.0 – 2026-11-22
+- Desktop/Game moves beneath the server's status on Today only. The selected mode is green; owner checks, hold confirmation and switching feedback remain.
+- Mnemosyne gets a phone-friendly library: keyword search, collapsed source filters and passages, revision details and authenticated PDF preparation. Backup health stays visible, with controls and history folded unless attention is needed.
+- An opt-in, separate SQLite/FTS5 catalog accepts validated, complete collection manifests. Source types are explicit, papers are the default search scope, revisions and old passages remain, and failed validation leaves the active catalog unchanged. No models run. See `docs/mnemosyne-library.md` for setup and remaining migration work.
+
 ## 4.59.0 – 2026-11-18
 Mentor: a clean slate for the owner's collection, and lessons that publish only through a gate (docs/mentor.md "Clean slate and publication (4.59)", docs/mentor-authoring-policy.md).
 - **Clean-slate reset.** `scripts/mentor-clean-slate-v2.py` (dry run by default) first turns the theme's decks, your own deck folder and the old inbox off in `~/.config/argus-ui/mentor.json` and retires the old files by fingerprint, then moves the owner's database, inbox and deck files into one `.set-aside-<stamp>-mentor-clean-slate/` folder with a manifest written as each file moves, and starts a fresh collection. It reads the service's own paths, refuses a second reset, a service that does not stop, and a Mentor older than 4.59, and leaves the service stopped if anything fails part-way. Other learners, config and the research library are left alone.

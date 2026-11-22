@@ -116,6 +116,8 @@ if [ -z "$1" ] || [ "$1" = today ] || [ "$1" = home ] || [ "$1" = today-edit ] |
   if [ $st = 0 ]; then grep -E "identity path|^Ran|^OK" <<<"$out" || true; else echo "$out"; fail=1; fi
 fi
 if [ -z "$1" ] || [ "$1" = memory ]; then
+  echo "== library catalog"
+  $PYTHON "$R/tests/library_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1
   echo "== memory model"   # the Memory page's server side, no browser (tests/memory_test.py)
   $PYTHON "$R/tests/memory_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1
 fi

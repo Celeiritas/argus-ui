@@ -1,6 +1,6 @@
 # Desktop / Game mode
 
-A server that is also a games console has two faces: a desktop and a game session on the TV. The mode pill at the top of every section shows which one `{{SERVER}}` is in and switches it to the other with one press and hold. It shows only for the owner, and only when the host has a `modes.json`.
+A server that is also a games console has two faces: a desktop and a game session on the TV. The mode pill appears only on Today, immediately beneath `{{SERVER}}`'s status. It shows the current mode in green and switches to the other with one press and hold. It shows only for the owner, only outside Edit Today, and only when the host has a `modes.json`.
 
 ## The file
 `~/.config/argus-ui/modes.json` on the host (or the path in `ARGUS_MODES`). It names the host's own units, so it lives on the host and never in git.
@@ -13,7 +13,7 @@ A server that is also a games console has two faces: a desktop and a game sessio
 | Field | Meaning |
 |---|---|
 | `modes` | Exactly two, in the order the pill shows them (left, then right). |
-| `id` | `a-z`, `0-9` and `-`, starting with a letter, at most 16 characters. The two ids differ. `desktop` and `game` get their own colours (below); with one other id, it gets the colour left over; with two others, the first is green and the second purple. |
+| `id` | `a-z`, `0-9` and `-`, starting with a letter, at most 16 characters. The two ids differ. Either selected mode is green. |
 | `label` | The words on the pill, 1 to 16 characters. |
 | `active_unit` | A `systemctl --user` unit that runs (active) while the host is in this mode, and only then. |
 | `switch_unit` | The `systemctl --user` unit that switches the host **into** this mode. |
@@ -65,7 +65,7 @@ Each `switch_unit` is a oneshot that does the whole switch (ends one session, st
 One switch at a time: the server takes its own lock, looks at the units again inside it, and only then starts the switch unit, so two presses at once start one switch. A refusal from `systemctl` answers 200 with `ok: false`, as the powers do. No event is written: the events file is for the watch's changes, and the powers write none either.
 
 ## The colours
-`web/css/argus.css`, one line under `:root`: Game purple (`--mode-game` #6B46C1, edge #A383F0), Desktop green (`--mode-desktop` #287043, edge #52B67A), white words on both. Contrast: white on purple 6.4:1, on green 6.0:1; the edges against the page 5.5:1 and 6.4:1. While switching, the mode it leaves is not faded (opacity .6 dropped its words to about 3.7:1); it keeps these colours and gets a dashed white edge. The failed note's dot is `--bad`; its words keep the note's colour. To swap the modes' colours, exchange the game pair with the desktop pair on that line.
+`web/css/argus.css`: both selected modes use `--mode-desktop` #287043, edge #52B67A, with white words (6.0:1 contrast). While switching, the selected mode retains its colour and gets a dashed white edge. The failed note's dot is `--bad`; its words keep the note's colour. Device-status colours are independent.
 
 ## Tests
 `tests/modes_test.py` (37 tests, no browser: the file's checks, the probe against a fake `systemctl`, the pending note against a racing probe, a start that times out, a failed switch, a switch unit that stays active, the note rebuilt after a restart, the route end to end with an owner and a learner) and `tests/modes.test.js` (the pill, its verb-first name and armed text, a hold, the switch and the dashed edge, the keyboard staying on the pill, a failed switch, *Mode unknown*, 375 px). The fixture `tests/fixtures/modes.json` uses the fake units `fake-desktop-shell`, `fake-game-session`, `fake-to-desktop` and `fake-to-game`; `tests/run.sh` sets `ARGUS_MODES` to it, so every browser test sees the pill.

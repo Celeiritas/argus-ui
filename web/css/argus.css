@@ -134,7 +134,8 @@ pre{white-space:pre-wrap;word-break:break-all;font-size:var(--fs-meta);line-heig
 button.mode-seg{background:transparent}button.mode-seg:hover:not([disabled]){color:var(--snow);border-color:var(--powder)}
 .mode-seg.on{color:var(--mode-ink)}
 .mode-seg .hold-ring{display:none}.mode-seg.holding .hold-ring{display:block}   /* the other half reads as a plain segment, not a radio; the ring shows while held (4.54.0) */
-.mode-seg.on.m-game{background:var(--mode-game);border-color:var(--mode-game-edge)}.mode-seg.on.m-desktop{background:var(--mode-desktop);border-color:var(--mode-desktop-edge)}
+.mode-seg.on.m-game,.mode-seg.on.m-desktop{background:var(--mode-desktop);border-color:var(--mode-desktop-edge)}
+.home-server{min-width:0}.home-server .modes{margin-top:var(--s3)}
 /* while it switches, the mode it leaves keeps its colour (the white words keep 6.4:1 / 6.0:1) and gets a dashed white edge */
 .modes.switching .mode-seg.on{border-style:dashed;border-color:var(--mode-ink)}
 .modes:focus-visible{outline:2px solid var(--powder);outline-offset:2px;border-radius:22px}   /* the group holds the keyboard while it switches (core.js drawModes) */
