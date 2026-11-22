@@ -5,6 +5,7 @@ database; publication is one transaction after every source has been validated.
 No network requests or model calls are made here.
 """
 import base64
+from contextlib import closing
 import hashlib
 import json
 import os
@@ -188,29 +189,128 @@ def prepare(manifest, text_root):
     return scope, prepared
 
 
+def _write_records(c, scope, records):
+    now = datetime.now(timezone.utc).isoformat()
+    for collection in scope: c.execute('UPDATE sources SET active=0 WHERE collection=?', (collection,))
+    for sid, rev, content_hash, meta, pages, blocks in records:
+        values = (sid, meta['collection'], meta['key'], meta['title'], meta['kind'], meta['authorship'], rev,
+                  meta['health'], meta['diagnostic'], 1, now)
+        c.execute('''INSERT INTO sources VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
+          title=excluded.title,kind=excluded.kind,authorship=excluded.authorship,revision=excluded.revision,
+          health=excluded.health,diagnostic=excluded.diagnostic,active=1,indexed_at=excluded.indexed_at''', values)
+        if c.execute('SELECT 1 FROM revisions WHERE id=?', (rev,)).fetchone(): continue
+        c.execute('INSERT INTO revisions VALUES(?,?,?,?,?)', (rev, sid, content_hash, json.dumps(meta), now))
+        c.executemany('INSERT INTO reader_blocks VALUES(?,?,?,?)',
+                      [(rev, n, page, text) for n, (page, text) in enumerate(blocks)])
+        for ordinal, (pdf_page, printed, text) in enumerate(pages):
+            pid = c.execute('INSERT INTO passages(revision,ordinal,pdf_page,printed_page,text) VALUES(?,?,?,?,?)',
+                            (rev, ordinal, pdf_page, printed, text)).lastrowid
+            c.execute('INSERT INTO passage_fts(rowid,title,text) VALUES(?,?,?)', (pid, meta['title'], text))
+    return dict(sources=len(records), collections=scope, indexed_at=now)
+
+
 def publish(path, manifest, text_root):
-    scope, records = prepare(manifest, text_root)  # failed reads/validation leave the active catalog untouched
+    # Low-level bootstrap/compatibility API. Repeat CLI imports use publish_reviewed.
+    scope, records = prepare(manifest, text_root)
     c = connect(path, create=True)
     try:
         schema(c)
-        now = datetime.now(timezone.utc).isoformat()
         with c:
-            for collection in scope: c.execute('UPDATE sources SET active=0 WHERE collection=?', (collection,))
-            for sid, rev, content_hash, meta, pages, blocks in records:
-                values = (sid, meta['collection'], meta['key'], meta['title'], meta['kind'], meta['authorship'], rev,
-                          meta['health'], meta['diagnostic'], 1, now)
-                c.execute('''INSERT INTO sources VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
-                  title=excluded.title,kind=excluded.kind,authorship=excluded.authorship,revision=excluded.revision,
-                  health=excluded.health,diagnostic=excluded.diagnostic,active=1,indexed_at=excluded.indexed_at''', values)
-                if c.execute('SELECT 1 FROM revisions WHERE id=?', (rev,)).fetchone(): continue
-                c.execute('INSERT INTO revisions VALUES(?,?,?,?,?)', (rev, sid, content_hash, json.dumps(meta), now))
-                c.executemany('INSERT INTO reader_blocks VALUES(?,?,?,?)',
-                              [(rev, n, page, text) for n, (page, text) in enumerate(blocks)])
-                for ordinal, (pdf_page, printed, text) in enumerate(pages):
-                    pid = c.execute('INSERT INTO passages(revision,ordinal,pdf_page,printed_page,text) VALUES(?,?,?,?,?)',
-                                    (rev, ordinal, pdf_page, printed, text)).lastrowid
-                    c.execute('INSERT INTO passage_fts(rowid,title,text) VALUES(?,?,?)', (pid, meta['title'], text))
-        return dict(sources=len(records), collections=scope, indexed_at=now)
+            c.execute('BEGIN IMMEDIATE')
+            return _write_records(c, scope, records)
+    finally: c.close()
+
+
+def _publication_plan(c, scope, records):
+    if c.execute('PRAGMA user_version').fetchone()[0] != SCHEMA:
+        raise ValueError('Reviewed updates require the current library schema')
+    rows = [dict(r) for r in c.execute('SELECT * FROM sources ORDER BY id')]
+    current = {r['id']: r for r in rows}
+    incoming = {r[0] for r in records}
+    counts = dict.fromkeys(('added', 'changed', 'restored', 'retired', 'unchanged'), 0)
+    changes = []; held = 0
+    for sid, revision, _, meta, _, _ in records:
+        old = current.get(sid)
+        action = ('added' if old is None else 'restored' if not old['active'] else
+                  'unchanged' if old['revision'] == revision else 'changed')
+        counts[action] += 1
+        if old and old['active'] and old['health'] == 'ready' and meta['health'] != 'ready': held += 1
+        if action != 'unchanged':
+            changes.append(dict(action=action, id=sid, collection=meta['collection'], key=meta['key'],
+                                title=meta['title'], previous_health=old['health'] if old else None, health=meta['health']))
+    for old in rows:
+        if old['active'] and old['collection'] in scope and old['id'] not in incoming:
+            counts['retired'] += 1
+            changes.append(dict(action='retired', id=old['id'], collection=old['collection'],
+                                key=old['source_key'], title=old['title'], previous_health=old['health']))
+    state = dict(schema=SCHEMA, sources=rows, scope=sorted(scope), revisions=sorted((r[0], r[1]) for r in records))
+    token = hashlib.sha256(json.dumps(state, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+    return dict(valid=True, published=False, plan=token, sources=len(records), collections=scope,
+                counts=counts, changes=changes, ready_to_held=held,
+                outside_scope_active=sum(bool(r['active']) and r['collection'] not in scope for r in rows))
+
+
+def _verify_originals(records, root):
+    for _, _, _, meta, _, _ in records:
+        if not meta['original']: continue
+        if root is None: raise ValueError('Provide the serving original root before reviewing this import')
+        file = relative_file(root, meta['original'])
+        if not file.is_file() or file.stat().st_size > MAX_BYTES:
+            raise ValueError('Missing or oversized original; provision it before publication')
+        if hashlib.sha256(file.read_bytes()).hexdigest() != meta['original_sha256']:
+            raise ValueError('Original bytes do not match the reviewed revision')
+
+
+def review_publication(path, manifest, text_root, originals=None):
+    scope, records = prepare(manifest, text_root)
+    _verify_originals(records, originals)
+    c = connect(path)
+    if c is None: raise ValueError('Review requires an existing catalog; no database was created')
+    try:
+        c.execute('BEGIN')
+        return _publication_plan(c, scope, records)
+    finally: c.close()
+
+
+def publish_reviewed(path, manifest, text_root, expected_plan, backup_dir, originals=None):
+    """Revalidate, lock, compare, back up, then commit one prepared snapshot.
+
+    BEGIN IMMEDIATE excludes competing SQLite writers, including older publishers.
+    A separate read connection makes the pre-write backup without backing up our
+    own write transaction (which would wait for itself). No originals are copied.
+    """
+    if not re.fullmatch('[0-9a-f]{64}', expected_plan or ''):
+        raise ValueError('Provide the plan token from a fresh publication review')
+    scope, records = prepare(manifest, text_root)
+    path = Path(path).resolve()
+    # mode=rw refuses a missing database, even if it vanished after review.
+    c = sqlite3.connect(path.as_uri() + '?mode=rw', uri=True, timeout=5)
+    c.row_factory = sqlite3.Row
+    c.execute('PRAGMA foreign_keys=ON')
+    try:
+        c.execute('BEGIN IMMEDIATE')
+        report = _publication_plan(c, scope, records)
+        if report['plan'] != expected_plan:
+            raise ValueError('Catalog or proposed source content changed; review again')
+        _verify_originals(records, originals)
+        if c.execute('PRAGMA quick_check').fetchone()[0] != 'ok':
+            raise ValueError('Catalog integrity check failed; nothing published')
+        backup_dir = Path(backup_dir)
+        backup_dir.mkdir(mode=0o700, parents=True, exist_ok=False)
+        backup_path = backup_dir / 'library.sqlite'
+        with backup_path.open('xb'): pass
+        with closing(connect(path)) as src, closing(sqlite3.connect(backup_path)) as dest:
+            src.backup(dest)
+            if dest.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':
+                raise ValueError('Backup integrity check failed; nothing published')
+        with (backup_dir / 'review.json').open('x', encoding='utf-8') as f:
+            json.dump(report, f, ensure_ascii=False, indent=2)
+        result = _write_records(c, scope, records)
+        c.commit()
+        return dict(result, published=True, plan=expected_plan, backup=str(backup_path), counts=report['counts'])
+    except BaseException:
+        c.rollback()
+        raise
     finally: c.close()
 
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## 4.63.0 — 2026-11-22
+
+- Review repeat library imports before applying them: show additions, changed revisions, restorations, retirements and sources becoming unavailable for search. The review token pins source revisions and catalog state.
+- Existing-catalog CLI updates require the reviewed token and a new recovery folder. SQLite serializes writers while rechecking the plan, verifying provisioned originals, making an integrity-checked backup and atomically publishing prepared text. Stale plans and backup failures leave the catalog unchanged. No scheduler or model is enabled.
+
+
 ## 4.62.0 – 2026-11-22
 - Add a bounded, offline EPUB text importer with chapter order and source-member locations, plus an explicit Books filter. Search hits open the matching chapter in the reader; earlier revisions keep their chapter labels.
 - A staging CLI retains the original EPUB and produces an incomplete draft inventory for review, never publishing or retiring a collection automatically. Unsupported encrypted, fixed-layout, DTD, MathML/SVG or oversized content is refused. No new model or runtime dependency.

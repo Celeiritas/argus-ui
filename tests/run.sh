@@ -119,6 +119,7 @@ if [ -z "$1" ] || [ "$1" = memory ]; then
   echo "== library catalog"
   $PYTHON "$R/tests/library_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1
   $PYTHON "$R/tests/epub_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1
+  $PYTHON "$R/tests/publication_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1
   echo "== memory model"   # the Memory page's server side, no browser (tests/memory_test.py)
   $PYTHON "$R/tests/memory_test.py" 2>&1 | tail -3; [ "${PIPESTATUS[0]}" = 0 ] || fail=1
 fi
