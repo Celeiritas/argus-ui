@@ -14,7 +14,7 @@ const backup = {summary:'Backups are fresh.',attention:false,folder:'fixtures',f
  const browser = await chromium.launch();
  try {
   const p = await browser.newPage({viewport:{width:375,height:812},reducedMotion:'reduce'}), errors=[];
-  p.on('pageerror',e=>errors.push(e.message)); let posts=0, failSearch=false;
+  p.on('pageerror',e=>errors.push(e.message)); let posts=0, failSearch=false, failRead=false;
   await p.route('**/*', async route => {
    const u=new URL(route.request().url()), at=u.pathname.replace(/^\/argus\//,'');
    const json = (data,status=200)=>route.fulfill({json:data,status});
@@ -25,6 +25,7 @@ const backup = {summary:'Backups are fresh.',attention:false,folder:'fixtures',f
    if(at==='api/memory/library/catalog') return json({configured:true,sources:[source],total:1,totals:{ready:1},collections:['Research']});
    if(at==='api/memory/library/search') return failSearch?json({msg:'Library unavailable; results kept.'},503):json({configured:true,passages:[passage]});
    if(at==='api/memory/library/source') return json(source);
+   if(at==='api/memory/library/read') { assert.equal(u.searchParams.get('revision'),source.revision); if(failRead) return json({msg:'Reader temporarily unavailable.'},503); return json({available:true,offset:Number(u.searchParams.get('offset')),total:2,blocks:[{pdf_page:2,text:'Exact text <script>throw new Error(1)</script>\n  preserved lines'}]}); }
    if(at==='api/memory/library/original') return json({base64:Buffer.from('%PDF-1.7\nfixture').toString('base64')});
    if(at.startsWith('api/')) return json({});
    let file;
@@ -49,10 +50,19 @@ const backup = {summary:'Backups are fresh.',attention:false,folder:'fixtures',f
   await p.locator('#lib-query').fill('tactile timing'); await p.locator('#lib-search button').click();
   await p.locator('.lib-excerpt').waitFor();await p.getByText('Read full passage',{exact:true}).click();
   assert.equal(await p.locator('.lib-full').textContent(),passage.text);
-  await p.getByText('Source details',{exact:true}).click();await p.getByText('Prepare original PDF',{exact:true}).click();await p.getByText('Open original PDF',{exact:true}).waitFor();
+  await p.getByText('Read source and details',{exact:true}).click();await p.getByText('Prepare original PDF',{exact:true}).click();await p.getByText('Open original PDF',{exact:true}).waitFor();
+  await p.getByText('Read source text',{exact:true}).click();await p.locator('.lib-reader-text').filter({hasText:'preserved lines'}).waitFor();
+  assert((await p.locator('.lib-reader-text').textContent()).includes('<script>'));
+  assert.equal(await p.locator('.lib-reader script').count(),0);
+  await p.getByText('Read next section',{exact:true}).click();await p.waitForTimeout(100);assert(await p.getByText('Read next section',{exact:true}).isDisabled());
+  await p.getByText('Read previous section',{exact:true}).click();await p.waitForTimeout(100);assert(await p.getByText('Read previous section',{exact:true}).isDisabled());
+  assert.equal(await p.locator('.lib-reader-status').evaluate(e=>e===document.activeElement),true);
+  failRead=true;await p.getByText('Read next section',{exact:true}).click();await p.getByText('Reader temporarily unavailable.',{exact:true}).waitFor();assert((await p.locator('.lib-reader-text').textContent()).includes('preserved lines'));failRead=false;
+  await p.getByText('Read next section',{exact:true}).click();await p.waitForTimeout(100);
+  await p.screenshot({path:path.join(process.env.SHOTS||root,'library-reader-phone-v2.png'),fullPage:true});
   failSearch=true;await p.locator('#lib-search button').click();await p.waitForTimeout(100);assert.equal(await p.locator('.lib-excerpt').count(),1);
   await p.evaluate(()=>refresh());await p.waitForTimeout(100);assert.equal(await p.locator('#lib-query').inputValue(),'tactile timing');
-  await p.locator('.lib-source summary').click(); await p.getByText('Read full passage',{exact:true}).click();
+  await p.locator('.lib-source > summary').click(); await p.getByText('Read full passage',{exact:true}).click();
   await p.screenshot({path:path.join(process.env.SHOTS||root,'library-phone.png'),fullPage:true});
   await p.locator('.lib-filters summary').click();await p.locator('#lib-kind').selectOption('learning');
   for(const width of [375,430,1440]) {await p.setViewportSize({width,height:900});assert(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`overflow at ${width}`);}

@@ -51,7 +51,7 @@
       const id = passage ? r.source_id : r.id;
       return `<article class="lib-result"><h4>${e(r.title)}</h4><p class="lib-meta">${e(label(r))}${passage && r.pdf_page ? ` · PDF page ${Number(r.pdf_page)}` : ''}</p>
         ${passage ? `<p class="lib-excerpt">${e(r.text.slice(0, 160))}${r.text.length > 160 ? '…' : ''}</p><details><summary>Read full passage</summary><p class="lib-full">${e(r.text)}</p><p class="lib-meta">${r.pdf_page ? `PDF page ${Number(r.pdf_page)}; printed page not recorded.` : 'No PDF page recorded.'} Keyword match, not a verified answer.</p></details>` : `<p class="lib-meta">${e(r.health === 'ready' ? 'Searchable' : r.health)}${r.diagnostic ? ' · ' + e(r.diagnostic) : ''}</p>`}
-        <details class="lib-source" data-source="${e(id)}" data-revision="${e(r.revision)}"><summary>Source details</summary><div class="lib-source-body"></div></details></article>`;
+        <details class="lib-source" data-source="${e(id)}" data-revision="${e(r.revision)}" data-page="${passage && r.pdf_page ? Number(r.pdf_page) : ''}"><summary>Read source and details</summary><div class="lib-source-body"></div></details></article>`;
     }
     async function sourceDetail(details) {
       if (!details.open || details.dataset.loaded) return;
@@ -60,9 +60,39 @@
       if (!details.isConnected) return;
       if (!r.ok) { body.textContent = r.data?.msg || 'Could not load the source. Close and reopen to retry.'; return; }
       details.dataset.loaded = '1'; const d = r.data;
-      body.innerHTML = `<dl><dt>Authorship</dt><dd>${e(d.authorship)}</dd><dt>Source version</dt><dd>${e(d.source_version)}</dd><dt>Extraction</dt><dd>${e(d.health)} · ${e(d.extraction_version)}</dd><dt>Indexed</dt><dd>${e(d.indexed_at)}</dd><dt>Revision</dt><dd>${e(d.revision)}</dd></dl>
+      body.innerHTML = `
+        <details class="lib-reader"><summary>Read source text</summary><div class="lib-reader-body"><p class="lib-reader-status" role="status" tabindex="-1"></p><p class="lib-reader-text lib-full"></p><div class="lib-reader-nav"><button type="button" class="lib-prev">Read previous section</button><button type="button" class="lib-next">Read next section</button></div></div></details>
+        <details class="lib-file-details"><summary>View file details</summary><dl><dt>File format</dt><dd>${e(d.file_format || 'unknown')}</dd><dt>Authorship</dt><dd>${e(d.authorship)}</dd><dt>Source version</dt><dd>${e(d.source_version)}</dd><dt>Extraction</dt><dd>${e(d.health)} · ${e(d.extraction_version)}</dd><dt>Indexed</dt><dd>${e(d.indexed_at)}</dd><dt>Revision</dt><dd>${e(d.revision)}</dd></dl></details>
         ${d.url ? `<a href="${e(d.url)}" target="_blank" rel="noopener noreferrer">Open source website</a>` : ''}
-        ${d.original ? `<p class="lib-meta">Original: ${e(d.original)}</p><button type="button" class="lib-original">Prepare original PDF</button><p class="lib-original-status" role="status"></p>` : '<p class="lib-meta">No local original PDF is connected yet.</p>'}`;
+        ${d.original ? `<p class="lib-meta">Original: ${e(d.original.split('/').pop())}</p><button type="button" class="lib-original">Prepare original PDF</button><p class="lib-original-status" role="status"></p>` : '<p class="lib-meta">No local original PDF is connected yet.</p>'}`;
+      const reader = body.querySelector('.lib-reader'), readStatus = body.querySelector('.lib-reader-status');
+      const text = body.querySelector('.lib-reader-text'), prev = body.querySelector('.lib-prev'), next = body.querySelector('.lib-next');
+      let readOffset = 0, readTotal = 0, reading = false, loaded = false;
+      prev.disabled = true; next.disabled = true;
+      async function readSection(offset, initial = false) {
+        if (reading) return;
+        reading = true; prev.disabled = true; next.disabled = true; readStatus.textContent = 'Loading text…';
+        const params = new URLSearchParams({id:d.id, revision:d.revision, offset});
+        if (initial && details.dataset.page) params.set('pdf_page', details.dataset.page);
+        const result = await api.get('library/read?' + params);
+        if (!body.isConnected) return;
+        reading = false;
+        if (!result.ok) {
+          readStatus.textContent = result.data?.msg || 'Could not load text. Close and reopen to retry. Your current text is kept.';
+          loaded = false; prev.disabled = readOffset <= 0; next.disabled = readOffset + 1 >= readTotal; return;
+        }
+        const data = result.data; loaded = true;
+        if (!data.available) { readStatus.textContent = data.reason || 'No reviewed text is available.'; return; }
+        readOffset = data.offset; readTotal = data.total;
+        const block = data.blocks[0];
+        text.textContent = block.text || '(No extracted text on this page.)';
+        readStatus.textContent = `Section ${readOffset + 1} of ${readTotal}${block.pdf_page ? ` · PDF page ${block.pdf_page}; printed page not recorded` : ''}. Extracted text; check the original for layout.`;
+        prev.disabled = readOffset <= 0; next.disabled = readOffset + 1 >= readTotal;
+        if (!initial) { readStatus.focus({preventScroll:true}); readStatus.scrollIntoView({block:'start'}); }
+      }
+      reader.addEventListener('toggle', () => { if (reader.open && !loaded) readSection(readOffset, readTotal === 0); });
+      prev.addEventListener('click', () => readSection(readOffset - 1));
+      next.addEventListener('click', () => readSection(readOffset + 1));
       body.querySelector('.lib-original')?.addEventListener('click', async event => {
         const button = event.currentTarget, msg = body.querySelector('.lib-original-status'); button.disabled = true; msg.textContent = 'Preparing PDF…';
         const result = await api.get('library/original?id=' + encodeURIComponent(d.id) + '&revision=' + encodeURIComponent(d.revision));
