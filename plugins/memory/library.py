@@ -230,7 +230,7 @@ def source(path, sid, revision=''):
     try:
         r = c.execute('''SELECT s.*,r.metadata,r.id AS selected_revision,r.created_at FROM sources s
           JOIN revisions r ON r.source_id=s.id AND r.id=COALESCE(NULLIF(?,''),s.revision)
-          WHERE s.id=? AND s.active=1''', (revision, sid)).fetchone()
+          WHERE s.id=? AND (s.active=1 OR ?<>'')''', (revision, sid, revision)).fetchone()
         if r is None: return None
         d = dict(r);d.update(json.loads(d.pop('metadata')));d['revision'] = d.pop('selected_revision')
         d['indexed_at'] = d.pop('created_at');return d

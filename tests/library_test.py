@@ -75,6 +75,12 @@ class LibraryTest(unittest.TestCase):
         self.assertEqual(lib.catalog(self.db)['total'], 2)
         self.assertEqual(lib.catalog(self.db)['collections'], ['other'])
 
+    def test_retired_source_still_resolves_pinned_citation(self):
+        self.publish(); first = lib.search(self.db, 'perception')['passages'][0]
+        self.m['sources'] = []; self.publish()
+        self.assertIsNone(lib.source(self.db, first['source_id']))
+        self.assertEqual(lib.source(self.db, first['source_id'], first['revision'])['title'], first['title'])
+
     def test_nonready_sources_remain_visible_but_unsearchable(self):
         self.m['sources'][0].update(health='suspect', diagnostic='Check reading order')
         self.publish();self.assertEqual(lib.search(self.db, 'touch')['passages'], [])
