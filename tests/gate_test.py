@@ -83,6 +83,14 @@ put(os.path.join(PLUG, 'kwonly', 'plugin.py'), 'def get(path, query, ctx, *, who
 for pid in ('spartamelee', 'controllers'):
     put(os.path.join(PLUG, pid, 'plugin.json'), {'id': pid, 'name': pid.title()}); put(os.path.join(PLUG, pid, 'index.html'), '<p>game</p>')
 
+# Actual preview/manifest with a stub backend: no library data is used by this gate check.
+MEMORY = os.path.join(PLUG, 'memory')
+os.makedirs(MEMORY)
+for name in ('plugin.json', 'reading-room-preview.html'):
+    shutil.copy(os.path.join(R, 'plugins', 'memory', name), MEMORY)
+put(os.path.join(MEMORY, 'page.js'), '// fixture')
+put(os.path.join(MEMORY, 'plugin.py'), OLD_PLUGIN)
+
 os.environ.update(HOME=HOME, USERPROFILE=HOME, ARGUS_STATIC=STATIC, ARGUS_PLUGINS=PLUG, ARGUS_BUNDLED=os.path.join(TMP, 'bundled'),
                   ARGUS_LINKS=os.path.join(CONF, 'links.json'), ARGUS_REGISTRY=os.path.join(TMP, 'agents'), ARGUS_ALERTS=os.path.join(TMP, 'alerts'),
                   ARGUS_PEOPLE_LAST_GOOD=os.path.join(TMP, 'state', 'people.last-good.json'),   # the people file: the default, in HOME
@@ -172,14 +180,14 @@ class Base(unittest.TestCase):
     def tearDownClass(cls):
         cls.srv.shutdown(); cls.srv.server_close()
 
-    def req(self, verb, path, login=None, body=None, **headers):
+    def req(self, verb, path, login=None, body=None, mount='/argus/', **headers):
         # as Serve passes a request on: the sender's address in X-Forwarded-For (a documentation address: not this machine)
         c = http.client.HTTPConnection('127.0.0.1', self.srv.server_address[1], timeout=20)
         h = {'Host': '127.0.0.1', 'X-Forwarded-For': '192.0.2.20', **headers}
         if login: h['Tailscale-User-Login'] = login
         data = None
         if verb == P: h.setdefault('Content-Type', 'application/json'); data = json.dumps(body if body is not None else {'job': 'hermes-secretsort'})
-        c.request(verb, '/argus/' + path, body=data, headers=h)
+        c.request(verb, mount + path, body=data, headers=h)
         r = c.getresponse(); b = r.read(); c.close()
         return r.status, {k.lower(): v for k, v in r.getheaders()}, b
     def js(self, *a, **k):
@@ -204,6 +212,28 @@ class NoPeopleFile(Base):
 
 class Roles(Base):
     def setUp(self): write_people(GOOD)
+
+    def test_reading_room_preview_at_both_mounts(self):
+        route = 'plugins/memory/reading-room-preview.html'
+        with open(os.path.join(MEMORY, 'reading-room-preview.html'), 'rb') as f:
+            preview = f.read()
+        for mount in ('/', '/argus/'):
+            for login, expected in ((OWNER, 200), (LEARNER, 403), (STRANGER, 403), (None, 403)):
+                with self.subTest(mount=mount, login=login):
+                    code, h, body = self.req(G, route, login, mount=mount)
+                    self.assertEqual(code, expected)
+                    self.assertNotIn('access-control-allow-origin', h)
+                    if code == 200:
+                        self.assertEqual(body, preview)
+                        self.assertEqual(h['content-type'], 'text/html; charset=utf-8')
+                        self.assertEqual(h['content-security-policy'],
+                                         "sandbox allow-scripts allow-pointer-lock allow-popups; frame-ancestors 'self'")
+                        self.assertEqual(h['x-content-type-options'], 'nosniff')
+                        self.assertEqual(h['cache-control'], 'no-cache')
+                    else:
+                        self.assertNotEqual(body, preview)
+                        if login != LEARNER:
+                            self.assertIn(b'This page is private', body)
 
     def expect(self, role, want, code, h, body, verb, path):
         if want == 'page':                     # the small private page, for a person without a role at a page address

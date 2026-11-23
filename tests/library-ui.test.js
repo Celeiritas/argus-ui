@@ -3,6 +3,9 @@ const {chromium} = require('playwright');
 const fs = require('fs'), path = require('path'), assert = require('assert/strict');
 const root = path.resolve(__dirname, '..');
 const built = path.join(root, 'dist', `argus-ui-${fs.readFileSync(path.join(root,'VERSION'),'utf8').trim()}-leafy-realm`, 'static');
+const previewPath='plugins/memory/reading-room-preview.html';
+const previewCsp="sandbox allow-scripts allow-pointer-lock allow-popups; frame-ancestors 'self'";
+const checkReadingRoom=require('./reading-room-preview-check');
 const theme = JSON.parse(fs.readFileSync(path.join(root,'themes/leafy-realm/theme.json')));
 const state = {title:'LeafyGrove',personas:theme.agents,jobs:[],watch:[],alerts:[],links:[],media:[],soon:[],quiet:[],role:'owner',updated:'Now',now:'Server: calm',now_name:'Server',
   plugins:[{id:'memory',name:'Memory',kind:'server',agent:true,subtitle:'Library and backups',page:'plugins/memory/page.js',style:'plugins/memory/page.css'}],
@@ -16,7 +19,7 @@ const backup = {summary:'Backups are fresh.',attention:false,folder:'fixtures',f
   const p = await browser.newPage({viewport:{width:375,height:812},reducedMotion:'reduce'}), errors=[];
   p.on('pageerror',e=>errors.push(e.message)); let posts=0, failSearch=false, failRead=false;
   await p.route('**/*', async route => {
-   const u=new URL(route.request().url()), at=u.pathname.replace(/^\/argus\//,'');
+   const u=new URL(route.request().url()), at=u.pathname.replace(/^\/(?:argus\/)?/,'');
    const json = (data,status=200)=>route.fulfill({json:data,status});
    if(at==='api/state') return json(state);
    if(at==='api/mode'){posts++;state.modes.current=JSON.parse(route.request().postData()).to;return json({ok:true});}
@@ -29,12 +32,13 @@ const backup = {summary:'Backups are fresh.',attention:false,folder:'fixtures',f
    if(at==='api/memory/library/original') return json({base64:Buffer.from('%PDF-1.7\nfixture').toString('base64')});
    if(at.startsWith('api/')) return json({});
    let file;
-   if(at.startsWith('static/')) file=path.join(built,at.slice(7));
+   if(at===previewPath) file=path.join(built,'..','bundled','memory','reading-room-preview.html');
+   else if(at.startsWith('static/')) file=path.join(built,at.slice(7));
    else if(at.startsWith('plugins/memory/')) file=path.join(root,at);
    else return route.fulfill({contentType:'text/html',body:fs.readFileSync(path.join(built,'index.html'),'utf8').replace('/*STATE*/null',JSON.stringify(state))});
    if(!fs.existsSync(file)) return route.fulfill({status:404,body:''});
-   const mime={'.js':'application/javascript','.css':'text/css','.png':'image/png','.woff2':'font/woff2','.json':'application/json'};
-   return route.fulfill({body:fs.readFileSync(file),contentType:mime[path.extname(file)]||'application/octet-stream'});
+   const mime={'.html':'text/html','.js':'application/javascript','.css':'text/css','.png':'image/png','.woff2':'font/woff2','.json':'application/json'};
+   return route.fulfill({body:fs.readFileSync(file),contentType:mime[path.extname(file)]||'application/octet-stream',headers:at===previewPath?{'content-security-policy':previewCsp,'x-content-type-options':'nosniff'}:{}});
   });
   const origin='http://fixture.test/argus/';
   await p.goto(origin); await p.locator('.home-server #modes').waitFor();
@@ -107,6 +111,22 @@ const backup = {summary:'Backups are fresh.',attention:false,folder:'fixtures',f
   await p.getByText(/Section 2 of 2 · Chapter 2: Ending/).waitFor();
   assert(!(await p.locator('.lib-reader-status').innerText()).includes('PDF page'));
   await p.screenshot({path:path.join(process.env.SHOTS||root,'library-epub-phone.png'),fullPage:true});
+  // Follow the visible entry at both supported mounts using the packaged preview and real sandbox.
+  for(const mount of ['/', '/argus/']) {
+   await p.goto('http://fixture.test'+mount+'memory');
+   const link=p.locator('#lib-preview');await link.waitFor();assert(await link.isVisible());
+   const href=await link.evaluate(a=>a.href);assert.equal(new URL(href).pathname,mount+previewPath);
+   const requests=[],track=r=>requests.push(r);p.on('request',track);
+   const responsePromise=p.waitForResponse(href);await link.click();const response=await responsePromise;
+   assert.equal(response.status(),200);assert.equal(response.headers()['content-security-policy'],previewCsp);
+   await p.locator('#app [data-open]').first().waitFor();
+   assert(await p.evaluate(()=>{try{localStorage.getItem('probe');return false;}catch(e){return e.name==='SecurityError';}}));
+   await checkReadingRoom(p,assert,path,mount==='/argus/'?process.env.SHOTS:null);
+   assert(requests.every(r=>r.method()==='GET'&&!new URL(r.url()).pathname.includes('/api/')));
+   p.off('request',track);
+   await p.getByRole('link',{name:'Return to Mnemosyne',exact:false}).click();
+   await p.locator('#lib-preview').waitFor();assert.equal(new URL(p.url()).pathname,mount+'memory');
+  }
   assert.deepEqual(errors,[]);console.log('PASS Today placement, green state, keyboard hold, five hidden routes, library expansion, original access, retained results, refresh, 375/430/1440 widths');
  } finally {await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

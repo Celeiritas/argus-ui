@@ -291,6 +291,7 @@
             <label>Availability (browse only)<select id="lib-health"><option value="">Any status</option><option value="ready">Searchable</option><option value="pending">Pending extraction</option><option value="failed">Failed extraction</option><option value="suspect">Needs text review</option><option value="catalog-only">Catalog only</option><option value="unknown">Unknown</option></select></label>
           </details>
           <div class="lib-tools"><button id="lib-home" type="button">Library home</button><button id="lib-browse" type="button">Browse shelves</button><span id="lib-totals"></span></div>
+          <p class="lib-preview"><a id="lib-preview" href="${api.esc(api.url('plugins/memory/reading-room-preview.html'))}">Try the reading room preview</a><small>Sample books · Colorful shelves and a sliding index</small></p>
           <p id="lib-status" role="status" aria-live="polite"></p><div id="lib-results"></div><button id="lib-more" type="button" hidden>Show more sources</button>
         </section>
         <div class="mem-backup-summary"><h3>Backups</h3><p id="mem-summary" role="status">Checking backups…</p></div>

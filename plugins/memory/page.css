@@ -80,3 +80,7 @@
 .lib-recent>.lib-meta{grid-column:1;grid-row:2;margin-bottom:0}
 .lib-recent>.lib-continue{grid-column:2;grid-row:1 / span 2;max-width:120px;align-self:center}
 .lib-recent>.lib-source,.lib-recent>.lib-recent-note{grid-column:1 / -1;grid-row:auto}
+
+.lib-preview{margin:var(--s2) 0}
+.lib-preview a{display:inline-flex;align-items:center;min-height:44px;font-weight:600;color:var(--stone)}
+.lib-preview small{display:block;color:var(--frost);font-size:var(--fs-meta)}
