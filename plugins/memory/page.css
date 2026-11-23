@@ -84,3 +84,29 @@
 .lib-preview{margin:var(--s2) 0}
 .lib-preview a{display:inline-flex;align-items:center;min-height:44px;font-weight:600;color:var(--stone)}
 .lib-preview small{display:block;color:var(--frost);font-size:var(--fs-meta)}
+
+/* Reading settings (4.67.0) */
+.lib-settings{border-bottom:1px solid var(--line);margin:var(--s2) 0}
+.lib-settings label{display:grid;gap:var(--s1);font-size:var(--fs-sec);margin:var(--s2) 0}
+.lib-settings select{width:100%;max-width:320px;min-height:44px;font:inherit;color:var(--snow);background:var(--bg,#1f252c);border:1px solid var(--frost);border-radius:6px;padding:8px}
+.lib-settings .lib-check{display:flex;align-items:center;gap:var(--s2);min-height:44px;font-size:var(--fs-body)}
+.lib-settings .lib-check input{width:24px;height:24px;margin:0;flex:none}
+.lib-settings input:focus-visible{outline:2px solid var(--powder);outline-offset:3px}
+
+/* E-ink mode (html.eink while the Library is shown): black on white, 2px black lines instead of colour and shadow, no
+   motion of any kind, no scene behind the page, wider margins around the reading text. */
+html.eink{--night:#fff;--card:#fff;--slate:#fff;--line:#000;--snow:#000;--powder:#000;--frost:#000;--stone:#000;--teal:#000;
+  --ok:#000;--bad:#000;--run:#000;--bg:#fff;background:#fff;color:#000}
+html.eink body{background:#fff;color:#000}
+html.eink #scene{display:none}
+html.eink *,html.eink *::before,html.eink *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important;
+  box-shadow:none!important;text-shadow:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+html.eink .memory .panel,html.eink .mem-backups>summary{background:#fff;border:2px solid #000}
+html.eink .memory button,html.eink .memory select,html.eink .memory input{background:#fff;color:#000;border:2px solid #000}
+html.eink .memory button:disabled{border-style:dashed}
+html.eink .memory a{color:#000;text-decoration:underline}
+html.eink .memory :focus-visible{outline:3px solid #000;outline-offset:3px}
+html.eink .lib-reader-text{padding:0 32px;line-height:1.6}
+@media(max-width:420px){html.eink .lib-reader-text{padding:0 16px}}
+html.eink .tabbar{background:#fff;border-top:2px solid #000}
+html.eink .tabmark{background:#000}

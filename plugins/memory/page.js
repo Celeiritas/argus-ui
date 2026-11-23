@@ -61,11 +61,34 @@
     catch (_) { sessionRecentOnly = true; return false; }
   }
 
+  // Reading settings (4.67.0, docs/mnemosyne-library.md): kept on this browser, never on the server. E-ink mode is Automatic,
+  // On or Off; Automatic looks for a slow-refresh or monochrome screen, or an e-ink tablet's name in the browser's user agent.
+  // The side index's vibration is off until the reader turns it on.
+  const prefsKey = 'mnemosyne-reading-settings-v1', EINK_MODES = ['auto', 'on', 'off'];
+  const EINK_UA = /\b(?:BOOX|Onyx)\b|NoteAir|NoteMax|Tab ?Ultra|Go ?10\.3|Palma|Poke ?\d|Nova ?\d|\bLeaf ?\d/i;
+  let sessionPrefs = null;
+  function readingPrefs() {
+    if (sessionPrefs) return {...sessionPrefs};
+    try {
+      const raw = JSON.parse(localStorage.getItem(prefsKey) || '{}') || {};
+      return {eink: EINK_MODES.includes(raw.eink) ? raw.eink : 'auto', vibrate: raw.vibrate === true};
+    } catch (_) { return {eink: 'auto', vibrate: false}; }
+  }
+  function savePrefs(prefs) {
+    try { localStorage.setItem(prefsKey, JSON.stringify(prefs)); sessionPrefs = null; return true; }
+    catch (_) { sessionPrefs = {...prefs}; return false; }
+  }
+  const einkScreen = () => matchMedia('(update: slow)').matches || matchMedia('(monochrome)').matches || EINK_UA.test(navigator.userAgent);
+  const einkActive = () => { const m = readingPrefs().eink; return m === 'on' || (m === 'auto' && einkScreen()); };
+  const applyEink = () => document.documentElement.classList.toggle('eink', einkActive());
+  const EINK_SAY = {on: 'On: black and white, page by page, no motion.', off: 'Off: the usual colours and scrolling.'};
+  const einkSay = m => EINK_SAY[m] || (einkScreen() ? 'Automatic: e-ink screen found.' : 'Automatic: not an e-ink screen.');
+
   const originalURLs = new Set();
   function clearOriginals() { originalURLs.forEach(u => URL.revokeObjectURL(u)); originalURLs.clear(); }
   function libraryUI(el, api) {
     const $ = s => el.querySelector(s), e = api.esc;
-    const removed = new MutationObserver(() => { if (!el.isConnected) { clearOriginals(); removed.disconnect(); } });
+    const removed = new MutationObserver(() => { if (!el.isConnected) { clearOriginals(); document.documentElement.classList.remove('eink'); removed.disconnect(); } });
     removed.observe(document.getElementById('main'), {childList: true, subtree: true});
     let request = 0, offset = 0, browsing = true;
     const params = () => new URLSearchParams({kind: $('#lib-kind').value, collection: $('#lib-collection').value});
@@ -244,6 +267,11 @@
     $('#lib-browse').addEventListener('click', () => load(true));
     $('#lib-more').addEventListener('click', () => load(true, true));
     $('#lib-home').addEventListener('click', home);
+    const prefs = readingPrefs(), modeSelect = $('#lib-eink'), vibrateBox = $('#lib-vibrate');
+    const sayPrefs = kept => { $('#lib-settings-say').textContent = einkSay(readingPrefs().eink) + (kept ? '' : ' This browser could not keep the setting; it applies until you leave.'); };
+    modeSelect.value = prefs.eink; vibrateBox.checked = prefs.vibrate; applyEink(); sayPrefs(true);
+    modeSelect.addEventListener('change', () => { const kept = savePrefs({...readingPrefs(), eink: modeSelect.value}); applyEink(); sayPrefs(kept); });
+    vibrateBox.addEventListener('change', () => { sayPrefs(savePrefs({...readingPrefs(), vibrate: vibrateBox.checked})); });
     for (const id of ['#lib-kind', '#lib-collection', '#lib-health']) $(id).addEventListener('change', () => load(id === '#lib-health' ? true : browsing));
     home();
   }
@@ -291,6 +319,11 @@
             <label>Availability (browse only)<select id="lib-health"><option value="">Any status</option><option value="ready">Searchable</option><option value="pending">Pending extraction</option><option value="failed">Failed extraction</option><option value="suspect">Needs text review</option><option value="catalog-only">Catalog only</option><option value="unknown">Unknown</option></select></label>
           </details>
           <div class="lib-tools"><button id="lib-home" type="button">Library home</button><button id="lib-browse" type="button">Browse shelves</button><span id="lib-totals"></span></div>
+          <details class="lib-settings"><summary>Reading settings</summary>
+            <label>E-ink mode<select id="lib-eink"><option value="auto">Automatic</option><option value="on">On</option><option value="off">Off</option></select></label>
+            <p id="lib-settings-say" class="lib-meta" role="status"></p>
+            <label class="lib-check"><input type="checkbox" id="lib-vibrate"> Vibrate when the side index moves</label>
+          </details>
           <p class="lib-preview"><a id="lib-preview" href="${api.esc(api.url('plugins/memory/reading-room-preview.html'))}">Try the reading room preview</a><small>Sample books · Colorful shelves and a sliding index</small></p>
           <p id="lib-status" role="status" aria-live="polite"></p><div id="lib-results"></div><button id="lib-more" type="button" hidden>Show more sources</button>
         </section>
