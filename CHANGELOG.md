@@ -2,6 +2,8 @@
 
 ## 4.64.0 — 2026-11-22
 
+- Release archives exclude local Python bytecode caches.
+
 - Mnemosyne can stage DOCX body paragraphs and unmerged table cells using optional MIT-licensed python-docx. The original and exact text-offset/block map are retained; a draft still requires complete-collection review before publication.
 - ZIP/XML bounds and explicit unsupported-content checks hold tracked changes, fields, graphics, notes, headers/footers, hidden text, lists and merged cells for review. No invented page numbers, automatic publication, Word installation or new reader dependency.
 
