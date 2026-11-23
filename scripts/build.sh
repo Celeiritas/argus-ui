@@ -33,4 +33,5 @@ if os.path.exists(zeus):
 open(out, 'w').write(html)
 PY
 echo $V > $O/static/VERSION
-tar -czf $O.tar.gz -C $O . && echo "built $O.tar.gz ($(du -h $O.tar.gz | cut -f1))"
+# Local test imports can create machine-specific caches; never ship those.
+tar --exclude='__pycache__' --exclude='*.pyc' -czf $O.tar.gz -C $O . && echo "built $O.tar.gz ($(du -h $O.tar.gz | cut -f1))"
