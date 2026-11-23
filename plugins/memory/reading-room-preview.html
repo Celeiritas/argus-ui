@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en" data-material="wood"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Mnemosyne · Reading room preview</title>
+<style>
+/* Self-contained sample collection; category colors always travel with a label and icon. */
+:root{color-scheme:dark;--bg:#182122;--panel:#25302f;--text:#f2eddc;--muted:#bfcbc1;--line:#4f6058;--gold:#e2bd77;--green:#a9d8ac;--shelf:linear-gradient(#ae8755,#775130 35%,#3d3024);--edge:#c19b66;--paper:#efe7d2;--ink:#293b35}
+
+:root[data-material=stone]{--bg:#19232b;--panel:#29363e;--text:#f0f0e6;--muted:#c0ccd0;--line:#53646a;--shelf:linear-gradient(#a2aba7,#6e7e80 35%,#3a4b54);--edge:#b6c3bf}
+
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:radial-gradient(ellipse at 15% 0,#a4743919,transparent 60%),var(--bg);color:var(--text);font:16px/1.5 system-ui,sans-serif}
+button,input,select{font:inherit;color:inherit;background:var(--panel);border:1px solid var(--line);border-radius:9px;min-height:44px;padding:9px 12px;max-width:100%}
+button{cursor:pointer}
+button:hover{border-color:var(--gold)}
+button:disabled{opacity:.5;cursor:default}
+:focus-visible{outline:3px solid var(--green);outline-offset:3px}
+input{min-width:0}
+input::placeholder{color:var(--muted)}
+h1,h2,h3,p{margin:0}
+h1{font-size:22px;font-weight:600}
+h2{font:600 clamp(28px,4vw,38px)/1.15 Georgia,serif}
+small{font-size:13px;color:var(--muted)}
+.frame{max-width:1080px;margin:auto;padding-inline:18px}
+.top{min-height:82px;display:flex;gap:12px;align-items:center;justify-content:space-between}
+.brand small,.eyebrow{font-size:10px;letter-spacing:.16em;color:var(--gold);text-transform:uppercase}
+.brand small{display:block}
+.top select{font-size:13px;max-width:137px}
+nav{position:sticky;top:0;z-index:8;background:var(--bg);border-block:1px solid var(--line)}
+nav .frame{display:flex;gap:6px}
+nav button{border:0;border-radius:0;background:none;color:var(--muted);white-space:nowrap}
+nav button[aria-current=page]{box-shadow:inset 0 -3px var(--green);color:var(--text)}
+main{padding-top:20px;padding-bottom:70px;min-height:75vh}
+body.indexed main{padding-right:74px}
+.crumbs{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:16px}
+.crumbs button{font-size:13px;background:none;padding:7px 9px}
+.intro{margin-bottom:20px}
+.intro p:last-child{color:var(--muted);font-size:14px;max-width:55ch;margin-top:9px}
+.eyebrow{margin-bottom:7px}
+.search{display:flex;gap:8px;max-width:560px;margin-bottom:20px}
+.search input{flex:1;width:100%}
+.search button{background:#365c47}
+.jump{display:flex;gap:10px;align-items:center;margin-bottom:24px;color:var(--muted);font-size:14px}
+.jump select{min-width:0;flex:1;max-width:280px}
+.volumes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px 25px}
+.rest{position:relative;padding-bottom:13px;min-width:0}
+.rest:after{content:'';position:absolute;left:-3px;right:-3px;bottom:0;height:9px;border-radius:2px;background:var(--shelf);border-top:1px solid var(--edge);box-shadow:0 5px 7px #0005}
+.volume{width:100%;display:grid;grid-template-columns:44px minmax(0,1fr) 62px;gap:12px;align-items:center;min-height:112px;text-align:left;padding:15px 13px;background:linear-gradient(105deg,#ffffff06,transparent),var(--panel);box-shadow:0 8px 20px #0003;border-radius:6px 12px 12px 6px}
+.volume strong{display:block;font-size:16px;line-height:1.35;font-weight:600;overflow-wrap:anywhere}
+.volume small{display:block;margin-top:6px}
+.action{font-size:12px;color:var(--green);text-align:center}
+.action b{display:block;font-size:21px;font-weight:400}
+.jacket{height:65px;position:relative;background:var(--cover);border:1px solid #fff4;border-left:6px solid #0003;border-radius:3px 7px 7px 3px;box-shadow:3px 3px 0 #0004}
+.jacket:before,.jacket:after{content:'';position:absolute;left:6px;right:6px;height:1px;background:#edd391aa}
+.jacket:before{top:12px}
+.jacket:after{bottom:12px}
+.jacket span{position:absolute;inset:0;display:grid;place-items:center;color:#fff9;font:18px Georgia,serif}
+.jacket.scroll{height:54px;background:linear-gradient(90deg,#baa981,#eee2c2 30%,#e0d1aa 85%,#b8a67d);border:0}
+.jacket.scroll:before,.jacket.scroll:after{left:-3px;right:-3px;height:7px;border-radius:5px;background:var(--cover);border:1px solid #fff4}
+.jacket.scroll:before{top:-4px}
+.jacket.scroll:after{bottom:-4px}
+.jacket.scroll span{color:#5a5038}
+.categories{display:grid;gap:26px;max-width:800px}
+.category{display:grid;grid-template-columns:minmax(0,1fr) 64px;align-items:center;gap:16px;padding:22px 18px;width:100%;text-align:left;min-height:145px}
+.category strong{font:600 25px Georgia,serif}
+.category small{display:block;margin-top:7px}
+.mini{display:flex;gap:4px;align-items:end;height:65px}
+.mini i{display:block;width:18px;height:55px;background:var(--cover);border-block:4px double #e4c790aa;border-radius:2px 4px 2px 2px}
+.mini i:nth-child(2){height:65px;filter:brightness(1.2)}
+.mini i:nth-child(3){height:47px;filter:brightness(.85)}
+.group{scroll-margin-top:70px;margin-bottom:27px}
+.group h3{font:600 28px Georgia,serif;color:var(--gold);border-bottom:1px solid var(--line);padding-bottom:9px;margin-bottom:16px}
+.rail{position:fixed;right:max(9px,calc((100vw - 1080px)/2 - 48px));top:170px;bottom:65px;max-height:530px;width:44px;display:flex;flex-direction:column;align-items:center;justify-content:space-around;z-index:10;border:1px solid var(--line);border-radius:24px;background:var(--bg);touch-action:none;user-select:none;cursor:ns-resize;padding:8px 0}
+.rail span{font-size:12px;line-height:25px;text-align:center;min-width:25px;border-radius:5px}
+.rail span.active{background:var(--gold);color:var(--ink);font-weight:700}
+.rail-hint{position:fixed;right:63px;background:var(--gold);color:var(--ink);padding:9px 14px;border-radius:10px;font-size:22px;z-index:12;pointer-events:none}
+.reader{max-width:760px;margin:auto}
+.readerbar{display:flex;align-items:center;justify-content:space-between;gap:12px;position:sticky;top:46px;z-index:5;background:var(--bg);padding-block:10px;margin-bottom:16px}
+.readerbar button{font-size:13px}
+details{border:1px solid var(--line);border-radius:10px;margin-bottom:18px;background:var(--panel)}
+summary{min-height:44px;cursor:pointer;padding:10px 14px}
+.inside{padding:0 14px 16px;display:flex;gap:12px;flex-wrap:wrap;align-items:end}
+.inside label{display:grid;gap:6px;font-size:13px}
+.inside p{flex-basis:100%;font-size:13px;color:var(--muted)}
+.paper{padding:clamp(24px,6vw,52px);background:var(--paper);color:var(--ink);border-radius:5px 12px 12px 5px;border-left:5px solid #c4ad75;box-shadow:0 12px 24px #0004}
+.paper h2{font-size:clamp(27px,5vw,38px);margin-bottom:25px}
+.paper h3{font:600 23px Georgia,serif;margin:25px 0 15px}
+.paper p{font:18px/1.85 Georgia,serif;margin-bottom:22px}
+.paper small{color:#52604d}
+.reader-nav{display:flex;gap:12px;margin-top:20px}
+.reader-nav button{flex:1}
+.focused .top,.focused nav,.focused .crumbs{display:none}
+.focused main{padding-top:0}
+.focused .readerbar{top:0}
+footer{font-size:12px;text-align:center;color:var(--muted);padding:22px;border-top:1px solid var(--line)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+
+@media(max-width:700px){.volumes{grid-template-columns:1fr}
+.volume{grid-template-columns:40px minmax(0,1fr) 55px;gap:10px;padding:13px 11px;min-height:105px}
+.volume strong{font-size:15px}
+.indexed .volume{grid-template-columns:36px minmax(0,1fr)}
+.indexed .volume .action{display:none}
+.top{min-height:76px}
+.brand small{font-size:9px}
+.category{padding:18px 13px;gap:12px}
+.paper p{font-size:18px}
+}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}
+}
+
+
+a{color:var(--green)}
+.preview-note{margin-bottom:18px;border:1px solid var(--line);border-left:4px solid var(--gold);border-radius:9px;padding:12px 14px;font-size:14px;background:var(--panel)}
+.preview-note p{margin:4px 0}
+.preview-note a{display:inline-flex;align-items:center;min-height:44px}
+.try-it{margin-top:10px}
+.try-it ol{margin:0;padding:0 18px 14px 34px;font-size:14px}
+.try-it li+li{margin-top:8px}
+
+.icon{width:24px;height:24px;flex:none;stroke:currentColor;stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round;vertical-align:middle}
+.shelf-key{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 22px}
+.shelf-key button{display:flex;gap:8px;align-items:center;color:var(--accent);border-color:var(--accent);font-size:14px}
+.shelf-key button:hover{outline:2px solid var(--gold);outline-offset:2px}
+.category{border-left:5px solid var(--accent)}
+.category strong{display:flex;gap:10px;align-items:center;color:var(--accent)}
+.category strong .icon{width:28px;height:28px}
+.volume{border-left:3px solid var(--accent)}
+.volume .kind{color:var(--accent);font-size:14px}
+.volume .kind .icon{width:18px;height:18px;margin-right:5px}
+.volume small{font-size:14px}
+.action{font-size:14px}
+.jacket span{color:var(--accent)}
+.jacket.scroll span{color:var(--cover)}
+.jacket .icon{width:24px;height:24px}
+.shelf-context{display:flex;align-items:center;gap:8px;min-height:44px;font-size:14px;color:var(--accent);padding:8px 18px;border-bottom:1px solid var(--line);max-width:1080px;margin:auto}
+.rail>span{color:var(--accent,var(--muted));display:grid;place-items:center;min-height:30px}
+.rail>span.active{color:var(--ink);background:var(--accent,var(--gold));outline:2px solid var(--gold);outline-offset:3px}
+.rail-hint{background:var(--accent,var(--gold))}
+.group{scroll-margin-top:115px}
+.group h3{color:var(--accent,var(--gold))}
+.readerbar{top:92px}
+.focused .readerbar{top:0}
+.focused .preview-note{display:none}
+
+@media(max-width:400px){.category{grid-template-columns:minmax(0,1fr);gap:12px}
+.category .mini{display:none}
+.category strong{font-size:23px}
+.top{flex-wrap:wrap;padding-block:12px;gap:8px}
+.top select{max-width:150px}
+.shelf-key{gap:8px}
+.shelf-key button{flex:1 1 calc(50% - 8px);justify-content:flex-start}
+.indexed .shelf-key button{flex-basis:100%}
+.rail{right:8px}
+.indexed .preview-note{padding:10px}
+.indexed .category{padding:16px 12px}
+}
+
+@media(max-height:520px){.rail,.rail-hint{display:none!important}.indexed main{padding-right:18px}}
+</style><body><header class="top frame"><div class="brand"><small>LeafyGrove · The reading room</small><h1>Mnemosyne</h1></div><label><span class="sr">Shelf material</span><select id="material"><option value="wood">Wood shelves</option><option value="stone">Stone shelves</option></select></label></header><nav aria-label="Library"><div class="frame"><button data-view="home">Reading table</button><button data-view="shelves">Browse shelves</button></div><div id="shelf-context" class="shelf-context" hidden></div></nav><main id="app" class="frame"></main><div id="rail" class="rail" role="slider" tabindex="0" aria-label="Jump through this collection" aria-orientation="vertical" aria-valuemin="0" hidden></div><div id="hint" class="rail-hint" aria-hidden="true" hidden></div><div id="announce" class="sr" role="status" aria-live="polite"></div><footer>Reading room preview · 16 sample titles · Your real library is unchanged. Demo reading places reset when you reload.</footer>
+<script>
+const cats=[
+ {id:'books',name:'Books',hint:'Longer journeys and ideas to return to',accent:'#C2A2EE',cover:'#5D4776',icon:'book'},
+ {id:'papers',name:'Papers',hint:'Studies, evidence, and original sources',accent:'#72C9E6',cover:'#2E6374',icon:'paper'},
+ {id:'notes',name:'Notes',hint:'Thoughts gathered along the way',accent:'#F2C46B',cover:'#73522C',icon:'pencil'},
+ {id:'guides',name:'Guides',hint:'Useful paths through a subject',accent:'#89D1A3',cover:'#365F47',icon:'compass'}
+];
+const iconPaths={book:'<path d="M12 5v15M3 4c4-1 6 0 9 2 3-2 5-3 9-2v15c-4-1-6 0-9 2-3-2-5-3-9-2Z"/>',paper:'<path d="M5 2h9l5 5v15H5ZM14 2v6h5M8 12h8M8 16h8"/>',pencil:'<path d="m4 16 12-12 4 4L8 20l-5 1ZM13 7l4 4M4 16l4 4"/>',compass:'<circle cx="12" cy="12" r="9"/><path d="m16 8-2 6-6 2 2-6ZM10 10l4 4"/>'};
+const icon=c=>`<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${iconPaths[c.icon]}</svg>`;
+const style=c=>`--accent:${c.accent};--cover:${c.cover}`;
+const shelfKey=()=>`<div class="shelf-key" aria-label="Shelf colors and icons">${cats.map(c=>`<button data-cat="${c.id}" style="${style(c)}">${icon(c)}${c.name}</button>`).join('')}</div>`;
+const previewNote=()=>`<aside class="preview-note" aria-label="About this preview"><p><strong>Reading room preview · Sample books</strong></p><p>Try the shelves with 16 sample titles. Your real library is unchanged. Reloading resets this demo.</p><a href="../../memory">← Return to Mnemosyne</a>${state.view==='home'?`<details class="try-it"><summary>How to try it</summary><ol><li>Open <strong>Browse shelves</strong>, then choose a shelf by its icon and color.</li><li>Scroll normally, slide the right-hand index, or use <strong>Jump to</strong>.</li><li>Open a title, try <strong>Focus on reading</strong>, then go Back. It moves to the front of your reading table.</li></ol></details>`:''}</aside>`;
+const names=[['books','The Atlas of Quiet Places'],['books','A Garden of Small Ideas'],['books','Maps and Memory'],['books','The Shape of Light'],['papers','Attention and the Hand'],['papers','Designing for Return'],['papers','Haptics and Timing'],['papers','Touch in Motion'],['notes','A Thought Worth Keeping'],['notes','Colors of Autumn'],['notes','Field Notes at Dawn'],['notes','Questions for Tomorrow'],['guides','Begin with a Prototype'],['guides','Reading with Purpose'],['guides','Shelfkeeping'],['guides','Working with Sources']];
+const docs=names.map(([cat,title],i)=>({id:'v'+i,cat,title,scroll:cat==='notes'||cat==='papers'}));const get=id=>docs.find(d=>d.id===id),cat=id=>cats.find(c=>c.id===id),esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let recent=[10,3,4,13,11,1,6,14,9,0].map((i,n)=>({id:docs[i].id,section:n%3})),marks={},state={view:'home'},depth=0,positions=new Map(),groups=[],index=0,dragging=false,focused=false,railProgrammatic=false,railTimer;const app=document.querySelector('#app'),rail=document.querySelector('#rail'),hint=document.querySelector('#hint');const viewKey=s=>[s.view,s.cat||'',s.id||'',s.query||''].join(':');
+function remember(id,section){recent=[{id,section},...recent.filter(r=>r.id!==id)].slice(0,10)}
+// Same-document history works inside the plugin sandbox; no URL rewrite or storage is needed.
+history.replaceState({readingRoom:true,depth,state},'');
+history.scrollRestoration='manual';
+function show(next,back=false){state=next;if(state.view!=='reader')focused=false;render();scrollTo(0,positions.get(viewKey(state))||0);(back&&state.focus?app.querySelector(`[data-open="${state.focus}"]`):app.querySelector('.page-title'))?.focus({preventScroll:true});syncRail()}
+function go(next){positions.set(viewKey(state),scrollY);state.focus=document.activeElement?.closest('[data-open]')?.dataset.open;history.replaceState({readingRoom:true,depth,state},'');depth++;history.pushState({readingRoom:true,depth,state:next},'');show(next)}
+window.addEventListener('popstate',e=>{if(e.state?.readingRoom){positions.set(viewKey(state),scrollY);const back=e.state.depth<depth;depth=e.state.depth;show(e.state.state,back)}});
+function openDoc(id){const section=recent.find(r=>r.id===id)?.section||0;remember(id,section);go({view:'reader',id,section})}
+function intro(k,t,n){return `<div class="intro"><p class="eyebrow">${k}</p><h2 tabindex="-1" class="page-title">${t}</h2><p>${n}</p></div>`}
+function search(){return `<div id="search" class="search" role="search"><label for="query" class="sr">Search sample titles</label><input id="query" type="search" required placeholder="Find a title" value="${esc(state.query||'')}"><button id="search-submit" type="button">Search</button></div>`}
+function crumbs(){return state.view==='home'?'':`<div class="crumbs"><button data-back>← Back</button><button data-view="home">Reading table</button><button data-view="shelves">Shelves</button>${state.cat?`<button data-cat="${state.cat}">${cat(state.cat).name}</button>`:''}</div>`}
+function card(d,home=false){const section=recent.find(r=>r.id===d.id)?.section||0;return `<div class="rest"><button class="volume" data-open="${d.id}" style="${style(cat(d.cat))}"><span class="jacket${d.scroll?' scroll':''}" aria-hidden="true"><span>${icon(cat(d.cat))}</span></span><span><strong>${esc(d.title)}</strong><small class="kind">${icon(cat(d.cat))}${cat(d.cat).name}</small>${home?`<small>Section ${section+1} of 5</small>`:''}</span><span class="action">${home?'Continue':'Read'}<b aria-hidden="true">→</b></span></button></div>`}
+function jump(){return `<div class="jump"><label for="jump">Jump to</label><select id="jump"><option value="">Choose a place…</option>${groups.map((g,i)=>`<option value="${i}">${g.label}</option>`).join('')}</select></div>`}
+function render(){document.body.classList.toggle('focused',focused);document.querySelectorAll('nav button').forEach(b=>b.setAttribute('aria-current',b.dataset.view===(state.view==='home'?'home':'shelves')?'page':'false'));groups=[];let h=previewNote()+crumbs();const current=state.cat?cat(state.cat):state.id?cat(get(state.id).cat):null;const context=document.querySelector('#shelf-context');context.hidden=!current;context.innerHTML=current?icon(current)+current.name:'';context.style.cssText=current?style(current):'';document.documentElement.style.setProperty('--accent',current?.accent||'var(--gold)');
+if(state.view==='home')h+=intro('Your reading table','Recently checked out','Pick up one of your last ten reads.')+shelfKey()+search()+`<div class="volumes">${recent.map(r=>card(get(r.id),true)).join('')}</div>`;
+if(state.view==='shelves'){groups=cats.map(c=>({id:'shelf-'+c.id,label:c.name,mark:icon(c),accent:c.accent}));h+=intro('The collection','Choose a shelf','Slide the side index or scroll normally.')+search()+jump()+`<div class="categories">${cats.map(c=>`<section class="group rest" id="shelf-${c.id}" tabindex="-1"><button class="category" data-cat="${c.id}" style="${style(c)}"><span><strong>${icon(c)}${c.name}</strong><small>${c.hint}</small><small>4 titles · Browse shelf →</small></span><span class="mini" aria-hidden="true"><i></i><i></i><i></i></span></button></section>`).join('')}</div>`}
+if(state.view==='category'){const list=docs.filter(d=>d.cat===state.cat).sort((a,b)=>a.title.localeCompare(b.title));const letters=[...new Set(list.map(d=>d.title[0]))];groups=letters.map(l=>({id:'letter-'+l,label:l,mark:l}));h+=intro('Browse shelf',cat(state.cat).name,'Titles stay readable; the index does the jumping.')+search()+jump()+letters.map(l=>`<section class="group" id="letter-${l}" tabindex="-1"><h3>${l}</h3><div class="volumes">${list.filter(d=>d.title[0]===l).map(d=>card(d)).join('')}</div></section>`).join('')}
+if(state.view==='search'){const found=docs.filter(d=>(d.title+' '+cat(d.cat).name).toLowerCase().includes(state.query.toLowerCase()));h+=intro('Find a volume','Search results',`${found.length} sample titles found.`)+search()+`<div class="volumes">${found.map(d=>card(d)).join('')}</div>`}
+if(state.view==='reader'){const d=get(state.id),n=state.section;h+=`<div class="reader"><div class="readerbar"><small>Section ${n+1} of 5</small><button id="focus" aria-pressed="${focused}">${focused?'Leave focus':'Focus on reading'}</button></div><details><summary>Reading controls</summary><div class="inside"><label for="section">Go to section</label><select id="section">${Array.from({length:5},(_,i)=>`<option value="${i}" ${i===n?'selected':''}>Section ${i+1}</option>`).join('')}</select><button id="save">Save a ribbon here</button><button id="ribbon" ${marks[d.id]===undefined?'disabled':''}>Return to ribbon</button><p id="saved">${marks[d.id]===undefined?'Last section is remembered during this demo. A ribbon keeps a separate place.':`Ribbon saved at section ${marks[d.id]+1}.`}</p></div></details><article class="paper"><h2 tabindex="-1" class="page-title" id="readerTitle">${esc(d.title)}</h2><h3>${['An opening thought','Looking more closely','Making connections','A useful question','Returning with fresh eyes'][n]}</h3><p>A library becomes familiar through return. We remember the shelf, the color of a cover, and the place where an idea began to make sense. These small landmarks help us find our way without asking us to remember every title.</p><p>The useful detail is the one that supports the reading. A colored binding can mark a volume; a clear label tells us which volume it is. A shelf gives the collection a shape, while a simple path lets us move through it.</p><p>Pause here for a moment. What would make this thought easier to find tomorrow? A name, a note, or a ribbon may be enough.</p><small>Synthetic text for this concept. Sections are reading segments, not claimed printed pages.</small></article><div class="reader-nav"><button data-step="-1" ${n===0?'disabled':''}>← Previous section</button><button data-step="1" ${n===4?'disabled':''}>Next section →</button></div></div>`}
+app.innerHTML=h;document.body.classList.toggle('indexed',groups.length>0);rail.hidden=!groups.length;rail.innerHTML=groups.map(g=>`<span aria-hidden="true" style="${g.accent?`--accent:${g.accent}`:''}">${g.mark}</span>`).join('');rail.setAttribute('aria-valuemax',String(Math.max(0,groups.length-1)));setIndex(0);document.querySelector('#announce').textContent=state.view==='reader'?`Section ${state.section+1} of 5`:app.querySelector('.page-title')?.textContent||''}
+function setIndex(i){index=i;rail.setAttribute('aria-valuenow',String(i));rail.setAttribute('aria-valuetext',groups[i]?.label||'');rail.querySelectorAll(':scope > span').forEach((e,n)=>e.classList.toggle('active',n===i))}
+function jumpTo(i,focus=false){if(!groups[i])return;railProgrammatic=true;clearTimeout(railTimer);railTimer=setTimeout(()=>railProgrammatic=false,180);setIndex(i);const target=document.getElementById(groups[i].id);target.scrollIntoView({block:'start'});if(focus)target.focus({preventScroll:true})}
+function syncRail(){if(dragging||railProgrammatic||!groups.length)return;let n=0;groups.forEach((g,i)=>{if(document.getElementById(g.id).getBoundingClientRect().top<=150)n=i});setIndex(n)}
+function scrub(e){const b=rail.getBoundingClientRect(),i=Math.floor(Math.max(0,Math.min(.999,(e.clientY-b.top)/b.height))*groups.length);jumpTo(i);hint.textContent=groups[i].label;hint.style.top=Math.max(80,Math.min(innerHeight-80,e.clientY-25))+'px';hint.hidden=false}
+rail.addEventListener('pointerdown',e=>{if(!groups.length)return;dragging=true;rail.setPointerCapture(e.pointerId);scrub(e)});rail.addEventListener('pointermove',e=>{if(dragging)scrub(e)});for(const name of ['pointerup','pointercancel','lostpointercapture'])rail.addEventListener(name,()=>{dragging=false;hint.hidden=true});rail.addEventListener('keydown',e=>{let n=index;if(e.key==='ArrowDown')n++;else if(e.key==='ArrowUp')n--;else if(e.key==='Home')n=0;else if(e.key==='End')n=groups.length-1;else return;e.preventDefault();jumpTo(Math.max(0,Math.min(groups.length-1,n)))});window.addEventListener('scroll',syncRail,{passive:true});
+function changeSection(n){if(!Number.isInteger(n)||n<0||n>4)return;state.section=n;history.replaceState({readingRoom:true,depth,state},'');remember(state.id,n);render();document.querySelector('#readerTitle').focus();document.querySelector('.reader').scrollIntoView({block:'start'})}
+document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.id==='search-submit')return findTitle();if(b.dataset.open)return openDoc(b.dataset.open);if(b.dataset.cat)return go({view:'category',cat:b.dataset.cat});if(b.dataset.view)return go({view:b.dataset.view});if(b.hasAttribute('data-back'))return depth?history.back():go({view:'home'});if(b.dataset.step)return changeSection(state.section+Number(b.dataset.step));if(b.id==='focus'){focused=!focused;document.body.classList.toggle('focused',focused);b.textContent=focused?'Leave focus':'Focus on reading';b.setAttribute('aria-pressed',String(focused))}if(b.id==='save'){marks[state.id]=state.section;document.querySelector('#saved').textContent=`Ribbon saved at section ${state.section+1}.`;document.querySelector('#ribbon').disabled=false}if(b.id==='ribbon')changeSection(marks[state.id])});
+document.addEventListener('change',e=>{if(e.target.id==='material')document.documentElement.dataset.material=e.target.value;if(e.target.id==='jump'&&e.target.value!=='')jumpTo(Number(e.target.value),true);if(e.target.id==='section')changeSection(Number(e.target.value))});// The plugin sandbox intentionally disallows form submissions. Search stays entirely in this page.
+function findTitle(){const query=document.querySelector('#query').value.trim();if(query)go({view:'search',query})}
+document.addEventListener('keydown',e=>{if(e.target.id==='query'&&e.key==='Enter'){e.preventDefault();findTitle()}});render();
+</script></body></html>

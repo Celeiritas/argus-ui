@@ -1,5 +1,9 @@
 # Changelog
 
+## 4.66.0 — 2026-11-22
+
+- Open a private reading room preview directly from Mnemosyne Library. A synthetic collection lets you try wooden or stone shelves, ten recent reads, category and alphabet indexes, reading focus and separate ribbons. Category icons and colors remain consistent; labels and keyboard controls accompany them. Browser Back and Forward retain the demo route. The real library and its reading history are unchanged.
+
 ## 4.65.0 — 2026-11-22
 
 - Library home shows ten recently checked out documents across source types, with continuation at the last successfully read section. Changed revisions start fresh; unavailable sources remain visible without misleading continuation. Failed catalog pagination can be retried without skipping sources.
