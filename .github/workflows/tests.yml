@@ -30,5 +30,7 @@ jobs:
             echo "::warning title=Ubuntu mirrors unreachable::Chromium was installed without its system packages (some fonts may be missing). The tests below still decide."
             npx playwright install chromium
           fi
+      - name: Optional Mnemosyne DOCX importer test dependencies
+        run: python3 -m pip install -r requirements-mnemosyne-docx.txt
       - name: tests/run.sh
         run: bash tests/run.sh

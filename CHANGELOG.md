@@ -1,5 +1,10 @@
 # Changelog
 
+## 4.64.0 — 2026-11-22
+
+- Mnemosyne can stage DOCX body paragraphs and unmerged table cells using optional MIT-licensed python-docx. The original and exact text-offset/block map are retained; a draft still requires complete-collection review before publication.
+- ZIP/XML bounds and explicit unsupported-content checks hold tracked changes, fields, graphics, notes, headers/footers, hidden text, lists and merged cells for review. No invented page numbers, automatic publication, Word installation or new reader dependency.
+
 ## 4.63.0 — 2026-11-22
 
 - Integrate optional local EPUBCheck into EPUB staging. Configured validation must pass before extraction; reports, warnings and the original stay with the staged book. Failed validation or unsupported content produces a held marker, never an import-ready inventory. Java is used only during this optional import check.

@@ -89,3 +89,24 @@ When configured, validation is mandatory for that import. The adapter invokes Ja
 Each new staging directory keeps the exact input as `original.epub`. `epubcheck-report.json` and `.log` stay beside it. A successful draft records the validator version in extraction provenance; a failure writes `HELD-FOR-REVIEW.json` and never writes the ready marker/inventory. A standards-valid EPUB may still be unsupported by Mnemosyne's conservative text extractor (for example fixed layout or DTD declarations). Validation success is not a promise of complete visual reproduction or correct text extraction.
 
 Licensing: EPUBCheck 5.4.0's bundled LICENSE.txt is BSD-3-Clause. Its distribution includes separate dependency notices/licenses (Apache-2.0, BSD-3-Clause, MIT, MPL-2.0 and W3C notices); preserve the whole upstream distribution when packaging it. A Java runtime has its own license and notices. The portable Temurin runtime used for local validation retains its GPLv2/ClassPath-exception and other component notices. No upstream binaries or sample books are committed here. See [the official release](https://github.com/w3c/epubcheck/releases/tag/v5.4.0) and the license files in the distribution rather than relying on the promotional site label.
+
+
+## Optional DOCX text import (4.64)
+
+Install `requirements-mnemosyne-docx.txt` in a dedicated importer environment:
+`python -m pip install -r requirements-mnemosyne-docx.txt`.
+Then run `python scripts/mnemosyne-docx.py document.docx --output new-staging-directory --collection notes --key stable-source-key`.
+The default kind is `note`; choose `--kind guide` or another explicit library kind as appropriate.
+This is an offline staging command, not a phone upload interface. Search and reading use already stored SQLite text and do not import these optional packages.
+
+Supported content is body paragraphs, hyperlink display text, and unmerged table cells (including nested tables), in document order. Tables become a sequence of cell paragraphs; styling, automatic list labels, graphics and pagination are not reproduced. Word files do not provide reliable physical pages, so the record uses `page_scheme=none`.
+
+The importer retains `original.docx`, `text.txt`, and `locations.json`. The map binds original/text SHA-256 hashes to XML paragraph/table-cell paths and start/end Unicode-code-point offsets in the exact extracted text. It remains in staging for audit; the current reader shows the text, not these structural locators. It is not a Word rendering or an original-DOCX download feature.
+
+Successful staging creates `draft-manifest.json` with `complete=false` and `READY-FOR-REVIEW.json`. Inspect the text and combine the source into a genuinely complete collection inventory before using the reviewed catalog publisher. Never flip the flag just to bypass collection review. Failure after original capture retains a `HELD-FOR-REVIEW.json` reason and the captured original. Existing staging directories are refused. Oversized inputs are refused before capture; the input file is never changed.
+
+Tracked changes, content controls, fields/TOCs, drawings/text boxes, embedded objects/macros, equations, foot/endnote references, comment references, nonempty headers/footers or other text parts, hidden text, numbered/bulleted lists and merged/omitted table cells are deliberately held. Unsupported containers are also held so python-docx cannot silently omit their text. External relationships other than hyperlinks are refused; hyperlink targets are never fetched. There is no OCR or neural guesswork.
+
+Limits: 64 MiB archive, 4,096 members, 128 MiB total expansion, 8 MiB/member, 100 XML levels and 100,000 elements per XML part, 30 nested table levels, 10,000 extracted paragraphs and 12 MiB extracted UTF-8 text. DTD/entity declarations, unsafe/duplicate member names and encrypted ZIP entries are refused before python-docx opens the immutable byte snapshot.
+
+Licensing: python-docx 1.2.0 is MIT (Copyright Steve Canny); lxml and typing_extensions have their own included notices. Keep the complete installed distributions and license directories when packaging the importer. Binaries are not vendored in this repository, and installation never occurs automatically on the serving host. The pinned optional requirements are tested in Linux CI. Sources: https://github.com/python-openxml/python-docx/blob/master/LICENSE and https://python-docx.readthedocs.io/en/latest/api/document.html.
