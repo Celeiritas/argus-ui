@@ -68,3 +68,15 @@
 
 .lib-reader-nav{display:flex;flex-wrap:wrap;gap:var(--s2)}
 .lib-reader-text{overflow-wrap:anywhere;tab-size:4}
+
+.lib-reader-tools,.lib-jump{display:flex;flex-wrap:wrap;align-items:end;gap:var(--s2)}
+.lib-jump label{display:grid;gap:var(--s1);font-size:var(--fs-sec);max-width:100%}
+.lib-jump input{width:8em;max-width:100%;min-height:44px;padding:8px;font:inherit;color:var(--snow);background:var(--bg,#1f252c);border:1px solid var(--frost);border-radius:6px;box-sizing:border-box}
+.lib-reader-tools [hidden]{display:none}
+.lib-navigation{margin-bottom:var(--s2)}
+
+.lib-recent{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:var(--s2);align-items:start}
+.lib-recent>h4{grid-column:1;grid-row:1}
+.lib-recent>.lib-meta{grid-column:1;grid-row:2;margin-bottom:0}
+.lib-recent>.lib-continue{grid-column:2;grid-row:1 / span 2;max-width:120px;align-self:center}
+.lib-recent>.lib-source,.lib-recent>.lib-recent-note{grid-column:1 / -1;grid-row:auto}

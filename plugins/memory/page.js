@@ -37,6 +37,30 @@
     return html;
   }
 
+  // Browsing history is local to this browser; no text or titles are persisted.
+  const recentKey = 'mnemosyne-recent-v1';
+  let sessionRecent = [], sessionRecentOnly = false;
+  function recentReads() {
+    if (sessionRecentOnly) return sessionRecent;
+    try {
+      const raw = localStorage.getItem(recentKey);
+      if (!raw) return sessionRecent;
+      if (raw.length > 10000) return [];
+      const rows = JSON.parse(raw), ids = new Set();
+      if (!Array.isArray(rows)) return [];
+      return rows.filter(row => {
+        if (!row || typeof row.id !== 'string' || typeof row.revision !== 'string' || !/^[a-f0-9]{64}$/.test(row.id) || !/^[a-f0-9]{64}$/.test(row.revision) ||
+            !Number.isSafeInteger(row.offset) || row.offset < 0 || row.offset > 100000 || ids.has(row.id)) return false;
+        ids.add(row.id); return true;
+      }).slice(0, 10).map(({id, revision, offset}) => ({id, revision, offset}));
+    } catch (_) { return sessionRecent; }
+  }
+  function rememberRead(source, offset) {
+    sessionRecent = [{id:source.id, revision:source.revision, offset}, ...recentReads().filter(row => row.id !== source.id)].slice(0, 10);
+    try { localStorage.setItem(recentKey, JSON.stringify(sessionRecent)); sessionRecentOnly = false; return true; }
+    catch (_) { sessionRecentOnly = true; return false; }
+  }
+
   const originalURLs = new Set();
   function clearOriginals() { originalURLs.forEach(u => URL.revokeObjectURL(u)); originalURLs.clear(); }
   function libraryUI(el, api) {
@@ -48,51 +72,102 @@
     const status = msg => { $('#lib-status').textContent = msg; };
     const chapterLabel = c => (c.label === `Chapter ${Number(c.number)}` ? c.label : `Chapter ${Number(c.number)}: ${c.label}`) + (c.linear === false ? ' (additional material)' : '');
     const label = r => `${r.kind === 'paper' ? 'Original paper' : r.kind} · ${r.collection}`;
-    function item(r, passage) {
+    function item(r, passage, recent = null) {
       const id = passage ? r.source_id : r.id;
-      return `<article class="lib-result"><h4>${e(r.title)}</h4><p class="lib-meta">${e(label(r))}${passage && r.pdf_page ? ` · PDF page ${Number(r.pdf_page)}` : ''}${r.chapter ? ` · ${e(chapterLabel(r.chapter))}` : ''}</p>
-        ${passage ? `<p class="lib-excerpt">${e(r.text.slice(0, 160))}${r.text.length > 160 ? '…' : ''}</p><details><summary>Read full passage</summary><p class="lib-full">${e(r.text)}</p><p class="lib-meta">${r.chapter ? e(chapterLabel(r.chapter)) + '.' : r.pdf_page ? `PDF page ${Number(r.pdf_page)}; printed page not recorded.` : 'Text source; no page number recorded.'} Keyword match, not a verified answer.</p></details>` : `<p class="lib-meta">${e(r.health === 'ready' ? 'Searchable' : r.health)}${r.diagnostic ? ' · ' + e(r.diagnostic) : ''}</p>`}
-        <details class="lib-source" data-source="${e(id)}" data-revision="${e(r.revision)}" data-page="${passage && r.pdf_page ? Number(r.pdf_page) : ''}" data-reader="${r.chapter ? Number(r.chapter.reader_offset) : ''}"><summary>Read source and details</summary><div class="lib-source-body"></div></details></article>`;
+      return `<article class="lib-result${recent ? ' lib-recent' : ''}"><h4>${e(r.title)}</h4><p class="lib-meta">${e(label(r))}${recent && !recent.changed ? ` · Section ${recent.offset + 1}` : ''}${passage && r.pdf_page ? ` · PDF page ${Number(r.pdf_page)}` : ''}${r.chapter ? ` · ${e(chapterLabel(r.chapter))}` : ''}</p>
+        ${passage ? `<p class="lib-excerpt">${e(r.text.slice(0, 160))}${r.text.length > 160 ? '…' : ''}</p><details><summary>Read full passage</summary><p class="lib-full">${e(r.text)}</p><p class="lib-meta">${r.chapter ? e(chapterLabel(r.chapter)) + '.' : r.pdf_page ? `PDF page ${Number(r.pdf_page)}; printed page not recorded.` : 'Text source; no page number recorded.'} Keyword match, not a verified answer.</p></details>` : recent ? '' : `<p class="lib-meta">${e(r.health === 'ready' ? 'Searchable' : r.health)}${r.diagnostic ? ' · ' + e(r.diagnostic) : ''}</p>`}
+        ${recent ? `<button type="button" class="lib-continue">${recent.changed ? 'Open updated document' : 'Continue reading'}</button>${recent.changed ? '<p class="lib-meta lib-recent-note">This document has changed. Open its current version from the beginning.</p>' : ''}` : ''}
+        <details class="lib-source" data-source="${e(id)}" data-revision="${e(r.revision)}" data-page="${passage && r.pdf_page ? Number(r.pdf_page) : ''}" data-reader="${recent ? recent.offset : r.chapter ? Number(r.chapter.reader_offset) : ''}"><summary>Read source and details</summary><div class="lib-source-body"></div></details></article>`;
     }
     async function sourceDetail(details) {
-      if (!details.open || details.dataset.loaded) return;
+      if (!details.open || details.dataset.loaded || details.dataset.loading) return;
+      details.dataset.loading = '1';
       const body = details.querySelector('.lib-source-body'); body.textContent = 'Loading source…';
       const r = await api.get('library/source?id=' + encodeURIComponent(details.dataset.source) + '&revision=' + encodeURIComponent(details.dataset.revision));
-      if (!details.isConnected) return;
+      delete details.dataset.loading;
+      if (!details.isConnected || !details.open) return;
       if (!r.ok) { body.textContent = r.data?.msg || 'Could not load the source. Close and reopen to retry.'; return; }
       details.dataset.loaded = '1'; const d = r.data;
       body.innerHTML = `
-        <details class="lib-reader"><summary>Read source text</summary><div class="lib-reader-body"><p class="lib-reader-status" role="status" tabindex="-1"></p><p class="lib-reader-text lib-full"></p><div class="lib-reader-nav"><button type="button" class="lib-prev">Read previous section</button><button type="button" class="lib-next">Read next section</button></div></div></details>
+        <details class="lib-reader"><summary>Read source text</summary><div class="lib-reader-body"><div class="lib-reader-tools"><button type="button" class="lib-save" disabled>Save place</button><button type="button" class="lib-resume" hidden>Resume reading</button></div><p class="lib-place-status lib-meta" role="status"></p><details class="lib-navigation"><summary>Jump to section</summary><form class="lib-jump"><label>Section number <input type="number" min="1" step="1" required inputmode="numeric" disabled></label><button type="submit" disabled>Read section</button></form></details><p class="lib-reader-status" role="status" tabindex="-1"></p><p class="lib-reader-text lib-full"></p><div class="lib-reader-nav"><button type="button" class="lib-prev">Read previous section</button><button type="button" class="lib-next">Read next section</button></div></div></details>
         <details class="lib-file-details"><summary>View file details</summary><dl><dt>File format</dt><dd>${e(d.file_format || 'unknown')}</dd><dt>Authorship</dt><dd>${e(d.authorship)}</dd><dt>Source version</dt><dd>${e(d.source_version)}</dd><dt>Extraction</dt><dd>${e(d.health)} · ${e(d.extraction_version)}</dd><dt>Indexed</dt><dd>${e(d.indexed_at)}</dd><dt>Revision</dt><dd>${e(d.revision)}</dd></dl></details>
         ${d.url ? `<a href="${e(d.url)}" target="_blank" rel="noopener noreferrer">Open source website</a>` : ''}
         ${d.original ? `<p class="lib-meta">Original: ${e(d.original.split('/').pop())}</p><button type="button" class="lib-original">Prepare original PDF</button><p class="lib-original-status" role="status"></p>` : '<p class="lib-meta">No original file is connected to the viewer yet.</p>'}`;
       const reader = body.querySelector('.lib-reader'), readStatus = body.querySelector('.lib-reader-status');
       const text = body.querySelector('.lib-reader-text'), prev = body.querySelector('.lib-prev'), next = body.querySelector('.lib-next');
+      const save = body.querySelector('.lib-save'), resume = body.querySelector('.lib-resume');
+      const placeStatus = body.querySelector('.lib-place-status'), jump = body.querySelector('.lib-jump');
+      const section = jump.querySelector('input'), jumpButton = jump.querySelector('button');
+      const placeKey = 'mnemosyne-reading-places-v1';
+      const identity = JSON.stringify([d.id, d.revision]);
+      function places() {
+        const raw = localStorage.getItem(placeKey);
+        if (!raw || raw.length > 100000) return [];
+        const rows = JSON.parse(raw);
+        return Array.isArray(rows) ? rows.filter(row => row && typeof row.key === 'string' && row.key.length < 300 && Number.isSafeInteger(row.offset) && row.offset >= 0 && row.offset <= 100000).slice(-100) : [];
+      }
+      let saved = null;
+      try { saved = places().find(row => row.key === identity)?.offset ?? null; } catch (_) { /* Reading works without storage. */ }
+      function showPlace(message) {
+        resume.hidden = saved === null;
+        placeStatus.textContent = message || (saved === null ? 'Save a place on this browser to return later.' : `Saved section ${saved + 1} on this browser.`);
+      }
+      showPlace();
       let readOffset = 0, readTotal = 0, reading = false, loaded = false;
       prev.disabled = true; next.disabled = true;
       async function readSection(offset, initial = false) {
         if (reading) return;
-        reading = true; prev.disabled = true; next.disabled = true; readStatus.textContent = 'Loading text…';
+        reading = true; prev.disabled = true; next.disabled = true; save.disabled = true; resume.disabled = true; section.disabled = true; jumpButton.disabled = true; readStatus.textContent = 'Loading text…';
         const params = new URLSearchParams({id:d.id, revision:d.revision, offset});
         if (initial && details.dataset.page) params.set('pdf_page', details.dataset.page);
         if (initial && details.dataset.reader) params.set('offset', details.dataset.reader);
         const result = await api.get('library/read?' + params);
         if (!body.isConnected) return;
-        reading = false;
+        reading = false; resume.disabled = false;
         if (!result.ok) {
           readStatus.textContent = result.data?.msg || 'Could not load text. Close and reopen to retry. Your current text is kept.';
+          save.disabled = readTotal === 0; section.disabled = readTotal === 0; jumpButton.disabled = readTotal === 0;
           loaded = false; prev.disabled = readOffset <= 0; next.disabled = readOffset + 1 >= readTotal; return;
         }
-        const data = result.data; loaded = true;
-        if (!data.available) { readStatus.textContent = data.reason || 'No reviewed text is available.'; return; }
-        readOffset = data.offset; readTotal = data.total;
+        const data = result.data;
+        if (!data.available) { loaded = false; readStatus.textContent = data.reason || 'No reviewed text is available.'; save.disabled = readTotal === 0; section.disabled = readTotal === 0; jumpButton.disabled = readTotal === 0; prev.disabled = readOffset <= 0; next.disabled = readOffset + 1 >= readTotal; return; }
+        loaded = true; readOffset = data.offset; readTotal = data.total;
+        save.disabled = false; section.disabled = false; jumpButton.disabled = false;
+        if (saved !== null && saved >= readTotal) { saved = null; showPlace('The saved section is unavailable. Save a new place in this document.'); }
+        if (reader.open && details.open && !rememberRead(d, readOffset)) showPlace('Reading history is kept for this visit only; this browser could not save it.');
+        section.max = String(readTotal); section.value = String(readOffset + 1);
         const block = data.blocks[0];
         text.textContent = block.text || '(No extracted text on this page.)';
         readStatus.textContent = `Section ${readOffset + 1} of ${readTotal}${block.pdf_page ? ` · PDF page ${block.pdf_page}; printed page not recorded` : ''}${block.chapter ? ` · ${chapterLabel(block.chapter)}` : ''}. Extracted text; check the original for layout.`;
         prev.disabled = readOffset <= 0; next.disabled = readOffset + 1 >= readTotal;
         if (!initial) { readStatus.focus({preventScroll:true}); readStatus.scrollIntoView({block:'start'}); }
       }
-      reader.addEventListener('toggle', () => { if (reader.open && !loaded) readSection(readOffset, readTotal === 0); });
+      reader.addEventListener('toggle', () => {
+        if (!reader.open) return;
+        if (!loaded) readSection(readOffset, readTotal === 0);
+        else if (details.open && !rememberRead(d, readOffset)) showPlace('Reading history is kept for this visit only; this browser could not save it.');
+      });
+      details.addEventListener('toggle', () => {
+        if (details.open && reader.open && loaded && !rememberRead(d, readOffset)) showPlace('Reading history is kept for this visit only; this browser could not save it.');
+      });
+      if (details.dataset.continue) reader.open = true;
+      save.addEventListener('click', () => {
+        if (reading || readTotal === 0) return;
+        try {
+          let rows;
+          try { rows = places(); } catch (_) { rows = []; }
+          rows = rows.filter(row => row.key !== identity);
+          rows.push({key:identity, offset:readOffset});
+          localStorage.setItem(placeKey, JSON.stringify(rows.slice(-100)));
+          saved = readOffset; showPlace();
+        } catch (_) { showPlace('This browser could not save your place. You can keep reading.'); }
+      });
+      resume.addEventListener('click', () => { if (saved !== null) readSection(saved); });
+      jump.addEventListener('submit', event => {
+        event.preventDefault();
+        const target = Number(section.value);
+        if (Number.isSafeInteger(target) && target >= 1 && target <= readTotal) readSection(target - 1);
+      });
       prev.addEventListener('click', () => readSection(readOffset - 1));
       next.addEventListener('click', () => readSection(readOffset + 1));
       body.querySelector('.lib-original')?.addEventListener('click', async event => {
@@ -109,22 +184,48 @@
         } catch (_) { msg.textContent = 'The PDF could not be prepared. Try again.'; }
       });
     }
-    function wire() { el.querySelectorAll('.lib-source:not([data-wired])').forEach(d => { d.dataset.wired = '1'; d.addEventListener('toggle', () => sourceDetail(d)); }); }
-    async function load(browse, more = false) {
+    function wire() { el.querySelectorAll('.lib-source:not([data-wired])').forEach(d => {
+      d.dataset.wired = '1'; d.addEventListener('toggle', () => sourceDetail(d));
+      d.closest('article').querySelector('.lib-continue')?.addEventListener('click', event => {
+        d.dataset.continue = '1'; d.open = true;
+        if (d.dataset.loaded) d.querySelector('.lib-reader').open = true;
+        event.currentTarget.hidden = true;
+      });
+    }); }
+    async function home() {
+      const seq = ++request, rows = recentReads();
+      $('#lib-heading').textContent = 'Recently checked out';
+      $('#lib-more').hidden = true; $('#lib-totals').textContent = '';
+      if (!rows.length) { await load(true, false, true); return; }
+      status('Loading your recently checked out documents…');
+      const results = await Promise.all(rows.map(row => api.get('library/source?id=' + encodeURIComponent(row.id))));
+      if (seq !== request || !el.isConnected) return;
+      clearOriginals();
+      $('#lib-results').innerHTML = results.map((result, i) => {
+        if (!result.ok) return `<article class="lib-result"><h4>Unavailable document</h4><p class="lib-meta">${result.status === 404 ? 'This document is no longer in the current catalog.' : 'Could not load this document. Choose Library home to retry.'}</p></article>`;
+        const d = result.data, changed = d.revision !== rows[i].revision;
+        return item(d, false, {changed, offset:changed ? 0 : rows[i].offset});
+      }).join('');
+      status('Your last ' + rows.length + ' checked out documents on this browser. Nothing is moved or locked.');
+      wire();
+    }
+    async function load(browse, more = false, emptyHome = false) {
       const seq = ++request, query = $('#lib-query').value.trim(); browsing = browse;
-      if (!more) offset = 0;
+      const nextOffset = more ? offset + 30 : 0;
+      $('#lib-heading').textContent = emptyHome ? 'Your library' : browse ? 'Browse shelves' : 'Search library';
       const p = params();
       $('#lib-scope').textContent = $('#lib-kind').selectedOptions[0].textContent;
       if (!browse && !query) { status('Enter a topic or phrase, or browse your sources.'); return; }
-      if (browse) { p.set('health', $('#lib-health').value); p.set('offset', offset); }
+      if (browse) { p.set('health', $('#lib-health').value); p.set('offset', nextOffset); }
       else p.set('q', query);
       $('#lib-more').hidden = true; status(browse ? 'Loading sources…' : 'Searching your sources…');
       const r = await api.get('library/' + (browse ? 'catalog' : 'search') + '?' + p);
       if (seq !== request || !el.isConnected) return;
-      if (!r.ok) { status(r.data?.msg || 'The library did not answer. Your previous results are kept.'); return; }
+      if (!r.ok) { $('#lib-more').hidden = !more; status(r.data?.msg || 'The library did not answer. Your previous results are kept.'); return; }
       const d = r.data, rows = browse ? d.sources : d.passages;
       if (d.configured === false) { status('Your library has not been connected yet. Backups are available below.'); $('#lib-results').replaceChildren(); return; }
       if (browse) {
+        offset = nextOffset;
         const total = Object.values(d.totals).reduce((a, b) => a + b, 0);
         $('#lib-totals').textContent = `${total} catalogued · ${d.totals.ready || 0} searchable`;
         if (!$('#lib-collection').dataset.loaded) {
@@ -134,15 +235,17 @@
         status(d.total ? `${Math.min(offset + rows.length, d.total)} of ${d.total} sources in this view.` : 'No sources in this view. Try another filter.');
         $('#lib-more').hidden = offset + rows.length >= d.total;
       } else status(rows.length ? `${rows.length} matching passages. Open a passage to check its context.` : 'No matching passages in this scope. Try different words or source filters.');
+      if (emptyHome) status('No recently checked out documents yet. Browse your sources below or search to start reading.');
       const content = rows.map(r => item(r, !browse)).join('');
       if (more) $('#lib-results').insertAdjacentHTML('beforeend', content); else { clearOriginals(); $('#lib-results').innerHTML = content; }
       wire();
     }
     $('#lib-search').addEventListener('submit', event => { event.preventDefault(); load(false); });
     $('#lib-browse').addEventListener('click', () => load(true));
-    $('#lib-more').addEventListener('click', () => { offset += 30; load(true, true); });
+    $('#lib-more').addEventListener('click', () => load(true, true));
+    $('#lib-home').addEventListener('click', home);
     for (const id of ['#lib-kind', '#lib-collection', '#lib-health']) $(id).addEventListener('change', () => load(id === '#lib-health' ? true : browsing));
-    load(true);
+    home();
   }
 
   function fill(el, api, v) {
@@ -180,14 +283,14 @@
       clearOriginals(); delete el.dataset.backupTouched;
       el.innerHTML = `<div class="memory">
         <section class="panel mem-library" aria-labelledby="lib-heading">
-          <h3 id="lib-heading">Find in your library</h3>
+          <h3 id="lib-heading">Recently checked out</h3>
           <form id="lib-search" role="search"><label for="lib-query" class="sr">Search your sources</label><input id="lib-query" type="search" maxlength="300" placeholder="Search a topic or phrase"><button type="submit" class="primary">Search</button></form>
-          <details class="lib-filters"><summary>Filter sources <span id="lib-scope">Original papers</span></summary>
-            <label>Source type<select id="lib-kind"><option value="paper">Original papers</option><option value="">All source types</option><option value="book">Books</option><option value="learning">Our learnings</option><option value="note">Notes</option><option value="summary">Summaries</option><option value="guide">Guides</option><option value="unknown">Unclassified</option></select></label>
+          <details class="lib-filters"><summary>Filter sources <span id="lib-scope">All source types</span></summary>
+            <label>Source type<select id="lib-kind"><option value="paper">Original papers</option><option value="" selected>All source types</option><option value="book">Books</option><option value="learning">Our learnings</option><option value="note">Notes</option><option value="summary">Summaries</option><option value="guide">Guides</option><option value="unknown">Unclassified</option></select></label>
             <label>Collection<select id="lib-collection"><option value="">All collections</option></select></label>
             <label>Availability (browse only)<select id="lib-health"><option value="">Any status</option><option value="ready">Searchable</option><option value="pending">Pending extraction</option><option value="failed">Failed extraction</option><option value="suspect">Needs text review</option><option value="catalog-only">Catalog only</option><option value="unknown">Unknown</option></select></label>
           </details>
-          <div class="lib-tools"><button id="lib-browse" type="button">Browse sources</button><span id="lib-totals"></span></div>
+          <div class="lib-tools"><button id="lib-home" type="button">Library home</button><button id="lib-browse" type="button">Browse shelves</button><span id="lib-totals"></span></div>
           <p id="lib-status" role="status" aria-live="polite"></p><div id="lib-results"></div><button id="lib-more" type="button" hidden>Show more sources</button>
         </section>
         <div class="mem-backup-summary"><h3>Backups</h3><p id="mem-summary" role="status">Checking backups…</p></div>

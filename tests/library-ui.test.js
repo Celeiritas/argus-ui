@@ -66,9 +66,42 @@ const backup = {summary:'Backups are fresh.',attention:false,folder:'fixtures',f
   await p.screenshot({path:path.join(process.env.SHOTS||root,'library-phone.png'),fullPage:true});
   await p.locator('.lib-filters summary').click();await p.locator('#lib-kind').selectOption('learning');
   for(const width of [375,430,1440]) {await p.setViewportSize({width,height:900});assert(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`overflow at ${width}`);}
+  failSearch=false;
+  await p.setViewportSize({width:375,height:812});
+  await p.goto(origin+'memory');
+  const openReader=async(browse=true)=>{if(browse){await p.locator('#lib-browse').click();await p.locator('#lib-status').filter({hasText:'sources in this view'}).waitFor();}await p.getByText('Read source and details',{exact:true}).click();await p.getByText('Read source text',{exact:true}).click();await p.locator('.lib-reader-text').filter({hasText:'preserved lines'}).waitFor();};
+  await openReader();
+  assert(await p.getByText('Resume reading',{exact:true}).isHidden());
+  await p.getByText('Jump to section',{exact:true}).click();
+  await p.getByLabel('Section number').fill('2');await p.getByText('Read section',{exact:true}).click();
+  await p.getByText(/Section 2 of 2/).waitFor();
+  await p.getByText('Save place',{exact:true}).click();await p.getByText('Saved section 2 on this browser.',{exact:true}).waitFor();
+  await p.reload();await openReader();
+  await p.getByText('Resume reading',{exact:true}).click();await p.getByText(/Section 2 of 2/).waitFor();
+  // Merely opening another section or a search match must not replace the saved place.
+  await p.getByText('Read previous section',{exact:true}).click();await p.getByText(/Section 1 of 2/).waitFor();
+  await p.locator('#lib-query').fill('timing');await p.locator('#lib-search button').click();await p.locator('.lib-excerpt').waitFor();await openReader(false);
+  await p.getByText('Saved section 2 on this browser.',{exact:true}).waitFor();
+  failRead=true;await p.getByText('Resume reading',{exact:true}).click();await p.getByText('Reader temporarily unavailable.',{exact:true}).waitFor();
+  assert((await p.locator('.lib-reader-text').innerText()).includes('preserved lines'));
+  await p.getByText('Save place',{exact:true}).click();await p.getByText('Saved section 1 on this browser.',{exact:true}).waitFor();
+  failRead=false;await p.getByText('Read next section',{exact:true}).click();await p.getByText(/Section 2 of 2/).waitFor();
+  source.revision='c'.repeat(64);passage.revision=source.revision;
+  await p.reload();await openReader();assert(await p.getByText('Resume reading',{exact:true}).isHidden());
+  // Corrupt and denied storage must never block reading.
+  await p.evaluate(()=>localStorage.setItem('mnemosyne-reading-places-v1','{broken'));
+  await p.reload();await openReader();assert(await p.getByText('Resume reading',{exact:true}).isHidden());
+  await p.getByText('Save place',{exact:true}).click();await p.getByText('Saved section 1 on this browser.',{exact:true}).waitFor();
+  await p.evaluate(()=>{Storage.prototype.setItem=function(){throw new Error('denied');};});
+  await p.getByText('Save place',{exact:true}).click();await p.getByText('This browser could not save your place. You can keep reading.',{exact:true}).waitFor();
+  await p.getByText('Read next section',{exact:true}).click();await p.getByText(/Section 2 of 2/).waitFor();
+  await p.getByText('Jump to section',{exact:true}).click();
+  await p.screenshot({path:path.join(process.env.SHOTS||root,'library-reading-place-phone.png'),fullPage:true});
+  assert(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  await p.reload();
   failSearch=false;source.kind='book';source.file_format='epub';source.original='';passage.kind='book';passage.pdf_page=null;
   passage.chapter={number:2,label:'Ending',reader_offset:1,member:'OPS/ending.xhtml',linear:true};
-  await p.setViewportSize({width:375,height:812});await p.locator('#lib-kind').selectOption('book');
+  await p.setViewportSize({width:375,height:812});await p.locator('.lib-filters summary').click();await p.locator('#lib-kind').selectOption('book');
   await p.locator('#lib-query').fill('conclusion');await p.locator('#lib-search button').click();
   await p.getByText('Read source and details',{exact:true}).click();await p.getByText('Read source text',{exact:true}).click();
   await p.getByText(/Section 2 of 2 · Chapter 2: Ending/).waitFor();

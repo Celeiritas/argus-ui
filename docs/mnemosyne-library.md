@@ -110,3 +110,14 @@ Tracked changes, content controls, fields/TOCs, drawings/text boxes, embedded ob
 Limits: 64 MiB archive, 4,096 members, 128 MiB total expansion, 8 MiB/member, 100 XML levels and 100,000 elements per XML part, 30 nested table levels, 10,000 extracted paragraphs and 12 MiB extracted UTF-8 text. DTD/entity declarations, unsafe/duplicate member names and encrypted ZIP entries are refused before python-docx opens the immutable byte snapshot.
 
 Licensing: python-docx 1.2.0 is MIT (Copyright Steve Canny); lxml and typing_extensions have their own included notices. Keep the complete installed distributions and license directories when packaging the importer. Binaries are not vendored in this repository, and installation never occurs automatically on the serving host. The pinned optional requirements are tested in Linux CI. Sources: https://github.com/python-openxml/python-docx/blob/master/LICENSE and https://python-docx.readthedocs.io/en/latest/api/document.html.
+
+
+### Reading places
+
+Save place records the current extracted-text section on this browser; Resume reading returns to it after reopening the same source revision. Up to 100 source/revision positions are retained, without document text. These places do not synchronize across devices. Opening a search match does not change a saved place. Jump to section expands a numeric navigation form. A changed revision starts without a saved place; unavailable browser storage leaves reading usable. These are extracted-text sections, not physical pages or exact scroll positions.
+
+### Recently checked out
+
+Library home lists up to ten distinct sources most recently read on this browser, across all source types. Opening source metadata, browsing or searching does not count: a readable section must load successfully while the reader is open. Continue reading uses the last successfully viewed section; explicit Save place bookmarks remain separate. Only IDs, revisions and section offsets are stored locally, never document text or titles. This history is not synchronized between devices. When persistence is blocked, a session-only history keeps reading usable.
+
+Home resolves current source metadata before offering continuation. An updated revision opens from its beginning; a retired or unavailable source is shown without a continuation button. With no history, Home offers the catalog and search. Browse shelves currently uses the paginated catalog; the category/alphabet side rail is the next navigation increment.

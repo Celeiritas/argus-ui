@@ -1,5 +1,11 @@
 # Changelog
 
+## 4.65.0 — 2026-11-22
+
+- Library home shows ten recently checked out documents across source types, with continuation at the last successfully read section. Changed revisions start fresh; unavailable sources remain visible without misleading continuation. Failed catalog pagination can be retried without skipping sources.
+
+- Save and resume extracted-text sections on this browser, tied to the exact source revision. Search matches do not overwrite saved places. Collapsible section navigation supports direct jumps with keyboard and phone controls. Storage failures leave reading available.
+
 ## 4.64.0 — 2026-11-22
 
 - Release archives exclude local Python bytecode caches.
