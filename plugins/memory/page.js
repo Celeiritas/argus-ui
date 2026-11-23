@@ -80,7 +80,7 @@
   }
   const einkScreen = () => matchMedia('(update: slow)').matches || matchMedia('(monochrome)').matches || EINK_UA.test(navigator.userAgent);
   const einkActive = () => { const m = readingPrefs().eink; return m === 'on' || (m === 'auto' && einkScreen()); };
-  const applyEink = () => document.documentElement.classList.toggle('eink', einkActive());
+  const applyEink = () => { document.documentElement.classList.toggle('eink', einkActive()); document.dispatchEvent(new Event('mnemosyne-eink')); };
   const EINK_SAY = {on: 'On: black and white, page by page, no motion.', off: 'Off: the usual colours and scrolling.'};
   const einkSay = m => EINK_SAY[m] || (einkScreen() ? 'Automatic: e-ink screen found.' : 'Automatic: not an e-ink screen.');
 
@@ -112,7 +112,7 @@
       if (!r.ok) { body.textContent = r.data?.msg || 'Could not load the source. Close and reopen to retry.'; return; }
       details.dataset.loaded = '1'; const d = r.data;
       body.innerHTML = `
-        <details class="lib-reader"><summary>Read source text</summary><div class="lib-reader-body"><div class="lib-reader-tools"><button type="button" class="lib-save" disabled>Save place</button><button type="button" class="lib-resume" hidden>Resume reading</button></div><p class="lib-place-status lib-meta" role="status"></p><details class="lib-navigation"><summary>Jump to section</summary><form class="lib-jump"><label>Section number <input type="number" min="1" step="1" required inputmode="numeric" disabled></label><button type="submit" disabled>Read section</button></form></details><p class="lib-reader-status" role="status" tabindex="-1"></p><p class="lib-reader-text lib-full"></p><div class="lib-reader-nav"><button type="button" class="lib-prev">Read previous section</button><button type="button" class="lib-next">Read next section</button></div></div></details>
+        <details class="lib-reader"><summary>Read source text</summary><div class="lib-reader-body"><div class="lib-reader-tools"><button type="button" class="lib-save" disabled>Save place</button><button type="button" class="lib-resume" hidden>Resume reading</button></div><p class="lib-place-status lib-meta" role="status"></p><details class="lib-navigation"><summary>Jump to section</summary><form class="lib-jump"><label>Section number <input type="number" min="1" step="1" required inputmode="numeric" disabled></label><button type="submit" disabled>Read section</button></form></details><p class="lib-reader-status" role="status" tabindex="-1"></p><div class="lib-page"><p class="lib-reader-text lib-full"></p></div><p class="lib-page-status lib-meta" hidden></p><div class="lib-reader-nav"><button type="button" class="lib-prev">Read previous section</button><button type="button" class="lib-next">Read next section</button></div></div></details>
         <details class="lib-file-details"><summary>View file details</summary><dl><dt>File format</dt><dd>${e(d.file_format || 'unknown')}</dd><dt>Authorship</dt><dd>${e(d.authorship)}</dd><dt>Source version</dt><dd>${e(d.source_version)}</dd><dt>Extraction</dt><dd>${e(d.health)} · ${e(d.extraction_version)}</dd><dt>Indexed</dt><dd>${e(d.indexed_at)}</dd><dt>Revision</dt><dd>${e(d.revision)}</dd></dl></details>
         ${d.url ? `<a href="${e(d.url)}" target="_blank" rel="noopener noreferrer">Open source website</a>` : ''}
         ${d.original ? `<p class="lib-meta">Original: ${e(d.original.split('/').pop())}</p><button type="button" class="lib-original">Prepare original PDF</button><p class="lib-original-status" role="status"></p>` : '<p class="lib-meta">No original file is connected to the viewer yet.</p>'}`;
@@ -137,8 +137,55 @@
       }
       showPlace();
       let readOffset = 0, readTotal = 0, reading = false, loaded = false;
+      // E-ink paging (4.67.0): the section's text in screen-high CSS columns, one column shown; a tap on the left or right
+      // quarter, PageUp/PageDown or the arrow keys turn the page, and past either end they open the neighbouring section.
+      // `anchor` is the text offset at the top of the shown page, so a rotation or a resize keeps the same text in view.
+      const leaf = body.querySelector('.lib-page'), pageStatus = body.querySelector('.lib-page-status');
+      const GAP = 32;
+      let page = 0, pages = 1, anchor = 0;
+      const paged = () => document.documentElement.classList.contains('eink');
+      const step = () => text.clientWidth + GAP;
+      function goPage(n) {
+        page = Math.max(0, Math.min(pages - 1, n)); text.scrollLeft = page * step();
+        pageStatus.textContent = `Page ${page + 1} of ${pages}`;
+        const b = text.getBoundingClientRect(), at = document.caretRangeFromPoint?.(b.left + 2, b.top + 8);
+        anchor = at && text.contains(at.startContainer) ? at.startOffset : 0;
+      }
+      function pageOf(offset) {
+        const node = text.firstChild;
+        if (!node || !offset) return 0;
+        const r = document.createRange(); r.setStart(node, Math.min(offset, node.length)); r.collapse(true);
+        return Math.floor((r.getBoundingClientRect().left - text.getBoundingClientRect().left + text.scrollLeft + 1) / step());
+      }
+      function layout(at = null) {
+        const on = paged() && loaded;
+        text.classList.toggle('paged', on); pageStatus.hidden = !on;
+        if (on) leaf.tabIndex = 0; else leaf.removeAttribute('tabindex');
+        if (!on) { text.scrollLeft = 0; return; }
+        text.style.setProperty('--colw', text.clientWidth + 'px');
+        pages = Math.max(1, Math.round((text.scrollWidth + GAP) / step()));
+        goPage(at === 'last' ? pages - 1 : at === 'first' ? 0 : pageOf(anchor));
+      }
+      function turn(dir) {
+        if (reading || !text.classList.contains('paged')) return;
+        if (dir > 0) { if (page < pages - 1) goPage(page + 1); else if (!next.disabled) readSection(readOffset + 1, false, 'first'); }
+        else if (page > 0) goPage(page - 1); else if (!prev.disabled) readSection(readOffset - 1, false, 'last');
+      }
+      leaf.addEventListener('click', event => {
+        if (!text.classList.contains('paged') || String(getSelection())) return;
+        const b = leaf.getBoundingClientRect(), x = (event.clientX - b.left) / b.width;
+        if (x < 0.25) turn(-1); else if (x > 0.75) turn(1);
+      });
+      leaf.addEventListener('keydown', event => {
+        const dir = {PageDown: 1, ArrowRight: 1, PageUp: -1, ArrowLeft: -1}[event.key];
+        if (!dir || !text.classList.contains('paged')) return;
+        event.preventDefault(); turn(dir);
+      });
+      new ResizeObserver(() => { if (leaf.isConnected) layout(); }).observe(leaf);
+      const relayout = () => { if (!leaf.isConnected) document.removeEventListener('mnemosyne-eink', relayout); else layout(); };
+      document.addEventListener('mnemosyne-eink', relayout);
       prev.disabled = true; next.disabled = true;
-      async function readSection(offset, initial = false) {
+      async function readSection(offset, initial = false, at = 'first') {
         if (reading) return;
         reading = true; prev.disabled = true; next.disabled = true; save.disabled = true; resume.disabled = true; section.disabled = true; jumpButton.disabled = true; readStatus.textContent = 'Loading text…';
         const params = new URLSearchParams({id:d.id, revision:d.revision, offset});
@@ -163,7 +210,13 @@
         text.textContent = block.text || '(No extracted text on this page.)';
         readStatus.textContent = `Section ${readOffset + 1} of ${readTotal}${block.pdf_page ? ` · PDF page ${block.pdf_page}; printed page not recorded` : ''}${block.chapter ? ` · ${chapterLabel(block.chapter)}` : ''}. Extracted text; check the original for layout.`;
         prev.disabled = readOffset <= 0; next.disabled = readOffset + 1 >= readTotal;
-        if (!initial) { readStatus.focus({preventScroll:true}); readStatus.scrollIntoView({block:'start'}); }
+        layout(at);
+        if (initial && text.classList.contains('paged')) readStatus.scrollIntoView({block:'start'});   // the whole page on the screen
+        if (!initial) {
+          if (text.classList.contains('paged') && leaf.contains(document.activeElement)) leaf.focus({preventScroll:true});
+          else readStatus.focus({preventScroll:true});
+          readStatus.scrollIntoView({block:'start'});
+        }
       }
       reader.addEventListener('toggle', () => {
         if (!reader.open) return;

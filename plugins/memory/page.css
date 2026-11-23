@@ -106,7 +106,13 @@ html.eink .memory button,html.eink .memory select,html.eink .memory input{backgr
 html.eink .memory button:disabled{border-style:dashed}
 html.eink .memory a{color:#000;text-decoration:underline}
 html.eink .memory :focus-visible{outline:3px solid #000;outline-offset:3px}
-html.eink .lib-reader-text{padding:0 32px;line-height:1.6}
-@media(max-width:420px){html.eink .lib-reader-text{padding:0 16px}}
+html.eink .lib-reader-text{line-height:1.6}
 html.eink .tabbar{background:#fff;border-top:2px solid #000}
 html.eink .tabmark{background:#000}
+/* e-ink paging: one screen-high column at a time (the text box scrolls sideways only by the page buttons, taps and keys) */
+html.eink .lib-page{margin:0 32px;cursor:pointer}
+@media(max-width:420px){html.eink .lib-page{margin:0 16px}}
+html.eink .lib-reader-text{padding:0}
+.lib-reader-text.paged{margin:0;height:max(240px,calc(100dvh - 300px));overflow:hidden;column-width:var(--colw,100vw);column-gap:32px;column-fill:auto}
+.lib-page:focus-visible{outline:3px solid #000;outline-offset:6px}
+.lib-page-status{text-align:center}

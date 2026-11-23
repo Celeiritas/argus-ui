@@ -55,7 +55,7 @@ async function page(browser, opts = {}) {
 }
 const origin = 'http://fixture.test/argus/';
 const eink = p => p.evaluate(() => document.documentElement.classList.contains('eink'));
-const shot = (p, name) => process.env.SHOTS && p.screenshot({path:path.join(process.env.SHOTS, name), fullPage:true});
+const shot = (p, name, fullPage = true) => process.env.SHOTS && p.screenshot({path:path.join(process.env.SHOTS, name), fullPage});
 
 (async () => {
   const browser = await chromium.launch();
@@ -93,5 +93,54 @@ const shot = (p, name) => process.env.SHOTS && p.screenshot({path:path.join(proc
     assert(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     assert.deepEqual(p.errors, []); await p.context().close();
     console.log('PASS reading settings: e-ink Automatic/On/Off, reload, leaving, denied storage, e-ink tablet found');
+
+    // ---- Task 2: paged reading with edge taps (e-ink only)
+    p = await page(browser, {userAgent:BOOX, viewport:{width:702,height:936}});
+    const openReader = async () => {
+      await p.goto(origin + 'memory'); await p.locator('#lib-browse').click(); await p.locator('#lib-status').filter({hasText:'sources in this view'}).waitFor();
+      await p.getByText('Read source and details', {exact:true}).click(); await p.getByText('Read source text', {exact:true}).click();
+      await p.locator('.lib-reader-text').filter({hasText:'Start of section one'}).waitFor();
+    };
+    const pageNo = async () => { const m = (await p.locator('.lib-page-status').innerText()).match(/^Page (\d+) of (\d+)$/); assert(m, 'page status'); return [Number(m[1]), Number(m[2])]; };
+    const tap = async where => { const b = await p.locator('.lib-page').boundingBox(); await p.mouse.click(b.x + b.width * where, b.y + b.height / 2); await p.waitForTimeout(80); };
+    const visible = needle => p.evaluate(n => { const t = document.querySelector('.lib-reader-text'), i = t.textContent.indexOf(n), r = document.createRange();
+      r.setStart(t.firstChild, i); r.setEnd(t.firstChild, i + n.length); const a = r.getBoundingClientRect(), b = t.getBoundingClientRect();
+      return a.left >= b.left - 1 && a.right <= b.right + 1; }, needle);
+    await openReader();
+    assert(await p.locator('.lib-reader-text').evaluate(e => e.classList.contains('paged')));
+    let [at, of] = await pageNo(); assert.equal(at, 1); assert(of > 2, `a long section has several pages (${of})`);
+    assert(await visible('Start of section one'));
+    await shot(p, 'library-eink-reader-tablet.png', false);
+    await tap(0.9); assert.deepEqual(await pageNo(), [2, of]); assert(!(await visible('Start of section one')));
+    await tap(0.5); assert.deepEqual(await pageNo(), [2, of], 'the middle does not turn');
+    await tap(0.1); assert.deepEqual(await pageNo(), [1, of]);
+    await p.locator('.lib-page').focus(); await p.keyboard.press('PageDown'); assert.deepEqual(await pageNo(), [2, of]);
+    await p.keyboard.press('ArrowLeft'); assert.deepEqual(await pageNo(), [1, of]);
+    await p.keyboard.press('ArrowRight'); await p.keyboard.press('PageUp'); assert.deepEqual(await pageNo(), [1, of]);
+    // rotating keeps the text that was at the top of the page in view
+    await tap(0.9); await tap(0.9);
+    const anchor = await p.evaluate(() => { const t = document.querySelector('.lib-reader-text'), b = t.getBoundingClientRect();
+      const r = document.caretRangeFromPoint(b.left + 2, b.top + 8); return t.textContent.slice(r.startOffset).split(' ')[1]; });
+    await p.setViewportSize({width:936, height:702}); await p.waitForTimeout(300);
+    assert(await visible(anchor), `after rotating, ${anchor} is still on the page`);
+    [at, of] = await pageNo(); assert(at > 1);
+    await p.setViewportSize({width:702, height:936}); await p.waitForTimeout(300);
+    for (let i = 0; i < 400 && (await pageNo())[0] < (await pageNo())[1]; i++) await tap(0.9);
+    assert(await visible('End of section one'));
+    await tap(0.9); await p.getByText(/^Section 2 of 3/).waitFor(); await p.waitForTimeout(80);
+    assert.deepEqual(await pageNo(), [1, 1], 'a short section is one page');
+    await tap(0.9); await p.getByText(/^Section 3 of 3/).waitFor(); await p.waitForTimeout(80);
+    assert.deepEqual((await pageNo())[0], 1); assert(await visible('Start of section three'));
+    await tap(0.1); await p.getByText(/^Section 2 of 3/).waitFor(); await p.waitForTimeout(80);
+    await tap(0.1); await p.getByText(/^Section 1 of 3/).waitFor(); await p.waitForTimeout(80);
+    [at, of] = await pageNo(); assert.equal(at, of, 'going back opens the previous section at its last page'); assert(await visible('End of section one'));
+    assert(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    // with e-ink off the reader scrolls as before
+    await p.getByText('Reading settings', {exact:true}).click(); await p.getByLabel('E-ink mode').selectOption('off'); await p.waitForTimeout(100);
+    assert(!(await p.locator('.lib-reader-text').evaluate(e => e.classList.contains('paged'))));
+    assert(await p.locator('.lib-page-status').isHidden());
+    assert.equal(await p.locator('.lib-reader-text').evaluate(e => e.scrollWidth <= e.clientWidth + 1), true);
+    assert.deepEqual(p.errors, []); await p.context().close();
+    console.log('PASS e-ink paging: edge taps, middle ignored, keys, rotation keeps the place, short section, across sections, off = scrolling');
   } finally { await browser.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });
