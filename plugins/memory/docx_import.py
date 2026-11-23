@@ -5,8 +5,10 @@ silently promoted as complete searchable text. No relationship URL is fetched.
 """
 import hashlib
 import io
+import lzma
 from pathlib import Path, PurePosixPath
 import zipfile
+import zlib
 import xml.etree.ElementTree as ET
 
 MAX_ARCHIVE = 64 * 1024 * 1024
@@ -44,7 +46,22 @@ def _preflight(raw):
         infos = z.infolist()
         if len(infos) > 4096 or sum(i.file_size for i in infos) > MAX_EXPANDED:
             raise ValueError('DOCX archive exceeds expansion limit')
-        seen = set(); document = None
+        # OPC content types, not extensions, decide which relocated parts are XML.
+        try: type_info = z.getinfo('[Content_Types].xml')
+        except KeyError as e: raise ValueError('DOCX content types are missing') from e
+        if type_info.file_size > MAX_MEMBER: raise ValueError('DOCX content types exceed limit')
+        types = _xml(z.read(type_info)); defaults = {}; overrides = {}
+        ct = '{http://schemas.openxmlformats.org/package/2006/content-types}'
+        if types.tag != ct+'Types': raise ValueError('Invalid DOCX content types')
+        for entry in types:
+            if entry.tag == ct+'Default':
+                key = entry.get('Extension','').lower(); mapping = defaults
+            elif entry.tag == ct+'Override':
+                key = entry.get('PartName','').lstrip('/'); mapping = overrides
+            else: raise ValueError('Unknown DOCX content-type entry')
+            if not key or key in mapping: raise ValueError('Ambiguous DOCX content types')
+            mapping[key] = entry.get('ContentType','').lower()
+        seen = set(); document = None; main_target = None
         for info in infos:
             name = info.filename; path = PurePosixPath(name)
             if (name != info.orig_filename or name in seen or path.is_absolute() or '..' in path.parts or '\\' in name
@@ -54,23 +71,34 @@ def _preflight(raw):
             if info.is_dir(): continue
             if name.lower().endswith('.bin') or name.startswith('word/embeddings/'):
                 raise ValueError('Embedded objects or macros are unsupported')
-            if not name.lower().endswith(('.xml', '.rels')): continue
+            content_type = overrides.get(name,defaults.get(path.suffix.lstrip('.').lower(),''))
+            xml_part = name.lower().endswith(('.xml','.rels')) or content_type.endswith(('/xml','+xml'))
+            if not xml_part: continue
             tree = _xml(z.read(info))
+            if name == '_rels/.rels':
+                mains = [r for r in tree if r.tag == REL+'Relationship' and r.get('Type') == 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument']
+                if len(mains) != 1 or mains[0].get('TargetMode','Internal') != 'Internal':
+                    raise ValueError('DOCX requires one internal main document')
+                main_target = mains[0].get('Target')
             if name in ('word/styles.xml','word/stylesWithEffects.xml'):
-                defaults = tree.find(W+'docDefaults')
-                if defaults is not None and any(n.tag in (W+'vanish',W+'webHidden') for n in defaults.iter()):
+                style_defaults = tree.find(W+'docDefaults')
+                if style_defaults is not None and any(n.tag in (W+'vanish',W+'webHidden') for n in style_defaults.iter()):
                     raise ValueError('Hidden DOCX default text requires review')
             if name == 'word/document.xml': document = tree
-            if name.endswith('.rels'):
+            if name.lower().endswith('.rels'):
                 for rel in tree:
                     if rel.get('TargetMode') == 'External' and rel.get('Type') != 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink':
                         raise ValueError('External DOCX content is unsupported; nothing fetched')
-            if name.startswith('word/') and name.endswith('.xml') and name not in ('word/styles.xml','word/stylesWithEffects.xml','word/numbering.xml','word/settings.xml','word/fontTable.xml','word/webSettings.xml') and '/theme/' not in name:
+            # Scan every XML part regardless of extension case or folder. Parts can
+            # be relocated by relationships, so a filename allowlist loses text.
+            if xml_part:
                 for node in tree.iter():
-                    if node.tag.startswith(MATH) or node.tag in {W+t for t in UNSUPPORTED}:
+                    if node.tag in (MATH+'oMath',MATH+'oMathPara',MATH+'t') or node.tag in {W+t for t in UNSUPPORTED}:
                         raise ValueError('Unsupported DOCX feature: '+node.tag.split('}')[-1])
                 if name != 'word/document.xml' and any((n.text or '').strip() for n in tree.iter(W+'t')):
                     raise ValueError('Text outside the document body requires review (notes, comments, headers or footers)')
+        if main_target != 'word/document.xml':
+            raise ValueError('Noncanonical DOCX main document requires review')
         if document is None: raise ValueError('DOCX document body is missing')
         body = document.find(W+'body')
         if body is None: raise ValueError('DOCX document body is missing')
@@ -107,7 +135,7 @@ def extract(path, fallback_title=None):
     if len(raw) > MAX_ARCHIVE: raise ValueError('DOCX exceeds 64 MB')
     try:
         _preflight(raw)
-    except (zipfile.BadZipFile, ET.ParseError, RuntimeError, NotImplementedError) as e:
+    except (zipfile.BadZipFile, ET.ParseError, RuntimeError, NotImplementedError, zlib.error, lzma.LZMAError, EOFError) as e:
         raise ValueError('Invalid or unsupported DOCX package') from e
     try:
         import docx
@@ -119,6 +147,12 @@ def extract(path, fallback_title=None):
         raise ValueError('Use reviewed python-docx 1.2.0 from requirements-mnemosyne-docx.txt')
     try:
         doc = docx.Document(io.BytesIO(raw))
+        # python-docx drops page/column breaks from Paragraph.text. Convert only
+        # the parsed in-memory nodes to line separators; never alter the original.
+        for br in doc.element.iter(W+'br'):
+            if br.get(W+'type','textWrapping') not in ('textWrapping','page','column'):
+                raise ValueError('Unknown DOCX break type requires review')
+            br.set(W+'type','textWrapping')
         pieces = []; locations = []; offset = byte_count = 0
         def walk(parent, prefix, depth=0):
             nonlocal offset, byte_count

@@ -5,11 +5,13 @@ import io
 import json
 from pathlib import Path
 import subprocess
+import struct
 import sys
 import tempfile
 import unittest
 from unittest.mock import patch
 import zipfile
+import xml.etree.ElementTree as ET
 
 from docx import Document
 from docx.oxml import OxmlElement
@@ -134,6 +136,62 @@ class DocxTest(unittest.TestCase):
         self.doc.add_paragraph('Second');self.save()
         with patch.object(adapter,'MAX_TEXT',5),self.assertRaises(ValueError):adapter.extract(self.file)
         with patch.object(adapter,'MAX_BLOCKS',1),self.assertRaises(ValueError):adapter.extract(self.file)
+
+    def test_page_and_column_breaks_preserve_word_separators(self):
+        from docx.enum.text import WD_BREAK
+        for kind in (WD_BREAK.PAGE,WD_BREAK.COLUMN):
+            self.doc=Document();run=self.doc.add_paragraph().add_run('Before')
+            run.add_break(kind);run.add_text('After');self.save()
+            with self.subTest(kind=kind):self.assertEqual(adapter.extract(self.file)['text'],'Before\nAfter')
+
+    def test_alternate_main_part_cannot_bypass_preflight(self):
+        self.save()
+        with zipfile.ZipFile(self.file) as z:
+            rels=z.read('_rels/.rels');body=z.read('word/document.xml');types=z.read('[Content_Types].xml')
+        self.mutate('word/alternate.XML',body)
+        self.mutate('_rels/.rels',rels.replace(b'word/document.xml',b'word/alternate.XML'))
+        self.mutate('[Content_Types].xml',types.replace(b'/word/document.xml',b'/word/alternate.XML'))
+        with self.assertRaises(ValueError):adapter.extract(self.file)
+        tracked=body.replace(b'</w:body>',b'<w:ins><w:p><w:r><w:t>Inserted evidence</w:t></w:r></w:p></w:ins></w:body>')
+        self.mutate('word/alternate.XML',tracked)
+        with self.assertRaises(ValueError):adapter.extract(self.file)
+
+    def test_noncanonical_header_text_cannot_be_silently_dropped(self):
+        self.save()
+        self.mutate('custom/HEADER.XML',b'<w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:r><w:t>Header evidence</w:t></w:r></w:p></w:hdr>')
+        with self.assertRaises(ValueError):adapter.extract(self.file)
+
+    def test_xml_content_type_with_binary_extension_is_checked(self):
+        self.doc.sections[0].header.paragraphs[0].text='Header evidence';self.save()
+        with zipfile.ZipFile(self.file) as z:parts={n:z.read(n) for n in z.namelist()}
+        parts['custom/header.dat']=parts.pop('word/header1.xml')
+        parts['word/_rels/document.xml.rels']=parts['word/_rels/document.xml.rels'].replace(b'header1.xml',b'../custom/header.dat')
+        parts['[Content_Types].xml']=parts['[Content_Types].xml'].replace(b'/word/header1.xml',b'/custom/header.dat')
+        with zipfile.ZipFile(self.file,'w',zipfile.ZIP_DEFLATED) as z:
+            for name,data in parts.items():z.writestr(name,data)
+        self.assertEqual(Document(self.file).sections[0].header.paragraphs[0].text,'Header evidence')
+        with self.assertRaises(ValueError):adapter.extract(self.file)
+        types=ET.fromstring(parts['[Content_Types].xml']);ct='{http://schemas.openxmlformats.org/package/2006/content-types}'
+        header_type=None
+        for child in list(types):
+            if child.get('PartName')=='/custom/header.dat':
+                header_type=child.get('ContentType');types.remove(child)
+        ET.SubElement(types,ct+'Default',Extension='dat',ContentType=header_type)
+        self.mutate('[Content_Types].xml',ET.tostring(types))
+        self.assertEqual(Document(self.file).sections[0].header.paragraphs[0].text,'Header evidence')
+        with self.assertRaises(ValueError):adapter.extract(self.file)
+
+    def test_corrupt_compressed_member_keeps_held_diagnostics(self):
+        self.save()
+        with zipfile.ZipFile(self.file) as z:offset=z.getinfo('word/document.xml').header_offset
+        raw=bytearray(self.file.read_bytes());name_size,extra_size=struct.unpack_from('<HH',raw,offset+26)
+        raw[offset+30+name_size+extra_size]=0x07;self.file.write_bytes(raw)
+        out=self.root/'corrupt'
+        result=subprocess.run([sys.executable,str(ROOT/'scripts/mnemosyne-docx.py'),str(self.file),'--output',str(out),'--collection','fixtures','--key','doc'],capture_output=True,text=True)
+        self.assertNotEqual(result.returncode,0)
+        self.assertEqual((out/'original.docx').read_bytes(),raw)
+        self.assertTrue((out/'HELD-FOR-REVIEW.json').exists())
+        self.assertFalse((out/'READY-FOR-REVIEW.json').exists())
 
     def test_unknown_container_and_hidden_default_refused(self):
         other=OxmlElement('w:customXml');self.doc._element.body.append(other);self.save()
