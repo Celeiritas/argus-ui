@@ -79,23 +79,23 @@ const backup = {summary:'Backups are fresh.',attention:false,folder:'fixtures',f
   await p.getByText('Jump to section',{exact:true}).click();
   await p.getByLabel('Section number').fill('2');await p.getByText('Read section',{exact:true}).click();
   await p.getByText(/Section 2 of 2/).waitFor();
-  await p.getByText('Save place',{exact:true}).click();await p.getByText('Saved section 2 on this browser.',{exact:true}).waitFor();
+  await p.getByText('Save place',{exact:true}).click();await p.getByText('Saved section 2 on this browser. Other devices get it when the server answers.',{exact:true}).waitFor();
   await p.reload();await openReader();
   await p.getByText('Resume reading',{exact:true}).click();await p.getByText(/Section 2 of 2/).waitFor();
   // Merely opening another section or a search match must not replace the saved place.
   await p.getByText('Read previous section',{exact:true}).click();await p.getByText(/Section 1 of 2/).waitFor();
   await p.locator('#lib-query').fill('timing');await p.locator('#lib-search button').click();await p.locator('.lib-excerpt').waitFor();await openReader(false);
-  await p.getByText('Saved section 2 on this browser.',{exact:true}).waitFor();
+  await p.getByText('Saved section 2 on this browser. Other devices get it when the server answers.',{exact:true}).waitFor();
   failRead=true;await p.getByText('Resume reading',{exact:true}).click();await p.getByText('Reader temporarily unavailable.',{exact:true}).waitFor();
   assert((await p.locator('.lib-reader-text').innerText()).includes('preserved lines'));
-  await p.getByText('Save place',{exact:true}).click();await p.getByText('Saved section 1 on this browser.',{exact:true}).waitFor();
+  await p.getByText('Save place',{exact:true}).click();await p.getByText('Saved section 1 on this browser. Other devices get it when the server answers.',{exact:true}).waitFor();
   failRead=false;await p.getByText('Read next section',{exact:true}).click();await p.getByText(/Section 2 of 2/).waitFor();
   source.revision='c'.repeat(64);passage.revision=source.revision;
   await p.reload();await openReader();assert(await p.getByText('Resume reading',{exact:true}).isHidden());
   // Corrupt and denied storage must never block reading.
   await p.evaluate(()=>localStorage.setItem('mnemosyne-reading-places-v1','{broken'));
   await p.reload();await openReader();assert(await p.getByText('Resume reading',{exact:true}).isHidden());
-  await p.getByText('Save place',{exact:true}).click();await p.getByText('Saved section 1 on this browser.',{exact:true}).waitFor();
+  await p.getByText('Save place',{exact:true}).click();await p.getByText('Saved section 1 on this browser. Other devices get it when the server answers.',{exact:true}).waitFor();
   await p.evaluate(()=>{Storage.prototype.setItem=function(){throw new Error('denied');};});
   await p.getByText('Save place',{exact:true}).click();await p.getByText('This browser could not save your place. You can keep reading.',{exact:true}).waitFor();
   await p.getByText('Read next section',{exact:true}).click();await p.getByText(/Section 2 of 2/).waitFor();

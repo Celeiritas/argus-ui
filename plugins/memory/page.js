@@ -37,8 +37,12 @@
     return html;
   }
 
-  // Browsing history is local to this browser; no text or titles are persisted.
+  // Browsing history is kept on this browser first, then on the server for the signed-in person (4.67.0, "Synced places"
+  // below); no text or titles are persisted. `at` is when the row was made (the server's time once it took the row) and
+  // `pending` marks a row the server has not taken yet.
   const recentKey = 'mnemosyne-recent-v1';
+  const stamp = at => typeof at === 'string' && at.length <= 40 ? at : '';
+  const keep = row => ({id:row.id, revision:row.revision, offset:row.offset, ...(stamp(row.at) ? {at:row.at} : {}), ...(row.pending === true ? {pending:true} : {})});
   let sessionRecent = [], sessionRecentOnly = false;
   function recentReads() {
     if (sessionRecentOnly) return sessionRecent;
@@ -52,14 +56,42 @@
         if (!row || typeof row.id !== 'string' || typeof row.revision !== 'string' || !/^[a-f0-9]{64}$/.test(row.id) || !/^[a-f0-9]{64}$/.test(row.revision) ||
             !Number.isSafeInteger(row.offset) || row.offset < 0 || row.offset > 100000 || ids.has(row.id)) return false;
         ids.add(row.id); return true;
-      }).slice(0, 10).map(({id, revision, offset}) => ({id, revision, offset}));
+      }).slice(0, 10).map(keep);
     } catch (_) { return sessionRecent; }
   }
-  function rememberRead(source, offset) {
-    sessionRecent = [{id:source.id, revision:source.revision, offset}, ...recentReads().filter(row => row.id !== source.id)].slice(0, 10);
+  function writeRecent(rows) {
+    sessionRecent = rows.slice(0, 10);
     try { localStorage.setItem(recentKey, JSON.stringify(sessionRecent)); sessionRecentOnly = false; return true; }
     catch (_) { sessionRecentOnly = true; return false; }
   }
+  function rememberRead(source, offset) {
+    return writeRecent([{id:source.id, revision:source.revision, offset, at:new Date().toISOString(), pending:true}, ...recentReads().filter(row => row.id !== source.id)]);
+  }
+  // The server took this row: the local copy gets the server's time and stops waiting (only if it is still the same place).
+  function settleRecent(row) {
+    const rows = recentReads();
+    if (rows.some(r => r.id === row.id && r.revision === row.revision && r.offset === row.offset && r.pending))
+      writeRecent(rows.map(r => r.id === row.id ? keep({...row, pending:false}) : r));
+  }
+
+  // Saved places on this browser: rows {key: JSON [id, revision], offset, at?, pending?}, the last 100.
+  const placeKey = 'mnemosyne-reading-places-v1';
+  function localPlaces() {
+    const raw = localStorage.getItem(placeKey);
+    if (!raw || raw.length > 100000) return [];
+    const rows = JSON.parse(raw);
+    return Array.isArray(rows) ? rows.filter(row => row && typeof row.key === 'string' && row.key.length < 300 && Number.isSafeInteger(row.offset) && row.offset >= 0 && row.offset <= 100000).slice(-100) : [];
+  }
+  function storePlace(key, row) {      // throws when this browser cannot store
+    let rows;
+    try { rows = localPlaces(); } catch (_) { rows = []; }
+    rows = rows.filter(r => r.key !== key);
+    rows.push({key, offset:row.offset, ...(stamp(row.at) ? {at:row.at} : {}), ...(row.pending ? {pending:true} : {})});
+    localStorage.setItem(placeKey, JSON.stringify(rows.slice(-100)));
+  }
+  // The newer of two rows by `at`; a row without a time (made before 4.67.0) loses to one with a time.
+  const time = at => Date.parse(stamp(at)) || 0;
+  const newer = (a, b) => !a ? b : !b ? a : (time(b.at) > time(a.at) ? b : a);
 
   // Reading settings (4.67.0, docs/mnemosyne-library.md): kept on this browser, never on the server. E-ink mode is Automatic,
   // On or Off; Automatic looks for a slow-refresh or monochrome screen, or an e-ink tablet's name in the browser's user agent.
@@ -91,6 +123,45 @@
     const removed = new MutationObserver(() => { if (!el.isConnected) { clearOriginals(); document.documentElement.classList.remove('eink'); removed.disconnect(); } });
     removed.observe(document.getElementById('main'), {childList: true, subtree: true});
     let request = 0, offset = 0, browsing = true;
+    // Synced places (4.67.0, docs/mnemosyne-library.md): the server keeps the signed-in person's recent list and saved places
+    // (ids and a section number only), so their other devices open the same place. Fetched once per visit to the Library and
+    // again by Library home; rows still waiting on this browser are sent then, unless the server already has a newer one.
+    const HEX = /^[a-f0-9]{64}$/;
+    const goodRow = r => r && HEX.test(r.id) && HEX.test(r.revision) && Number.isSafeInteger(r.offset) && r.offset >= 0 && r.offset <= 100000 && time(r.at) > 0;
+    const goodLists = d => d && Array.isArray(d.recent) && Array.isArray(d.saved) ? {recent:d.recent.filter(goodRow), saved:d.saved.filter(goodRow)} : null;
+    let synced;                                     // undefined: not asked this visit; null: the server did not answer
+    async function sendPlace(kind, row) {           // the server's row, or null when it did not take it
+      const r = await api.post('library/place', {kind, id:row.id, revision:row.revision, offset:row.offset});
+      const lists = r.ok ? goodLists(r.data) : null;
+      if (lists) synced = lists;
+      return lists?.[kind].find(x => x.id === row.id && x.revision === row.revision && x.offset === row.offset) || null;
+    }
+    const onServer = (kind, id) => synced?.[kind].find(x => x.id === id) || null;
+    async function fetchPlaces(fresh = false) {
+      if (synced !== undefined && !fresh) return synced;
+      const r = await api.get('library/places');
+      synced = (r.ok && goodLists(r.data)) || null;
+      if (!synced) return null;
+      for (const row of recentReads().filter(r => r.pending && newer(onServer('recent', r.id), r) === r)) {
+        const s = await sendPlace('recent', row); if (s) settleRecent(s);
+      }
+      let waiting = [];
+      try { waiting = localPlaces().filter(r => r.pending); } catch (_) { /* nothing stored here */ }
+      for (const row of waiting) {
+        let id, revision;
+        try { [id, revision] = JSON.parse(row.key); } catch (_) { continue; }
+        if (!HEX.test(id) || !HEX.test(revision) || newer(onServer('saved', id), row) !== row) continue;
+        const s = await sendPlace('saved', {id, revision, offset:row.offset});
+        if (s) try { storePlace(row.key, s); } catch (_) { /* the server has it */ }
+      }
+      return synced;
+    }
+    // This browser's history first, then the server; the reading is never held up by the server.
+    function remember(source, offsetRead) {
+      const kept = rememberRead(source, offsetRead);
+      sendPlace('recent', {id:source.id, revision:source.revision, offset:offsetRead}).then(s => { if (s) settleRecent(s); });
+      return kept;
+    }
     const params = () => new URLSearchParams({kind: $('#lib-kind').value, collection: $('#lib-collection').value});
     const status = msg => { $('#lib-status').textContent = msg; };
     const chapterLabel = c => (c.label === `Chapter ${Number(c.number)}` ? c.label : `Chapter ${Number(c.number)}: ${c.label}`) + (c.linear === false ? ' (additional material)' : '');
@@ -106,7 +177,7 @@
       if (!details.open || details.dataset.loaded || details.dataset.loading) return;
       details.dataset.loading = '1';
       const body = details.querySelector('.lib-source-body'); body.textContent = 'Loading source…';
-      const r = await api.get('library/source?id=' + encodeURIComponent(details.dataset.source) + '&revision=' + encodeURIComponent(details.dataset.revision));
+      const [r] = await Promise.all([api.get('library/source?id=' + encodeURIComponent(details.dataset.source) + '&revision=' + encodeURIComponent(details.dataset.revision)), fetchPlaces()]);
       delete details.dataset.loading;
       if (!details.isConnected || !details.open) return;
       if (!r.ok) { body.textContent = r.data?.msg || 'Could not load the source. Close and reopen to retry.'; return; }
@@ -121,19 +192,20 @@
       const save = body.querySelector('.lib-save'), resume = body.querySelector('.lib-resume');
       const placeStatus = body.querySelector('.lib-place-status'), jump = body.querySelector('.lib-jump');
       const section = jump.querySelector('input'), jumpButton = jump.querySelector('button');
-      const placeKey = 'mnemosyne-reading-places-v1';
       const identity = JSON.stringify([d.id, d.revision]);
-      function places() {
-        const raw = localStorage.getItem(placeKey);
-        if (!raw || raw.length > 100000) return [];
-        const rows = JSON.parse(raw);
-        return Array.isArray(rows) ? rows.filter(row => row && typeof row.key === 'string' && row.key.length < 300 && Number.isSafeInteger(row.offset) && row.offset >= 0 && row.offset <= 100000).slice(-100) : [];
-      }
-      let saved = null;
-      try { saved = places().find(row => row.key === identity)?.offset ?? null; } catch (_) { /* Reading works without storage. */ }
+      // The saved place is the newer of this browser's and the server's; the server's counts only for this revision.
+      let local = null;
+      try { local = localPlaces().find(row => row.key === identity) || null; } catch (_) { /* Reading works without storage. */ }
+      const remote = onServer('saved', d.id)?.revision === d.revision ? onServer('saved', d.id) : null;
+      const best = newer(local, remote);
+      let saved = best ? best.offset : null;
+      // where: 'synced' (the server has it), 'waiting' (this browser only, sent when the server answers), 'local' (older place)
+      let where = !best ? '' : best === remote || remote?.offset === best.offset ? 'synced' : best.pending ? 'waiting' : 'local';
+      const PLACE_SAY = {synced: n => `Saved section ${n}. Your other devices will open it here.`,
+        waiting: n => `Saved section ${n} on this browser. Other devices get it when the server answers.`, local: n => `Saved section ${n} on this browser.`};
       function showPlace(message) {
         resume.hidden = saved === null;
-        placeStatus.textContent = message || (saved === null ? 'Save a place on this browser to return later.' : `Saved section ${saved + 1} on this browser.`);
+        placeStatus.textContent = message || (saved === null ? 'Save a place to return later.' : PLACE_SAY[where](saved + 1));
       }
       showPlace();
       let readOffset = 0, readTotal = 0, reading = false, loaded = false;
@@ -204,7 +276,7 @@
         loaded = true; readOffset = data.offset; readTotal = data.total;
         save.disabled = false; section.disabled = false; jumpButton.disabled = false;
         if (saved !== null && saved >= readTotal) { saved = null; showPlace('The saved section is unavailable. Save a new place in this document.'); }
-        if (reader.open && details.open && !rememberRead(d, readOffset)) showPlace('Reading history is kept for this visit only; this browser could not save it.');
+        if (reader.open && details.open && !remember(d, readOffset)) showPlace('Reading history is kept for this visit only; this browser could not save it.');
         section.max = String(readTotal); section.value = String(readOffset + 1);
         const block = data.blocks[0];
         text.textContent = block.text || '(No extracted text on this page.)';
@@ -221,22 +293,25 @@
       reader.addEventListener('toggle', () => {
         if (!reader.open) return;
         if (!loaded) readSection(readOffset, readTotal === 0);
-        else if (details.open && !rememberRead(d, readOffset)) showPlace('Reading history is kept for this visit only; this browser could not save it.');
+        else if (details.open && !remember(d, readOffset)) showPlace('Reading history is kept for this visit only; this browser could not save it.');
       });
       details.addEventListener('toggle', () => {
-        if (details.open && reader.open && loaded && !rememberRead(d, readOffset)) showPlace('Reading history is kept for this visit only; this browser could not save it.');
+        if (details.open && reader.open && loaded && !remember(d, readOffset)) showPlace('Reading history is kept for this visit only; this browser could not save it.');
       });
       if (details.dataset.continue) reader.open = true;
-      save.addEventListener('click', () => {
+      // Save place: this browser first, then the server. Either one is enough to keep the place.
+      save.addEventListener('click', async () => {
         if (reading || readTotal === 0) return;
-        try {
-          let rows;
-          try { rows = places(); } catch (_) { rows = []; }
-          rows = rows.filter(row => row.key !== identity);
-          rows.push({key:identity, offset:readOffset});
-          localStorage.setItem(placeKey, JSON.stringify(rows.slice(-100)));
-          saved = readOffset; showPlace();
-        } catch (_) { showPlace('This browser could not save your place. You can keep reading.'); }
+        const placeAt = readOffset, row = {id:d.id, revision:d.revision, offset:placeAt};
+        let here = true;
+        try { storePlace(identity, {...row, at:new Date().toISOString(), pending:true}); } catch (_) { here = false; }
+        if (here) { saved = placeAt; where = 'waiting'; showPlace(); }
+        save.disabled = true;
+        const s = await sendPlace('saved', row);
+        if (!body.isConnected) return;
+        save.disabled = reading || readTotal === 0;
+        if (s) { try { storePlace(identity, s); } catch (_) { /* the server has it */ } saved = placeAt; where = 'synced'; showPlace(); }
+        else if (!here) showPlace('This browser could not save your place. You can keep reading.');
       });
       resume.addEventListener('click', () => { if (saved !== null) readSection(saved); });
       jump.addEventListener('submit', event => {
@@ -268,12 +343,18 @@
         event.currentTarget.hidden = true;
       });
     }); }
+    // Library home: this browser's recent list merged with the server's by document, the newer row winning, newest first.
     async function home() {
-      const seq = ++request, rows = recentReads();
+      const seq = ++request;
       $('#lib-heading').textContent = 'Recently checked out';
       $('#lib-more').hidden = true; $('#lib-totals').textContent = '';
-      if (!rows.length) { await load(true, false, true); return; }
       status('Loading your recently checked out documents…');
+      const server = await fetchPlaces(true);
+      if (seq !== request || !el.isConnected) return;
+      const byId = new Map();
+      [...recentReads(), ...(server?.recent || [])].forEach(row => byId.set(row.id, newer(byId.get(row.id), row)));
+      const rows = [...byId.values()].sort((a, b) => time(b.at) - time(a.at)).slice(0, 10);
+      if (!rows.length) { await load(true, false, true); return; }
       const results = await Promise.all(rows.map(row => api.get('library/source?id=' + encodeURIComponent(row.id))));
       if (seq !== request || !el.isConnected) return;
       clearOriginals();
@@ -282,7 +363,7 @@
         const d = result.data, changed = d.revision !== rows[i].revision;
         return item(d, false, {changed, offset:changed ? 0 : rows[i].offset});
       }).join('');
-      status('Your last ' + rows.length + ' checked out documents on this browser. Nothing is moved or locked.');
+      status(`Your last ${rows.length} checked out documents${server ? '' : ' on this browser'}. Nothing is moved or locked.`);
       wire();
     }
     async function load(browse, more = false, emptyHome = false) {

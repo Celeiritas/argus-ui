@@ -142,5 +142,59 @@ const shot = (p, name, fullPage = true) => process.env.SHOTS && p.screenshot({pa
     assert.equal(await p.locator('.lib-reader-text').evaluate(e => e.scrollWidth <= e.clientWidth + 1), true);
     assert.deepEqual(p.errors, []); await p.context().close();
     console.log('PASS e-ink paging: edge taps, middle ignored, keys, rotation keeps the place, short section, across sections, off = scrolling');
+
+    // ---- Task 4: reading places follow the person to another device (each context is one device)
+    const A = 'a'.repeat(64), B = 'b'.repeat(64), C = 'c'.repeat(64), later = s => new Date(Date.now() + s * 1000).toISOString();
+    const reader = async q => { await q.locator('.lib-reader-text').filter({hasText:/section/}).waitFor(); };
+    const openSource = async q => {
+      await q.goto(origin + 'memory'); await q.locator('#lib-browse').click(); await q.locator('#lib-status').filter({hasText:'sources in this view'}).waitFor();
+      await q.getByText('Read source and details', {exact:true}).click(); await q.getByText('Read source text', {exact:true}).click(); await reader(q);
+    };
+    const placeSays = q => q.locator('.lib-place-status').innerText();
+    Object.assign(server, {places:{recent:[], saved:[]}, down:false, posts:[]});
+    const one = await page(browser);
+    await openSource(one); await one.getByText('Read next section', {exact:true}).click(); await one.getByText(/^Section 2 of 3/).waitFor();
+    assert.equal(await placeSays(one), 'Save a place to return later.');
+    await one.getByText('Save place', {exact:true}).click();
+    await one.getByText('Saved section 2. Your other devices will open it here.', {exact:true}).waitFor();
+    assert(server.posts.some(b => b.kind === 'saved' && b.id === A && b.revision === B && b.offset === 1));
+    assert(server.posts.some(b => b.kind === 'recent' && b.offset === 1));
+    assert(server.posts.every(b => Object.keys(b).sort().join() === 'id,kind,offset,revision'), 'only ids and the section are sent');
+    // a second device with nothing stored opens the same place
+    const two = await page(browser);
+    await two.goto(origin + 'memory'); await two.locator('#lib-status').filter({hasText:'Your last 1 checked out documents.'}).waitFor();
+    assert.match(await two.locator('.lib-recent .lib-meta').first().innerText(), /Section 2$/);
+    await two.getByText('Continue reading', {exact:true}).click(); await two.getByText(/^Section 2 of 3/).waitFor();
+    assert(await two.locator('.lib-resume').isVisible());
+    assert.equal(await placeSays(two), 'Saved section 2. Your other devices will open it here.');
+    // the newer save wins on the first device too, even over its own older local copy
+    await two.getByText('Read next section', {exact:true}).click(); await two.getByText(/^Section 3 of 3/).waitFor();
+    await two.getByText('Save place', {exact:true}).click(); await two.getByText('Saved section 3. Your other devices will open it here.', {exact:true}).waitFor();
+    await openSource(one); assert.equal(await placeSays(one), 'Saved section 3. Your other devices will open it here.');
+    // a local place with no time (saved before 4.67.0) loses to the server's
+    const old = await page(browser);
+    await old.goto(origin + 'memory'); await old.evaluate(k => localStorage.setItem('mnemosyne-reading-places-v1', JSON.stringify([{key:k, offset:0}])), JSON.stringify([A, B]));
+    await openSource(old); assert.equal(await placeSays(old), 'Saved section 3. Your other devices will open it here.');
+    await old.context().close();
+    // a place saved for another revision never moves the reader; a recent row for it offers the updated document
+    server.places = {recent:[{id:A, revision:C, offset:2, at:later(60)}], saved:[{id:A, revision:C, offset:2, at:later(60)}]};
+    const three = await page(browser);
+    await three.goto(origin + 'memory'); await three.getByText('Open updated document', {exact:true}).waitFor();
+    await openSource(three); assert.equal(await placeSays(three), 'Save a place to return later.'); assert(await three.locator('.lib-resume').isHidden());
+    await three.context().close();
+    // server down: everything still works on this browser, and the place reaches the server once it answers
+    Object.assign(server, {places:{recent:[], saved:[]}, down:true, posts:[]});
+    const four = await page(browser);
+    await openSource(four); await four.getByText('Save place', {exact:true}).click();
+    await four.getByText('Saved section 1 on this browser. Other devices get it when the server answers.', {exact:true}).waitFor();
+    await four.locator('#lib-home').click(); await four.locator('#lib-status').filter({hasText:'checked out documents on this browser'}).waitFor();
+    assert.equal(await four.locator('.lib-continue').count(), 1);
+    server.down = false;
+    await four.locator('#lib-home').click(); await four.locator('#lib-status').filter({hasText:'Your last 1 checked out documents.'}).waitFor();
+    await four.waitForTimeout(200);
+    assert.deepEqual(server.places.saved.map(r => [r.id, r.offset]), [[A, 0]], 'the waiting place was sent');
+    assert.deepEqual(server.places.recent.map(r => [r.id, r.offset]), [[A, 0]]);
+    for (const q of [one, two, four]) { assert.deepEqual(q.errors, []); await q.context().close(); }
+    console.log('PASS synced places: second device continues, newer save wins, old local loses, other revision ignored, server down then catches up');
   } finally { await browser.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });
