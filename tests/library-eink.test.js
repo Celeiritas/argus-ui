@@ -49,7 +49,8 @@ async function page(browser, opts = {}) {
     else return route.fulfill({contentType:'text/html', body:fs.readFileSync(path.join(built,'index.html'),'utf8').replace('/*STATE*/null', JSON.stringify(state))});
     if (!fs.existsSync(file)) return route.fulfill({status:404, body:''});
     const mime = {'.html':'text/html','.js':'application/javascript','.css':'text/css','.png':'image/png','.woff2':'font/woff2','.json':'application/json'};
-    return route.fulfill({body:fs.readFileSync(file), contentType:mime[path.extname(file)] || 'application/octet-stream'});
+    const csp = at === 'plugins/memory/reading-room-preview.html' ? {'content-security-policy':"sandbox allow-scripts allow-pointer-lock allow-popups; frame-ancestors 'self'"} : {};
+    return route.fulfill({body:fs.readFileSync(file), contentType:mime[path.extname(file)] || 'application/octet-stream', headers:csp});
   });
   return p;
 }
@@ -196,5 +197,33 @@ const shot = (p, name, fullPage = true) => process.env.SHOTS && p.screenshot({pa
     assert.deepEqual(server.places.recent.map(r => [r.id, r.offset]), [[A, 0]]);
     for (const q of [one, two, four]) { assert.deepEqual(q.errors, []); await q.context().close(); }
     console.log('PASS synced places: second device continues, newer save wins, old local loses, other revision ignored, server down then catches up');
+
+    // ---- Task 5: the side index vibrates only when the reader turned it on, once per letter
+    const five = await page(browser);
+    await five.addInitScript(() => { window.__vib = []; Object.defineProperty(navigator, 'vibrate', {value: ms => { window.__vib.push(ms); return true; }}); });
+    const tryRail = async () => {
+      await five.locator('#lib-preview').click(); await five.locator('.volume').first().waitFor();
+      await five.locator('nav [data-view="shelves"]').click(); await five.locator('.category[data-cat="books"]').click();
+      const r = await five.locator('#rail').boundingBox(), spans = await five.locator('#rail > span').count();
+      await five.mouse.move(r.x + 22, r.y + 4); await five.mouse.down(); await five.mouse.move(r.x + 22, r.y + 8, {steps:5});
+      const still = await five.evaluate(() => window.__vib.length);
+      await five.mouse.move(r.x + 22, r.y + r.height - 4, {steps:40}); await five.mouse.up();
+      return {still, calls: await five.evaluate(() => window.__vib), spans, last: await five.locator('#rail').getAttribute('aria-valuenow')};
+    };
+    await five.goto(origin + 'memory'); await five.locator('#lib-preview').waitFor();
+    assert(!(await five.locator('#lib-preview').getAttribute('href')).includes('vibrate'));
+    let run = await tryRail();
+    assert.equal(Number(run.last), run.spans - 1, 'the drag reached the last letter'); assert.deepEqual(run.calls, [], 'off by default: no vibration');
+    await five.goto(origin + 'memory'); await five.getByText('Reading settings', {exact:true}).click();
+    await five.getByLabel('Vibrate when the side index moves').check();
+    assert.match(await five.locator('#lib-preview').getAttribute('href'), /\?vibrate=1$/);
+    run = await tryRail();
+    assert.equal(run.still, 0, 'moving within the first letter does not vibrate');
+    assert.equal(run.calls.length, run.spans - 1, 'one short pulse per new letter, not per pointer move'); assert(run.calls.every(ms => ms === 8));
+    await five.goto(origin + 'memory'); assert.match(await five.locator('#lib-preview').getAttribute('href'), /\?vibrate=1$/, 'the choice is kept');
+    await five.getByText('Reading settings', {exact:true}).click(); await five.getByLabel('Vibrate when the side index moves').uncheck();
+    assert(!(await five.locator('#lib-preview').getAttribute('href')).includes('vibrate'));
+    assert.deepEqual(five.errors, []); await five.context().close();
+    console.log('PASS index vibration: off by default, link carries the choice, one 8 ms pulse per letter, kept, turned off again');
   } finally { await browser.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

@@ -403,9 +403,12 @@
     $('#lib-home').addEventListener('click', home);
     const prefs = readingPrefs(), modeSelect = $('#lib-eink'), vibrateBox = $('#lib-vibrate');
     const sayPrefs = kept => { $('#lib-settings-say').textContent = einkSay(readingPrefs().eink) + (kept ? '' : ' This browser could not keep the setting; it applies until you leave.'); };
-    modeSelect.value = prefs.eink; vibrateBox.checked = prefs.vibrate; applyEink(); sayPrefs(true);
+    /* The preview is sandboxed without storage, so the vibration choice travels in its link. */
+    const previewLink = $('#lib-preview'), previewHref = previewLink.getAttribute('href');
+    const linkPrefs = () => { previewLink.setAttribute('href', previewHref + (readingPrefs().vibrate ? '?vibrate=1' : '')); };
+    modeSelect.value = prefs.eink; vibrateBox.checked = prefs.vibrate; applyEink(); sayPrefs(true); linkPrefs();
     modeSelect.addEventListener('change', () => { const kept = savePrefs({...readingPrefs(), eink: modeSelect.value}); applyEink(); sayPrefs(kept); });
-    vibrateBox.addEventListener('change', () => { sayPrefs(savePrefs({...readingPrefs(), vibrate: vibrateBox.checked})); });
+    vibrateBox.addEventListener('change', () => { sayPrefs(savePrefs({...readingPrefs(), vibrate: vibrateBox.checked})); linkPrefs(); });
     for (const id of ['#lib-kind', '#lib-collection', '#lib-health']) $(id).addEventListener('change', () => load(id === '#lib-health' ? true : browsing));
     home();
   }
