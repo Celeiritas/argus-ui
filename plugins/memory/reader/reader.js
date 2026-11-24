@@ -70,6 +70,7 @@ async function send(row, keepalive = false) {
     serverRow = mine || '';
     const now = localPlaces()[id];
     if (now && now.cfi === row.cfi) keepLocal({...now, pending: false, seen: undefined, at: mine?.at || now.at});
+    if (last && last.cfi === row.cfi) last.pending = false;          // sent: hiding the tab must not send it again
     if ($('#say').textContent === SAY.waiting) say('');
     return true;
   } catch (_) {
@@ -91,7 +92,7 @@ function remember(loc) {
   let seen = before?.pending ? before.seen : (serverRow === undefined ? undefined : serverRow ? serverRow.at : '');
   last = {id, revision, cfi: loc.cfi, fraction, at: new Date().toISOString(), pending: true, ...(typeof seen === 'string' ? {seen} : {})};
   keepLocal(last);
-  clearTimeout(timer); timer = setTimeout(() => send(last), 1500);
+  clearTimeout(timer); timer = setTimeout(() => { timer = 0; send(last); }, 1500);
 }
 function flush() { if (last?.pending && timer) { clearTimeout(timer); timer = 0; send(last, true); } }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
@@ -137,6 +138,24 @@ const EINK_CSS = `
       transition: none !important; animation: none !important; }
   a { text-decoration: underline !important; }`;
 
+// A second guard behind the strict folder policy (an older browser might not apply it to the book's frames): book code is
+// dropped and every chapter loses its scripts, on* handlers and javascript: links before foliate shows it.
+const PARSE = {'application/xhtml+xml': 1, 'text/html': 1, 'image/svg+xml': 1, 'application/xml': 1, 'text/xml': 1};
+function scrubDoc(text, type) {
+  const doc = new DOMParser().parseFromString(text, type);
+  if (doc.querySelector('parsererror')) return type === 'text/html' ? '' : scrubDoc(text, 'text/html');
+  doc.querySelectorAll('script, iframe, object, embed').forEach(el => el.remove());
+  for (const el of doc.querySelectorAll('*')) for (const a of [...el.attributes]) {
+    if (/^on/i.test(a.name) || (/(^|:)href$|^src$|^action$/i.test(a.name) && /^\s*javascript:/i.test(a.value))) el.removeAttribute(a.name);
+  }
+  return type === 'text/html' ? '<!doctype html>' + doc.documentElement.outerHTML : new XMLSerializer().serializeToString(doc);
+}
+function scrub(e) {
+  const d = e.detail, type = String(d.type || '').split(';')[0].trim().toLowerCase();
+  if (/(java|ecma)script/.test(type)) { d.data = ''; return; }
+  if (PARSE[type]) d.data = Promise.resolve(d.data).then(t => typeof t === 'string' ? scrubDoc(t, type) : t);
+}
+
 async function open() {
   $('#back').href = libraryLink;
   if (!HEX.test(id) || !HEX.test(revision) || !['epub', 'pdf'].includes(format)) { $('#title').textContent = 'Book'; say(SAY.link, true); return; }
@@ -152,7 +171,7 @@ async function open() {
   $('#book').append(view);
   view.addEventListener('relocate', e => remember(e.detail));
   view.addEventListener('load', e => { const doc = e.detail.doc; doc.addEventListener('click', onTap); doc.addEventListener('keydown', onKey); });
-  try { await view.open(file); }
+  try { await view.open(file); view.book.transformTarget?.addEventListener('data', scrub); }
   catch (e) { console.warn('reader: could not open the book', e); view.remove(); view = null; $('#title').textContent = 'Book'; say(SAY.missing, true); return; }
   const t = view.book.metadata?.title;
   const title = typeof t === 'string' ? t : t && typeof t === 'object' ? Object.values(t)[0] : '';
@@ -172,7 +191,8 @@ async function open() {
   const best = pick(same.find(x => x === local) || null, same.find(x => x === server) || null);
   if (mine.length && !same.length) say(SAY.changed);
   if (local && local.revision !== revision) dropLocal();               // a place in an older copy of the book means nothing now
-  await view.init({lastLocation: best?.cfi || null, showTextStart: !best?.cfi});
+  const cfi = best?.cfi || same.find(x => x.cfi)?.cfi || null;      // a text-reader save carries no cfi; keep the book's own
+  await view.init({lastLocation: cfi, showTextStart: !cfi});
   if (best === local && local?.pending) send(local);                  // a place left waiting last time
 }
 

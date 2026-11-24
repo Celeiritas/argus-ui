@@ -413,7 +413,7 @@
         if (!result.ok) return `<article class="lib-result"><h4>Unavailable document</h4><p class="lib-meta">${result.status === 404 ? 'This document is no longer in the current catalog.' : 'Could not load this document. Choose Library home to retry.'}</p></article>`;
         const d = result.data, changed = d.revision !== rows[i].revision;
         const book = !changed && typeof rows[i].cfi === 'string' && bookFormat(d) !== '';
-        return item(d, false, {changed, offset:changed ? 0 : rows[i].offset, book, fraction:Number(rows[i].fraction) || 0});
+        return item(d, false, {changed, offset:changed ? 0 : Number(rows[i].offset) || 0, book, fraction:Number(rows[i].fraction) || 0});
       }).join('');
       status(`Your last ${rows.length} checked out documents${server ? '' : ' on this browser'}. Nothing is moved or locked.`);
       wire();

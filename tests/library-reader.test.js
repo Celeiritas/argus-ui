@@ -100,7 +100,10 @@ const shot = (p, name) => process.env.SHOTS && p.screenshot({path: path.join(pro
     await p.evaluate(() => document.querySelector('foliate-view').goTo(1)); await p.waitForTimeout(400);
     for (let i = 0; i < 3; i++) { await p.keyboard.press('PageDown'); await p.waitForTimeout(150); }
     assert.equal(await p.evaluate(() => window.BAD), undefined, 'no script from inside the book ran');
-    assert.ok(p.csp.length > 0, 'the browser refused the book\'s scripts');
+    // the reader strips them before the browser sees them (the strict policy stays the first guard)
+    assert.deepEqual(await p.evaluate(() => { const d = document.querySelector('foliate-view').renderer.getContents()[0].doc;
+      return [d.querySelectorAll('script').length, d.querySelectorAll('[onerror]').length]; }), [0, 0],
+      'the chapter shows without its scripts or handlers');
     assert.deepEqual(p.errors, []);
 
     // ---- the server does not answer: the place waits on this device, and goes once it answers

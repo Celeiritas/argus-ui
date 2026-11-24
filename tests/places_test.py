@@ -56,6 +56,15 @@ class Places(unittest.TestCase):
         _, lists = self.put('saved', A, 0, fraction=1)
         self.assertEqual(lists['saved'][0]['fraction'], 1); self.assertNotIn('cfi', lists['saved'][0])
 
+    def test_text_and_book_reader_keep_each_others_place(self):   # one recent row, two readers (4.69.0)
+        self.put('recent', A, 3)
+        _, lists = self.put('recent', A, 0, cfi='epubcfi(/6/4!/4/2/1:0)', fraction=0.5)
+        self.assertEqual((lists['recent'][0]['offset'], lists['recent'][0]['cfi']), (3, 'epubcfi(/6/4!/4/2/1:0)'))
+        _, lists = self.put('recent', A, 4)
+        self.assertEqual((lists['recent'][0]['offset'], lists['recent'][0]['cfi'], lists['recent'][0]['fraction']), (4, 'epubcfi(/6/4!/4/2/1:0)', 0.5))
+        _, lists = self.put('recent', A, 1, revision='c' * 64)      # another revision starts clean
+        self.assertNotIn('cfi', lists['recent'][0])
+
     def test_place_refuses_bad_cfi(self):
         for bad in [dict(cfi='<script>'), dict(cfi='epubcfi(' + 'x' * 1017 + ')'), dict(cfi='epubcfi(x)"'), dict(cfi='epubcfi()'),
                     dict(cfi=5), dict(fraction=1.5), dict(fraction=-0.1), dict(fraction=True), dict(fraction='0.5'), dict(fraction=float('nan'))]:

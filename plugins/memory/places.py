@@ -11,7 +11,7 @@ NAME = 'mnemosyne-places.json'
 LIMITS = {'recent': 10, 'saved': 100}
 HEX = re.compile(r'^[a-f0-9]{64}$')
 MAX_OFFSET = 100000
-CFI = re.compile(r'^epubcfi\([!#-&(-;=?-\[\]-_a-~]{1,1015}\)$')   # printable ASCII without space < > " ' \ ` ; at most 1024 chars
+CFI = re.compile(r'^epubcfi\([!#-&(-;=?-\[\]-_a-~]{1,1015}\)$')   # printable ASCII without space < > " ' \ ` (";" stays: CFIs use ;s=), at most 1024 chars
 _lock = threading.Lock()
 
 
@@ -69,6 +69,12 @@ def put(path, person, kind, row):
     with _lock:
         data = _read(path)
         lists = _lists(data, person)
+        old = next((r for r in lists[kind] if r['id'] == clean['id']), None)
+        # The text reader (offset) and the book reader (cfi, fraction) share a recent row: within one revision each keeps
+        # the other's place, so reading one never resets the other.
+        if kind == 'recent' and old and old['revision'] == clean['revision']:
+            if 'cfi' in clean: clean['offset'] = old['offset']
+            else: clean.update({k: old[k] for k in ('cfi', 'fraction') if k in old})
         rows = [r for r in lists[kind] if r['id'] != clean['id']]
         rows = ([clean] + rows)[:LIMITS[kind]] if kind == 'recent' else (rows + [clean])[-LIMITS[kind]:]
         lists[kind] = rows
