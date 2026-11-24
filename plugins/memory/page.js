@@ -39,10 +39,12 @@
 
   // Browsing history is kept on this browser first, then on the server for the signed-in person (4.67.0, "Synced places"
   // below); no text or titles are persisted. `at` is when the row was made (the server's time once it took the row) and
-  // `pending` marks a row the server has not taken yet.
+  // `pending` marks a row the server has not taken yet. `seen` is the server's `at` for that document when the waiting row
+  // was made ('' when it had none): a waiting row wins only while the server still has that copy, so the clocks of two
+  // devices are never compared.
   const recentKey = 'mnemosyne-recent-v1';
   const stamp = at => typeof at === 'string' && at.length <= 40 ? at : '';
-  const keep = row => ({id:row.id, revision:row.revision, offset:row.offset, ...(stamp(row.at) ? {at:row.at} : {}), ...(row.pending === true ? {pending:true} : {})});
+  const keep = row => ({id:row.id, revision:row.revision, offset:row.offset, ...(stamp(row.at) ? {at:row.at} : {}), ...(row.pending === true ? {pending:true} : {}), ...(row.pending === true && typeof row.seen === 'string' && row.seen.length <= 40 ? {seen:row.seen} : {})});
   let sessionRecent = [], sessionRecentOnly = false;
   function recentReads() {
     if (sessionRecentOnly) return sessionRecent;
@@ -64,8 +66,10 @@
     try { localStorage.setItem(recentKey, JSON.stringify(sessionRecent)); sessionRecentOnly = false; return true; }
     catch (_) { sessionRecentOnly = true; return false; }
   }
-  function rememberRead(source, offset) {
-    return writeRecent([{id:source.id, revision:source.revision, offset, at:new Date().toISOString(), pending:true}, ...recentReads().filter(row => row.id !== source.id)]);
+  function rememberRead(source, offset, seen) {
+    const rows = recentReads(), before = rows.find(row => row.id === source.id);
+    if (seen === undefined && before) seen = before.pending ? before.seen : before.at;   // the last server copy this browser knew
+    return writeRecent([keep({id:source.id, revision:source.revision, offset, at:new Date().toISOString(), pending:true, seen}), ...rows.filter(row => row.id !== source.id)]);
   }
   // The server took this row: the local copy gets the server's time and stops waiting (only if it is still the same place).
   function settleRecent(row) {
@@ -80,24 +84,30 @@
     const raw = localStorage.getItem(placeKey);
     if (!raw || raw.length > 100000) return [];
     const rows = JSON.parse(raw);
-    return Array.isArray(rows) ? rows.filter(row => row && typeof row.key === 'string' && row.key.length < 300 && Number.isSafeInteger(row.offset) && row.offset >= 0 && row.offset <= 100000).slice(-100) : [];
+    return Array.isArray(rows) ? rows.filter(row => row && typeof row.key === 'string' && row.key.length < 300 && Number.isSafeInteger(row.offset) && row.offset >= 0 && row.offset <= 100000).slice(-100)
+      .map(row => ({key:row.key, offset:row.offset, ...(stamp(row.at) ? {at:row.at} : {}), ...(row.pending === true ? {pending:true} : {}), ...(row.pending === true && typeof row.seen === 'string' ? {seen:row.seen} : {})})) : [];
   }
   function storePlace(key, row) {      // throws when this browser cannot store
     let rows;
     try { rows = localPlaces(); } catch (_) { rows = []; }
     rows = rows.filter(r => r.key !== key);
-    rows.push({key, offset:row.offset, ...(stamp(row.at) ? {at:row.at} : {}), ...(row.pending ? {pending:true} : {})});
+    rows.push({key, offset:row.offset, ...(stamp(row.at) ? {at:row.at} : {}), ...(row.pending ? {pending:true} : {}), ...(row.pending && typeof row.seen === 'string' ? {seen:row.seen} : {})});
     localStorage.setItem(placeKey, JSON.stringify(rows.slice(-100)));
   }
   // The newer of two rows by `at`; a row without a time (made before 4.67.0) loses to one with a time.
   const time = at => Date.parse(stamp(at)) || 0;
   const newer = (a, b) => !a ? b : !b ? a : (time(b.at) > time(a.at) ? b : a);
+  // This browser's row against the server's for one document. A waiting row wins while the server still has the copy it
+  // replaced; settled rows both carry server times. Only a waiting row that never knew the server's copy falls back to `at`.
+  const pick = (local, server) => !local ? server : !server ? local
+    : local.pending && typeof local.seen === 'string' ? (server.at === local.seen ? local : server) : newer(server, local);
 
   // Reading settings (4.67.0, docs/mnemosyne-library.md): kept on this browser, never on the server. E-ink mode is Automatic,
   // On or Off; Automatic looks for a slow-refresh or monochrome screen, or an e-ink tablet's name in the browser's user agent.
   // The side index's vibration is off until the reader turns it on.
   const prefsKey = 'mnemosyne-reading-settings-v1', EINK_MODES = ['auto', 'on', 'off'];
-  const EINK_UA = /\b(?:BOOX|Onyx)\b|NoteAir|NoteMax|Tab ?Ultra|Go ?10\.3|Palma|Poke ?\d|Nova ?\d|\bLeaf ?\d/i;
+  // BOOX/Onyx in any case; model names only as BOOX writes them (case-sensitive), so a phone called "nova 9" is not one.
+  const EINK_UA = {test: ua => /\b(?:BOOX|Onyx)\b/i.test(ua) || /\b(?:NoteAir|NoteMax|Tab ?Ultra|Go ?10\.3|Palma|Poke ?\d|Nova ?(?:Air|Pro|\d)|Leaf ?\d)/.test(ua)};
   let sessionPrefs = null;
   function readingPrefs() {
     if (sessionPrefs) return {...sessionPrefs};
@@ -123,6 +133,7 @@
     const removed = new MutationObserver(() => { if (!el.isConnected) { clearOriginals(); document.documentElement.classList.remove('eink'); removed.disconnect(); } });
     removed.observe(document.getElementById('main'), {childList: true, subtree: true});
     let request = 0, offset = 0, browsing = true;
+    let activeLeaf = null;                          // the reader whose page Page Up/Page Down turn (e-ink)
     // Synced places (4.67.0, docs/mnemosyne-library.md): the server keeps the signed-in person's recent list and saved places
     // (ids and a section number only), so their other devices open the same place. Fetched once per visit to the Library and
     // again by Library home; rows still waiting on this browser are sent then, unless the server already has a newer one.
@@ -130,35 +141,59 @@
     const goodRow = r => r && HEX.test(r.id) && HEX.test(r.revision) && Number.isSafeInteger(r.offset) && r.offset >= 0 && r.offset <= 100000 && time(r.at) > 0;
     const goodLists = d => d && Array.isArray(d.recent) && Array.isArray(d.saved) ? {recent:d.recent.filter(goodRow), saved:d.saved.filter(goodRow)} : null;
     let synced;                                     // undefined: not asked this visit; null: the server did not answer
-    async function sendPlace(kind, row) {           // the server's row, or null when it did not take it
-      const r = await api.post('library/place', {kind, id:row.id, revision:row.revision, offset:row.offset});
-      const lists = r.ok ? goodLists(r.data) : null;
-      if (lists) synced = lists;
-      return lists?.[kind].find(x => x.id === row.id && x.revision === row.revision && x.offset === row.offset) || null;
+    let queue = Promise.resolve(), fetching = null;
+    // The server's row, or null when it did not take it. Sends wait in one queue, so the last place read is the last sent.
+    // `current` (optional) re-reads the row just before sending and returns null when it no longer needs to go.
+    function sendPlace(kind, row, current = () => row) {
+      const run = queue.then(async () => {
+        const now = current();
+        if (!now) return null;
+        const r = await api.post('library/place', {kind, id:now.id, revision:now.revision, offset:now.offset});
+        const lists = r.ok ? goodLists(r.data) : null;
+        if (lists) synced = lists;
+        return lists?.[kind].find(x => x.id === now.id && x.revision === now.revision && x.offset === now.offset) || null;
+      });
+      queue = run.catch(() => null);
+      return run;
     }
+    const seenOn = (kind, id) => synced ? (synced[kind].find(x => x.id === id)?.at ?? '') : undefined;
     const onServer = (kind, id) => synced?.[kind].find(x => x.id === id) || null;
-    async function fetchPlaces(fresh = false) {
-      if (synced !== undefined && !fresh) return synced;
-      const r = await api.get('library/places');
-      synced = (r.ok && goodLists(r.data)) || null;
-      if (!synced) return null;
-      for (const row of recentReads().filter(r => r.pending && newer(onServer('recent', r.id), r) === r)) {
-        const s = await sendPlace('recent', row); if (s) settleRecent(s);
-      }
-      let waiting = [];
-      try { waiting = localPlaces().filter(r => r.pending); } catch (_) { /* nothing stored here */ }
-      for (const row of waiting) {
-        let id, revision;
-        try { [id, revision] = JSON.parse(row.key); } catch (_) { continue; }
-        if (!HEX.test(id) || !HEX.test(revision) || newer(onServer('saved', id), row) !== row) continue;
-        const s = await sendPlace('saved', {id, revision, offset:row.offset});
-        if (s) try { storePlace(row.key, s); } catch (_) { /* the server has it */ }
-      }
-      return synced;
+    function fetchPlaces(fresh = false) {
+      if (fetching) return fetching;
+      if (synced !== undefined && !fresh) return Promise.resolve(synced);
+      fetching = (async () => {
+        const r = await api.get('library/places');
+        synced = (r.ok && goodLists(r.data)) || null;
+        if (!synced) return null;
+        // Waiting recent rows: sent when the server still has the copy they replaced, otherwise the server's copy is taken.
+        for (const id of recentReads().filter(row => row.pending).map(row => row.id)) {
+          const waiting = () => { const row = recentReads().find(x => x.id === id && x.pending); return row && pick(row, onServer('recent', id)) === row ? row : null; };
+          if (!waiting()) { const s = onServer('recent', id), rows = recentReads(); if (s) writeRecent(rows.map(x => x.id === id && x.pending ? keep(s) : x)); continue; }
+          const s = await sendPlace('recent', null, waiting); if (s) settleRecent(s);
+        }
+        let keys = [];
+        try { keys = localPlaces().filter(row => row.pending).map(row => row.key); } catch (_) { /* nothing stored here */ }
+        for (const key of keys) {
+          let id, revision;
+          try { [id, revision] = JSON.parse(key); } catch (_) { continue; }
+          if (!HEX.test(id) || !HEX.test(revision)) continue;
+          const mine = () => { try { return localPlaces().find(x => x.key === key && x.pending) || null; } catch (_) { return null; } };
+          const waiting = () => { const row = mine(); return row && pick(row, onServer('saved', id)) === row ? {id, revision, offset:row.offset} : null; };
+          if (!waiting()) {
+            const row = mine(), s = onServer('saved', id);
+            if (row) try { storePlace(key, s?.revision === revision ? s : {...row, pending:false}); } catch (_) { /* left waiting */ }
+            continue;
+          }
+          const s = await sendPlace('saved', null, waiting);
+          if (s) try { storePlace(key, s); } catch (_) { /* the server has it */ }
+        }
+        return synced;
+      })().finally(() => { fetching = null; });
+      return fetching;
     }
     // This browser's history first, then the server; the reading is never held up by the server.
     function remember(source, offsetRead) {
-      const kept = rememberRead(source, offsetRead);
+      const kept = rememberRead(source, offsetRead, seenOn('recent', source.id));
       sendPlace('recent', {id:source.id, revision:source.revision, offset:offsetRead}).then(s => { if (s) settleRecent(s); });
       return kept;
     }
@@ -183,7 +218,7 @@
       if (!r.ok) { body.textContent = r.data?.msg || 'Could not load the source. Close and reopen to retry.'; return; }
       details.dataset.loaded = '1'; const d = r.data;
       body.innerHTML = `
-        <details class="lib-reader"><summary>Read source text</summary><div class="lib-reader-body"><div class="lib-reader-tools"><button type="button" class="lib-save" disabled>Save place</button><button type="button" class="lib-resume" hidden>Resume reading</button></div><p class="lib-place-status lib-meta" role="status"></p><details class="lib-navigation"><summary>Jump to section</summary><form class="lib-jump"><label>Section number <input type="number" min="1" step="1" required inputmode="numeric" disabled></label><button type="submit" disabled>Read section</button></form></details><p class="lib-reader-status" role="status" tabindex="-1"></p><div class="lib-page"><p class="lib-reader-text lib-full"></p></div><p class="lib-page-status lib-meta" hidden></p><div class="lib-reader-nav"><button type="button" class="lib-prev">Read previous section</button><button type="button" class="lib-next">Read next section</button></div></div></details>
+        <details class="lib-reader"><summary>Read source text</summary><div class="lib-reader-body"><div class="lib-reader-tools"><button type="button" class="lib-save" disabled>Save place</button><button type="button" class="lib-resume" hidden>Resume reading</button></div><p class="lib-place-status lib-meta" role="status"></p><details class="lib-navigation"><summary>Jump to section</summary><form class="lib-jump"><label>Section number <input type="number" min="1" step="1" required inputmode="numeric" disabled></label><button type="submit" disabled>Read section</button></form></details><p class="lib-reader-status" role="status" tabindex="-1"></p><div class="lib-page" role="region" aria-label="Page of the source text"><p class="lib-reader-text lib-full"></p></div><p class="lib-page-status lib-meta" role="status" hidden></p><p class="lib-page-hint lib-meta" hidden>Tap the left or right edge, or press Page Up or Page Down, to turn the page.</p><div class="lib-reader-nav"><button type="button" class="lib-prev">Read previous section</button><button type="button" class="lib-next">Read next section</button></div></div></details>
         <details class="lib-file-details"><summary>View file details</summary><dl><dt>File format</dt><dd>${e(d.file_format || 'unknown')}</dd><dt>Authorship</dt><dd>${e(d.authorship)}</dd><dt>Source version</dt><dd>${e(d.source_version)}</dd><dt>Extraction</dt><dd>${e(d.health)} · ${e(d.extraction_version)}</dd><dt>Indexed</dt><dd>${e(d.indexed_at)}</dd><dt>Revision</dt><dd>${e(d.revision)}</dd></dl></details>
         ${d.url ? `<a href="${e(d.url)}" target="_blank" rel="noopener noreferrer">Open source website</a>` : ''}
         ${d.original ? `<p class="lib-meta">Original: ${e(d.original.split('/').pop())}</p><button type="button" class="lib-original">Prepare original PDF</button><p class="lib-original-status" role="status"></p>` : '<p class="lib-meta">No original file is connected to the viewer yet.</p>'}`;
@@ -197,7 +232,7 @@
       let local = null;
       try { local = localPlaces().find(row => row.key === identity) || null; } catch (_) { /* Reading works without storage. */ }
       const remote = onServer('saved', d.id)?.revision === d.revision ? onServer('saved', d.id) : null;
-      const best = newer(local, remote);
+      const best = pick(local, remote);
       let saved = best ? best.offset : null;
       // where: 'synced' (the server has it), 'waiting' (this browser only, sent when the server answers), 'local' (older place)
       let where = !best ? '' : best === remote || remote?.offset === best.offset ? 'synced' : best.pending ? 'waiting' : 'local';
@@ -212,7 +247,7 @@
       // E-ink paging (4.67.0): the section's text in screen-high CSS columns, one column shown; a tap on the left or right
       // quarter, PageUp/PageDown or the arrow keys turn the page, and past either end they open the neighbouring section.
       // `anchor` is the text offset at the top of the shown page, so a rotation or a resize keeps the same text in view.
-      const leaf = body.querySelector('.lib-page'), pageStatus = body.querySelector('.lib-page-status');
+      const leaf = body.querySelector('.lib-page'), pageStatus = body.querySelector('.lib-page-status'), pageHint = body.querySelector('.lib-page-hint');
       const GAP = 32;
       let page = 0, pages = 1, anchor = 0;
       const paged = () => document.documentElement.classList.contains('eink');
@@ -220,8 +255,12 @@
       function goPage(n) {
         page = Math.max(0, Math.min(pages - 1, n)); text.scrollLeft = page * step();
         pageStatus.textContent = `Page ${page + 1} of ${pages}`;
-        const b = text.getBoundingClientRect(), at = document.caretRangeFromPoint?.(b.left + 2, b.top + 8);
-        anchor = at && text.contains(at.startContainer) ? at.startOffset : 0;
+        const b = text.getBoundingClientRect(), x = b.left + 2, y = b.top + 8;
+        // caretRangeFromPoint (Chromium, WebKit) or caretPositionFromPoint (Firefox); unchanged when neither finds the text.
+        const r = document.caretRangeFromPoint?.(x, y), p = r ? null : document.caretPositionFromPoint?.(x, y);
+        const node = r ? r.startContainer : p?.offsetNode, off = r ? r.startOffset : p?.offset;
+        if (node && text.contains(node)) anchor = off;
+        else if (page === 0) anchor = 0;
       }
       function pageOf(offset) {
         const node = text.firstChild;
@@ -231,7 +270,7 @@
       }
       function layout(at = null) {
         const on = paged() && loaded;
-        text.classList.toggle('paged', on); pageStatus.hidden = !on;
+        text.classList.toggle('paged', on); pageStatus.hidden = !on; pageHint.hidden = !on;
         if (on) leaf.tabIndex = 0; else leaf.removeAttribute('tabindex');
         if (!on) { text.scrollLeft = 0; return; }
         text.style.setProperty('--colw', text.clientWidth + 'px');
@@ -253,6 +292,18 @@
         if (!dir || !text.classList.contains('paged')) return;
         event.preventDefault(); turn(dir);
       });
+      // An e-ink tablet's page buttons send Page Up/Page Down to the document, so the reader used last takes them
+      // wherever focus is, except in a form field.
+      const claim = () => { activeLeaf = leaf; };
+      leaf.addEventListener('pointerdown', claim); leaf.addEventListener('focusin', claim);
+      const pageKeys = event => {
+        if (!leaf.isConnected) { document.removeEventListener('keydown', pageKeys); return; }
+        const dir = {PageDown: 1, PageUp: -1}[event.key];
+        if (!dir || event.defaultPrevented || activeLeaf !== leaf || !text.classList.contains('paged') || !reader.open) return;
+        if (event.target.closest?.('input, select, textarea, [contenteditable]')) return;
+        event.preventDefault(); turn(dir);
+      };
+      document.addEventListener('keydown', pageKeys);
       new ResizeObserver(() => { if (leaf.isConnected) layout(); }).observe(leaf);
       const relayout = () => { if (!leaf.isConnected) document.removeEventListener('mnemosyne-eink', relayout); else layout(); };
       document.addEventListener('mnemosyne-eink', relayout);
@@ -282,7 +333,7 @@
         text.textContent = block.text || '(No extracted text on this page.)';
         readStatus.textContent = `Section ${readOffset + 1} of ${readTotal}${block.pdf_page ? ` · PDF page ${block.pdf_page}; printed page not recorded` : ''}${block.chapter ? ` · ${chapterLabel(block.chapter)}` : ''}. Extracted text; check the original for layout.`;
         prev.disabled = readOffset <= 0; next.disabled = readOffset + 1 >= readTotal;
-        layout(at);
+        layout(at); activeLeaf = leaf;
         if (initial && text.classList.contains('paged')) readStatus.scrollIntoView({block:'start'});   // the whole page on the screen
         if (!initial) {
           if (text.classList.contains('paged') && leaf.contains(document.activeElement)) leaf.focus({preventScroll:true});
@@ -304,7 +355,9 @@
         if (reading || readTotal === 0) return;
         const placeAt = readOffset, row = {id:d.id, revision:d.revision, offset:placeAt};
         let here = true;
-        try { storePlace(identity, {...row, at:new Date().toISOString(), pending:true}); } catch (_) { here = false; }
+        let seen = seenOn('saved', d.id);
+        if (seen === undefined && local) seen = local.pending ? local.seen : local.at;
+        try { storePlace(identity, {...row, at:new Date().toISOString(), pending:true, seen}); local = {key:identity, ...row, pending:true, seen}; } catch (_) { here = false; }
         if (here) { saved = placeAt; where = 'waiting'; showPlace(); }
         save.disabled = true;
         const s = await sendPlace('saved', row);
@@ -349,10 +402,11 @@
       $('#lib-heading').textContent = 'Recently checked out';
       $('#lib-more').hidden = true; $('#lib-totals').textContent = '';
       status('Loading your recently checked out documents…');
-      const server = await fetchPlaces(true);
+      const server = await Promise.race([fetchPlaces(true), new Promise(done => setTimeout(() => done(null), 2500))]);
       if (seq !== request || !el.isConnected) return;
-      const byId = new Map();
-      [...recentReads(), ...(server?.recent || [])].forEach(row => byId.set(row.id, newer(byId.get(row.id), row)));
+      const byId = new Map(), local = new Map(recentReads().map(row => [row.id, row]));
+      for (const row of server?.recent || []) byId.set(row.id, pick(local.get(row.id), row));
+      for (const [id, row] of local) if (!byId.has(id)) byId.set(id, row);
       const rows = [...byId.values()].sort((a, b) => time(b.at) - time(a.at)).slice(0, 10);
       if (!rows.length) { await load(true, false, true); return; }
       const results = await Promise.all(rows.map(row => api.get('library/source?id=' + encodeURIComponent(row.id))));

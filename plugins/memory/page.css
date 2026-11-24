@@ -103,7 +103,8 @@ html.eink *,html.eink *::before,html.eink *::after{animation:none!important;tran
   box-shadow:none!important;text-shadow:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
 html.eink .memory .panel,html.eink .mem-backups>summary{background:#fff;border:2px solid #000}
 html.eink .memory button,html.eink .memory select,html.eink .memory input{background:#fff;color:#000;border:2px solid #000}
-html.eink .memory button:disabled{border-style:dashed}
+html.eink .memory button:disabled{border-style:dashed;opacity:1;color:#000}
+html.eink img,html.eink svg{filter:grayscale(1)}
 html.eink .memory a{color:#000;text-decoration:underline}
 html.eink .memory :focus-visible{outline:3px solid #000;outline-offset:3px}
 html.eink .lib-reader-text{line-height:1.6}
@@ -115,4 +116,4 @@ html.eink .lib-page{margin:0 32px;cursor:pointer}
 html.eink .lib-reader-text{padding:0}
 .lib-reader-text.paged{margin:0;height:max(240px,calc(100dvh - 300px));overflow:hidden;column-width:var(--colw,100vw);column-gap:32px;column-fill:auto}
 .lib-page:focus-visible{outline:3px solid #000;outline-offset:6px}
-.lib-page-status{text-align:center}
+.lib-page-status,.lib-page-hint{text-align:center}

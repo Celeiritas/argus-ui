@@ -53,7 +53,7 @@ def load(path, person):
 
 def put(path, person, kind, row):
     """Store one row for this person and return their new lists. ValueError on a bad kind or row."""
-    if kind not in LIMITS or not isinstance(row, dict): raise ValueError('kind')
+    if not isinstance(kind, str) or kind not in LIMITS or not isinstance(row, dict): raise ValueError('kind')
     clean = _row({**row, 'at': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.%fZ')})
     if not clean: raise ValueError('row')
     with _lock:

@@ -51,7 +51,8 @@ class Places(unittest.TestCase):
     def test_bad_rows_are_refused_and_nothing_written(self):
         for bad in [dict(kind='other', id=A), dict(kind='saved', id='A' * 64), dict(kind='saved', id=A[:-1]),
                     dict(kind='saved', id=A, revision='x'), dict(kind='saved', id=A, offset=-1), dict(kind='saved', id=A, offset=100001),
-                    dict(kind='saved', id=A, offset=1.5), dict(kind='saved', id=A, offset=True), dict(kind='saved', id=A, offset='2')]:
+                    dict(kind='saved', id=A, offset=1.5), dict(kind='saved', id=A, offset=True), dict(kind='saved', id=A, offset='2'),
+                    dict(kind=[], id=A), dict(kind={}, id=A), dict(kind=None, id=A)]:
             body = {'revision': B, 'offset': 0, **bad}
             self.assertEqual(plugin.post('library/place', body, self.ctx, OWNER), (400, {'msg': 'Check the reading place.'}), bad)
         self.assertEqual(plugin.post('library/place', 'not a dict', self.ctx, OWNER)[0], 400)

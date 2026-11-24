@@ -14,7 +14,7 @@ const backup = {summary:'Backups are fresh.',attention:false,folder:'fixtures',f
 const words = n => Array.from({length:n}, (_, i) => `word${i}`).join(' ');
 const sections = [`Start of section one. ${words(1500)} End of section one.`, 'Short section two.', `Start of section three. ${words(1500)} End of section three.`];
 const BOOX = 'Mozilla/5.0 (Linux; Android 12; NoteAir3C Build/2023) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36';
-const server = {places:{recent:[], saved:[]}, down:false, posts:[]};
+const server = {places:{recent:[], saved:[]}, down:false, posts:[], skew:0};
 
 async function page(browser, opts = {}) {
   const ctx = await browser.newContext({viewport:opts.viewport || {width:375,height:812}, userAgent:opts.userAgent, reducedMotion:'reduce'});
@@ -36,7 +36,7 @@ async function page(browser, opts = {}) {
     if (at === 'api/memory/library/place') {
       if (server.down) return json({msg:'Library unavailable.'}, 503);
       const body = JSON.parse(route.request().postData()); server.posts.push(body);
-      const row = {id:body.id, revision:body.revision, offset:body.offset, at:new Date(Date.now() + server.posts.length).toISOString()};
+      const row = {id:body.id, revision:body.revision, offset:body.offset, at:new Date(Date.now() + server.skew + server.posts.length).toISOString()};
       const list = body.kind === 'saved' ? 'saved' : 'recent';
       server.places[list] = list === 'recent' ? [row, ...server.places.recent.filter(r => r.id !== row.id)].slice(0, 10)
         : [...server.places.saved.filter(r => r.id !== row.id), row].slice(-100);
@@ -115,8 +115,14 @@ const shot = (p, name, fullPage = true) => process.env.SHOTS && p.screenshot({pa
     await tap(0.9); assert.deepEqual(await pageNo(), [2, of]); assert(!(await visible('Start of section one')));
     await tap(0.5); assert.deepEqual(await pageNo(), [2, of], 'the middle does not turn');
     await tap(0.1); assert.deepEqual(await pageNo(), [1, of]);
-    await p.locator('.lib-page').focus(); await p.keyboard.press('PageDown'); assert.deepEqual(await pageNo(), [2, of]);
-    await p.keyboard.press('ArrowLeft'); assert.deepEqual(await pageNo(), [1, of]);
+    assert(await p.locator('.lib-page-hint').isVisible(), 'the reader is told how to turn the page');
+    assert.equal(await p.locator('.lib-page-status').getAttribute('role'), 'status');
+    assert.equal(await p.locator('.lib-page').getAttribute('aria-label'), 'Page of the source text');
+    await p.evaluate(() => { document.activeElement?.blur(); });
+    const scrolled = await p.evaluate(() => scrollY);
+    await p.keyboard.press('PageDown'); assert.deepEqual(await pageNo(), [2, of], 'page buttons work without focusing the page');
+    assert.equal(await p.evaluate(() => scrollY), scrolled, 'and do not scroll the window');
+    await p.locator('.lib-page').focus(); await p.keyboard.press('ArrowLeft'); assert.deepEqual(await pageNo(), [1, of]);
     await p.keyboard.press('ArrowRight'); await p.keyboard.press('PageUp'); assert.deepEqual(await pageNo(), [1, of]);
     // rotating keeps the text that was at the top of the page in view
     await tap(0.9); await tap(0.9);
@@ -195,8 +201,35 @@ const shot = (p, name, fullPage = true) => process.env.SHOTS && p.screenshot({pa
     await four.waitForTimeout(200);
     assert.deepEqual(server.places.saved.map(r => [r.id, r.offset]), [[A, 0]], 'the waiting place was sent');
     assert.deepEqual(server.places.recent.map(r => [r.id, r.offset]), [[A, 0]]);
-    for (const q of [one, two, four]) { assert.deepEqual(q.errors, []); await q.context().close(); }
-    console.log('PASS synced places: second device continues, newer save wins, old local loses, other revision ignored, server down then catches up');
+    // the server's clock is an hour ahead of this device: places made offline are still sent, each once
+    Object.assign(server, {places:{recent:[], saved:[]}, down:false, posts:[], skew:3600e3});
+    const six = await page(browser);
+    await openSource(six); await six.getByText('Read next section', {exact:true}).click(); await six.getByText(/^Section 2 of 3/).waitFor();
+    await six.getByText('Save place', {exact:true}).click(); await six.getByText('Saved section 2. Your other devices will open it here.', {exact:true}).waitFor();
+    server.down = true;
+    await six.getByText('Read next section', {exact:true}).click(); await six.getByText(/^Section 3 of 3/).waitFor();
+    await six.getByText('Save place', {exact:true}).click();
+    await six.getByText('Saved section 3 on this browser. Other devices get it when the server answers.', {exact:true}).waitFor();
+    server.down = false; server.posts = [];
+    await six.locator('#lib-home').click(); await six.locator('#lib-home').click();
+    await six.locator('#lib-status').filter({hasText:'Your last 1 checked out documents.'}).waitFor(); await six.waitForTimeout(300);
+    assert.deepEqual(server.places.saved.map(r => r.offset), [2], 'the offline save wins although the device clock is behind');
+    assert.deepEqual(server.places.recent.map(r => r.offset), [2]);
+    assert.deepEqual(server.posts.map(b => b.kind).sort(), ['recent', 'saved'], 'each waiting row is sent once');
+    assert.match(await six.locator('.lib-recent .lib-meta').first().innerText(), /Section 3$/);
+    // another device saved after this one went offline: its place wins and this browser's waiting one is not sent
+    server.down = true;
+    await openSource(six); await six.getByText('Read next section', {exact:true}).click(); await six.getByText(/^Section 2 of 3/).waitFor();
+    await six.getByText('Save place', {exact:true}).click();
+    await six.getByText('Saved section 2 on this browser. Other devices get it when the server answers.', {exact:true}).waitFor();
+    server.places.saved = [{id:A, revision:B, offset:0, at:new Date(Date.now() + server.skew + 60e3).toISOString()}];
+    server.down = false; server.posts = [];
+    await six.locator('#lib-home').click(); await six.locator('#lib-status').filter({hasText:'Your last 1 checked out documents.'}).waitFor(); await six.waitForTimeout(300);
+    assert(!server.posts.some(b => b.kind === 'saved'), 'the older waiting place is not sent over the newer one');
+    await openSource(six); assert.equal(await placeSays(six), 'Saved section 1. Your other devices will open it here.');
+    server.skew = 0;
+    for (const q of [one, two, four, six]) { assert.deepEqual(q.errors, []); await q.context().close(); }
+    console.log('PASS synced places: second device continues, newer save wins, old local loses, other revision ignored, server down then catches up, server clock ahead, each row sent once, a later device wins');
 
     // ---- Task 5: the side index vibrates only when the reader turned it on, once per letter
     const five = await page(browser);
