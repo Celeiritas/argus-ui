@@ -29,7 +29,6 @@ const backup = {summary:'Backups are fresh.',attention:false,folder:'fixtures',f
    if(at==='api/memory/library/search') return failSearch?json({msg:'Library unavailable; results kept.'},503):json({configured:true,passages:[passage]});
    if(at==='api/memory/library/source') return json(source);
    if(at==='api/memory/library/read') { assert.equal(u.searchParams.get('revision'),source.revision); if(failRead) return json({msg:'Reader temporarily unavailable.'},503); return json({available:true,offset:Number(u.searchParams.get('offset')),total:2,blocks:[{pdf_page:source.file_format==='epub'?null:2,chapter:source.file_format==='epub'?passage.chapter:null,text:'Exact text <script>throw new Error(1)</script>\n  preserved lines'}]}); }
-   if(at==='api/memory/library/original') return json({base64:Buffer.from('%PDF-1.7\nfixture').toString('base64')});
    if(at.startsWith('api/')) return json({});
    let file;
    if(at===previewPath) file=path.join(built,'..','bundled','memory','reading-room-preview.html');
@@ -54,7 +53,7 @@ const backup = {summary:'Backups are fresh.',attention:false,folder:'fixtures',f
   await p.locator('#lib-query').fill('tactile timing'); await p.locator('#lib-search button').click();
   await p.locator('.lib-excerpt').waitFor();await p.getByText('Read full passage',{exact:true}).click();
   assert.equal(await p.locator('.lib-full').textContent(),passage.text);
-  await p.getByText('Read source and details',{exact:true}).click();await p.getByText('Prepare original PDF',{exact:true}).click();await p.getByText('Open original PDF',{exact:true}).waitFor();
+  await p.getByText('Read source and details',{exact:true}).click();{const o=p.locator('a.lib-original');await o.waitFor();const h=await o.getAttribute('href');if(!h.includes('api/memory/library/original.pdf?id='+source.id+'&revision='+source.revision)||await o.getAttribute('target')!=='_blank')throw new Error('original PDF link: '+h);}
   await p.getByText('Read source text',{exact:true}).click();await p.locator('.lib-reader-text').filter({hasText:'preserved lines'}).waitFor();
   assert((await p.locator('.lib-reader-text').textContent()).includes('<script>'));
   assert.equal(await p.locator('.lib-reader script').count(),0);

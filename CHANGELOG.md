@@ -1,5 +1,11 @@
 # Changelog
 
+## 4.68.0 — 2026-11-23
+
+- Open an original PDF on a phone or the e-ink tablet: **Open original PDF** is now a plain link to the file, so the device's own PDF viewer opens it. Before, the page unpacked the PDF itself and phones stopped with "The PDF could not be prepared".
+- Server plugins can answer a GET with a PDF file (`(200, bytes, {'type', 'name'})`, docs/leafy-plugin.md); other file types are refused.
+- The reading room preview opens in a light version when e-ink mode is on: black on white, clear outlines, no wood, stone, shadows or motion. Categories keep their labels and icons.
+
 ## 4.67.0 — 2026-11-23
 
 - Read Mnemosyne Library on an e-ink tablet: a Reading settings fold offers e-ink Automatic, On or Off. E-ink mode is black and white with no motion, wider margins and one page at a time, turned by tapping the page edges or with page keys; turning the tablet keeps your place.

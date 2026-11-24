@@ -906,6 +906,17 @@ class H(BaseHTTPRequestHandler):
             cls.TAKES_WHO[fn] = way
         return cls.TAKES_WHO[fn]
 
+    PLUGIN_FILE_TYPES = ('application/pdf',)     # files a server plugin may answer a GET with (never HTML, SVG or script)
+
+    def plugin_file_answer(self, code, raw, meta):
+        """A server plugin's GET answered with a file: only the types above, never sniffed, named for the browser's own viewer."""
+        meta = meta if isinstance(meta, dict) else {}
+        kind = str(meta.get('type') or '')
+        if code != 200 or kind not in self.PLUGIN_FILE_TYPES: raise ValueError(f'a plugin file must be 200 and one of {self.PLUGIN_FILE_TYPES}')
+        name = re.sub(r'[^A-Za-z0-9._ -]', '_', str(meta.get('name') or 'file'))[:120] or 'file'
+        self.out(bytes(raw), kind, 200, 'private, no-store', {'Content-Disposition': f'inline; filename="{name}"',
+                 'X-Content-Type-Options': 'nosniff', 'Cross-Origin-Resource-Policy': 'same-origin'})
+
     def plugin_call(self, pid, verb, path, arg):
         # api/<id>/<path> -> the plugin's get(path, query, ctx[, who]) or post(path, body, ctx[, who]), which answers (status, obj).
         # The role was checked before this; who is passed on every call to a function that takes it, never None.
@@ -918,8 +929,11 @@ class H(BaseHTTPRequestHandler):
             args, kw = (path, arg, ctx) + ((dict(self.who),) if way == 'pos' else ()), ({'who': dict(self.who)} if way == 'kw' else {})
             try:
                 if verb == 'post':
-                    with PLUGIN_LOCKS[pid]: code, obj = fn(*args, **kw)
-                else: code, obj = fn(*args, **kw)
+                    with PLUGIN_LOCKS[pid]: res = fn(*args, **kw)
+                else: res = fn(*args, **kw)
+                if verb == 'get' and path != 'status' and isinstance(res, tuple) and len(res) == 3 and isinstance(res[1], (bytes, bytearray)):
+                    return self.plugin_file_answer(*res)          # (200, bytes, {'type', 'name'}): a file, 4.68.0
+                code, obj = res
                 if not isinstance(code, int) or not 100 <= code <= 599: raise ValueError(f'status {code!r} is not an HTTP status')
                 r = code, obj, json.dumps(obj)
             except Exception:

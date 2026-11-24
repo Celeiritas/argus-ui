@@ -256,6 +256,19 @@ const shot = (p, name, fullPage = true) => process.env.SHOTS && p.screenshot({pa
     await five.goto(origin + 'memory'); assert.match(await five.locator('#lib-preview').getAttribute('href'), /\?vibrate=1$/, 'the choice is kept');
     await five.getByText('Reading settings', {exact:true}).click(); await five.getByLabel('Vibrate when the side index moves').uncheck();
     assert(!(await five.locator('#lib-preview').getAttribute('href')).includes('vibrate'));
+    // e-ink mode on: the preview opens light (black on white, outlines, no shadows), and off again (4.68.0)
+    await five.getByLabel('E-ink mode').selectOption('on');
+    assert.match(await five.locator('#lib-preview').getAttribute('href'), /\?eink=1$/);
+    await five.locator('#lib-preview').click(); await five.locator('.volume').first().waitFor();
+    const look = await five.evaluate(() => { const v = getComputedStyle(document.querySelector('.volume'));
+      return {eink: document.documentElement.dataset.eink, bg: getComputedStyle(document.body).backgroundColor, border: v.borderTopColor, shadow: v.boxShadow, text: v.color,
+              material: getComputedStyle(document.querySelector('#material')).display}; });
+    assert.deepEqual(look, {eink:'1', bg:'rgb(255, 255, 255)', border:'rgb(0, 0, 0)', shadow:'none', text:'rgb(0, 0, 0)', material:'none'}, 'e-ink preview: ' + JSON.stringify(look));
+    await five.goto(origin + 'memory'); await five.getByText('Reading settings', {exact:true}).click();
+    await five.getByLabel('E-ink mode').selectOption('off');
+    assert(!(await five.locator('#lib-preview').getAttribute('href')).includes('eink'));
+    await five.locator('#lib-preview').click(); await five.locator('.volume').first().waitFor();
+    assert.equal(await five.evaluate(() => document.documentElement.dataset.eink), undefined, 'off: the usual wood and stone');
     assert.deepEqual(five.errors, []); await five.context().close();
     console.log('PASS index vibration: off by default, link carries the choice, one 8 ms pulse per letter, kept, turned off again');
   } finally { await browser.close(); }

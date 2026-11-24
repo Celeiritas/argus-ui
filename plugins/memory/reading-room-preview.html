@@ -155,8 +155,34 @@ a{color:var(--green)}
 }
 
 @media(max-height:520px){.rail,.rail-hint{display:none!important}.indexed main{padding-right:18px}}
+
+/* E-ink (4.68.0, ?eink=1 from the Library's Reading settings): black on white, clear outlines, no wood, stone, shadows or motion.
+   Categories keep their labels and icons; only their colours go. */
+:root[data-eink]{color-scheme:light;--bg:#fff;--panel:#fff;--text:#000;--muted:#000;--line:#000;--gold:#000;--green:#000;--shelf:#000;--edge:#000;--paper:#fff;--ink:#000}
+:root[data-eink] *{--accent:#000!important;--cover:#fff!important;box-shadow:none!important;text-shadow:none!important;filter:none!important;transition:none!important;animation:none!important;scroll-behavior:auto!important}
+[data-eink] body{background:#fff}
+[data-eink] .top label{display:none}
+[data-eink] button,[data-eink] select,[data-eink] input,[data-eink] details{border:2px solid #000;background:#fff;color:#000}
+[data-eink] nav button{border:0}
+[data-eink] nav button[aria-current=page]{border-bottom:4px solid #000;font-weight:600}
+[data-eink] .search button{background:#fff}
+[data-eink] .volume{background:#fff;border:2px solid #000;border-left-width:6px}
+[data-eink] .jacket,[data-eink] .jacket.scroll{background:#fff;border:2px solid #000}
+[data-eink] .jacket:before,[data-eink] .jacket:after,[data-eink] .mini i{background:#000;border-color:#000}
+[data-eink] .jacket span,[data-eink] .jacket.scroll span{color:#000}
+[data-eink] .rest:after{height:4px;background:#000;border:0}
+[data-eink] .paper{border:2px solid #000;border-left-width:6px}
+[data-eink] .paper small,[data-eink] small,[data-eink] .preview-note{color:#000}
+[data-eink] .rail{background:#fff;border:2px solid #000;border-radius:9px}
+[data-eink] .rail>span{color:#000}
+[data-eink] .rail>span.active{background:#000;color:#fff;outline:0}
+[data-eink] .rail-hint{background:#000;color:#fff;border:2px solid #fff}
+[data-eink] .category{border:2px solid #000;border-left-width:6px}
+[data-eink] .shelf-key button{border:2px solid #000}
+[data-eink] :focus-visible{outline:3px solid #000;outline-offset:3px}
 </style><body><header class="top frame"><div class="brand"><small>LeafyGrove · The reading room</small><h1>Mnemosyne</h1></div><label><span class="sr">Shelf material</span><select id="material"><option value="wood">Wood shelves</option><option value="stone">Stone shelves</option></select></label></header><nav aria-label="Library"><div class="frame"><button data-view="home">Reading table</button><button data-view="shelves">Browse shelves</button></div><div id="shelf-context" class="shelf-context" hidden></div></nav><main id="app" class="frame"></main><div id="rail" class="rail" role="slider" tabindex="0" aria-label="Jump through this collection" aria-orientation="vertical" aria-valuemin="0" hidden></div><div id="hint" class="rail-hint" aria-hidden="true" hidden></div><div id="announce" class="sr" role="status" aria-live="polite"></div><footer>Reading room preview · 16 sample titles · Your real library is unchanged. Demo reading places reset when you reload.</footer>
 <script>
+if(new URLSearchParams(location.search).get('eink')==='1')document.documentElement.dataset.eink='1';   /* sandboxed: no storage, so e-ink comes in the link */
 const cats=[
  {id:'books',name:'Books',hint:'Longer journeys and ideas to return to',accent:'#C2A2EE',cover:'#5D4776',icon:'book'},
  {id:'papers',name:'Papers',hint:'Studies, evidence, and original sources',accent:'#72C9E6',cover:'#2E6374',icon:'paper'},

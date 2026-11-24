@@ -28,7 +28,6 @@ const backup = {summary:'Backups are fresh.',attention:false,folder:'fixtures',f
    if(at==='api/memory/library/search') return failSearch?json({msg:'Library unavailable; results kept.'},503):json({configured:true,passages:[passage]});
    if(at==='api/memory/library/source') { const d=sources.find(s=>s.id===u.searchParams.get('id'));return !d||missing.has(d.id)?json({msg:'Source not found'},404):json(d); }
    if(at==='api/memory/library/read') { const d=sources.find(s=>s.id===u.searchParams.get('id')); assert.equal(u.searchParams.get('revision'),d.revision); const offset=Number(u.searchParams.get('offset'));reads.push({id:d.id,revision:d.revision,offset});return failRead?json({msg:'Read failed'},503):json({available:true,offset,total:3,blocks:[{text:'Reading '+d.title+' section '+offset}]}); }
-   if(at==='api/memory/library/original') return json({base64:Buffer.from('%PDF-1.7\nfixture').toString('base64')});
    if(at.startsWith('api/')) return json({});
    let file;
    if(at.startsWith('static/')) file=path.join(built,at.slice(7));

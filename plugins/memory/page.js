@@ -126,11 +126,9 @@
   const EINK_SAY = {on: 'On: black and white, page by page, no motion.', off: 'Off: the usual colours and scrolling.'};
   const einkSay = m => EINK_SAY[m] || (einkScreen() ? 'Automatic: e-ink screen found.' : 'Automatic: not an e-ink screen.');
 
-  const originalURLs = new Set();
-  function clearOriginals() { originalURLs.forEach(u => URL.revokeObjectURL(u)); originalURLs.clear(); }
   function libraryUI(el, api) {
     const $ = s => el.querySelector(s), e = api.esc;
-    const removed = new MutationObserver(() => { if (!el.isConnected) { clearOriginals(); document.documentElement.classList.remove('eink'); removed.disconnect(); } });
+    const removed = new MutationObserver(() => { if (!el.isConnected) { document.documentElement.classList.remove('eink'); removed.disconnect(); } });
     removed.observe(document.getElementById('main'), {childList: true, subtree: true});
     let request = 0, offset = 0, browsing = true;
     let activeLeaf = null;                          // the reader whose page Page Up/Page Down turn (e-ink)
@@ -221,7 +219,7 @@
         <details class="lib-reader"><summary>Read source text</summary><div class="lib-reader-body"><div class="lib-reader-tools"><button type="button" class="lib-save" disabled>Save place</button><button type="button" class="lib-resume" hidden>Resume reading</button></div><p class="lib-place-status lib-meta" role="status"></p><details class="lib-navigation"><summary>Jump to section</summary><form class="lib-jump"><label>Section number <input type="number" min="1" step="1" required inputmode="numeric" disabled></label><button type="submit" disabled>Read section</button></form></details><p class="lib-reader-status" role="status" tabindex="-1"></p><div class="lib-page" role="region" aria-label="Page of the source text"><p class="lib-reader-text lib-full"></p></div><p class="lib-page-status lib-meta" role="status" hidden></p><p class="lib-page-hint lib-meta" hidden>Tap the left or right edge, or press Page Up or Page Down, to turn the page.</p><div class="lib-reader-nav"><button type="button" class="lib-prev">Read previous section</button><button type="button" class="lib-next">Read next section</button></div></div></details>
         <details class="lib-file-details"><summary>View file details</summary><dl><dt>File format</dt><dd>${e(d.file_format || 'unknown')}</dd><dt>Authorship</dt><dd>${e(d.authorship)}</dd><dt>Source version</dt><dd>${e(d.source_version)}</dd><dt>Extraction</dt><dd>${e(d.health)} · ${e(d.extraction_version)}</dd><dt>Indexed</dt><dd>${e(d.indexed_at)}</dd><dt>Revision</dt><dd>${e(d.revision)}</dd></dl></details>
         ${d.url ? `<a href="${e(d.url)}" target="_blank" rel="noopener noreferrer">Open source website</a>` : ''}
-        ${d.original ? `<p class="lib-meta">Original: ${e(d.original.split('/').pop())}</p><button type="button" class="lib-original">Prepare original PDF</button><p class="lib-original-status" role="status"></p>` : '<p class="lib-meta">No original file is connected to the viewer yet.</p>'}`;
+        ${d.original ? `<p class="lib-meta">Original: ${e(d.original.split('/').pop())}</p><a class="lib-original" href="${e(api.url('api/memory/library/original.pdf?id=' + encodeURIComponent(d.id) + '&revision=' + encodeURIComponent(d.revision)))}" target="_blank" rel="noopener">Open original PDF<span class="sr"> (opens in a new tab)</span></a>` : '<p class="lib-meta">No original file is connected to the viewer yet.</p>'}`;
       const reader = body.querySelector('.lib-reader'), readStatus = body.querySelector('.lib-reader-status');
       const text = body.querySelector('.lib-reader-text'), prev = body.querySelector('.lib-prev'), next = body.querySelector('.lib-next');
       const save = body.querySelector('.lib-save'), resume = body.querySelector('.lib-resume');
@@ -374,19 +372,6 @@
       });
       prev.addEventListener('click', () => readSection(readOffset - 1));
       next.addEventListener('click', () => readSection(readOffset + 1));
-      body.querySelector('.lib-original')?.addEventListener('click', async event => {
-        const button = event.currentTarget, msg = body.querySelector('.lib-original-status'); button.disabled = true; msg.textContent = 'Preparing PDF…';
-        const result = await api.get('library/original?id=' + encodeURIComponent(d.id) + '&revision=' + encodeURIComponent(d.revision));
-        if (!body.isConnected) return;
-        button.disabled = false;
-        if (!result.ok) { msg.textContent = result.data?.msg || 'The original is unavailable. Your search results are kept.'; return; }
-        try {
-          const bytes = Uint8Array.from(atob(result.data.base64), c => c.charCodeAt(0));
-          const url = URL.createObjectURL(new Blob([bytes], {type: 'application/pdf'})); originalURLs.add(url);
-          const link = document.createElement('a'); link.href = url; link.target = '_blank'; link.rel = 'noopener'; link.textContent = 'Open original PDF';
-          msg.replaceChildren(link); button.hidden = true;
-        } catch (_) { msg.textContent = 'The PDF could not be prepared. Try again.'; }
-      });
     }
     function wire() { el.querySelectorAll('.lib-source:not([data-wired])').forEach(d => {
       d.dataset.wired = '1'; d.addEventListener('toggle', () => sourceDetail(d));
@@ -411,7 +396,6 @@
       if (!rows.length) { await load(true, false, true); return; }
       const results = await Promise.all(rows.map(row => api.get('library/source?id=' + encodeURIComponent(row.id))));
       if (seq !== request || !el.isConnected) return;
-      clearOriginals();
       $('#lib-results').innerHTML = results.map((result, i) => {
         if (!result.ok) return `<article class="lib-result"><h4>Unavailable document</h4><p class="lib-meta">${result.status === 404 ? 'This document is no longer in the current catalog.' : 'Could not load this document. Choose Library home to retry.'}</p></article>`;
         const d = result.data, changed = d.revision !== rows[i].revision;
@@ -448,7 +432,7 @@
       } else status(rows.length ? `${rows.length} matching passages. Open a passage to check its context.` : 'No matching passages in this scope. Try different words or source filters.');
       if (emptyHome) status('No recently checked out documents yet. Browse your sources below or search to start reading.');
       const content = rows.map(r => item(r, !browse)).join('');
-      if (more) $('#lib-results').insertAdjacentHTML('beforeend', content); else { clearOriginals(); $('#lib-results').innerHTML = content; }
+      if (more) $('#lib-results').insertAdjacentHTML('beforeend', content); else { $('#lib-results').innerHTML = content; }
       wire();
     }
     $('#lib-search').addEventListener('submit', event => { event.preventDefault(); load(false); });
@@ -457,11 +441,14 @@
     $('#lib-home').addEventListener('click', home);
     const prefs = readingPrefs(), modeSelect = $('#lib-eink'), vibrateBox = $('#lib-vibrate');
     const sayPrefs = kept => { $('#lib-settings-say').textContent = einkSay(readingPrefs().eink) + (kept ? '' : ' This browser could not keep the setting; it applies until you leave.'); };
-    /* The preview is sandboxed without storage, so the vibration choice travels in its link. */
+    /* The preview is sandboxed without storage, so the vibration and e-ink choices travel in its link. */
     const previewLink = $('#lib-preview'), previewHref = previewLink.getAttribute('href');
-    const linkPrefs = () => { previewLink.setAttribute('href', previewHref + (readingPrefs().vibrate ? '?vibrate=1' : '')); };
+    const linkPrefs = () => {
+      const q = [readingPrefs().vibrate && 'vibrate=1', einkActive() && 'eink=1'].filter(Boolean).join('&');
+      previewLink.setAttribute('href', previewHref + (q ? '?' + q : ''));
+    };
     modeSelect.value = prefs.eink; vibrateBox.checked = prefs.vibrate; applyEink(); sayPrefs(true); linkPrefs();
-    modeSelect.addEventListener('change', () => { const kept = savePrefs({...readingPrefs(), eink: modeSelect.value}); applyEink(); sayPrefs(kept); });
+    modeSelect.addEventListener('change', () => { const kept = savePrefs({...readingPrefs(), eink: modeSelect.value}); applyEink(); sayPrefs(kept); linkPrefs(); });
     vibrateBox.addEventListener('change', () => { sayPrefs(savePrefs({...readingPrefs(), vibrate: vibrateBox.checked})); linkPrefs(); });
     for (const id of ['#lib-kind', '#lib-collection', '#lib-health']) $(id).addEventListener('change', () => load(id === '#lib-health' ? true : browsing));
     home();
@@ -499,7 +486,7 @@
 
   leafy.register('memory', {
     async show(el, api) {
-      clearOriginals(); delete el.dataset.backupTouched;
+      delete el.dataset.backupTouched;
       el.innerHTML = `<div class="memory">
         <section class="panel mem-library" aria-labelledby="lib-heading">
           <h3 id="lib-heading">Recently checked out</h3>

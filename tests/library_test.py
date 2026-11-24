@@ -175,6 +175,7 @@ class LibraryTest(unittest.TestCase):
         self.m['sources'][0].update(original='original.pdf', original_sha256=hashlib.sha256(raw).hexdigest())
         self.publish(); sid=lib.catalog(self.db,kind='paper')['sources'][0]['id']
         self.assertEqual(lib.original(self.db,self.root,sid)['mime'], 'application/pdf')
+        self.assertEqual(lib.original_file(self.db,self.root,sid), ('original.pdf', raw))
         (self.root / 'original.pdf').write_bytes(raw+b'changed')
         with self.assertRaises(ValueError): lib.original(self.db,self.root,sid)
 

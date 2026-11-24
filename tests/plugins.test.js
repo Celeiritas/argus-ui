@@ -101,6 +101,10 @@ run(async b => {
   const boom = await s.request.get(api + 'boom');
   check(boom.status() === 500 && (await boom.json()).msg === 'plugin error', 'server plugin: an exception is a 500 "plugin error", not a crash');
   check((await s.request.get(BASE + 'api/health')).status() === 200, 'and LeafyGrove keeps answering after it');
+  const pdf = await s.request.get(api + 'file.pdf'), ph = pdf.headers();
+  check(pdf.status() === 200 && ph['content-type'] === 'application/pdf' && (await pdf.text()).startsWith('%PDF-') && ph['x-content-type-options'] === 'nosniff'
+    && ph['content-disposition'] === 'inline; filename="fix_ture.pdf"', 'server plugin: a GET can answer with a PDF file, never sniffed, its name made safe (4.68.0)');
+  check((await s.request.get(api + 'page.html')).status() === 500, 'server plugin: a file of any other type (HTML) is refused');
   const post = (headers, data) => s.request.post(api + 'echo', {headers: {'Content-Type': 'application/json', ...headers}, data});
   check((await post({Origin: 'http://evil.example', 'Sec-Fetch-Site': 'cross-site'}, {text: 'x'})).status() === 403, 'server plugin: a cross-site POST is refused');
   check((await post({'Content-Type': 'text/plain'}, '{"text":"x"}')).status() === 415, 'server plugin: a POST that is not JSON is refused');
