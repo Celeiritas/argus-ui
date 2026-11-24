@@ -48,6 +48,24 @@ class Places(unittest.TestCase):
         self.assertEqual(len(lists['recent']), 10); self.assertEqual(lists['recent'][0]['id'], hexid(12))
         self.assertEqual(len(lists['saved']), 100); self.assertEqual(lists['saved'][-1]['id'], hexid(102))
 
+    def test_place_keeps_valid_cfi_and_fraction(self):     # the book reader's spot (4.69.0)
+        status, lists = self.put('recent', A, 0, cfi='epubcfi(/6/4!/4/2/1:0)', fraction=0.25)
+        self.assertEqual(status, 200)
+        row = plugin.get('library/places', {}, self.ctx, OWNER)[1]['recent'][0]
+        self.assertEqual((row['cfi'], row['fraction']), ('epubcfi(/6/4!/4/2/1:0)', 0.25))
+        _, lists = self.put('saved', A, 0, fraction=1)
+        self.assertEqual(lists['saved'][0]['fraction'], 1); self.assertNotIn('cfi', lists['saved'][0])
+
+    def test_place_refuses_bad_cfi(self):
+        for bad in [dict(cfi='<script>'), dict(cfi='epubcfi(' + 'x' * 1017 + ')'), dict(cfi='epubcfi(x)"'), dict(cfi='epubcfi()'),
+                    dict(cfi=5), dict(fraction=1.5), dict(fraction=-0.1), dict(fraction=True), dict(fraction='0.5'), dict(fraction=float('nan'))]:
+            self.assertEqual(self.put('recent', A, **bad), (400, {'msg': 'Check the reading place.'}), bad)
+        self.assertFalse(os.path.exists(self.file))
+
+    def test_old_rows_without_cfi_still_load(self):
+        _, lists = self.put('recent', A, 4)
+        self.assertEqual(set(lists['recent'][0]), {'id', 'revision', 'offset', 'at'})
+
     def test_bad_rows_are_refused_and_nothing_written(self):
         for bad in [dict(kind='other', id=A), dict(kind='saved', id='A' * 64), dict(kind='saved', id=A[:-1]),
                     dict(kind='saved', id=A, revision='x'), dict(kind='saved', id=A, offset=-1), dict(kind='saved', id=A, offset=100001),

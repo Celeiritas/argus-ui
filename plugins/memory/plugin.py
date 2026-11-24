@@ -359,7 +359,7 @@ def post(path, body, ctx, who=None):
     if path == 'library/place':
         if not person(who): return 403, {'msg': 'Sign in to keep reading places.'}
         if not isinstance(body, dict): return 400, PLACE_BAD
-        try: return 200, places.put(places_file(ctx), person(who), body.get('kind'), {k: body.get(k) for k in ('id', 'revision', 'offset')})
+        try: return 200, places.put(places_file(ctx), person(who), body.get('kind'), {k: body.get(k) for k in ('id', 'revision', 'offset', 'cfi', 'fraction')})
         except ValueError: return 400, PLACE_BAD
     if path != 'backup': return 404, {'ok': False, 'msg': 'not found'}
     v = view(ctx)                             # nothing in the body is read: the unit is the brain job's, found here
