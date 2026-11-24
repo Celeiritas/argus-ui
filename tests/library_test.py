@@ -179,6 +179,31 @@ class LibraryTest(unittest.TestCase):
         (self.root / 'original.pdf').write_bytes(raw+b'changed')
         with self.assertRaises(ValueError): lib.original(self.db,self.root,sid)
 
+    def test_original_epub_checked_and_bound_to_revision(self):
+        raw = b'PK\x03\x04synthetic epub fixture'; (self.root / 'book.epub').write_bytes(raw)
+        self.m['sources'][0].update(original='book.epub', original_sha256=hashlib.sha256(raw).hexdigest())
+        self.publish(); sid = lib.catalog(self.db, kind='paper')['sources'][0]['id']
+        self.assertEqual(lib.original_file(self.db, self.root, sid, kind='epub'), ('book.epub', raw))
+        with self.assertRaises(ValueError): lib.original_file(self.db, self.root, sid)          # asked as a PDF
+        (self.root / 'originals').mkdir(); (self.root / 'originals' / 'book.epub').write_bytes(raw)
+        ctx = types.SimpleNamespace(data_dir=str(self.root))
+        self.assertEqual(lib.api('library/original.epub', {'id': [sid]}, ctx), (200, raw, {'type': 'application/epub+zip', 'name': 'book.epub'}))
+        self.assertEqual(lib.api('library/original.pdf', {'id': [sid]}, ctx)[0], 400)
+        limit = lib.ORIGINAL_LIMITS['.epub']
+        try:
+            lib.ORIGINAL_LIMITS['.epub'] = 10
+            with self.assertRaises(ValueError): lib.original_file(self.db, self.root, sid, kind='epub')   # over the limit
+        finally: lib.ORIGINAL_LIMITS['.epub'] = limit
+        (self.root / 'book.epub').write_bytes(b'PK\x03\x04changed')
+        with self.assertRaises(ValueError): lib.original_file(self.db, self.root, sid, kind='epub')       # changed bytes
+
+    def test_original_epub_needs_a_zip(self):
+        raw = b'not a zip'; (self.root / 'book.epub').write_bytes(raw)
+        self.m['sources'][0].update(original='book.epub', original_sha256=hashlib.sha256(raw).hexdigest())
+        self.publish(); sid = lib.catalog(self.db, kind='paper')['sources'][0]['id']
+        with self.assertRaises(ValueError): lib.original_file(self.db, self.root, sid, kind='epub')
+        with self.assertRaises(ValueError): lib.original_file(self.db, self.root, sid, kind='mobi')
+
     def test_unconnected_read_does_not_create_database(self):
         self.assertFalse(lib.catalog(self.db)['configured']);self.assertFalse(self.db.exists())
 

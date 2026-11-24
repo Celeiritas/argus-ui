@@ -16,6 +16,7 @@ def get(path, query, ctx):
     if path == 'status': return 200, {'line': '1 ping answered · all well'}
     if path == 'boom': raise RuntimeError('a plugin bug')
     if path == 'file.pdf': return 200, b'%PDF-1.7\nfixture', {'type': 'application/pdf', 'name': 'fix"ture.pdf'}
+    if path == 'book.epub': return 200, b'PK\x03\x04fixture', {'type': 'application/epub+zip', 'name': 'book.epub'}
     if path == 'page.html': return 200, b'<script>alert(1)</script>', {'type': 'text/html', 'name': 'x.html'}
     return 404, {'ok': False, 'msg': 'not found'}
 

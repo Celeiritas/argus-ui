@@ -906,7 +906,7 @@ class H(BaseHTTPRequestHandler):
             cls.TAKES_WHO[fn] = way
         return cls.TAKES_WHO[fn]
 
-    PLUGIN_FILE_TYPES = ('application/pdf',)     # files a server plugin may answer a GET with (never HTML, SVG or script)
+    PLUGIN_FILE_TYPES = ('application/pdf', 'application/epub+zip')     # files a server plugin may answer a GET with (never HTML, SVG or script)
 
     def plugin_file_answer(self, code, raw, meta):
         """A server plugin's GET answered with a file: only the types above, never sniffed, named for the browser's own viewer."""
