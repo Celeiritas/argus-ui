@@ -1,0 +1,34 @@
+/* Mnemosyne's book reader (4.69.0). One screen: the bar (Back to library, title, how far, page buttons) over the pages.
+   Type 16/14/12 px, weights 400/600, 44 px hit areas, visible focus; .eink = black on white, no motion, no shadows. */
+:root { color-scheme: light dark; --bg: #f7f4ee; --ink: #1f1d1a; --soft: #5f5a52; --line: #d9d2c5; --accent: #2f6b4f; --side: 16px; }
+@media (prefers-color-scheme: dark) { :root { --bg: #1b1a18; --ink: #ece7de; --soft: #b5ad9f; --line: #3a3732; --accent: #8fcfac; } }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { display: flex; flex-direction: column; background: var(--bg); color: var(--ink); overflow: hidden;
+  font: 400 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+#bar { flex: none; display: flex; align-items: center; gap: 8px; padding: 0 var(--side); min-height: 52px; border-bottom: 1px solid var(--line);
+  background: var(--bg); box-shadow: 0 1px 4px rgb(0 0 0 / .08); }
+#bar[hidden] { display: none; }
+#back, .turns button { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; min-width: 44px;
+  padding: 0 10px; border-radius: 8px; color: var(--accent); font-family: inherit; font-size: 14px; font-weight: 600; line-height: 1;
+  text-decoration: none; }
+.turns { display: flex; gap: 4px; margin-left: auto; }
+.turns button { border: 1px solid var(--line); background: transparent; font-size: 16px; cursor: pointer; }
+#title { flex: 1 1 auto; min-width: 0; margin: 0; font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#progress { flex: none; color: var(--soft); font-size: 12px; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+/* a floating line, so showing or hiding it never changes the pages' size (that re-laid the book out and moved the place) */
+#say { position: fixed; left: var(--side); right: var(--side); bottom: 16px; z-index: 2; margin: 0 auto; max-width: 36rem; padding: 10px 14px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--bg); box-shadow: 0 2px 8px rgb(0 0 0 / .15); font-size: 14px; }
+#say[hidden] { display: none; }
+#say a { color: var(--accent); font-weight: 600; }
+#book { position: relative; flex: 1 1 auto; min-height: 0; padding: 0 var(--side); }
+#book foliate-view { display: block; width: 100%; height: 100%; }
+@media (max-width: 480px) { #progress { display: none; } #title { font-size: 12px; } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; scroll-behavior: auto !important; } }
+
+/* e-ink (?eink=1 or the library's E-ink mode): white paper, black ink, wider margins, nothing moves or glows */
+.eink { color-scheme: light; --bg: #fff; --ink: #000; --soft: #000; --line: #000; --accent: #000; --side: 32px; }
+.eink #bar, .eink #say { box-shadow: none; }
+.eink * { transition: none !important; animation: none !important; }
+.eink #back, .eink .turns button { text-decoration: underline; }
