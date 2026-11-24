@@ -155,8 +155,34 @@ a{color:var(--green)}
 }
 
 @media(max-height:520px){.rail,.rail-hint{display:none!important}.indexed main{padding-right:18px}}
+
+/* E-ink (4.68.0, ?eink=1 from the Library's Reading settings): black on white, clear outlines, no wood, stone, shadows or motion.
+   Categories keep their labels and icons; only their colours go. */
+:root[data-eink]{color-scheme:light;--bg:#fff;--panel:#fff;--text:#000;--muted:#000;--line:#000;--gold:#000;--green:#000;--shelf:#000;--edge:#000;--paper:#fff;--ink:#000}
+:root[data-eink] *{--accent:#000!important;--cover:#fff!important;box-shadow:none!important;text-shadow:none!important;filter:none!important;transition:none!important;animation:none!important;scroll-behavior:auto!important}
+[data-eink] body{background:#fff}
+[data-eink] .top label{display:none}
+[data-eink] button,[data-eink] select,[data-eink] input,[data-eink] details{border:2px solid #000;background:#fff;color:#000}
+[data-eink] nav button{border:0}
+[data-eink] nav button[aria-current=page]{border-bottom:4px solid #000;font-weight:600}
+[data-eink] .search button{background:#fff}
+[data-eink] .volume{background:#fff;border:2px solid #000;border-left-width:6px}
+[data-eink] .jacket,[data-eink] .jacket.scroll{background:#fff;border:2px solid #000}
+[data-eink] .jacket:before,[data-eink] .jacket:after,[data-eink] .mini i{background:#000;border-color:#000}
+[data-eink] .jacket span,[data-eink] .jacket.scroll span{color:#000}
+[data-eink] .rest:after{height:4px;background:#000;border:0}
+[data-eink] .paper{border:2px solid #000;border-left-width:6px}
+[data-eink] .paper small,[data-eink] small,[data-eink] .preview-note{color:#000}
+[data-eink] .rail{background:#fff;border:2px solid #000;border-radius:9px}
+[data-eink] .rail>span{color:#000}
+[data-eink] .rail>span.active{background:#000;color:#fff;outline:0}
+[data-eink] .rail-hint{background:#000;color:#fff;border:2px solid #fff}
+[data-eink] .category{border:2px solid #000;border-left-width:6px}
+[data-eink] .shelf-key button{border:2px solid #000}
+[data-eink] :focus-visible{outline:3px solid #000;outline-offset:3px}
 </style><body><header class="top frame"><div class="brand"><small>LeafyGrove · The reading room</small><h1>Mnemosyne</h1></div><label><span class="sr">Shelf material</span><select id="material"><option value="wood">Wood shelves</option><option value="stone">Stone shelves</option></select></label></header><nav aria-label="Library"><div class="frame"><button data-view="home">Reading table</button><button data-view="shelves">Browse shelves</button></div><div id="shelf-context" class="shelf-context" hidden></div></nav><main id="app" class="frame"></main><div id="rail" class="rail" role="slider" tabindex="0" aria-label="Jump through this collection" aria-orientation="vertical" aria-valuemin="0" hidden></div><div id="hint" class="rail-hint" aria-hidden="true" hidden></div><div id="announce" class="sr" role="status" aria-live="polite"></div><footer>Reading room preview · 16 sample titles · Your real library is unchanged. Demo reading places reset when you reload.</footer>
 <script>
+if(new URLSearchParams(location.search).get('eink')==='1')document.documentElement.dataset.eink='1';   /* sandboxed: no storage, so e-ink comes in the link */
 const cats=[
  {id:'books',name:'Books',hint:'Longer journeys and ideas to return to',accent:'#C2A2EE',cover:'#5D4776',icon:'book'},
  {id:'papers',name:'Papers',hint:'Studies, evidence, and original sources',accent:'#72C9E6',cover:'#2E6374',icon:'paper'},
@@ -194,7 +220,8 @@ app.innerHTML=h;document.body.classList.toggle('indexed',groups.length>0);rail.h
 function setIndex(i){index=i;rail.setAttribute('aria-valuenow',String(i));rail.setAttribute('aria-valuetext',groups[i]?.label||'');rail.querySelectorAll(':scope > span').forEach((e,n)=>e.classList.toggle('active',n===i))}
 function jumpTo(i,focus=false){if(!groups[i])return;railProgrammatic=true;clearTimeout(railTimer);railTimer=setTimeout(()=>railProgrammatic=false,180);setIndex(i);const target=document.getElementById(groups[i].id);target.scrollIntoView({block:'start'});if(focus)target.focus({preventScroll:true})}
 function syncRail(){if(dragging||railProgrammatic||!groups.length)return;let n=0;groups.forEach((g,i)=>{if(document.getElementById(g.id).getBoundingClientRect().top<=150)n=i});setIndex(n)}
-function scrub(e){const b=rail.getBoundingClientRect(),i=Math.floor(Math.max(0,Math.min(.999,(e.clientY-b.top)/b.height))*groups.length);jumpTo(i);hint.textContent=groups[i].label;hint.style.top=Math.max(80,Math.min(innerHeight-80,e.clientY-25))+'px';hint.hidden=false}
+const buzz=new URLSearchParams(location.search).get('vibrate')==='1'&&typeof navigator.vibrate==='function';
+function scrub(e){const b=rail.getBoundingClientRect(),i=Math.floor(Math.max(0,Math.min(.999,(e.clientY-b.top)/b.height))*groups.length);if(buzz&&i!==index)navigator.vibrate(8);jumpTo(i);hint.textContent=groups[i].label;hint.style.top=Math.max(80,Math.min(innerHeight-80,e.clientY-25))+'px';hint.hidden=false}
 rail.addEventListener('pointerdown',e=>{if(!groups.length)return;dragging=true;rail.setPointerCapture(e.pointerId);scrub(e)});rail.addEventListener('pointermove',e=>{if(dragging)scrub(e)});for(const name of ['pointerup','pointercancel','lostpointercapture'])rail.addEventListener(name,()=>{dragging=false;hint.hidden=true});rail.addEventListener('keydown',e=>{let n=index;if(e.key==='ArrowDown')n++;else if(e.key==='ArrowUp')n--;else if(e.key==='Home')n=0;else if(e.key==='End')n=groups.length-1;else return;e.preventDefault();jumpTo(Math.max(0,Math.min(groups.length-1,n)))});window.addEventListener('scroll',syncRail,{passive:true});
 function changeSection(n){if(!Number.isInteger(n)||n<0||n>4)return;state.section=n;history.replaceState({readingRoom:true,depth,state},'');remember(state.id,n);render();document.querySelector('#readerTitle').focus();document.querySelector('.reader').scrollIntoView({block:'start'})}
 document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.id==='search-submit')return findTitle();if(b.dataset.open)return openDoc(b.dataset.open);if(b.dataset.cat)return go({view:'category',cat:b.dataset.cat});if(b.dataset.view)return go({view:b.dataset.view});if(b.hasAttribute('data-back'))return depth?history.back():go({view:'home'});if(b.dataset.step)return changeSection(state.section+Number(b.dataset.step));if(b.id==='focus'){focused=!focused;document.body.classList.toggle('focused',focused);b.textContent=focused?'Leave focus':'Focus on reading';b.setAttribute('aria-pressed',String(focused))}if(b.id==='save'){marks[state.id]=state.section;document.querySelector('#saved').textContent=`Ribbon saved at section ${state.section+1}.`;document.querySelector('#ribbon').disabled=false}if(b.id==='ribbon')changeSection(marks[state.id])});

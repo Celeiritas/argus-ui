@@ -11,6 +11,9 @@ from datetime import datetime
 _spec = importlib.util.spec_from_file_location('memory_library', os.path.join(os.path.dirname(__file__), 'library.py'))
 library = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(library)
+_spec = importlib.util.spec_from_file_location('memory_places', os.path.join(os.path.dirname(__file__), 'places.py'))
+places = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(places)
 
 CONFIG = os.path.expanduser(os.environ.get('ARGUS_MEMORY_CONFIG', '~/.config/argus-ui/memory.json'))
 MNEMOSYNE = os.path.expanduser(os.environ.get('ARGUS_MNEMOSYNE', '~/.mnemosyne'))     # where <Server>-brain/ is looked for
@@ -324,7 +327,19 @@ def summary_line(v):
     if pc_old: return f"Backups: your PC's last backup was {pc['age']}."
     return ''
 
-def get(path, query, ctx):
+def places_file(ctx): return os.path.join(ctx.data_dir, places.NAME)
+
+def person(who):
+    """The signed-in person's id for reading places, or None (nobody signed in: places are refused)."""
+    p = (who or {}).get('person')
+    return p if isinstance(p, str) and p and (who or {}).get('role') not in (None, 'none') else None
+
+PLACE_BAD = {'msg': 'Check the reading place.'}
+
+def get(path, query, ctx, who=None):
+    if path == 'library/places':
+        if not person(who): return 403, {'msg': 'Sign in to keep reading places.'}
+        return 200, places.load(places_file(ctx), person(who))
     if path.startswith('library/'): return library.api(path, query, ctx)
     if path == 'state':
         v = view(ctx)
@@ -340,7 +355,12 @@ def run(argv):
     except (OSError, subprocess.TimeoutExpired) as e: return False, str(e)
     return p.returncode == 0, (p.stderr or p.stdout or '').strip()
 
-def post(path, body, ctx):
+def post(path, body, ctx, who=None):
+    if path == 'library/place':
+        if not person(who): return 403, {'msg': 'Sign in to keep reading places.'}
+        if not isinstance(body, dict): return 400, PLACE_BAD
+        try: return 200, places.put(places_file(ctx), person(who), body.get('kind'), {k: body.get(k) for k in ('id', 'revision', 'offset')})
+        except ValueError: return 400, PLACE_BAD
     if path != 'backup': return 404, {'ok': False, 'msg': 'not found'}
     v = view(ctx)                             # nothing in the body is read: the unit is the brain job's, found here
     if not v['can_backup']: return 409, {'ok': False, 'msg': v['why_not']}

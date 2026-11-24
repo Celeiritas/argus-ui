@@ -37,8 +37,14 @@
     return html;
   }
 
-  // Browsing history is local to this browser; no text or titles are persisted.
+  // Browsing history is kept on this browser first, then on the server for the signed-in person (4.67.0, "Synced places"
+  // below); no text or titles are persisted. `at` is when the row was made (the server's time once it took the row) and
+  // `pending` marks a row the server has not taken yet. `seen` is the server's `at` for that document when the waiting row
+  // was made ('' when it had none): a waiting row wins only while the server still has that copy, so the clocks of two
+  // devices are never compared.
   const recentKey = 'mnemosyne-recent-v1';
+  const stamp = at => typeof at === 'string' && at.length <= 40 ? at : '';
+  const keep = row => ({id:row.id, revision:row.revision, offset:row.offset, ...(stamp(row.at) ? {at:row.at} : {}), ...(row.pending === true ? {pending:true} : {}), ...(row.pending === true && typeof row.seen === 'string' && row.seen.length <= 40 ? {seen:row.seen} : {})});
   let sessionRecent = [], sessionRecentOnly = false;
   function recentReads() {
     if (sessionRecentOnly) return sessionRecent;
@@ -52,22 +58,143 @@
         if (!row || typeof row.id !== 'string' || typeof row.revision !== 'string' || !/^[a-f0-9]{64}$/.test(row.id) || !/^[a-f0-9]{64}$/.test(row.revision) ||
             !Number.isSafeInteger(row.offset) || row.offset < 0 || row.offset > 100000 || ids.has(row.id)) return false;
         ids.add(row.id); return true;
-      }).slice(0, 10).map(({id, revision, offset}) => ({id, revision, offset}));
+      }).slice(0, 10).map(keep);
     } catch (_) { return sessionRecent; }
   }
-  function rememberRead(source, offset) {
-    sessionRecent = [{id:source.id, revision:source.revision, offset}, ...recentReads().filter(row => row.id !== source.id)].slice(0, 10);
+  function writeRecent(rows) {
+    sessionRecent = rows.slice(0, 10);
     try { localStorage.setItem(recentKey, JSON.stringify(sessionRecent)); sessionRecentOnly = false; return true; }
     catch (_) { sessionRecentOnly = true; return false; }
   }
+  function rememberRead(source, offset, seen) {
+    const rows = recentReads(), before = rows.find(row => row.id === source.id);
+    if (seen === undefined && before) seen = before.pending ? before.seen : before.at;   // the last server copy this browser knew
+    return writeRecent([keep({id:source.id, revision:source.revision, offset, at:new Date().toISOString(), pending:true, seen}), ...rows.filter(row => row.id !== source.id)]);
+  }
+  // The server took this row: the local copy gets the server's time and stops waiting (only if it is still the same place).
+  function settleRecent(row) {
+    const rows = recentReads();
+    if (rows.some(r => r.id === row.id && r.revision === row.revision && r.offset === row.offset && r.pending))
+      writeRecent(rows.map(r => r.id === row.id ? keep({...row, pending:false}) : r));
+  }
 
-  const originalURLs = new Set();
-  function clearOriginals() { originalURLs.forEach(u => URL.revokeObjectURL(u)); originalURLs.clear(); }
+  // Saved places on this browser: rows {key: JSON [id, revision], offset, at?, pending?}, the last 100.
+  const placeKey = 'mnemosyne-reading-places-v1';
+  function localPlaces() {
+    const raw = localStorage.getItem(placeKey);
+    if (!raw || raw.length > 100000) return [];
+    const rows = JSON.parse(raw);
+    return Array.isArray(rows) ? rows.filter(row => row && typeof row.key === 'string' && row.key.length < 300 && Number.isSafeInteger(row.offset) && row.offset >= 0 && row.offset <= 100000).slice(-100)
+      .map(row => ({key:row.key, offset:row.offset, ...(stamp(row.at) ? {at:row.at} : {}), ...(row.pending === true ? {pending:true} : {}), ...(row.pending === true && typeof row.seen === 'string' ? {seen:row.seen} : {})})) : [];
+  }
+  function storePlace(key, row) {      // throws when this browser cannot store
+    let rows;
+    try { rows = localPlaces(); } catch (_) { rows = []; }
+    rows = rows.filter(r => r.key !== key);
+    rows.push({key, offset:row.offset, ...(stamp(row.at) ? {at:row.at} : {}), ...(row.pending ? {pending:true} : {}), ...(row.pending && typeof row.seen === 'string' ? {seen:row.seen} : {})});
+    localStorage.setItem(placeKey, JSON.stringify(rows.slice(-100)));
+  }
+  // The newer of two rows by `at`; a row without a time (made before 4.67.0) loses to one with a time.
+  const time = at => Date.parse(stamp(at)) || 0;
+  const newer = (a, b) => !a ? b : !b ? a : (time(b.at) > time(a.at) ? b : a);
+  // This browser's row against the server's for one document. A waiting row wins while the server still has the copy it
+  // replaced; settled rows both carry server times. Only a waiting row that never knew the server's copy falls back to `at`.
+  const pick = (local, server) => !local ? server : !server ? local
+    : local.pending && typeof local.seen === 'string' ? (server.at === local.seen ? local : server) : newer(server, local);
+
+  // Reading settings (4.67.0, docs/mnemosyne-library.md): kept on this browser, never on the server. E-ink mode is Automatic,
+  // On or Off; Automatic looks for a slow-refresh or monochrome screen, or an e-ink tablet's name in the browser's user agent.
+  // The side index's vibration is off until the reader turns it on.
+  const prefsKey = 'mnemosyne-reading-settings-v1', EINK_MODES = ['auto', 'on', 'off'];
+  // BOOX/Onyx in any case; model names only as BOOX writes them (case-sensitive), so a phone called "nova 9" is not one.
+  const EINK_UA = {test: ua => /\b(?:BOOX|Onyx)\b/i.test(ua) || /\b(?:NoteAir|NoteMax|Tab ?Ultra|Go ?10\.3|Palma|Poke ?\d|Nova ?(?:Air|Pro|\d)|Leaf ?\d)/.test(ua)};
+  let sessionPrefs = null;
+  function readingPrefs() {
+    if (sessionPrefs) return {...sessionPrefs};
+    try {
+      const raw = JSON.parse(localStorage.getItem(prefsKey) || '{}') || {};
+      return {eink: EINK_MODES.includes(raw.eink) ? raw.eink : 'auto', vibrate: raw.vibrate === true};
+    } catch (_) { return {eink: 'auto', vibrate: false}; }
+  }
+  function savePrefs(prefs) {
+    try { localStorage.setItem(prefsKey, JSON.stringify(prefs)); sessionPrefs = null; return true; }
+    catch (_) { sessionPrefs = {...prefs}; return false; }
+  }
+  const einkScreen = () => matchMedia('(update: slow)').matches || matchMedia('(monochrome)').matches || EINK_UA.test(navigator.userAgent);
+  const einkActive = () => { const m = readingPrefs().eink; return m === 'on' || (m === 'auto' && einkScreen()); };
+  const applyEink = () => { document.documentElement.classList.toggle('eink', einkActive()); document.dispatchEvent(new Event('mnemosyne-eink')); };
+  const EINK_SAY = {on: 'On: black and white, page by page, no motion.', off: 'Off: the usual colours and scrolling.'};
+  const einkSay = m => EINK_SAY[m] || (einkScreen() ? 'Automatic: e-ink screen found.' : 'Automatic: not an e-ink screen.');
+
   function libraryUI(el, api) {
     const $ = s => el.querySelector(s), e = api.esc;
-    const removed = new MutationObserver(() => { if (!el.isConnected) { clearOriginals(); removed.disconnect(); } });
+    const removed = new MutationObserver(() => { if (!el.isConnected) { document.documentElement.classList.remove('eink'); removed.disconnect(); } });
     removed.observe(document.getElementById('main'), {childList: true, subtree: true});
     let request = 0, offset = 0, browsing = true;
+    let activeLeaf = null;                          // the reader whose page Page Up/Page Down turn (e-ink)
+    // Synced places (4.67.0, docs/mnemosyne-library.md): the server keeps the signed-in person's recent list and saved places
+    // (ids and a section number only), so their other devices open the same place. Fetched once per visit to the Library and
+    // again by Library home; rows still waiting on this browser are sent then, unless the server already has a newer one.
+    const HEX = /^[a-f0-9]{64}$/;
+    const goodRow = r => r && HEX.test(r.id) && HEX.test(r.revision) && Number.isSafeInteger(r.offset) && r.offset >= 0 && r.offset <= 100000 && time(r.at) > 0;
+    const goodLists = d => d && Array.isArray(d.recent) && Array.isArray(d.saved) ? {recent:d.recent.filter(goodRow), saved:d.saved.filter(goodRow)} : null;
+    let synced;                                     // undefined: not asked this visit; null: the server did not answer
+    let queue = Promise.resolve(), fetching = null;
+    // The server's row, or null when it did not take it. Sends wait in one queue, so the last place read is the last sent.
+    // `current` (optional) re-reads the row just before sending and returns null when it no longer needs to go.
+    function sendPlace(kind, row, current = () => row) {
+      const run = queue.then(async () => {
+        const now = current();
+        if (!now) return null;
+        const r = await api.post('library/place', {kind, id:now.id, revision:now.revision, offset:now.offset});
+        const lists = r.ok ? goodLists(r.data) : null;
+        if (lists) synced = lists;
+        return lists?.[kind].find(x => x.id === now.id && x.revision === now.revision && x.offset === now.offset) || null;
+      });
+      queue = run.catch(() => null);
+      return run;
+    }
+    const seenOn = (kind, id) => synced ? (synced[kind].find(x => x.id === id)?.at ?? '') : undefined;
+    const onServer = (kind, id) => synced?.[kind].find(x => x.id === id) || null;
+    function fetchPlaces(fresh = false) {
+      if (fetching) return fetching;
+      if (synced !== undefined && !fresh) return Promise.resolve(synced);
+      fetching = (async () => {
+        const r = await api.get('library/places');
+        synced = (r.ok && goodLists(r.data)) || null;
+        if (!synced) return null;
+        // Waiting recent rows: sent when the server still has the copy they replaced, otherwise the server's copy is taken.
+        for (const id of recentReads().filter(row => row.pending).map(row => row.id)) {
+          const waiting = () => { const row = recentReads().find(x => x.id === id && x.pending); return row && pick(row, onServer('recent', id)) === row ? row : null; };
+          if (!waiting()) { const s = onServer('recent', id), rows = recentReads(); if (s) writeRecent(rows.map(x => x.id === id && x.pending ? keep(s) : x)); continue; }
+          const s = await sendPlace('recent', null, waiting); if (s) settleRecent(s);
+        }
+        let keys = [];
+        try { keys = localPlaces().filter(row => row.pending).map(row => row.key); } catch (_) { /* nothing stored here */ }
+        for (const key of keys) {
+          let id, revision;
+          try { [id, revision] = JSON.parse(key); } catch (_) { continue; }
+          if (!HEX.test(id) || !HEX.test(revision)) continue;
+          const mine = () => { try { return localPlaces().find(x => x.key === key && x.pending) || null; } catch (_) { return null; } };
+          const waiting = () => { const row = mine(); return row && pick(row, onServer('saved', id)) === row ? {id, revision, offset:row.offset} : null; };
+          if (!waiting()) {
+            const row = mine(), s = onServer('saved', id);
+            if (row) try { storePlace(key, s?.revision === revision ? s : {...row, pending:false}); } catch (_) { /* left waiting */ }
+            continue;
+          }
+          const s = await sendPlace('saved', null, waiting);
+          if (s) try { storePlace(key, s); } catch (_) { /* the server has it */ }
+        }
+        return synced;
+      })().finally(() => { fetching = null; });
+      return fetching;
+    }
+    // This browser's history first, then the server; the reading is never held up by the server.
+    function remember(source, offsetRead) {
+      const kept = rememberRead(source, offsetRead, seenOn('recent', source.id));
+      sendPlace('recent', {id:source.id, revision:source.revision, offset:offsetRead}).then(s => { if (s) settleRecent(s); });
+      return kept;
+    }
     const params = () => new URLSearchParams({kind: $('#lib-kind').value, collection: $('#lib-collection').value});
     const status = msg => { $('#lib-status').textContent = msg; };
     const chapterLabel = c => (c.label === `Chapter ${Number(c.number)}` ? c.label : `Chapter ${Number(c.number)}: ${c.label}`) + (c.linear === false ? ' (additional material)' : '');
@@ -83,39 +210,103 @@
       if (!details.open || details.dataset.loaded || details.dataset.loading) return;
       details.dataset.loading = '1';
       const body = details.querySelector('.lib-source-body'); body.textContent = 'Loading source…';
-      const r = await api.get('library/source?id=' + encodeURIComponent(details.dataset.source) + '&revision=' + encodeURIComponent(details.dataset.revision));
+      const [r] = await Promise.all([api.get('library/source?id=' + encodeURIComponent(details.dataset.source) + '&revision=' + encodeURIComponent(details.dataset.revision)), fetchPlaces()]);
       delete details.dataset.loading;
       if (!details.isConnected || !details.open) return;
       if (!r.ok) { body.textContent = r.data?.msg || 'Could not load the source. Close and reopen to retry.'; return; }
       details.dataset.loaded = '1'; const d = r.data;
       body.innerHTML = `
-        <details class="lib-reader"><summary>Read source text</summary><div class="lib-reader-body"><div class="lib-reader-tools"><button type="button" class="lib-save" disabled>Save place</button><button type="button" class="lib-resume" hidden>Resume reading</button></div><p class="lib-place-status lib-meta" role="status"></p><details class="lib-navigation"><summary>Jump to section</summary><form class="lib-jump"><label>Section number <input type="number" min="1" step="1" required inputmode="numeric" disabled></label><button type="submit" disabled>Read section</button></form></details><p class="lib-reader-status" role="status" tabindex="-1"></p><p class="lib-reader-text lib-full"></p><div class="lib-reader-nav"><button type="button" class="lib-prev">Read previous section</button><button type="button" class="lib-next">Read next section</button></div></div></details>
+        <details class="lib-reader"><summary>Read source text</summary><div class="lib-reader-body"><div class="lib-reader-tools"><button type="button" class="lib-save" disabled>Save place</button><button type="button" class="lib-resume" hidden>Resume reading</button></div><p class="lib-place-status lib-meta" role="status"></p><details class="lib-navigation"><summary>Jump to section</summary><form class="lib-jump"><label>Section number <input type="number" min="1" step="1" required inputmode="numeric" disabled></label><button type="submit" disabled>Read section</button></form></details><p class="lib-reader-status" role="status" tabindex="-1"></p><div class="lib-page" role="region" aria-label="Page of the source text"><p class="lib-reader-text lib-full"></p></div><p class="lib-page-status lib-meta" role="status" hidden></p><p class="lib-page-hint lib-meta" hidden>Tap the left or right edge, or press Page Up or Page Down, to turn the page.</p><div class="lib-reader-nav"><button type="button" class="lib-prev">Read previous section</button><button type="button" class="lib-next">Read next section</button></div></div></details>
         <details class="lib-file-details"><summary>View file details</summary><dl><dt>File format</dt><dd>${e(d.file_format || 'unknown')}</dd><dt>Authorship</dt><dd>${e(d.authorship)}</dd><dt>Source version</dt><dd>${e(d.source_version)}</dd><dt>Extraction</dt><dd>${e(d.health)} · ${e(d.extraction_version)}</dd><dt>Indexed</dt><dd>${e(d.indexed_at)}</dd><dt>Revision</dt><dd>${e(d.revision)}</dd></dl></details>
         ${d.url ? `<a href="${e(d.url)}" target="_blank" rel="noopener noreferrer">Open source website</a>` : ''}
-        ${d.original ? `<p class="lib-meta">Original: ${e(d.original.split('/').pop())}</p><button type="button" class="lib-original">Prepare original PDF</button><p class="lib-original-status" role="status"></p>` : '<p class="lib-meta">No original file is connected to the viewer yet.</p>'}`;
+        ${d.original ? `<p class="lib-meta">Original: ${e(d.original.split('/').pop())}</p><a class="lib-original" href="${e(api.url('api/memory/library/original.pdf?id=' + encodeURIComponent(d.id) + '&revision=' + encodeURIComponent(d.revision)))}" target="_blank" rel="noopener">Open original PDF<span class="sr"> (opens in a new tab)</span></a>` : '<p class="lib-meta">No original file is connected to the viewer yet.</p>'}`;
       const reader = body.querySelector('.lib-reader'), readStatus = body.querySelector('.lib-reader-status');
       const text = body.querySelector('.lib-reader-text'), prev = body.querySelector('.lib-prev'), next = body.querySelector('.lib-next');
       const save = body.querySelector('.lib-save'), resume = body.querySelector('.lib-resume');
       const placeStatus = body.querySelector('.lib-place-status'), jump = body.querySelector('.lib-jump');
       const section = jump.querySelector('input'), jumpButton = jump.querySelector('button');
-      const placeKey = 'mnemosyne-reading-places-v1';
       const identity = JSON.stringify([d.id, d.revision]);
-      function places() {
-        const raw = localStorage.getItem(placeKey);
-        if (!raw || raw.length > 100000) return [];
-        const rows = JSON.parse(raw);
-        return Array.isArray(rows) ? rows.filter(row => row && typeof row.key === 'string' && row.key.length < 300 && Number.isSafeInteger(row.offset) && row.offset >= 0 && row.offset <= 100000).slice(-100) : [];
-      }
-      let saved = null;
-      try { saved = places().find(row => row.key === identity)?.offset ?? null; } catch (_) { /* Reading works without storage. */ }
+      // The saved place is the newer of this browser's and the server's; the server's counts only for this revision.
+      let local = null;
+      try { local = localPlaces().find(row => row.key === identity) || null; } catch (_) { /* Reading works without storage. */ }
+      const remote = onServer('saved', d.id)?.revision === d.revision ? onServer('saved', d.id) : null;
+      const best = pick(local, remote);
+      let saved = best ? best.offset : null;
+      // where: 'synced' (the server has it), 'waiting' (this browser only, sent when the server answers), 'local' (older place)
+      let where = !best ? '' : best === remote || remote?.offset === best.offset ? 'synced' : best.pending ? 'waiting' : 'local';
+      const PLACE_SAY = {synced: n => `Saved section ${n}. Your other devices will open it here.`,
+        waiting: n => `Saved section ${n} on this browser. Other devices get it when the server answers.`, local: n => `Saved section ${n} on this browser.`};
       function showPlace(message) {
         resume.hidden = saved === null;
-        placeStatus.textContent = message || (saved === null ? 'Save a place on this browser to return later.' : `Saved section ${saved + 1} on this browser.`);
+        placeStatus.textContent = message || (saved === null ? 'Save a place to return later.' : PLACE_SAY[where](saved + 1));
       }
       showPlace();
       let readOffset = 0, readTotal = 0, reading = false, loaded = false;
+      // E-ink paging (4.67.0): the section's text in screen-high CSS columns, one column shown; a tap on the left or right
+      // quarter, PageUp/PageDown or the arrow keys turn the page, and past either end they open the neighbouring section.
+      // `anchor` is the text offset at the top of the shown page, so a rotation or a resize keeps the same text in view.
+      const leaf = body.querySelector('.lib-page'), pageStatus = body.querySelector('.lib-page-status'), pageHint = body.querySelector('.lib-page-hint');
+      const GAP = 32;
+      let page = 0, pages = 1, anchor = 0;
+      const paged = () => document.documentElement.classList.contains('eink');
+      const step = () => text.clientWidth + GAP;
+      function goPage(n) {
+        page = Math.max(0, Math.min(pages - 1, n)); text.scrollLeft = page * step();
+        pageStatus.textContent = `Page ${page + 1} of ${pages}`;
+        const b = text.getBoundingClientRect(), x = b.left + 2, y = b.top + 8;
+        // caretRangeFromPoint (Chromium, WebKit) or caretPositionFromPoint (Firefox); unchanged when neither finds the text.
+        const r = document.caretRangeFromPoint?.(x, y), p = r ? null : document.caretPositionFromPoint?.(x, y);
+        const node = r ? r.startContainer : p?.offsetNode, off = r ? r.startOffset : p?.offset;
+        if (node && text.contains(node)) anchor = off;
+        else if (page === 0) anchor = 0;
+      }
+      function pageOf(offset) {
+        const node = text.firstChild;
+        if (!node || !offset) return 0;
+        const r = document.createRange(); r.setStart(node, Math.min(offset, node.length)); r.collapse(true);
+        return Math.floor((r.getBoundingClientRect().left - text.getBoundingClientRect().left + text.scrollLeft + 1) / step());
+      }
+      function layout(at = null) {
+        const on = paged() && loaded;
+        text.classList.toggle('paged', on); pageStatus.hidden = !on; pageHint.hidden = !on;
+        if (on) leaf.tabIndex = 0; else leaf.removeAttribute('tabindex');
+        if (!on) { text.scrollLeft = 0; return; }
+        text.style.setProperty('--colw', text.clientWidth + 'px');
+        pages = Math.max(1, Math.round((text.scrollWidth + GAP) / step()));
+        goPage(at === 'last' ? pages - 1 : at === 'first' ? 0 : pageOf(anchor));
+      }
+      function turn(dir) {
+        if (reading || !text.classList.contains('paged')) return;
+        if (dir > 0) { if (page < pages - 1) goPage(page + 1); else if (!next.disabled) readSection(readOffset + 1, false, 'first'); }
+        else if (page > 0) goPage(page - 1); else if (!prev.disabled) readSection(readOffset - 1, false, 'last');
+      }
+      leaf.addEventListener('click', event => {
+        if (!text.classList.contains('paged') || String(getSelection())) return;
+        const b = leaf.getBoundingClientRect(), x = (event.clientX - b.left) / b.width;
+        if (x < 0.25) turn(-1); else if (x > 0.75) turn(1);
+      });
+      leaf.addEventListener('keydown', event => {
+        const dir = {PageDown: 1, ArrowRight: 1, PageUp: -1, ArrowLeft: -1}[event.key];
+        if (!dir || !text.classList.contains('paged')) return;
+        event.preventDefault(); turn(dir);
+      });
+      // An e-ink tablet's page buttons send Page Up/Page Down to the document, so the reader used last takes them
+      // wherever focus is, except in a form field.
+      const claim = () => { activeLeaf = leaf; };
+      leaf.addEventListener('pointerdown', claim); leaf.addEventListener('focusin', claim);
+      const pageKeys = event => {
+        if (!leaf.isConnected) { document.removeEventListener('keydown', pageKeys); return; }
+        const dir = {PageDown: 1, PageUp: -1}[event.key];
+        if (!dir || event.defaultPrevented || activeLeaf !== leaf || !text.classList.contains('paged') || !reader.open) return;
+        if (event.target.closest?.('input, select, textarea, [contenteditable]')) return;
+        event.preventDefault(); turn(dir);
+      };
+      document.addEventListener('keydown', pageKeys);
+      new ResizeObserver(() => { if (leaf.isConnected) layout(); }).observe(leaf);
+      const relayout = () => { if (!leaf.isConnected) document.removeEventListener('mnemosyne-eink', relayout); else layout(); };
+      document.addEventListener('mnemosyne-eink', relayout);
       prev.disabled = true; next.disabled = true;
-      async function readSection(offset, initial = false) {
+      async function readSection(offset, initial = false, at = 'first') {
         if (reading) return;
         reading = true; prev.disabled = true; next.disabled = true; save.disabled = true; resume.disabled = true; section.disabled = true; jumpButton.disabled = true; readStatus.textContent = 'Loading text…';
         const params = new URLSearchParams({id:d.id, revision:d.revision, offset});
@@ -134,33 +325,44 @@
         loaded = true; readOffset = data.offset; readTotal = data.total;
         save.disabled = false; section.disabled = false; jumpButton.disabled = false;
         if (saved !== null && saved >= readTotal) { saved = null; showPlace('The saved section is unavailable. Save a new place in this document.'); }
-        if (reader.open && details.open && !rememberRead(d, readOffset)) showPlace('Reading history is kept for this visit only; this browser could not save it.');
+        if (reader.open && details.open && !remember(d, readOffset)) showPlace('Reading history is kept for this visit only; this browser could not save it.');
         section.max = String(readTotal); section.value = String(readOffset + 1);
         const block = data.blocks[0];
         text.textContent = block.text || '(No extracted text on this page.)';
         readStatus.textContent = `Section ${readOffset + 1} of ${readTotal}${block.pdf_page ? ` · PDF page ${block.pdf_page}; printed page not recorded` : ''}${block.chapter ? ` · ${chapterLabel(block.chapter)}` : ''}. Extracted text; check the original for layout.`;
         prev.disabled = readOffset <= 0; next.disabled = readOffset + 1 >= readTotal;
-        if (!initial) { readStatus.focus({preventScroll:true}); readStatus.scrollIntoView({block:'start'}); }
+        layout(at); activeLeaf = leaf;
+        if (initial && text.classList.contains('paged')) readStatus.scrollIntoView({block:'start'});   // the whole page on the screen
+        if (!initial) {
+          if (text.classList.contains('paged') && leaf.contains(document.activeElement)) leaf.focus({preventScroll:true});
+          else readStatus.focus({preventScroll:true});
+          readStatus.scrollIntoView({block:'start'});
+        }
       }
       reader.addEventListener('toggle', () => {
         if (!reader.open) return;
         if (!loaded) readSection(readOffset, readTotal === 0);
-        else if (details.open && !rememberRead(d, readOffset)) showPlace('Reading history is kept for this visit only; this browser could not save it.');
+        else if (details.open && !remember(d, readOffset)) showPlace('Reading history is kept for this visit only; this browser could not save it.');
       });
       details.addEventListener('toggle', () => {
-        if (details.open && reader.open && loaded && !rememberRead(d, readOffset)) showPlace('Reading history is kept for this visit only; this browser could not save it.');
+        if (details.open && reader.open && loaded && !remember(d, readOffset)) showPlace('Reading history is kept for this visit only; this browser could not save it.');
       });
       if (details.dataset.continue) reader.open = true;
-      save.addEventListener('click', () => {
+      // Save place: this browser first, then the server. Either one is enough to keep the place.
+      save.addEventListener('click', async () => {
         if (reading || readTotal === 0) return;
-        try {
-          let rows;
-          try { rows = places(); } catch (_) { rows = []; }
-          rows = rows.filter(row => row.key !== identity);
-          rows.push({key:identity, offset:readOffset});
-          localStorage.setItem(placeKey, JSON.stringify(rows.slice(-100)));
-          saved = readOffset; showPlace();
-        } catch (_) { showPlace('This browser could not save your place. You can keep reading.'); }
+        const placeAt = readOffset, row = {id:d.id, revision:d.revision, offset:placeAt};
+        let here = true;
+        let seen = seenOn('saved', d.id);
+        if (seen === undefined && local) seen = local.pending ? local.seen : local.at;
+        try { storePlace(identity, {...row, at:new Date().toISOString(), pending:true, seen}); local = {key:identity, ...row, pending:true, seen}; } catch (_) { here = false; }
+        if (here) { saved = placeAt; where = 'waiting'; showPlace(); }
+        save.disabled = true;
+        const s = await sendPlace('saved', row);
+        if (!body.isConnected) return;
+        save.disabled = reading || readTotal === 0;
+        if (s) { try { storePlace(identity, s); } catch (_) { /* the server has it */ } saved = placeAt; where = 'synced'; showPlace(); }
+        else if (!here) showPlace('This browser could not save your place. You can keep reading.');
       });
       resume.addEventListener('click', () => { if (saved !== null) readSection(saved); });
       jump.addEventListener('submit', event => {
@@ -170,19 +372,6 @@
       });
       prev.addEventListener('click', () => readSection(readOffset - 1));
       next.addEventListener('click', () => readSection(readOffset + 1));
-      body.querySelector('.lib-original')?.addEventListener('click', async event => {
-        const button = event.currentTarget, msg = body.querySelector('.lib-original-status'); button.disabled = true; msg.textContent = 'Preparing PDF…';
-        const result = await api.get('library/original?id=' + encodeURIComponent(d.id) + '&revision=' + encodeURIComponent(d.revision));
-        if (!body.isConnected) return;
-        button.disabled = false;
-        if (!result.ok) { msg.textContent = result.data?.msg || 'The original is unavailable. Your search results are kept.'; return; }
-        try {
-          const bytes = Uint8Array.from(atob(result.data.base64), c => c.charCodeAt(0));
-          const url = URL.createObjectURL(new Blob([bytes], {type: 'application/pdf'})); originalURLs.add(url);
-          const link = document.createElement('a'); link.href = url; link.target = '_blank'; link.rel = 'noopener'; link.textContent = 'Open original PDF';
-          msg.replaceChildren(link); button.hidden = true;
-        } catch (_) { msg.textContent = 'The PDF could not be prepared. Try again.'; }
-      });
     }
     function wire() { el.querySelectorAll('.lib-source:not([data-wired])').forEach(d => {
       d.dataset.wired = '1'; d.addEventListener('toggle', () => sourceDetail(d));
@@ -192,21 +381,27 @@
         event.currentTarget.hidden = true;
       });
     }); }
+    // Library home: this browser's recent list merged with the server's by document, the newer row winning, newest first.
     async function home() {
-      const seq = ++request, rows = recentReads();
+      const seq = ++request;
       $('#lib-heading').textContent = 'Recently checked out';
       $('#lib-more').hidden = true; $('#lib-totals').textContent = '';
-      if (!rows.length) { await load(true, false, true); return; }
       status('Loading your recently checked out documents…');
+      const server = await Promise.race([fetchPlaces(true), new Promise(done => setTimeout(() => done(null), 2500))]);
+      if (seq !== request || !el.isConnected) return;
+      const byId = new Map(), local = new Map(recentReads().map(row => [row.id, row]));
+      for (const row of server?.recent || []) byId.set(row.id, pick(local.get(row.id), row));
+      for (const [id, row] of local) if (!byId.has(id)) byId.set(id, row);
+      const rows = [...byId.values()].sort((a, b) => time(b.at) - time(a.at)).slice(0, 10);
+      if (!rows.length) { await load(true, false, true); return; }
       const results = await Promise.all(rows.map(row => api.get('library/source?id=' + encodeURIComponent(row.id))));
       if (seq !== request || !el.isConnected) return;
-      clearOriginals();
       $('#lib-results').innerHTML = results.map((result, i) => {
         if (!result.ok) return `<article class="lib-result"><h4>Unavailable document</h4><p class="lib-meta">${result.status === 404 ? 'This document is no longer in the current catalog.' : 'Could not load this document. Choose Library home to retry.'}</p></article>`;
         const d = result.data, changed = d.revision !== rows[i].revision;
         return item(d, false, {changed, offset:changed ? 0 : rows[i].offset});
       }).join('');
-      status('Your last ' + rows.length + ' checked out documents on this browser. Nothing is moved or locked.');
+      status(`Your last ${rows.length} checked out documents${server ? '' : ' on this browser'}. Nothing is moved or locked.`);
       wire();
     }
     async function load(browse, more = false, emptyHome = false) {
@@ -237,13 +432,24 @@
       } else status(rows.length ? `${rows.length} matching passages. Open a passage to check its context.` : 'No matching passages in this scope. Try different words or source filters.');
       if (emptyHome) status('No recently checked out documents yet. Browse your sources below or search to start reading.');
       const content = rows.map(r => item(r, !browse)).join('');
-      if (more) $('#lib-results').insertAdjacentHTML('beforeend', content); else { clearOriginals(); $('#lib-results').innerHTML = content; }
+      if (more) $('#lib-results').insertAdjacentHTML('beforeend', content); else { $('#lib-results').innerHTML = content; }
       wire();
     }
     $('#lib-search').addEventListener('submit', event => { event.preventDefault(); load(false); });
     $('#lib-browse').addEventListener('click', () => load(true));
     $('#lib-more').addEventListener('click', () => load(true, true));
     $('#lib-home').addEventListener('click', home);
+    const prefs = readingPrefs(), modeSelect = $('#lib-eink'), vibrateBox = $('#lib-vibrate');
+    const sayPrefs = kept => { $('#lib-settings-say').textContent = einkSay(readingPrefs().eink) + (kept ? '' : ' This browser could not keep the setting; it applies until you leave.'); };
+    /* The preview is sandboxed without storage, so the vibration and e-ink choices travel in its link. */
+    const previewLink = $('#lib-preview'), previewHref = previewLink.getAttribute('href');
+    const linkPrefs = () => {
+      const q = [readingPrefs().vibrate && 'vibrate=1', einkActive() && 'eink=1'].filter(Boolean).join('&');
+      previewLink.setAttribute('href', previewHref + (q ? '?' + q : ''));
+    };
+    modeSelect.value = prefs.eink; vibrateBox.checked = prefs.vibrate; applyEink(); sayPrefs(true); linkPrefs();
+    modeSelect.addEventListener('change', () => { const kept = savePrefs({...readingPrefs(), eink: modeSelect.value}); applyEink(); sayPrefs(kept); linkPrefs(); });
+    vibrateBox.addEventListener('change', () => { sayPrefs(savePrefs({...readingPrefs(), vibrate: vibrateBox.checked})); linkPrefs(); });
     for (const id of ['#lib-kind', '#lib-collection', '#lib-health']) $(id).addEventListener('change', () => load(id === '#lib-health' ? true : browsing));
     home();
   }
@@ -280,7 +486,7 @@
 
   leafy.register('memory', {
     async show(el, api) {
-      clearOriginals(); delete el.dataset.backupTouched;
+      delete el.dataset.backupTouched;
       el.innerHTML = `<div class="memory">
         <section class="panel mem-library" aria-labelledby="lib-heading">
           <h3 id="lib-heading">Recently checked out</h3>
@@ -291,6 +497,11 @@
             <label>Availability (browse only)<select id="lib-health"><option value="">Any status</option><option value="ready">Searchable</option><option value="pending">Pending extraction</option><option value="failed">Failed extraction</option><option value="suspect">Needs text review</option><option value="catalog-only">Catalog only</option><option value="unknown">Unknown</option></select></label>
           </details>
           <div class="lib-tools"><button id="lib-home" type="button">Library home</button><button id="lib-browse" type="button">Browse shelves</button><span id="lib-totals"></span></div>
+          <details class="lib-settings"><summary>Reading settings</summary>
+            <label>E-ink mode<select id="lib-eink"><option value="auto">Automatic</option><option value="on">On</option><option value="off">Off</option></select></label>
+            <p id="lib-settings-say" class="lib-meta" role="status"></p>
+            <label class="lib-check"><input type="checkbox" id="lib-vibrate"> Vibrate when the side index moves</label>
+          </details>
           <p class="lib-preview"><a id="lib-preview" href="${api.esc(api.url('plugins/memory/reading-room-preview.html'))}">Try the reading room preview</a><small>Sample books · Colorful shelves and a sliding index</small></p>
           <p id="lib-status" role="status" aria-live="polite"></p><div id="lib-results"></div><button id="lib-more" type="button" hidden>Show more sources</button>
         </section>

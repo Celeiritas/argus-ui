@@ -427,7 +427,8 @@ def reader(path, sid, revision='', offset=0, pdf_page=None):
     finally: c.close()
 
 
-def original(path, root, sid, revision=''):
+def original_file(path, root, sid, revision=''):
+    """The checked original: (file name, bytes). Same revision, same checksum, a real PDF, or ValueError."""
     d = source(path, sid, revision)
     if not d or not d.get('original'): raise ValueError('No local original is available for this source')
     f = relative_file(root, d['original'])
@@ -435,7 +436,12 @@ def original(path, root, sid, revision=''):
     raw = f.read_bytes()
     if not raw.startswith(b'%PDF-') or hashlib.sha256(raw).hexdigest() != d['original_sha256']:
         raise ValueError('The original changed; publish its new revision before opening it')
-    return dict(filename=f.name, mime='application/pdf', base64=base64.b64encode(raw).decode('ascii'))
+    return f.name, raw
+
+
+def original(path, root, sid, revision=''):
+    name, raw = original_file(path, root, sid, revision)
+    return dict(filename=name, mime='application/pdf', base64=base64.b64encode(raw).decode('ascii'))
 
 
 def api(path, query, ctx):
@@ -455,6 +461,9 @@ def api(path, query, ctx):
             d = reader(db, q('id'), q('revision'), int(q('offset', '0')), int(q('pdf_page')) if q('pdf_page') else None)
             return (200, d) if d else (404, {'msg': 'Source not found'})
         if path == 'library/original': return 200, original(db, roots(ctx), q('id'), q('revision'))
+        if path == 'library/original.pdf':        # the PDF itself, for the browser's own viewer (4.68.0)
+            name, raw = original_file(db, roots(ctx), q('id'), q('revision'))
+            return 200, raw, {'type': 'application/pdf', 'name': name}
         if path == 'library/ask': return 410, {'msg': 'Generated answers are retired. Search the sources instead.'}
         return 404, {'msg': 'Not found'}
     except (ValueError, UnicodeError): return 400, {'msg': 'Check the search, filters, or source revision.'}
