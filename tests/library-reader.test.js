@@ -67,9 +67,14 @@ const shot = (p, name) => process.env.SHOTS && p.screenshot({path: path.join(pro
     await tap(p, 0.9); const second = await turned(p, start);
     assert.match(second, /^c1w\d+$/, 'the right edge turns to the next page');
     await tap(p, 0.1); assert.equal(await turned(p, second), start, 'the left edge turns back');
+    const bookBox = await p.locator('#book').boundingBox();
     await tap(p, 0.5); assert.equal(await p.locator('#bar').isHidden(), true, 'a tap in the middle hides the bar');
+    assert.deepEqual(await p.locator('#book').boundingBox(), bookBox, 'and the pages keep their size (no new layout, no jump)');
     await p.waitForTimeout(300); assert.equal(await firstWord(p), start, 'and turns nothing');
     await tap(p, 0.5); assert.equal(await p.locator('#bar').isVisible(), true, 'and shows it again');
+    await p.keyboard.press('Escape'); assert.equal(await p.locator('#bar').isHidden(), true, 'Escape hides the bar');
+    await p.keyboard.press('Escape'); assert.equal(await p.locator('#bar').isVisible(), true, 'and shows it again');
+    assert.match(await p.locator('#progress').innerText(), /^\d+%$/, 'a phone shows how far, as a number');
     await shot(p, 'library-reader-phone.png');
 
     // keys (focus is in the page after the taps)
@@ -161,6 +166,8 @@ const shot = (p, name) => process.env.SHOTS && p.screenshot({path: path.join(pro
     const look = await p.evaluate(() => { const b = getComputedStyle(document.body);
       return {bg: b.backgroundColor, ink: b.color, shadow: getComputedStyle(document.querySelector('#bar')).boxShadow, side: parseFloat(getComputedStyle(document.querySelector('#book')).paddingLeft)}; });
     assert.equal(look.bg, 'rgb(255, 255, 255)'); assert.equal(look.ink, 'rgb(0, 0, 0)'); assert.equal(look.shadow, 'none'); assert.ok(look.side >= 32, String(look.side));
+    assert.equal(await p.evaluate(() => getComputedStyle(document.querySelector('#next')).textDecorationLine), 'none', 'page buttons: a border, no underline');
+    assert.equal(await p.evaluate(() => document.querySelector('foliate-view').renderer.getAttribute('max-block-size')), '4000px', 'the page fills the tall screen');
     await shot(p, 'library-reader-eink.png');
     await p.context().close();
     p = await page(browser, {viewport: {width: 1280, height: 800}, motion: true});
@@ -173,6 +180,7 @@ const shot = (p, name) => process.env.SHOTS && p.screenshot({path: path.join(pro
     p = await page(browser);
     await p.goto(`${origin}plugins/memory/reader/?id=${ID}&revision=${REV}&format=pdf`); await ready(p);
     assert.equal(await p.evaluate(() => document.querySelector('foliate-view').renderer.index), 0);
+    assert.match(await p.locator('#progress').textContent(), /^Page 1 of \d+$/, 'a PDF says its page');
     await tap(p, 0.9);
     await p.waitForFunction(() => document.querySelector('foliate-view').renderer.index === 1);
     const t1 = Date.now(); while (!server.posts.length && Date.now() - t1 < 2500) await p.waitForTimeout(100);

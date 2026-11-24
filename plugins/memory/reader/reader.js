@@ -86,7 +86,10 @@ function remember(loc) {
   const sections = view.book.sections.length || 1;
   let fraction = typeof loc.fraction === 'number' ? loc.fraction : (view.renderer.index + 1) / sections;   // a PDF reports pages, not a fraction
   fraction = Math.min(1, Math.max(0, Math.round(fraction * 10000) / 10000));
-  $('#progress').textContent = `${Math.round(fraction * 100)}% read`;
+  // a PDF says its page; an EPUB how far (on a narrow phone only the number, the word goes)
+  const [head, word] = format === 'pdf' ? [`Page ${view.renderer.index + 1}`, ` of ${sections}`] : [`${Math.round(fraction * 100)}%`, ' read'];
+  const w = document.createElement('span'); w.className = 'word'; w.textContent = word;
+  $('#progress').replaceChildren(head, w);
   if (last && last.cfi === loc.cfi) return;                           // the same place again (a resize, a snap): nothing new to keep
   const before = localPlaces()[id];
   let seen = before?.pending ? before.seen : (serverRow === undefined ? undefined : serverRow ? serverRow.at : '');
@@ -120,6 +123,7 @@ function onTap(e) {
 function onKey(e) {
   if (e.altKey || e.ctrlKey || e.metaKey || e.target.closest?.('input, select, textarea')) return;
   const k = e.key;
+  if (k === 'Escape') { e.preventDefault(); toggleBar(); return; }   // the keyboard's way to the middle tap
   const how = k === 'ArrowRight' ? 'right' : k === 'ArrowLeft' ? 'left' : k === 'PageDown' || (k === ' ' && !e.shiftKey) ? 'next'
     : k === 'PageUp' || (k === ' ' && e.shiftKey) ? 'prev' : '';
   if (!how) return;
@@ -178,6 +182,7 @@ async function open() {
   $('#title').textContent = title || 'Book'; document.title = `${title || 'Book'} · Mnemosyne`;
   const r = view.renderer;
   r.setAttribute('flow', 'paginated'); r.setAttribute('max-column-count', '1'); r.setAttribute('margin', '24px'); r.setAttribute('gap', '6%');
+  if (eink) r.setAttribute('max-block-size', '4000px');              // a tall e-ink screen: the page fills it, no empty bands
   if (!still) r.setAttribute('animated', '');
   r.setStyles?.(CONTENT_CSS + (eink ? EINK_CSS : ''));
 

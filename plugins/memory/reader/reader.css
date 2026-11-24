@@ -8,7 +8,8 @@ body { display: flex; flex-direction: column; background: var(--bg); color: var(
   font: 400 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
 #bar { flex: none; display: flex; align-items: center; gap: 8px; padding: 0 var(--side); min-height: 52px; border-bottom: 1px solid var(--line);
   background: var(--bg); box-shadow: 0 1px 4px rgb(0 0 0 / .08); }
-#bar[hidden] { display: none; }
+/* hidden keeps its room: taking it away re-laid the book out, moved the page and cost an e-ink full refresh */
+#bar[hidden] { display: flex; visibility: hidden; }
 #back, .turns button { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; min-width: 44px;
   padding: 0 10px; border-radius: 8px; color: var(--accent); font-family: inherit; font-size: 14px; font-weight: 600; line-height: 1;
   text-decoration: none; }
@@ -24,11 +25,12 @@ body { display: flex; flex-direction: column; background: var(--bg); color: var(
 #say a { color: var(--accent); font-weight: 600; }
 #book { position: relative; flex: 1 1 auto; min-height: 0; padding: 0 var(--side); }
 #book foliate-view { display: block; width: 100%; height: 100%; }
-@media (max-width: 480px) { #progress { display: none; } #title { font-size: 12px; } }
+@media (max-width: 480px) { #progress .word { display: none; } #title { font-size: 12px; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; scroll-behavior: auto !important; } }
 
 /* e-ink (?eink=1 or the library's E-ink mode): white paper, black ink, wider margins, nothing moves or glows */
 .eink { color-scheme: light; --bg: #fff; --ink: #000; --soft: #000; --line: #000; --accent: #000; --side: 32px; }
 .eink #bar, .eink #say { box-shadow: none; }
 .eink * { transition: none !important; animation: none !important; }
-.eink #back, .eink .turns button { text-decoration: underline; }
+.eink #back { text-decoration: underline; }
+.eink .turns button { font-size: 24px; }
