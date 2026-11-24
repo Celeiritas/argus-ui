@@ -80,6 +80,10 @@
 .lib-recent>.lib-meta{grid-column:1;grid-row:2;margin-bottom:0}
 .lib-recent>.lib-continue{grid-column:2;grid-row:1 / span 2;max-width:120px;align-self:center}
 .lib-recent>.lib-source,.lib-recent>.lib-recent-note{grid-column:1 / -1;grid-row:auto}
+/* Read book (4.69.0): the original in the page-turning reader; a link styled as the first action */
+.memory a.lib-read-book{display:inline-flex;align-items:center;justify-content:center;min-height:44px;min-width:44px;padding:0 var(--s3);border:1px solid currentColor;border-radius:8px;font-weight:600;color:var(--stone);text-decoration:none}
+.lib-source-body>a.lib-read-book{margin-bottom:var(--s2)}
+html.eink .memory a.lib-read-book{background:#fff;color:#000;border:2px solid #000;text-decoration:underline}
 
 .lib-preview{margin:var(--s2) 0}
 .lib-preview a{display:inline-flex;align-items:center;min-height:44px;font-weight:600;color:var(--stone)}

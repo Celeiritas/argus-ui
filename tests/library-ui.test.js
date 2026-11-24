@@ -54,6 +54,9 @@ const backup = {summary:'Backups are fresh.',attention:false,folder:'fixtures',f
   await p.locator('.lib-excerpt').waitFor();await p.getByText('Read full passage',{exact:true}).click();
   assert.equal(await p.locator('.lib-full').textContent(),passage.text);
   await p.getByText('Read source and details',{exact:true}).click();{const o=p.locator('a.lib-original');await o.waitFor();const h=await o.getAttribute('href');if(!h.includes('api/memory/library/original.pdf?id='+source.id+'&revision='+source.revision)||await o.getAttribute('target')!=='_blank')throw new Error('original PDF link: '+h);}
+  {const b=p.locator('.lib-source-body > a.lib-read-book');assert.equal(await b.innerText(),'Read book');const h=await b.getAttribute('href');
+   assert(h.includes('plugins/memory/reader/?id='+source.id+'&revision='+source.revision+'&format=pdf'),'Read book link: '+h);assert.equal(await b.getAttribute('target'),null);
+   assert.equal(await p.locator('.lib-source-body').evaluate(x=>x.firstElementChild.className),'lib-read-book');assert((await b.boundingBox()).height>=44);}
   await p.getByText('Read source text',{exact:true}).click();await p.locator('.lib-reader-text').filter({hasText:'preserved lines'}).waitFor();
   assert((await p.locator('.lib-reader-text').textContent()).includes('<script>'));
   assert.equal(await p.locator('.lib-reader script').count(),0);
@@ -108,6 +111,7 @@ const backup = {summary:'Backups are fresh.',attention:false,folder:'fixtures',f
   await p.locator('#lib-query').fill('conclusion');await p.locator('#lib-search button').click();
   await p.getByText('Read source and details',{exact:true}).click();await p.getByText('Read source text',{exact:true}).click();
   await p.getByText(/Section 2 of 2 · Chapter 2: Ending/).waitFor();
+  assert.equal(await p.locator('a.lib-read-book').count(),0,'no original, no Read book');
   assert(!(await p.locator('.lib-reader-status').innerText()).includes('PDF page'));
   await p.screenshot({path:path.join(process.env.SHOTS||root,'library-epub-phone.png'),fullPage:true});
   // Follow the visible entry at both supported mounts using the packaged preview and real sandbox.
