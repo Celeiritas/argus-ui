@@ -71,12 +71,17 @@ MENTOR_PLUGIN = textwrap.dedent('''
 for pid, code, extra in (('heracles', WHO_PLUGIN, {'agent': True, 'roles': {'get': {'lessons': 'learner', 'status': 'learner'}, 'post': {'answer': 'learner'}}}),
                          ('quiet', OLD_PLUGIN, {'name': 'Quiet', 'roles': {'get': {'ping': 'learner'}, 'post': {'note': 'learner'}}}),
                          ('closed', WHO_PLUGIN, {'name': 'Closed', 'open_folder': 'board/'}),
+                         ('strict', WHO_PLUGIN, {'name': 'Strict', 'open_folder': 'reader', 'open_folder_policy': 'strict'}),
+                         ('loose', WHO_PLUGIN, {'name': 'Loose', 'open_folder': 'reader', 'open_folder_policy': 'Strict '}),
                          ('mentor', MENTOR_PLUGIN, {'name': 'Mentor', 'roles': {'get': {'status': 'learner'}}})):
     put(os.path.join(PLUG, pid, 'plugin.json'), dict(id=pid, kind='server', page='page.js', **extra))
     put(os.path.join(PLUG, pid, 'plugin.py'), code); put(os.path.join(PLUG, pid, 'page.js'), f'// {pid}')
 # closed's "open_folder" (4.47.0): board/ goes out without the sandbox; a .py inside it is still never served
 put(os.path.join(PLUG, 'closed', 'board', 'index.html'), '<p>board</p>'); put(os.path.join(PLUG, 'closed', 'board', 'sw.js'), '// sw')
 put(os.path.join(PLUG, 'closed', 'board', 'secret.py'), 'X = 1'); put(os.path.join(PLUG, 'closed', 'boardish.js'), '// next door')
+# "open_folder_policy": "strict" (4.69.0): the book reader's folder, scripts only from its own files (an e-book's never run)
+for pid in ('strict', 'loose'):
+    put(os.path.join(PLUG, pid, 'reader', 'index.html'), '<p>reader</p>'); put(os.path.join(PLUG, pid, 'reader', 'pdf.mjs'), '// module')
 put(os.path.join(PLUG, 'kwonly', 'plugin.json'), {'id': 'kwonly', 'kind': 'server', 'page': 'page.js'})
 put(os.path.join(PLUG, 'kwonly', 'page.js'), '// kwonly')
 put(os.path.join(PLUG, 'kwonly', 'plugin.py'), 'def get(path, query, ctx, *, who=None):\n    return 200, {"who": who}\n')
@@ -429,6 +434,19 @@ class Headers(Base):
         for path in ('plugins/closed/page.js', 'plugins/closed/boardish.js', 'plugins/heracles/page.js'):
             self.assertIn('sandbox', self.req(G, path)[1]['content-security-policy'], f'{path} keeps the sandbox')
         self.assertIn('sandbox', self.req(G, 'plugins/closed/board/../page.js')[1].get('content-security-policy', 'sandbox'))
+
+    def test_strict_open_folder_runs_only_its_own_scripts(self):
+        want = ("default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' blob:; "
+                "img-src 'self' data: blob:; font-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' blob: data:; "
+                "worker-src 'self' blob:; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'")
+        for path in ('plugins/strict/reader/', 'plugins/strict/reader/index.html', 'plugins/strict/reader/pdf.mjs'):
+            code, h, _ = self.req(G, path)
+            self.assertEqual(code, 200, path); self.assertEqual(h['content-security-policy'], want, path)
+            self.assertEqual((h['x-frame-options'], h['cross-origin-resource-policy'], h['x-content-type-options']), ('SAMEORIGIN', 'same-origin', 'nosniff'), path)
+        self.assertTrue(self.req(G, 'plugins/strict/reader/pdf.mjs')[1]['content-type'].startswith('text/javascript'))
+        self.assertIn('sandbox', self.req(G, 'plugins/strict/page.js')[1]['content-security-policy'], 'outside the folder keeps the sandbox')
+        self.assertEqual(self.req(G, 'plugins/loose/reader/index.html')[1]['content-security-policy'], a.OWN_HEADERS['Content-Security-Policy'],
+                         'any other policy value keeps the 4.47 open folder')
 
     def test_open_folder_manifest_values(self):
         d = os.path.join(PLUG, 'closed')
