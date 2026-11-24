@@ -18,6 +18,9 @@ from urllib.parse import urlsplit
 KINDS = ('paper', 'book', 'summary', 'note', 'guide', 'learning', 'unknown')
 HEALTH = ('ready', 'pending', 'failed', 'suspect', 'catalog-only', 'unknown')
 MAX_BYTES = 12 * 1024 * 1024
+# What an original may be, by kind: its suffix, its first bytes and its largest size (EPUB = epub.MAX_ARCHIVE, 4.69.0)
+ORIGINAL_KINDS = {'pdf': ('.pdf', b'%PDF-'), 'epub': ('.epub', b'PK\x03\x04')}
+ORIGINAL_LIMITS = {'.pdf': MAX_BYTES, '.epub': 64 * 1024 * 1024}
 SCHEMA = 2
 FORMATS = ('pdf', 'txt', 'md', 'epub', 'docx', 'html', 'other', 'unknown')
 READER_BLOCK = 12000
@@ -273,7 +276,7 @@ def _verify_originals(records, root):
         if not meta['original']: continue
         if root is None: raise ValueError('Provide the serving original root before reviewing this import')
         file = relative_file(root, meta['original'])
-        if not file.is_file() or file.stat().st_size > MAX_BYTES:
+        if not file.is_file() or file.stat().st_size > ORIGINAL_LIMITS.get(file.suffix.lower(), MAX_BYTES):
             raise ValueError('Missing or oversized original; provision it before publication')
         if hashlib.sha256(file.read_bytes()).hexdigest() != meta['original_sha256']:
             raise ValueError('Original bytes do not match the reviewed revision')
@@ -427,14 +430,16 @@ def reader(path, sid, revision='', offset=0, pdf_page=None):
     finally: c.close()
 
 
-def original_file(path, root, sid, revision=''):
-    """The checked original: (file name, bytes). Same revision, same checksum, a real PDF, or ValueError."""
+def original_file(path, root, sid, revision='', kind='pdf'):
+    """The checked original: (file name, bytes). Same revision, same checksum, a real PDF or EPUB (kind), or ValueError."""
+    if kind not in ORIGINAL_KINDS: raise ValueError('Unknown original kind')
+    suffix, magic = ORIGINAL_KINDS[kind]
     d = source(path, sid, revision)
     if not d or not d.get('original'): raise ValueError('No local original is available for this source')
     f = relative_file(root, d['original'])
-    if f.suffix.lower() != '.pdf' or f.stat().st_size > MAX_BYTES: raise ValueError('Original PDF is unavailable or exceeds 12 MB')
+    if f.suffix.lower() != suffix or f.stat().st_size > ORIGINAL_LIMITS[suffix]: raise ValueError('Original is unavailable or too large')
     raw = f.read_bytes()
-    if not raw.startswith(b'%PDF-') or hashlib.sha256(raw).hexdigest() != d['original_sha256']:
+    if not raw.startswith(magic) or hashlib.sha256(raw).hexdigest() != d['original_sha256']:
         raise ValueError('The original changed; publish its new revision before opening it')
     return f.name, raw
 
@@ -464,6 +469,9 @@ def api(path, query, ctx):
         if path == 'library/original.pdf':        # the PDF itself, for the browser's own viewer (4.68.0)
             name, raw = original_file(db, roots(ctx), q('id'), q('revision'))
             return 200, raw, {'type': 'application/pdf', 'name': name}
+        if path == 'library/original.epub':       # the EPUB itself, for the book reader (4.69.0)
+            name, raw = original_file(db, roots(ctx), q('id'), q('revision'), kind='epub')
+            return 200, raw, {'type': 'application/epub+zip', 'name': name}
         if path == 'library/ask': return 410, {'msg': 'Generated answers are retired. Search the sources instead.'}
         return 404, {'msg': 'Not found'}
     except (ValueError, UnicodeError): return 400, {'msg': 'Check the search, filters, or source revision.'}

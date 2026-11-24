@@ -62,6 +62,13 @@ const backup = {summary:'Backups are fresh.',attention:false,folder:'fixtures',f
   const before=await history();failRead=true;await p.getByText('Read next section',{exact:true}).click();await p.getByText('Read failed',{exact:true}).waitFor();assert.deepEqual(await history(),before);failRead=false;
   sources[4].revision='d'.repeat(64);await home();await p.getByText('Open updated document',{exact:true}).click();await p.locator('.lib-reader-status').filter({hasText:'Section 1 of 3'}).waitFor();assert.equal(reads.at(-1).offset,0);
   missing.add(sources[4].id);await home();assert.equal(await p.getByText('Unavailable document',{exact:true}).count(),1);assert.equal(await p.locator('.lib-continue').count(),9);assert.equal((await history()).length,10);
+  // A book read in the page-turning reader (4.69.0): its row says how far, and Continue opens the reader, not the text.
+  sources[3].original='book.epub';
+  await p.evaluate(({id,revision})=>localStorage.setItem('mnemosyne-book-places-v1',JSON.stringify({[id]:{id,revision,cfi:'epubcfi(/6/4!/4/2/1:0)',fraction:0.34,at:new Date(Date.now()+60000).toISOString(),pending:true}})),{id:sources[3].id,revision:sources[3].revision});
+  await home();{const row=p.locator('.lib-result').first();assert.equal(await row.locator('h4').innerText(),sources[3].title);assert.match(await row.locator('.lib-meta').first().innerText(),/· 34% read$/);
+   const c=row.locator('a.lib-continue');assert.equal(await c.innerText(),'Continue reading');assert((await c.getAttribute('href')).includes('plugins/memory/reader/?id='+sources[3].id+'&revision='+sources[3].revision+'&format=epub'));
+   assert.equal(await row.locator('button.lib-continue').count(),0);}
+  await p.evaluate(()=>localStorage.removeItem('mnemosyne-book-places-v1'));sources[3].original='';
   // Existing persisted history must not mask new session-only positions when writes fail.
   await p.evaluate(()=>{const set=Storage.prototype.setItem;Storage.prototype.setItem=function(k,v){if(k==='mnemosyne-recent-v1')throw Error('quota');return set.call(this,k,v);};});
   await browse();await open(sources[0].id);await home();assert.equal(await p.locator('.lib-result h4').first().innerText(),sources[0].title);

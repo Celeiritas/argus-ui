@@ -80,6 +80,8 @@ src | awk -F '\t' -v deny="$DENY" '
   {
     where = $1; text = substr($0, length($1) + 2); found = ""
     if (index(text, "private-ok")) next
+    orig = text   # third-party code copied by a checksum-pinned script (plugins/<id>/reader/vendor/, THIRD-PARTY.md there):
+    if (where ~ /(^|[ \/])plugins\/[^\/]+\/reader\/vendor\//) text = ""   # its build paths and test strings are not ours; denylist only
     s = text; while (match(s, /[A-Za-z]:[\\\/]+[Uu]sers[\\\/]+[A-Za-z0-9_][A-Za-z0-9._-]*/)) {
       m = substr(s, RSTART, RLENGTH); nm = m; sub(/^.*[\\\/]/, "", nm)
       if (!(tolower(nm) in okname)) hit("home path " m); s = substr(s, RSTART + RLENGTH) }
@@ -101,7 +103,7 @@ src | awk -F '\t' -v deny="$DENY" '
     s = text; while (match(s, /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z][A-Za-z]+/)) {
       m = substr(s, RSTART, RLENGTH); dom = tolower(m); sub(/^.*@/, "", dom)
       if (!(tolower(m) in okaddr) && !(dom in okmail) && dom !~ /\.example$/) hit("email " m); s = substr(s, RSTART + RLENGTH) }
-    if (nd) { lt = tolower(text); for (i = 1; i <= nd; i++) if (index(lt, dl[i])) hit("denylist entry " i) }
+    if (nd) { lt = tolower(orig); for (i = 1; i <= nd; i++) if (index(lt, dl[i])) hit("denylist entry " i) }
     if (found != "") { print where ": " found; bad++ }
   }
   END {

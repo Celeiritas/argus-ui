@@ -1,5 +1,11 @@
 # Changelog
 
+## 4.69.0 — 2026-11-24
+
+- Read the book itself: a source with an original EPUB or PDF has a **Read book** button that opens it in pages inside Argus. Tap the left or right third, use the page buttons, keys or a swipe to turn; a tap in the middle hides the bar (Escape does the same), and the page stays put. E-ink mode is black on white with no motion, and the page fills the tall screen. The bar shows how far you are (on a phone just "34%"; a PDF says "Page 3 of 120").
+- Your place in a book follows you between devices, and Library home shows how far you are ("34% read"); **Continue reading** opens the book there.
+- The reader uses foliate-js (MIT) and pdf.js 5.5.207 (Apache-2.0, legacy build for older e-reader browsers), copied at pinned checksums by `scripts/vendor-foliate.sh`. Scripts inside a book never run.
+
 ## 4.68.0 — 2026-11-23
 
 - Open an original PDF on a phone or the e-ink tablet: **Open original PDF** is now a plain link to the file, so the device's own PDF viewer opens it. Before, the page unpacked the PDF itself and phones stopped with "The PDF could not be prepared".

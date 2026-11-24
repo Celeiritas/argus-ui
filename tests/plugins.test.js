@@ -104,6 +104,9 @@ run(async b => {
   const pdf = await s.request.get(api + 'file.pdf'), pdfh = pdf.headers();
   check(pdf.status() === 200 && pdfh['content-type'] === 'application/pdf' && (await pdf.text()).startsWith('%PDF-') && pdfh['x-content-type-options'] === 'nosniff'
     && pdfh['content-disposition'] === 'inline; filename="fix_ture.pdf"', 'server plugin: a GET can answer with a PDF file, never sniffed, its name made safe (4.68.0)');
+  const book = await s.request.get(api + 'book.epub'), bookh = book.headers();
+  check(book.status() === 200 && bookh['content-type'] === 'application/epub+zip' && bookh['x-content-type-options'] === 'nosniff'
+    && bookh['content-disposition'] === 'inline; filename="book.epub"', 'server plugin: a GET can answer with an EPUB file too (4.69.0)');
   check((await s.request.get(api + 'page.html')).status() === 500, 'server plugin: a file of any other type (HTML) is refused');
   const post = (headers, data) => s.request.post(api + 'echo', {headers: {'Content-Type': 'application/json', ...headers}, data});
   check((await post({Origin: 'http://evil.example', 'Sec-Fetch-Site': 'cross-site'}, {text: 'x'})).status() === 403, 'server plugin: a cross-site POST is refused');

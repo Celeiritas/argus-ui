@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Book · Mnemosyne</title>
+<link rel="stylesheet" href="reader.css">
+<!-- Mnemosyne's book reader (4.69.0, docs/mnemosyne-library.md "Reading the book"): served with STRICT_FOLDER_HEADERS, so the
+     only scripts that run are this folder's own files; nothing inline, and never a script from inside a book. -->
+<script type="module" src="reader.js"></script>
+</head>
+<body>
+<header id="bar">
+  <a id="back" href="../../../memory">Back to library</a>
+  <h1 id="title">Opening the book</h1>
+  <span id="progress" aria-live="polite"></span>
+  <span class="turns">
+    <button id="prev" type="button" aria-label="Previous page">‹</button>
+    <button id="next" type="button" aria-label="Next page">›</button>
+  </span>
+</header>
+<p id="say" role="status" aria-live="polite" hidden></p>
+<main id="book" aria-label="Book pages"></main>
+</body>
+</html>

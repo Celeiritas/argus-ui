@@ -61,6 +61,13 @@
       }).slice(0, 10).map(keep);
     } catch (_) { return sessionRecent; }
   }
+  // The book reader's places on this browser (plugins/memory/reader/reader.js, same key): rows with a cfi and how far through.
+  function bookPlaces() {
+    try {
+      const all = JSON.parse(localStorage.getItem('mnemosyne-book-places-v1') || '{}');
+      return Object.values(all && typeof all === 'object' ? all : {}).filter(r => r && /^[a-f0-9]{64}$/.test(r.id) && /^[a-f0-9]{64}$/.test(r.revision) && typeof r.cfi === 'string');
+    } catch (_) { return []; }
+  }
   function writeRecent(rows) {
     sessionRecent = rows.slice(0, 10);
     try { localStorage.setItem(recentKey, JSON.stringify(sessionRecent)); sessionRecentOnly = false; return true; }
@@ -199,11 +206,15 @@
     const status = msg => { $('#lib-status').textContent = msg; };
     const chapterLabel = c => (c.label === `Chapter ${Number(c.number)}` ? c.label : `Chapter ${Number(c.number)}: ${c.label}`) + (c.linear === false ? ' (additional material)' : '');
     const label = r => `${r.kind === 'paper' ? 'Original paper' : r.kind} · ${r.collection}`;
+    // The book reader (4.69.0, plugins/memory/reader/): an original EPUB or PDF in pages. Its format is the original's suffix.
+    const bookFormat = d => /\.(epub|pdf)$/i.exec(d.original || '')?.[1].toLowerCase() || '';
+    const bookLink = d => api.url('plugins/memory/reader/?' + new URLSearchParams({id: d.id, revision: d.revision, format: bookFormat(d),
+      ...(einkActive() ? {eink: '1'} : {})}));
     function item(r, passage, recent = null) {
       const id = passage ? r.source_id : r.id;
-      return `<article class="lib-result${recent ? ' lib-recent' : ''}"><h4>${e(r.title)}</h4><p class="lib-meta">${e(label(r))}${recent && !recent.changed ? ` · Section ${recent.offset + 1}` : ''}${passage && r.pdf_page ? ` · PDF page ${Number(r.pdf_page)}` : ''}${r.chapter ? ` · ${e(chapterLabel(r.chapter))}` : ''}</p>
+      return `<article class="lib-result${recent ? ' lib-recent' : ''}"><h4>${e(r.title)}</h4><p class="lib-meta">${e(label(r))}${recent && !recent.changed ? (recent.book ? ` · ${Math.round(recent.fraction * 100)}% read` : ` · Section ${recent.offset + 1}`) : ''}${passage && r.pdf_page ? ` · PDF page ${Number(r.pdf_page)}` : ''}${r.chapter ? ` · ${e(chapterLabel(r.chapter))}` : ''}</p>
         ${passage ? `<p class="lib-excerpt">${e(r.text.slice(0, 160))}${r.text.length > 160 ? '…' : ''}</p><details><summary>Read full passage</summary><p class="lib-full">${e(r.text)}</p><p class="lib-meta">${r.chapter ? e(chapterLabel(r.chapter)) + '.' : r.pdf_page ? `PDF page ${Number(r.pdf_page)}; printed page not recorded.` : 'Text source; no page number recorded.'} Keyword match, not a verified answer.</p></details>` : recent ? '' : `<p class="lib-meta">${e(r.health === 'ready' ? 'Searchable' : r.health)}${r.diagnostic ? ' · ' + e(r.diagnostic) : ''}</p>`}
-        ${recent ? `<button type="button" class="lib-continue">${recent.changed ? 'Open updated document' : 'Continue reading'}</button>${recent.changed ? '<p class="lib-meta lib-recent-note">This document has changed. Open its current version from the beginning.</p>' : ''}` : ''}
+        ${recent?.book ? `<a class="lib-continue lib-read-book" href="${e(bookLink(r))}">Continue reading</a>` : recent ? `<button type="button" class="lib-continue">${recent.changed ? 'Open updated document' : 'Continue reading'}</button>${recent.changed ? '<p class="lib-meta lib-recent-note">This document has changed. Open its current version from the beginning.</p>' : ''}` : ''}
         <details class="lib-source" data-source="${e(id)}" data-revision="${e(r.revision)}" data-page="${passage && r.pdf_page ? Number(r.pdf_page) : ''}" data-reader="${recent ? recent.offset : r.chapter ? Number(r.chapter.reader_offset) : ''}"><summary>Read source and details</summary><div class="lib-source-body"></div></details></article>`;
     }
     async function sourceDetail(details) {
@@ -216,10 +227,11 @@
       if (!r.ok) { body.textContent = r.data?.msg || 'Could not load the source. Close and reopen to retry.'; return; }
       details.dataset.loaded = '1'; const d = r.data;
       body.innerHTML = `
+        ${bookFormat(d) ? `<a class="lib-read-book" href="${e(bookLink(d))}">Read book</a>` : ''}
         <details class="lib-reader"><summary>Read source text</summary><div class="lib-reader-body"><div class="lib-reader-tools"><button type="button" class="lib-save" disabled>Save place</button><button type="button" class="lib-resume" hidden>Resume reading</button></div><p class="lib-place-status lib-meta" role="status"></p><details class="lib-navigation"><summary>Jump to section</summary><form class="lib-jump"><label>Section number <input type="number" min="1" step="1" required inputmode="numeric" disabled></label><button type="submit" disabled>Read section</button></form></details><p class="lib-reader-status" role="status" tabindex="-1"></p><div class="lib-page" role="region" aria-label="Page of the source text"><p class="lib-reader-text lib-full"></p></div><p class="lib-page-status lib-meta" role="status" hidden></p><p class="lib-page-hint lib-meta" hidden>Tap the left or right edge, or press Page Up or Page Down, to turn the page.</p><div class="lib-reader-nav"><button type="button" class="lib-prev">Read previous section</button><button type="button" class="lib-next">Read next section</button></div></div></details>
         <details class="lib-file-details"><summary>View file details</summary><dl><dt>File format</dt><dd>${e(d.file_format || 'unknown')}</dd><dt>Authorship</dt><dd>${e(d.authorship)}</dd><dt>Source version</dt><dd>${e(d.source_version)}</dd><dt>Extraction</dt><dd>${e(d.health)} · ${e(d.extraction_version)}</dd><dt>Indexed</dt><dd>${e(d.indexed_at)}</dd><dt>Revision</dt><dd>${e(d.revision)}</dd></dl></details>
         ${d.url ? `<a href="${e(d.url)}" target="_blank" rel="noopener noreferrer">Open source website</a>` : ''}
-        ${d.original ? `<p class="lib-meta">Original: ${e(d.original.split('/').pop())}</p><a class="lib-original" href="${e(api.url('api/memory/library/original.pdf?id=' + encodeURIComponent(d.id) + '&revision=' + encodeURIComponent(d.revision)))}" target="_blank" rel="noopener">Open original PDF<span class="sr"> (opens in a new tab)</span></a>` : '<p class="lib-meta">No original file is connected to the viewer yet.</p>'}`;
+        ${d.original ? `<p class="lib-meta">Original: ${e(d.original.split('/').pop())}</p>${bookFormat(d) === 'epub' ? '' : `<a class="lib-original" href="${e(api.url('api/memory/library/original.pdf?id=' + encodeURIComponent(d.id) + '&revision=' + encodeURIComponent(d.revision)))}" target="_blank" rel="noopener">Open original PDF<span class="sr"> (opens in a new tab)</span></a>`}` : '<p class="lib-meta">No original file is connected to the viewer yet.</p>'}`;
       const reader = body.querySelector('.lib-reader'), readStatus = body.querySelector('.lib-reader-status');
       const text = body.querySelector('.lib-reader-text'), prev = body.querySelector('.lib-prev'), next = body.querySelector('.lib-next');
       const save = body.querySelector('.lib-save'), resume = body.querySelector('.lib-resume');
@@ -375,7 +387,7 @@
     }
     function wire() { el.querySelectorAll('.lib-source:not([data-wired])').forEach(d => {
       d.dataset.wired = '1'; d.addEventListener('toggle', () => sourceDetail(d));
-      d.closest('article').querySelector('.lib-continue')?.addEventListener('click', event => {
+      d.closest('article').querySelector('button.lib-continue')?.addEventListener('click', event => {
         d.dataset.continue = '1'; d.open = true;
         if (d.dataset.loaded) d.querySelector('.lib-reader').open = true;
         event.currentTarget.hidden = true;
@@ -392,6 +404,7 @@
       const byId = new Map(), local = new Map(recentReads().map(row => [row.id, row]));
       for (const row of server?.recent || []) byId.set(row.id, pick(local.get(row.id), row));
       for (const [id, row] of local) if (!byId.has(id)) byId.set(id, row);
+      for (const row of bookPlaces()) { const had = byId.get(row.id); if (!had || time(row.at) > time(had.at)) byId.set(row.id, row); }
       const rows = [...byId.values()].sort((a, b) => time(b.at) - time(a.at)).slice(0, 10);
       if (!rows.length) { await load(true, false, true); return; }
       const results = await Promise.all(rows.map(row => api.get('library/source?id=' + encodeURIComponent(row.id))));
@@ -399,7 +412,8 @@
       $('#lib-results').innerHTML = results.map((result, i) => {
         if (!result.ok) return `<article class="lib-result"><h4>Unavailable document</h4><p class="lib-meta">${result.status === 404 ? 'This document is no longer in the current catalog.' : 'Could not load this document. Choose Library home to retry.'}</p></article>`;
         const d = result.data, changed = d.revision !== rows[i].revision;
-        return item(d, false, {changed, offset:changed ? 0 : rows[i].offset});
+        const book = !changed && typeof rows[i].cfi === 'string' && bookFormat(d) !== '';
+        return item(d, false, {changed, offset:changed ? 0 : Number(rows[i].offset) || 0, book, fraction:Number(rows[i].fraction) || 0});
       }).join('');
       status(`Your last ${rows.length} checked out documents${server ? '' : ' on this browser'}. Nothing is moved or locked.`);
       wire();

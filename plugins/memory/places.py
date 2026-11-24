@@ -11,6 +11,7 @@ NAME = 'mnemosyne-places.json'
 LIMITS = {'recent': 10, 'saved': 100}
 HEX = re.compile(r'^[a-f0-9]{64}$')
 MAX_OFFSET = 100000
+CFI = re.compile(r'^epubcfi\([!#-&(-;=?-\[\]-_a-~]{1,1015}\)$')   # printable ASCII without space < > " ' \ ` (";" stays: CFIs use ;s=), at most 1024 chars
 _lock = threading.Lock()
 
 
@@ -21,7 +22,16 @@ def _row(raw):
     if not (isinstance(id_, str) and HEX.match(id_) and isinstance(rev, str) and HEX.match(rev)): return None
     if type(off) is not int or not 0 <= off <= MAX_OFFSET: return None
     if not isinstance(at, str) or len(at) > 40: return None
-    return {'id': id_, 'revision': rev, 'offset': off, 'at': at}
+    row = {'id': id_, 'revision': rev, 'offset': off, 'at': at}
+    # the book reader's spot (4.69.0): an EPUB CFI and how far through (0-1); both optional, refused when wrong
+    cfi, frac = raw.get('cfi'), raw.get('fraction')
+    if cfi is not None:
+        if not isinstance(cfi, str) or not CFI.match(cfi): return None
+        row['cfi'] = cfi
+    if frac is not None:
+        if type(frac) not in (int, float) or not 0 <= frac <= 1: return None    # NaN fails the comparison
+        row['fraction'] = frac
+    return row
 
 
 def _read(path):
@@ -59,6 +69,12 @@ def put(path, person, kind, row):
     with _lock:
         data = _read(path)
         lists = _lists(data, person)
+        old = next((r for r in lists[kind] if r['id'] == clean['id']), None)
+        # The text reader (offset) and the book reader (cfi, fraction) share a recent row: within one revision each keeps
+        # the other's place, so reading one never resets the other.
+        if kind == 'recent' and old and old['revision'] == clean['revision']:
+            if 'cfi' in clean: clean['offset'] = old['offset']
+            else: clean.update({k: old[k] for k in ('cfi', 'fraction') if k in old})
         rows = [r for r in lists[kind] if r['id'] != clean['id']]
         rows = ([clean] + rows)[:LIMITS[kind]] if kind == 'recent' else (rows + [clean])[-LIMITS[kind]:]
         lists[kind] = rows

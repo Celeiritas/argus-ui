@@ -132,6 +132,7 @@ def manifest(pid, d):
         # 4.47.0: one folder whose files go out on LeafyGrove's origin without the sandbox (OPEN_FOLDER_HEADERS), for a trusted
         # page that needs storage, a service worker and its own API (Ariad-Node's workspace); '' = none, the default
         p['open_folder'] = safe_dir(d, m.get('open_folder'))
+        p['open_folder_strict'] = m.get('open_folder_policy') == 'strict'     # 4.69.0: STRICT_FOLDER_HEADERS; any other value = the 4.47 policy
         # a larger POST limit for its own api/<id>/... (a page that saves records or uploads images), never below the
         # default and never above PLUGIN_MAX_BODY; every other check on a POST stays the same
         mb = m.get('max_body')
@@ -242,6 +243,13 @@ OWN_HEADERS = {'Content-Security-Policy': "default-src 'self'; script-src 'self'
 # script already runs in LeafyGrove's page; this lets one folder of theirs be a page of its own (a frame or a tab) with storage,
 # a service worker scoped to that folder and same-origin calls to its api/<id>/. Every other plugin file keeps the sandbox.
 OPEN_FOLDER_HEADERS = dict(OWN_HEADERS)
+# "open_folder_policy": "strict" (4.69.0): the same, but scripts run only from the folder's own files: no inline script, no
+# blob: or data: script. For a page that shows content it did not write (an e-book's chapters, in blob: frames that inherit
+# this policy), so a script inside that content never runs (foliate-js README, "Security").
+STRICT_FOLDER_HEADERS = {**OWN_HEADERS, 'Content-Security-Policy':
+    "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' blob:; "
+    "img-src 'self' data: blob:; font-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' blob: data:; "
+    "worker-src 'self' blob:; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"}
 
 def load_own_origin(path=None, left_out=None):
     """The checked own-origin.json: {id: {port, public, links}}. A missing file is {}; a broken file or entry is logged
@@ -863,7 +871,8 @@ class H(BaseHTTPRequestHandler):
         own = PLUGIN_HEADERS if p['kind'] == 'static' else SERVER_FILE_HEADERS
         if p.get('open_folder'):                              # only a file that, links resolved, is inside that folder
             _, f = plugin_target(p['dir'], sub)
-            if f and inside(os.path.realpath(os.path.join(p['dir'], p['open_folder'])), f): own = OPEN_FOLDER_HEADERS
+            if f and inside(os.path.realpath(os.path.join(p['dir'], p['open_folder'])), f):
+                own = STRICT_FOLDER_HEADERS if p.get('open_folder_strict') else OPEN_FOLDER_HEADERS
         return self.send_plugin_file(p, sub, own)
 
     def send_plugin_file(self, p, sub, own):
@@ -906,7 +915,7 @@ class H(BaseHTTPRequestHandler):
             cls.TAKES_WHO[fn] = way
         return cls.TAKES_WHO[fn]
 
-    PLUGIN_FILE_TYPES = ('application/pdf',)     # files a server plugin may answer a GET with (never HTML, SVG or script)
+    PLUGIN_FILE_TYPES = ('application/pdf', 'application/epub+zip')     # files a server plugin may answer a GET with (never HTML, SVG or script)
 
     def plugin_file_answer(self, code, raw, meta):
         """A server plugin's GET answered with a file: only the types above, never sniffed, named for the browser's own viewer."""
