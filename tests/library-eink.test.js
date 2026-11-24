@@ -262,7 +262,7 @@ const shot = (p, name, fullPage = true) => process.env.SHOTS && p.screenshot({pa
     await five.locator('#lib-preview').click(); await five.locator('.volume').first().waitFor();
     const look = await five.evaluate(() => { const v = getComputedStyle(document.querySelector('.volume'));
       return {eink: document.documentElement.dataset.eink, bg: getComputedStyle(document.body).backgroundColor, border: v.borderTopColor, shadow: v.boxShadow, text: v.color,
-              material: getComputedStyle(document.querySelector('#material')).display}; });
+              material: document.querySelector('#material').checkVisibility() ? 'shown' : 'none'}; });
     assert.deepEqual(look, {eink:'1', bg:'rgb(255, 255, 255)', border:'rgb(0, 0, 0)', shadow:'none', text:'rgb(0, 0, 0)', material:'none'}, 'e-ink preview: ' + JSON.stringify(look));
     await five.goto(origin + 'memory'); await five.getByText('Reading settings', {exact:true}).click();
     await five.getByLabel('E-ink mode').selectOption('off');
