@@ -64,7 +64,8 @@ run(async b => {
   let before = started().length;
   await p.route('**/api/mode', r => r.fulfill({status: 409, json: {ok: false, msg: 'Box is already switching to Game mode.'}}));
   await holdPointer(p, p.locator('#modePill button[data-mode-to=game]'));
-  await p.waitForTimeout(300);
+  // wait for the refusal's toast itself: a fixed 300 ms lost the race on a slow CI runner (run 45572287870, empty toast)
+  await p.waitForFunction(() => document.querySelector('#toastText')?.textContent, null, {timeout: 6000}).catch(() => {});
   check(await p.locator('#toastText').textContent() === 'Box is already switching to Game mode.', `a refusal says why in the toast: "${await p.locator('#toastText').textContent()}"`);
   check(started().length === before && (await pill(p)).segs[0].on, 'and nothing changes');
   await p.unroute('**/api/mode');
