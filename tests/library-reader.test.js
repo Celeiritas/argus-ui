@@ -50,7 +50,7 @@ const reader = (q = '') => `${origin}plugins/memory/reader/?id=${ID}&revision=${
 const firstWord = p => p.evaluate(() => (document.querySelector('foliate-view')?.lastLocation?.range?.toString() || '').trim().split(/\s+/)[0]);
 const ready = async p => { await p.waitForFunction(() => document.querySelector('foliate-view')?.lastLocation?.cfi); await p.waitForTimeout(150); };
 const turned = async (p, before) => { await p.waitForFunction(w => (document.querySelector('foliate-view')?.lastLocation?.range?.toString() || '').trim().split(/\s+/)[0] !== w, before); return firstWord(p); };
-const say = p => p.locator('#say').textContent();
+const say = p => p.locator('#say').evaluate(el => el.firstChild?.nodeValue || '');             // the note alone, not its link or button
 const tap = async (p, fx) => { const v = p.viewportSize(); await p.mouse.click(Math.round(v.width * fx), Math.round(v.height * 0.6)); };
 const shot = (p, name) => process.env.SHOTS && p.screenshot({path: path.join(process.env.SHOTS, name)});
 
@@ -140,6 +140,18 @@ const shot = (p, name) => process.env.SHOTS && p.screenshot({path: path.join(pro
     assert.equal(await say(p), 'This book changed since your saved place; starting at the beginning.');
     await tap(p, 0.9); await turned(p, 'Chapter'); assert.equal(await p.locator('#say').isHidden(), true, 'the note goes with the first turn');
     await p.context().close();
+    // 4.69.1: the note has a Close button (44 px) that puts it away without turning, and focus stays in the bar
+    p = await page(browser);
+    await p.goto(reader()); await ready(p);
+    const close = p.locator('#say button.close');
+    assert.equal(await close.textContent(), 'Close');
+    { const r = await close.boundingBox(); assert.ok(r.width >= 44 && r.height >= 44, 'Close is 44 px'); }
+    await close.click();
+    assert.equal(await p.locator('#say').isHidden(), true, 'Close puts the note away');
+    assert.equal(await firstWord(p), 'Chapter', 'and turns nothing');
+    assert.equal(await p.evaluate(() => document.activeElement?.id), 'next', 'focus goes to the page button, not lost');
+    assert.ok(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'no sideways scroll with the note');
+    await p.context().close();
 
     // ---- swipe (foliate's own touch handling)
     p = await page(browser, {touch: true});
@@ -178,7 +190,9 @@ const shot = (p, name) => process.env.SHOTS && p.screenshot({path: path.join(pro
     // ---- a PDF: drawn by pdf.js, turns, place kept with a CFI
     server.posts.length = 0;
     p = await page(browser);
-    await p.goto(`${origin}plugins/memory/reader/?id=${ID}&revision=${REV}&format=pdf`); await ready(p);
+    await p.goto(`${origin}plugins/memory/reader/?id=${ID}&revision=${REV}&format=pdf&title=Library+Name+of+the+Paper`); await ready(p);
+    assert.equal(await p.locator('#title').textContent(), 'Library Name of the Paper', 'a PDF without its own title shows the library title (4.69.1)');
+    assert.equal(await p.title(), 'Library Name of the Paper · Mnemosyne');
     assert.equal(await p.evaluate(() => document.querySelector('foliate-view').renderer.index), 0);
     assert.match(await p.locator('#progress').textContent(), /^Page 1 of \d+$/, 'a PDF says its page');
     await tap(p, 0.9);
@@ -194,6 +208,11 @@ const shot = (p, name) => process.env.SHOTS && p.screenshot({path: path.join(pro
     await p.goto(reader());
     await p.getByText("This book's file is not on the server. Read its text in the library instead.").waitFor();
     assert.equal(await p.locator('#say a').getAttribute('href'), `${origin}memory`);
+    assert.equal(await p.locator('#title').textContent(), 'Book', 'no library title given: Book');
+    await p.goto(reader('&title=%3Cb%3EBold%3C%2Fb%3E'));
+    await p.getByText("This book's file is not on the server. Read its text in the library instead.").waitFor();
+    assert.equal(await p.locator('#title').textContent(), '<b>Bold</b>', 'the library title on a missing file, as text only');
+    assert.equal(await p.locator('#title b').count(), 0);
     await p.goto(`${origin}plugins/memory/reader/?id=nope&format=epub`);
     await p.getByText('This link to a book is not complete. Open the book from the library.').waitFor();
     assert.deepEqual(p.errors, []);

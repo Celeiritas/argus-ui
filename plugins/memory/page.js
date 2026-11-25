@@ -208,8 +208,9 @@
     const label = r => `${r.kind === 'paper' ? 'Original paper' : r.kind} · ${r.collection}`;
     // The book reader (4.69.0, plugins/memory/reader/): an original EPUB or PDF in pages. Its format is the original's suffix.
     const bookFormat = d => /\.(epub|pdf)$/i.exec(d.original || '')?.[1].toLowerCase() || '';
+    // The library's title goes along (4.69.1): a PDF often has no title of its own, and the reader showed "Book".
     const bookLink = d => api.url('plugins/memory/reader/?' + new URLSearchParams({id: d.id, revision: d.revision, format: bookFormat(d),
-      ...(einkActive() ? {eink: '1'} : {})}));
+      ...(d.title ? {title: String(d.title).slice(0, 200)} : {}), ...(einkActive() ? {eink: '1'} : {})}));
     function item(r, passage, recent = null) {
       const id = passage ? r.source_id : r.id;
       return `<article class="lib-result${recent ? ' lib-recent' : ''}"><h4>${e(r.title)}</h4><p class="lib-meta">${e(label(r))}${recent && !recent.changed ? (recent.book ? ` · ${Math.round(recent.fraction * 100)}% read` : ` · Section ${recent.offset + 1}`) : ''}${passage && r.pdf_page ? ` · PDF page ${Number(r.pdf_page)}` : ''}${r.chapter ? ` · ${e(chapterLabel(r.chapter))}` : ''}</p>
