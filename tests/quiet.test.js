@@ -110,8 +110,11 @@ run(async b => {
   check(!(await jobNow(p)).known && await row().count() === 1, 'it fails another way (exit status 2, not 1): back on Today');
 
   // ---- a learner: no "Mark as known" (the server refuses her too: tests/gate_test.py) ----
-  await p.evaluate(() => { S.role = 'learner'; render(); }); await p.waitForTimeout(400);
-  check(await p.locator('button.knownbtn').count() === 0, 'a learner sees no "Mark as known"');
+  // role, draw and count in one step: the page's 15 s refresh() puts the server's role (owner) back, and a separate
+  // wait could land on it (run 45572287870 saw the button come back)
+  const kb = await p.evaluate(() => { const owner = document.querySelectorAll('button.knownbtn').length;
+    S.role = 'learner'; render(); return {owner, learner: document.querySelectorAll('button.knownbtn').length}; });
+  check(kb.owner > 0 && kb.learner === 0, `a learner sees no "Mark as known" (owner ${kb.owner}, learner ${kb.learner})`);
   check(p.errors.length === 0, 'no page errors ' + p.errors.join(' | '));
   } finally {
     await known(p, false).catch(() => {});
