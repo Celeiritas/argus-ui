@@ -2,13 +2,15 @@
 // drawn by foliate-js (MIT, vendor/THIRD-PARTY.md). Turn with a tap on the left or right third, the page buttons, the keys
 // (PageDown, Space, arrows) or a swipe; a tap in the middle hides or shows the bar. The place is kept on this browser at
 // once and on the server 1.5 s after the last turn, as a reading place with the book's CFI and how far through it is.
-// URL: plugins/memory/reader/?id=<64 hex>&revision=<64 hex>&format=epub|pdf[&eink=1]
+// URL: plugins/memory/reader/?id=<64 hex>&revision=<64 hex>&format=epub|pdf[&title=<library title>][&eink=1]
 import './vendor/foliate-js/view.js';
 
 const HEX = /^[a-f0-9]{64}$/;
 const $ = s => document.querySelector(s);
 const query = new URLSearchParams(location.search);
 const id = query.get('id') || '', revision = query.get('revision') || '', format = query.get('format') || '';
+// the library's title (4.69.1): used when the file has none of its own (many PDFs); shown as text only
+const libraryTitle = (query.get('title') || '').replace(/\s+/g, ' ').trim().slice(0, 200) || 'Book';
 const base = new URL('../../../', location.href);                  // <base>/ : this page is <base>/plugins/memory/reader/
 const api = path => new URL('api/memory/' + path, base);
 const libraryLink = new URL('memory', base).href;
@@ -21,7 +23,14 @@ const SAY = {
 function say(msg, back = false) {
   const el = $('#say'); el.textContent = msg; el.hidden = !msg;
   if (back) { const a = document.createElement('a'); a.href = libraryLink; a.textContent = 'Back to library'; el.append(' ', a); }
+  // a note that only informs can be put away at once (4.69.1); it also goes on the first turn
+  if (msg === SAY.changed) {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'close'; b.textContent = 'Close';
+    b.setAttribute('aria-label', 'Close this note'); b.addEventListener('click', () => { say(''); $('#next').focus(); });
+    el.append(' ', b);
+  }
 }
+const noteText = () => $('#say').firstChild?.nodeValue || '';             // the message alone, without its link or button
 
 // ---- e-ink: ?eink=1, or the library's Reading settings (4.67.0, same key and the same "Automatic" test as page.js)
 const EINK_UA = ua => /\b(?:BOOX|Onyx)\b/i.test(ua) || /\b(?:NoteAir|NoteMax|Tab ?Ultra|Go ?10\.3|Palma|Poke ?\d|Nova ?(?:Air|Pro|\d)|Leaf ?\d)/.test(ua);
@@ -71,7 +80,7 @@ async function send(row, keepalive = false) {
     const now = localPlaces()[id];
     if (now && now.cfi === row.cfi) keepLocal({...now, pending: false, seen: undefined, at: mine?.at || now.at});
     if (last && last.cfi === row.cfi) last.pending = false;          // sent: hiding the tab must not send it again
-    if ($('#say').textContent === SAY.waiting) say('');
+    if (noteText() === SAY.waiting) say('');
     return true;
   } catch (_) {
     say(SAY.waiting);
@@ -106,7 +115,7 @@ addEventListener('pagehide', flush);
 let turning = Promise.resolve(), queued = 0;
 function turn(how) {
   if (!view || queued >= 3) return;
-  if ($('#say').textContent === SAY.changed) say('');                 // read, and the reader has moved on
+  if (noteText() === SAY.changed) say('');                 // read, and the reader has moved on
   queued++;
   turning = turning.then(() => how === 'left' ? view.goLeft() : how === 'right' ? view.goRight() : how === 'next' ? view.next() : view.prev())
     .catch(() => {}).finally(() => { queued--; });
@@ -162,24 +171,24 @@ function scrub(e) {
 
 async function open() {
   $('#back').href = libraryLink;
-  if (!HEX.test(id) || !HEX.test(revision) || !['epub', 'pdf'].includes(format)) { $('#title').textContent = 'Book'; say(SAY.link, true); return; }
+  if (!HEX.test(id) || !HEX.test(revision) || !['epub', 'pdf'].includes(format)) { $('#title').textContent = libraryTitle; say(SAY.link, true); return; }
   const places = fetch(api('library/places'), {credentials: 'same-origin'}).then(r => r.ok ? r.json() : null).catch(() => null);
   let file;
   try {
     const r = await fetch(api(`library/original.${format}?id=${id}&revision=${revision}`), {credentials: 'same-origin'});
     if (!r.ok) throw new Error(String(r.status));
     file = new File([await r.blob()], `book.${format}`, {type: format === 'epub' ? 'application/epub+zip' : 'application/pdf'});
-  } catch (_) { $('#title').textContent = 'Book'; say(SAY.missing, true); return; }
+  } catch (_) { $('#title').textContent = libraryTitle; say(SAY.missing, true); return; }
 
   view = document.createElement('foliate-view');
   $('#book').append(view);
   view.addEventListener('relocate', e => remember(e.detail));
   view.addEventListener('load', e => { const doc = e.detail.doc; doc.addEventListener('click', onTap); doc.addEventListener('keydown', onKey); });
   try { await view.open(file); view.book.transformTarget?.addEventListener('data', scrub); }
-  catch (e) { console.warn('reader: could not open the book', e); view.remove(); view = null; $('#title').textContent = 'Book'; say(SAY.missing, true); return; }
+  catch (e) { console.warn('reader: could not open the book', e); view.remove(); view = null; $('#title').textContent = libraryTitle; say(SAY.missing, true); return; }
   const t = view.book.metadata?.title;
   const title = typeof t === 'string' ? t : t && typeof t === 'object' ? Object.values(t)[0] : '';
-  $('#title').textContent = title || 'Book'; document.title = `${title || 'Book'} · Mnemosyne`;
+  $('#title').textContent = title || libraryTitle; document.title = `${title || libraryTitle} · Mnemosyne`;
   const r = view.renderer;
   r.setAttribute('flow', 'paginated'); r.setAttribute('max-column-count', '1'); r.setAttribute('margin', '24px'); r.setAttribute('gap', '6%');
   if (eink) r.setAttribute('max-block-size', '4000px');              // a tall e-ink screen: the page fills it, no empty bands

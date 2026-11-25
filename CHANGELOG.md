@@ -1,5 +1,10 @@
 # Changelog
 
+## 4.69.1 — 2026-11-25
+
+- The book reader shows the library's title when the file has none of its own (many PDFs showed just "Book").
+- The "This book changed since your saved place" note has a **Close** button; it still goes by itself on the first page turn.
+
 ## 4.69.0 — 2026-11-24
 
 - Read the book itself: a source with an original EPUB or PDF has a **Read book** button that opens it in pages inside Argus. Tap the left or right third, use the page buttons, keys or a swipe to turn; a tap in the middle hides the bar (Escape does the same), and the page stays put. E-ink mode is black on white with no motion, and the page fills the tall screen. The bar shows how far you are (on a phone just "34%"; a PDF says "Page 3 of 120").

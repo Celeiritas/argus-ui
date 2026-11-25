@@ -56,6 +56,7 @@ const backup = {summary:'Backups are fresh.',attention:false,folder:'fixtures',f
   await p.getByText('Read source and details',{exact:true}).click();{const o=p.locator('a.lib-original');await o.waitFor();const h=await o.getAttribute('href');if(!h.includes('api/memory/library/original.pdf?id='+source.id+'&revision='+source.revision)||await o.getAttribute('target')!=='_blank')throw new Error('original PDF link: '+h);}
   {const b=p.locator('.lib-source-body > a.lib-read-book');assert.equal(await b.innerText(),'Read book');const h=await b.getAttribute('href');
    assert(h.includes('plugins/memory/reader/?id='+source.id+'&revision='+source.revision+'&format=pdf'),'Read book link: '+h);assert.equal(await b.getAttribute('target'),null);
+   assert.equal(new URL(h,'http://x/').searchParams.get('title'),String(source.title).slice(0,200),'the library title goes to the reader (4.69.1)');
    assert.equal(await p.locator('.lib-source-body').evaluate(x=>x.firstElementChild.className),'lib-read-book');assert((await b.boundingBox()).height>=44);}
   await p.getByText('Read source text',{exact:true}).click();await p.locator('.lib-reader-text').filter({hasText:'preserved lines'}).waitFor();
   assert((await p.locator('.lib-reader-text').textContent()).includes('<script>'));
